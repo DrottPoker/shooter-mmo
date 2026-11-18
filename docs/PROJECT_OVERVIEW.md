@@ -66,7 +66,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn, Mob tagging with loot rights, world bosses that give every contributor their own loot | Abilities, the combat triangle, threat, Mob abilities |
 | Quests | Quest content with steps, objectives, chains, and rewards, quest NPCs, kill, collect, deliver, talk, and gather objectives, quest drops, the quest log and tracker, and Quest Studio | Experience rewards, more objective kinds, and repeatable schedules |
 | Character visuals | Human bodies with looks, garments, hair, cloth, and carried weapons and tools, all from the art pipeline | More races and body types, final art |
-| Operations | OpenTelemetry metrics, logs, and traces, local monitoring stack, stress tools, a network impairment proxy with four network profiles, active bots | Alert notifications, staging and production deployment |
+| Operations | OpenTelemetry metrics, logs, and traces, local monitoring stack, stress tools, a network impairment proxy with four network profiles, active bots, server images, and a production-like stack with a smoke test and a runbook | Alert notifications, a real host with a domain, an image registry, and automated deployment |
 
 This table is the only place that states the status of the whole project. Each design document
 states the status of its own rules, and no document states the status of another document's
@@ -123,6 +123,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The UI kit and the windows built on it | Provisional | |
 | The UI window manager: the layer table, the window stack, Escape, the keys of the interface, and the typing guard | Provisional | No dragged windows, saved positions, or docking |
 | Monitoring, the client measurements, stress tools, the network impairment proxy, and bots | Provisional | |
+| The deploy shape: the server images, the production-like stack, its smoke test, and the runbook | Provisional | One GameService and one worker on one machine with a local certificate authority and the local topology; no real host, domain, certificate, image registry, secret store, automated deployment, scheduled backup, or account recovery, as [Deployment](DEPLOYMENT.md#not-there-yet) lists |
 | The client's player build, its environments, and the build stamp | Provisional | One target, Windows x64 with IL2CPP; one GameService address per environment file; no signing, installer, or update channel; the F2 Debug menu with Leave Shard stays in a release build until a game menu exists |
 | The panels named `Temporary` | Temporary | Move onto the UI kit |
 | The development Worlds | Temporary | Test maps, replaced by the first real World |

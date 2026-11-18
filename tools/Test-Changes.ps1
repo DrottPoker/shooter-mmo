@@ -48,6 +48,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   unity-restore    tools/ci/Test-UnityCommon.ps1
 #   crowd            tools/ci/Test-ClientCrowdCommon.ps1
 #   observability    tools/Verify-Observability.ps1
+#   deploy           tools/Verify-Deployment.ps1
 #   verify-content   the item catalog, world collision, world actor, quest catalog, and text table verifiers
 #   verify-protocol  the realtime protocol verifier
 # A content compiler's verifier also runs whenever its tool project is selected, and every
@@ -59,7 +60,9 @@ $rules = @(
         Checks = @("test:Mmorpg.SimulationWorker.Tests"); Reason = "a realtime metric test reads it" },
     @{ Pattern = '\.md$'
         Checks = @("none"); Reason = "documentation" },
-    @{ Pattern = '^(\.github/.+|\.gitignore|\.mcp\.json|\.env\.example|docker-compose\.yml|docker-compose\.stack-stress\.yml)$'
+    @{ Pattern = '^(deploy/.+|\.dockerignore|\.gitignore|\.github/workflows/deploy-smoke\.yml|tools/(New-DeploySecrets|Start-DeployStack|Stop-DeployStack|Test-DeployStack|Verify-Deployment|DeployStackCommon)\.ps1)$'
+        Checks = @("deploy"); Reason = "the production-like stack: its Compose file, Dockerfile, build context, and secrets are checked without starting it; the weekly workflow starts it" },
+    @{ Pattern = '^(\.github/.+|\.mcp\.json|\.env\.example|docker-compose\.yml|docker-compose\.stack-stress\.yml)$'
         Checks = @("none"); Reason = "read by no local check; CI runs its own workflow" },
     @{ Pattern = '^docker-compose\.test\.yml$'
         Checks = @("all-tests"); Reason = "the test containers" },
@@ -544,6 +547,7 @@ try {
     if ($full -or $tokens.Contains("art")) { Write-Host "  art assets" }
     if ($full -or $tokens.Contains("blender-python")) { Write-Host "  art pipeline Python tests" }
     if ($full -or $tokens.Contains("observability")) { Write-Host "  observability configuration" }
+    if ($full -or $tokens.Contains("deploy")) { Write-Host "  deploy files" }
     if ($runDotNet) {
         $buildScope = if ($full) { "the solution" } else { "projects: $($buildNames -join ', ')" }
         Write-Host "  restore and build of $buildScope"
@@ -564,7 +568,7 @@ try {
         Write-Host "  Unity tests that hold in batchmode, as CI runs them"
         Write-Host "  Unity EditMode and PlayMode tests$unityScope"
     }
-    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability") -or $tokens.Contains("crowd"))) {
+    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability") -or $tokens.Contains("deploy") -or $tokens.Contains("crowd"))) {
         Write-Host "  none; no change can affect a check"
     }
     if ($Plan) {
@@ -610,6 +614,9 @@ try {
     }
     if ($full -or $tokens.Contains("observability")) {
         $null = Invoke-Check "Observability configuration" { (Invoke-Script "Verify-Observability.ps1") -eq 0 }
+    }
+    if ($full -or $tokens.Contains("deploy")) {
+        $null = Invoke-Check "Deploy files" { (Invoke-Script "Verify-Deployment.ps1") -eq 0 }
     }
 
     if ($runDotNet) {

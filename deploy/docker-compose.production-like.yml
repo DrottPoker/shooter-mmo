@@ -1,0 +1,230 @@
+name: shooter-mmo-deploy
+
+# The production-like stack: GameService and one SimulationWorker in the Production environment
+# behind a TLS proxy, with PostgreSQL and Redis that have passwords and no published ports. It
+# runs on one machine and is not a deployment: nothing here assumes a real host. Start, smoke
+# test, and stop it with tools/Start-DeployStack.ps1, tools/Test-DeployStack.ps1, and
+# tools/Stop-DeployStack.ps1. docs/DEPLOYMENT.md describes every setting.
+#
+# The three secrets come from deploy/stack.env, which tools/New-DeploySecrets.ps1 makes with
+# random values and Git ignores. The file has no default for any of them. Every other value that
+# a variable sets has a default that is no secret.
+#
+# Ports on the host, none of them the development stack's or the load stack's:
+#   ${PROXY_HTTPS_PORT:-8443}/tcp   the TLS proxy in front of GameService
+#   ${WORKER_UDP_PORT:-28015}/udp   the realtime port of the SimulationWorker
+# Both bind ${STACK_BIND_ADDRESS:-127.0.0.1}, so nothing leaves the machine unless it is asked to.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+# The image builds of the two services, which the migration job shares with GameService.
+x-game-service-build: &game-service-build
+  context: ..
+  dockerfile: deploy/Dockerfile
+  target: game-service
+
+# What GameService and its migration job read. Outside Development GameService refuses to start
+# without real hosts, passwords, and one secret per worker, so each of these is required.
+x-game-service-environment: &game-service-environment
+  DOTNET_ENVIRONMENT: Production
+  ASPNETCORE_ENVIRONMENT: Production
+  ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=shooter_mmo;Username=shooter_mmo;Password=${POSTGRES_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env};GSS Encryption Mode=Disable
+  ConnectionStrings__Redis: redis:6379,password=${REDIS_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+  # The public name that the proxy passes on, and the name that the worker and the health check use.
+  AllowedHosts: localhost;game-service
+  # The edge network holds the proxy and GameService only, so trusting it trusts the proxy.
+  Http__TrustedProxies: ${EDGE_SUBNET:-10.213.77.0/28}
+  ServiceAuthentication__SimulationWorkers__deploy-worker-1: ${WORKER_1_SECRET:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+
+services:
+  postgres:
+    image: postgres:16.16-alpine
+    environment:
+      POSTGRES_DB: shooter_mmo
+      POSTGRES_USER: shooter_mmo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shooter_mmo -d shooter_mmo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7.4.12-alpine
+    # The password reaches the server through its environment, not through a process argument.
+    command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly no --save ""']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 15s
+    restart: unless-stopped
+    logging: *logging
+
+  # Applies the migrations and the seeds, and ends. GameService starts only when it succeeded,
+  # because outside Development it refuses a database that is not current.
+  migrate:
+    build: *game-service-build
+    image: shooter-mmo/game-service:local
+    command: ["migrate"]
+    environment: *game-service-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    <<: *hardening
+    tmpfs:
+      - /tmp
+    restart: "no"
+    logging: *logging
+
+  game-service:
+    build: *game-service-build
+    image: shooter-mmo/game-service:local
+    environment: *game-service-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - edge
+      - backend
+    <<: *hardening
+    tmpfs:
+      - /tmp
+    # The image has no shell and no curl, so GameService answers its own health check.
+    healthcheck:
+      test: ["CMD", "dotnet", "Mmorpg.GameService.dll", "probe", "http", "http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Http:ShutdownTimeoutSeconds is 30 and the drain 10 inside it, so the runtime must wait longer.
+    stop_grace_period: 45s
+    restart: unless-stopped
+    logging: *logging
+
+  simulation-worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: simulation-worker
+    image: shooter-mmo/simulation-worker:local
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Redis: redis:6379,password=${REDIS_PASSWORD:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+      SimulationWorker__SimulationWorkerId: deploy-worker-1
+      SimulationWorker__GameServiceBaseUrl: http://game-service:8080
+      SimulationWorker__GameServiceSecret: ${WORKER_1_SECRET:?Run tools/New-DeploySecrets.ps1 to make deploy/stack.env}
+      # The address that clients reach this worker at: the published port on this machine.
+      SimulationWorker__AdvertisedHost: ${WORKER_ADVERTISED_HOST:-127.0.0.1}
+      SimulationWorker__AdvertisedUdpPort: ${WORKER_UDP_PORT:-28015}
+      # The worker touches this file while it is ready, and its health check reads the file.
+      SimulationWorker__HealthFilePath: /tmp/worker-ready
+    depends_on:
+      game-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${STACK_BIND_ADDRESS:-127.0.0.1}:${WORKER_UDP_PORT:-28015}:27015/udp"
+    networks:
+      - backend
+      - public
+    <<: *hardening
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "dotnet", "Mmorpg.SimulationWorker.dll", "probe", "file", "/tmp/worker-ready", "20"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # The host's shutdown timeout is 30 seconds: the last checkpoint, the session releases, and
+    # the offline call must fit in it.
+    stop_grace_period: 45s
+    restart: unless-stopped
+    logging: *logging
+
+  # Ends TLS with the certificate of its own local authority and forwards to GameService.
+  proxy:
+    image: caddy:2.11.9-alpine
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The local authority and its certificates, so they stay the same across restarts.
+      - proxy_data:/data
+      - proxy_config:/config
+    ports:
+      - "${STACK_BIND_ADDRESS:-127.0.0.1}:${PROXY_HTTPS_PORT:-8443}:8443"
+    depends_on:
+      game-service:
+        condition: service_healthy
+    networks:
+      - public
+      - edge
+    <<: *hardening
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 15s
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  # The proxy and GameService only, with an address range of its own, so that Http:TrustedProxies
+  # can name exactly the proxy. Nothing else is on it, and it reaches nothing outside.
+  edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-10.213.77.0/28}
+  # Everything that talks to each other behind the proxy. No route leads out of it.
+  backend:
+    internal: true
+  # Where published ports live: the proxy and the worker.
+  public: {}
+
+volumes:
+  postgres_data:
+  proxy_data:
+  proxy_config:
