@@ -339,7 +339,9 @@ matters:
 3. Stop GameService. Readiness turns to 503 at once, the proxy takes it out of rotation, and
    GameService serves what is in flight for the drain, then stops.
 4. Run `migrate --plan` to see what the new version would change, then `migrate`. A migration
-   that waits too long for a lock fails and applies nothing; run it again.
+   that waits too long for a lock fails and applies nothing; run it again. The schema never rolls
+   back: what an older version can and cannot do against a database that a newer one migrated
+   is in [Rolling Back A Release](GAME_SERVICE_MODULES.md#rolling-back-a-release).
 5. Start GameService, then the workers. GameService starts only against a current database, and a
    worker registers when GameService answers.
 6. Run `audit` once the workers are back, as [The Economy Audit](#the-economy-audit) describes,
