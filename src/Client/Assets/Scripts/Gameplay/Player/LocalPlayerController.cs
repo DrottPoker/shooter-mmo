@@ -43,7 +43,7 @@ namespace Mmorpg.Client.Gameplay
         private IRealtimeAdminChannel realtimeAdmin;
         private ClientMovementPrediction movementPrediction;
         private LocalPlayerNavigator navigator;
-        private WorldPointerFocus pointerFocus;
+        private WorldInputFocus inputFocus;
         private MovementSimulationSettings networkSettings;
         private PlayerMovementState authoritativeState;
         private bool hasAuthoritativeState;
@@ -276,9 +276,9 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The focus keeps clicks on interface panels from also moving the player.
-        public void SetPointerFocus(WorldPointerFocus focus)
+        public void SetInputFocus(WorldInputFocus focus)
         {
-            pointerFocus = focus;
+            inputFocus = focus;
         }
 
         // Walks to the destination, or as close to it as the World allows. Planning runs in
@@ -317,7 +317,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var pointer = playerInput.PointerPosition;
-            if (pointerFocus != null && pointerFocus.IsPointerOverInterface(pointer))
+            if (inputFocus != null && inputFocus.IsPointerOverInterface(pointer))
             {
                 return false;
             }

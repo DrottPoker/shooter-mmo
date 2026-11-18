@@ -279,7 +279,7 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   |   +-- GatheringClientState
   +-- CombatClientController
   |   +-- CombatClientState
-  +-- WorldPointerFocus and GameMessageLog
+  +-- WorldInputFocus and GameMessageLog
   +-- PlayerBodyLookSetting with PlayerLookLink, and PlayerEquipment
   +-- PlayerBodyTintSetting and WorldDebugViewSettings
   +-- account-session validation, and the release of a World scene left outside the panels
@@ -348,7 +348,7 @@ Realtime movement
       +-- RemoteActorMovement in MobView (routed by WorldActorPresentationController)
 
 World pointer input
-  +-- WorldPointerFocus, owned by ClientBootstrap
+  +-- WorldInputFocus, owned by ClientBootstrap
   +-- WorldMenuController, providers sorted by WorldMenuOrder
   |   +-- WorldPointerPicker, every target under the pointer, nearest first
   |   +-- CombatTargetingController (Combat, first: Attack)
@@ -1085,8 +1085,10 @@ Join and leave are coroutine operations with configured deadlines, structured
 errors, and one completion path. A join consumes the complete `JoinShardResponse`,
 checks ticket expiry, protocol version, simulation revision, shard identity,
 World identity, and exact worker runtime placement, then connects to the provided
-UDP endpoint. It sends the short-lived join ticket in a versioned reliable ordered
-packet. Join acceptance must match the placed character, shard, World, simulation
+UDP endpoint. It sends the id of the short-lived join ticket with a proof of the
+ticket's transport key, never a secret, in a versioned reliable ordered packet,
+as [Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. Join
+acceptance must match the placed character, shard, World, simulation
 revision, and collision revision before its non-secret metadata becomes the
 joined session, which `CharacterSelectPanel`, or the reconnect, then enters as
 the World of `ClientSession`.
@@ -1312,6 +1314,15 @@ aborts activation with a structured client error.
 Client and worker must run the same protocol and simulation code, as
 [Versioning](REALTIME_PROTOCOL.md#versioning) describes; what to restart and
 rebuild after such a change is in [Unity Client](LOCAL_DEVELOPMENT.md#unity-client).
+A join that finds another version fails before the transport starts, and the
+character screen tells the player which side is behind. A worker on a newer
+protocol than the client gives `incompatible_protocol`, "Your game is out of
+date. Update it to play." A worker on an older protocol, which a deployment is
+still replacing, gives `shard_not_updated`, "This shard has not been updated to
+your version of the game yet. Try again in a few minutes." A simulation revision
+that differs at the same protocol has no order, so `incompatible_simulation`
+names both ways out. A reconnect that meets one of them gives up and returns to
+the character screen with the same text.
 
 ## Content Loading With Addressables
 
@@ -1509,7 +1520,7 @@ local player and presents the players already in view under a cover, which goes
 once the content of the local look is loaded, the player bodies are prepared,
 and the first view is ready, as [Body Content](#body-content) and
 [Crowd Performance](#crowd-performance) describe. Every panel
-of a World scene is runtime uGUI, so `WorldPointerFocus` can tell from the
+of a World scene is runtime uGUI, so `WorldInputFocus` can tell from the
 EventSystem whether the pointer is over interface. No scene authors an
 EventSystem: `UiCanvas.EnsureEventSystem` makes one for the first canvas that
 takes the pointer, with the Input System UI module, and keeps it across scene
@@ -1666,8 +1677,9 @@ counts as typed whichever update ran first. While it is true no hotkey runs, and
 Escape follows the order above: it cancels the dialog from the dialog's own
 field, leaves a field of a window, and reaches its screen from an entry screen's
 form, as the busy login documents. The kit's fields keep their text on Escape.
-The arrow keys turn the camera and are no key of the interface, so they still
-turn it while a field has focus.
+The arrow keys turn the camera and are no key of the interface, so the manager
+holds the keyboard of `WorldInputFocus` while `IsTyping` is true and the camera
+ignores them: in a field they move the caret.
 
 **The dialog host.** `Dialog` is the scene's one `UiDialog`, on a canvas of the
 `Dialogs` layer, built when it is first asked for. The inventory windows ask in
@@ -1780,13 +1792,15 @@ execution order -100, before anything reads its input. This keeps device
 bindings out of gameplay and UI code and allows future rebinding and
 control-scheme work without changing those systems. The cursor is never locked.
 
-`ClientBootstrap` owns one `WorldPointerFocus` and passes it to the World scene,
+`ClientBootstrap` owns one `WorldInputFocus` and passes it to the World scene,
 the local player, the camera, and the inventory windows. It reports whether the
 pointer is over interface through the EventSystem, since every World scene panel
 is uGUI, or held by a capture that a panel adds, such as the inventory windows
 while a stack part rides on the pointer. A click or scroll over a panel, or a
 click that puts down or puts back a carried part, therefore never reaches the
-world.
+world. It also reports whether the interface holds the keyboard, which the
+window manager does while the player types in a text field, so world input that
+reads keys, the camera's arrow keys, rests meanwhile.
 
 `CharacterBody` is the reusable collision foundation for local players, remote
 players, and NPCs. The character root is its logical ground point. CharacterBody
@@ -2380,7 +2394,7 @@ anchor from the theme's measures; the layout is
 Each window stands on the window manager's stack with a canvas of its own in
 the `Windows` layer, and the inventory canvas itself draws only the tooltip and
 the dragged item, in the `Tooltips` layer above them. The canvas root only groups
-the windows and draws no graphic, so `WorldPointerFocus` sees the pointer over
+the windows and draws no graphic, so `WorldInputFocus` sees the pointer over
 interface only above a shown window, and world input works beside and between
 them. `B`, `I`, and `C` reach the windows through the window manager, so a key
 typed into any text field, such as the search field, is text.
@@ -2458,7 +2472,7 @@ that part on the pointer without a held button: `InventorySlotClicks` puts it
 on a clicked slot through `InventoryDropTarget.DropCarried`, a refusing slot
 says why and keeps it carried, and a right-click, a click beside the windows,
 or `Escape` puts it back. While a part is carried, and in the frame its carry
-ended, the coordinator's `CapturesPointer` holds `WorldPointerFocus`, so the
+ended, the coordinator's `CapturesPointer` holds `WorldInputFocus`, so the
 click never walks or targets. The coordinator raises `DragStarted` and
 `DragEnded` for both kinds. A held drag that ends over no slot and no interface
 raises `DroppedOutside`, which offers a whole carried or equipped stack for

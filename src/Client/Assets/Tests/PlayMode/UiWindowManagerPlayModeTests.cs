@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.App;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
@@ -168,8 +169,9 @@ namespace Mmorpg.Client.Tests.PlayMode
         }
 
         // While the search field has focus every key of the interface is text: B, I, C, L, F2,
-        // and F3 open nothing. Escape leaves the field and closes nothing; the next one closes
-        // the window. Without focus every key works again.
+        // and F3 open nothing, and world input that reads keys, the camera's arrow keys, rests.
+        // Escape leaves the field and closes nothing; the next one closes the window. Without
+        // focus every key works again.
         [UnityTest]
         public IEnumerator EveryHotkeyIsTextWhileTheSearchFieldHasFocus()
         {
@@ -185,6 +187,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return null;
             Assert.That(search.isFocused, Is.True);
             Assert.That(manager.IsTyping, Is.True);
+            var focus = Object.FindAnyObjectByType<ClientBootstrap>().InputFocus;
+            Assert.That(focus.IsKeyboardHeldByInterface, Is.True, "The arrow keys move the caret, not the camera.");
 
             foreach (var command in new[]
                      {
@@ -207,6 +211,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             manager.Press(UiCommand.Cancel);
             Assert.That(manager.IsTyping, Is.False, "Escape leaves the field.");
+            Assert.That(focus.IsKeyboardHeldByInterface, Is.False, "The arrow keys turn the camera again.");
             yield return null;
             Assert.That(search.isFocused, Is.False);
             Assert.That(inventory.IsInventoryOpen, Is.True, "Escape left the field and closed nothing.");

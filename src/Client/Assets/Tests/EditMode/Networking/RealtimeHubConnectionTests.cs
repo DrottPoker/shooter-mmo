@@ -297,7 +297,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("a placement without a ticket", "invalid_join_parameters")]
         [TestCase("a placement without a transport key", "invalid_join_parameters")]
         [TestCase("an expired ticket", "join_ticket_expired")]
-        [TestCase("another protocol version", "incompatible_protocol")]
+        [TestCase("a newer protocol version", "incompatible_protocol")]
+        [TestCase("an older protocol version", "shard_not_updated")]
         [TestCase("another simulation revision", "incompatible_simulation")]
         public void AJoinThatCannotStartFailsBeforeTheTransportStarts(string placementCase, string code)
         {
@@ -316,7 +317,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 case "an expired ticket":
                     placement.expiresAt = DateTime.UtcNow.AddMinutes(-1).ToString("O");
                     break;
-                case "another protocol version":
+                case "a newer protocol version":
+                    placement.endpoint.protocolVersion = RealtimeProtocol.Version + 1;
+                    break;
+                case "an older protocol version":
                     placement.endpoint.protocolVersion = RealtimeProtocol.Version - 1;
                     break;
                 default:

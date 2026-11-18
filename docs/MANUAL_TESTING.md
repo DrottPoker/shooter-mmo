@@ -1003,7 +1003,10 @@ Keep the Game view focused in Development World 2.
    the camera follows it and the ground under the pointer moves ahead.
 6. Drag with the middle mouse button, then hold each arrow key. Expected result:
    dragging turns and tilts the camera around the character, left and right
-   turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees.
+   turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees. Open
+   the inventory, click its search field, type a word, and hold the left and
+   right arrow keys. Expected result: the caret moves through the word and the
+   camera stays still; after Escape the arrow keys turn the camera again.
 7. Scroll the mouse wheel both ways. Expected result: each notch zooms by about
    15 percent between 0.6 and 15 meters, and the zoom eases instead of jumping.
    Fully zoomed in, the camera stays about 30 centimeters from the head and the

@@ -367,7 +367,8 @@ not implemented, and running with run energy is planned in
 
 - The camera orbits the player from behind and above. Drag with the middle mouse
   button to turn and tilt it, or hold the arrow keys: left and right turn it, up
-  and down tilt it.
+  and down tilt it. While a text field has the focus the arrow keys move its
+  caret instead.
 - The scroll wheel zooms between 0.6 and 15 meters from the pivot at neck height,
   15 percent per notch, and the zoom eases in. Fully zoomed in, the camera stays
   about 30 centimeters from the character.

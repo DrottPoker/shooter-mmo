@@ -71,7 +71,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 var players = new LocalPlayerSource();
                 var playerChanges = 0;
                 players.Changed += () => playerChanges++;
-                context.Initialize(session, hub.Session, hub.Movement, hub.Players, hub.Looks, hub.Admin, players, new WorldPointerFocus(), null, null);
+                context.Initialize(session, hub.Session, hub.Movement, hub.Players, hub.Looks, hub.Admin, players, new WorldInputFocus(), null, null);
                 context.enabled = true;
                 Assert.That(context.TryEnterWorld(), Is.True);
                 var player = context.LocalPlayer;
