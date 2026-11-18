@@ -1869,7 +1869,8 @@ it holds the tick budget and the full remote update rate in a five-minute run,
 and that thread is busy only a small part of the time. Over 30 minutes with
 players coming and going it passed every rule on 2026-11-17, with one tick of
 54,600 over its budget, where the tail of the tick had failed the rule the day
-before; that is one soak, and a second has not confirmed it yet. The tail and
+before, and again on 2026-11-18 with the sealed transport, with 4 of 54,300
+over it and the worker at 90 percent of a core instead of 72. The tail and
 the transport's messages are entry 1 of
 [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier).
 A tier is claimed only after

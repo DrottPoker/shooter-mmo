@@ -459,16 +459,6 @@ public sealed record StressLoadPlan(
             workerEnvironment["SIMULATION_WORKER_ID"] = WorkerId;
             workerEnvironment["SIMULATION_SHARD_ID"] = scenario.ShardId;
             workerEnvironment["SIMULATION_WORLD_ID"] = scenario.WorldId;
-            if (scenario.Playing?.TeleportToGrounds == true)
-            {
-                // The admin teleport needs DevelopmentAdmin:Enabled, which the worker allows only
-                // in the Development environment. That environment also loads the worker's
-                // appsettings.Development.json, so its other Development option stays off here.
-                workerEnvironment["DOTNET_ENVIRONMENT"] = "Development";
-                workerEnvironment["DevelopmentAdmin__Enabled"] = "true";
-                workerEnvironment["DevelopmentItemInteractions__GlobalBankAndRecoveryAccess"] = "false";
-            }
-
             if (worldVariantPath is not null)
             {
                 workerEnvironment["SimulationWorker__WorldDataPath"] = StressWorldVariant.WorkerWorldsPath(worldVariantPath);
@@ -537,6 +527,15 @@ public sealed record StressLoadPlan(
             ]);
         }
 
+        // The worker refuses the shared worker secret, a published secret, and a Redis without a
+        // password outside the Development environment, as GameService does, and a load run has
+        // all three, so every run starts it there. That environment also loads the worker's
+        // appsettings.Development.json, whose two options stay off unless the run needs one: the
+        // admin teleport of a playing run to its home grounds.
+        workerEnvironment["DOTNET_ENVIRONMENT"] = "Development";
+        workerEnvironment["DevelopmentAdmin__Enabled"] =
+            scenario.Playing?.TeleportToGrounds == true ? "true" : "false";
+        workerEnvironment["DevelopmentItemInteractions__GlobalBankAndRecoveryAccess"] = "false";
         workerEnvironment["SIMULATION_WORKER_UDP_PORT"] = udpPort.ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SIMULATION_WORKER_ADVERTISED_HOST"] = "127.0.0.1";
         workerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"] = advertisedPort.ToString(CultureInfo.InvariantCulture);
