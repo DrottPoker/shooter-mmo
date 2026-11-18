@@ -181,3 +181,26 @@ groups:
           severity: warning
         annotations:
           summary: The economy audit could not run every check in the last two hours; the GameService log says why.
+
+  - name: mmorpg-retention
+    rules:
+      # A lone failure is routine, such as a lock timeout that the next pass retries, so only a task
+      # that keeps failing alerts: a pass runs every minute by default, and a stuck task fails in each.
+      - alert: RetentionTaskFailing
+        expr: sum by (task) (increase(game_service_retention_failures_total[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Retention task {{ $labels.task }} failed at least five times in the last ten minutes, so its table keeps growing; the GameService log says why.
+
+      # The lag stays within about one Retention:IntervalSeconds while a task keeps up, 60 seconds by
+      # default; raise this threshold with the interval. A task whose last pass failed has no lag
+      # series, which RetentionTaskFailing covers.
+      - alert: RetentionLagHigh
+        expr: max by (task) (game_service_retention_lag_seconds) > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The oldest due row of retention task {{ $labels.task }} had waited more than 15 minutes when its latest pass began, so the task falls behind its table.

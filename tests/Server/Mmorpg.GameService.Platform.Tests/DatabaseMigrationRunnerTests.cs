@@ -52,10 +52,10 @@ public sealed class DatabaseMigrationRunnerTests
         await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
         var runner = Runner(dataSource);
 
-        var pendingBefore = await runner.PendingAsync([CreateTable, ConcurrentIndex], Token);
-        var applied = await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token);
-        var pendingAfter = await runner.PendingAsync([CreateTable, ConcurrentIndex], Token);
-        var appliedAgain = await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token);
+        var pendingBefore = (await runner.PlanAsync([CreateTable, ConcurrentIndex], Token)).Pending;
+        var applied = (await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token)).Applied;
+        var pendingAfter = (await runner.PlanAsync([CreateTable, ConcurrentIndex], Token)).Pending;
+        var appliedAgain = (await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token)).Applied;
 
         Assert.Equal([CreateTable.Id, ConcurrentIndex.Id], pendingBefore);
         Assert.Equal([CreateTable.Id, ConcurrentIndex.Id], applied);
@@ -81,7 +81,7 @@ public sealed class DatabaseMigrationRunnerTests
         var validAfterFailure = await IndexIsValidAsync(dataSource);
         var recordedAfterFailure = await RecordedAsync(dataSource);
         await ExecuteAsync(dataSource, "delete from runner_test where id = 2;");
-        var applied = await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token);
+        var applied = (await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token)).Applied;
 
         Assert.Equal(PostgresErrorCodes.UniqueViolation, failure.SqlState);
         Assert.False(validAfterFailure);
@@ -103,7 +103,7 @@ public sealed class DatabaseMigrationRunnerTests
         await ExecuteAsync(dataSource, ConcurrentIndex.Sql);
         var indexBefore = await IndexOidAsync(dataSource);
 
-        var applied = await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token);
+        var applied = (await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token)).Applied;
 
         Assert.Equal([ConcurrentIndex.Id], applied);
         Assert.Equal(indexBefore, await IndexOidAsync(dataSource));
@@ -166,15 +166,256 @@ public sealed class DatabaseMigrationRunnerTests
         await other.ExecuteAsync(
             "select pg_advisory_unlock(@LockId);",
             new { LockId = DatabaseMigrationRunner.MigrationLockId });
-        var applied = await apply;
+        var applied = (await apply).Applied;
 
         Assert.False(finishedWhileLocked);
         Assert.Equal(["209901010200_test_column", ConcurrentIndex.Id], applied);
     }
 
+    // Npgsql ends every command that has no timeout of its own after the connection string's
+    // Command Timeout, 30 seconds by default. These tests shorten it to one second, so a wait or a
+    // migration that lasts longer shows whether the runner sets the timeout itself.
+    [PostgresIntegrationFact]
+    public async Task TheWaitForTheMigrationLockOutlastsTheCommandTimeoutOfTheConnection()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = ShortCommandTimeout(database);
+        var runner = Runner(dataSource);
+        await using var other = await dataSource.OpenConnectionAsync(Token);
+        await other.ExecuteAsync(
+            "select pg_advisory_lock(@LockId);",
+            new { LockId = DatabaseMigrationRunner.MigrationLockId });
+
+        var apply = runner.ApplyAsync([CreateTable], Token);
+        await Task.Delay(TimeSpan.FromSeconds(2.5), Token);
+        var finishedWhileLocked = apply.IsCompleted;
+        await other.ExecuteAsync(
+            "select pg_advisory_unlock(@LockId);",
+            new { LockId = DatabaseMigrationRunner.MigrationLockId });
+        var applied = (await apply).Applied;
+
+        Assert.False(finishedWhileLocked);
+        Assert.Equal([CreateTable.Id], applied);
+    }
+
+    // The other process queues for the lock while the first migration holds it, and is granted it
+    // when that migration commits, so the second migration of the run is the one that waits.
+    [PostgresIntegrationFact]
+    public async Task TheWaitForTheLockOfALaterMigrationOutlastsTheCommandTimeoutOfTheConnection()
+    {
+        var slow = new DatabaseMigration("209901010050_slow", "select pg_sleep(0.6);");
+        var alter = new DatabaseMigration("209901010200_test_column", "alter table runner_test add column note text;");
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = ShortCommandTimeout(database);
+        var runner = Runner(dataSource);
+        await runner.ApplyAsync([CreateTable], Token);
+
+        var applied = await ApplyWhileAnotherProcessTakesTheLockAfterTheFirstMigrationAsync(
+            dataSource,
+            runner,
+            [CreateTable, slow, alter]);
+
+        Assert.Equal([slow.Id, alter.Id], applied);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task TheWaitForTheSessionLockOfAnIndexMigrationOutlastsTheCommandTimeoutOfTheConnection()
+    {
+        var slow = new DatabaseMigration("209901010050_slow", "select pg_sleep(0.6);");
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = ShortCommandTimeout(database);
+        var runner = Runner(dataSource);
+        await runner.ApplyAsync([CreateTable], Token);
+
+        var applied = await ApplyWhileAnotherProcessTakesTheLockAfterTheFirstMigrationAsync(
+            dataSource,
+            runner,
+            [CreateTable, slow, ConcurrentIndex]);
+
+        Assert.Equal([slow.Id, ConcurrentIndex.Id], applied);
+        Assert.True(await IndexIsValidAsync(dataSource));
+    }
+
+    // The SQL of a migration runs under Database:MigrationCommandTimeoutSeconds, not under the
+    // connection's default, so a migration that runs longer than 30 seconds is not cut off.
+    [PostgresIntegrationFact]
+    public async Task AMigrationRunsUnderTheMigrationCommandTimeoutNotTheDefaultOfTheConnection()
+    {
+        var slow = new DatabaseMigration("209901010050_slow", "select pg_sleep(2.5);");
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = ShortCommandTimeout(database);
+        var runner = Runner(dataSource, commandTimeout: TimeSpan.FromSeconds(30));
+
+        var applied = (await runner.ApplyAsync([slow], Token)).Applied;
+
+        Assert.Equal([slow.Id], applied);
+        Assert.Equal([slow.Id], await RecordedAsync(dataSource));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task AMigrationThatRunsLongerThanItsCommandTimeoutFailsNamingTheSettingAndAppliesNothing()
+    {
+        var slow = new DatabaseMigration(
+            "209901010050_slow",
+            "create table slow_test (id integer primary key); select pg_sleep(5);");
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var runner = Runner(dataSource, commandTimeout: TimeSpan.FromSeconds(1));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => runner.ApplyAsync([slow], Token));
+
+        Assert.Contains(slow.Id, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(PlatformOptions.MigrationCommandTimeoutKey, exception.Message, StringComparison.Ordinal);
+        Assert.Empty(await RecordedAsync(dataSource));
+        await using var connection = await dataSource.OpenConnectionAsync(Token);
+        Assert.Null(await connection.ExecuteScalarAsync<string?>("select to_regclass('slow_test')::text;"));
+    }
+
+    // A newer release recorded migrations that this build does not contain. The plan reports them,
+    // a tolerant run applies what it lacks and reports them, and a run that refuses such a
+    // database applies nothing.
+    [PostgresIntegrationFact]
+    public async Task ARecordedMigrationThatTheBuildDoesNotContainMarksTheDatabaseAhead()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var runner = Runner(dataSource);
+        await runner.ApplyAsync([CreateTable], Token);
+        await ExecuteAsync(
+            dataSource,
+            "insert into schema_migrations (id) values ('209902010000_from_the_newer_release'), ('209902010100_and_one_more');");
+
+        var plan = await runner.PlanAsync([CreateTable, ConcurrentIndex], Token);
+        var refused = await Assert.ThrowsAsync<DatabaseAheadOfBuildException>(
+            () => runner.ApplyUnlessAheadAsync([CreateTable, ConcurrentIndex], Token));
+        var recordedAfterRefusal = await RecordedAsync(dataSource);
+        var run = await runner.ApplyAsync([CreateTable, ConcurrentIndex], Token);
+
+        Assert.True(plan.IsAhead);
+        Assert.Equal([ConcurrentIndex.Id], plan.Pending);
+        Assert.Equal(["209902010000_from_the_newer_release", "209902010100_and_one_more"], plan.Unknown);
+        Assert.Equal(plan.Unknown, refused.UnknownMigrations);
+        Assert.Contains("209902010000_from_the_newer_release", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("newer release", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(ConcurrentIndex.Id, recordedAfterRefusal);
+        Assert.Equal([ConcurrentIndex.Id], run.Applied);
+        Assert.Equal(plan.Unknown, run.Unknown);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ADatabaseThatRecordedOnlyWhatTheBuildContainsIsNotAhead()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var runner = Runner(dataSource);
+
+        var before = await runner.PlanAsync([CreateTable], Token);
+        var run = await runner.ApplyUnlessAheadAsync([CreateTable], Token);
+        var after = await runner.PlanAsync([CreateTable], Token);
+
+        Assert.False(before.IsAhead);
+        Assert.Equal([CreateTable.Id], run.Applied);
+        Assert.Empty(run.Unknown);
+        Assert.False(after.IsAhead);
+        Assert.Empty(after.Pending);
+    }
+
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private static DatabaseMigrationRunner Runner(NpgsqlDataSource dataSource, TimeSpan? lockTimeout = null)
+    private static NpgsqlDataSource ShortCommandTimeout(PostgresTestDatabaseLease database)
+    {
+        return NpgsqlDataSource.Create(
+            new NpgsqlConnectionStringBuilder(database.ConnectionString) { CommandTimeout = 1 }.ConnectionString);
+    }
+
+    // Starts a run whose first migration holds the migration lock for a moment, queues another
+    // process for the lock behind it, and releases that process after longer than the command
+    // timeout of the connection. PostgreSQL grants the lock to the queued process when the
+    // migration commits, so the next lock request of the run is the one that waits.
+    private static async Task<IReadOnlyList<string>> ApplyWhileAnotherProcessTakesTheLockAfterTheFirstMigrationAsync(
+        NpgsqlDataSource dataSource,
+        DatabaseMigrationRunner runner,
+        IReadOnlyList<DatabaseMigration> migrations)
+    {
+        await using var other = await dataSource.OpenConnectionAsync(Token);
+        var apply = runner.ApplyAsync(migrations, Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(200), Token);
+        await other.ExecuteAsync(
+            "select pg_advisory_lock(@LockId);",
+            new { LockId = DatabaseMigrationRunner.MigrationLockId },
+            commandTimeout: 0);
+        await Task.Delay(TimeSpan.FromSeconds(2.5), Token);
+        var finishedWhileLocked = apply.IsCompleted;
+        await other.ExecuteAsync(
+            "select pg_advisory_unlock(@LockId);",
+            new { LockId = DatabaseMigrationRunner.MigrationLockId });
+        var run = await apply;
+
+        Assert.False(finishedWhileLocked);
+        return run.Applied;
+    }
+
+    // The operation lock is held on a connection outside the pool, so a pool of one connection,
+    // which Database:MaximumPoolSize allows, still has its connection for the migrations.
+    [PostgresIntegrationFact]
+    public async Task TheOperationLockLeavesAPoolOfOneConnectionToTheMigrations()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        var connectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
+        {
+            MaxPoolSize = 1,
+            Timeout = 3
+        }.ConnectionString;
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        var options = new PlatformOptions(
+            connectionString,
+            "127.0.0.1:6379",
+            TimeSpan.FromSeconds(1),
+            RunMigrationsOnStartup: true);
+        var runner = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+        var migration = new DatabaseMigration(
+            "209912310001_pool_of_one",
+            "create table pool_of_one (id integer primary key);");
+
+        MigrationRun run;
+        await using (await runner.HoldOperationLockAsync(TestContext.Current.CancellationToken))
+        {
+            run = await runner.ApplyAsync([migration], TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal([migration.Id], run.Applied);
+    }
+
+    // Two holders of the operation lock never overlap: the second waits until the first let go.
+    [PostgresIntegrationFact]
+    public async Task TheOperationLockIsHeldByOneProcessAtATime()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var options = new PlatformOptions(
+            database.ConnectionString,
+            "127.0.0.1:6379",
+            TimeSpan.FromSeconds(1),
+            RunMigrationsOnStartup: true);
+        var first = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+        var second = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+
+        Task<IAsyncDisposable> waiting;
+        await using (await first.HoldOperationLockAsync(TestContext.Current.CancellationToken))
+        {
+            waiting = second.HoldOperationLockAsync(TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+            Assert.False(waiting.IsCompleted);
+        }
+
+        await using var held = await waiting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    private static DatabaseMigrationRunner Runner(
+        NpgsqlDataSource dataSource,
+        TimeSpan? lockTimeout = null,
+        TimeSpan? commandTimeout = null)
     {
         var options = new PlatformOptions(
             dataSource.ConnectionString,
@@ -182,7 +423,8 @@ public sealed class DatabaseMigrationRunnerTests
             TimeSpan.FromSeconds(1),
             RunMigrationsOnStartup: true)
         {
-            MigrationLockTimeout = lockTimeout ?? TimeSpan.FromSeconds(5)
+            MigrationLockTimeout = lockTimeout ?? TimeSpan.FromSeconds(5),
+            MigrationCommandTimeout = commandTimeout ?? TimeSpan.FromSeconds(300)
         };
         return new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
     }

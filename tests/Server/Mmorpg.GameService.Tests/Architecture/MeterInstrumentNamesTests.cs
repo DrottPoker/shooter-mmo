@@ -39,6 +39,7 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.failures|",
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.session_cache.operations|",
         "Mmorpg.GameService.Retention|1.0.0|Counter`1|game_service.retention.deleted|",
+        "Mmorpg.GameService.Retention|1.0.0|Counter`1|game_service.retention.failures|",
         "Mmorpg.GameService.Retention|1.0.0|Histogram`1|game_service.retention.duration|ms",
         "Mmorpg.GameService.Retention|1.0.0|ObservableGauge`1|game_service.retention.lag|s"
     ];

@@ -11,8 +11,8 @@ internal static class PlacementForeignKeyIndexMigration
     // worker, Shard, or account still lie together. The unique active indexes stay, because
     // they enforce one active row. The tickets of an account and of a Shard had no index at all.
     // The migration builds the indexes inside its transaction, which blocks writes to each table
-    // while it builds. That is fine at today's sizes; a large live table needs create index
-    // concurrently, which runs outside a transaction and the migration runner cannot run yet.
+    // while it builds. That is fine at today's sizes; a large live table needs a migration from
+    // DatabaseMigration.CreateIndexConcurrently, which the runner runs outside a transaction.
     public const string Sql = """
         create index ix_simulation_assignments_worker_id
             on simulation_assignments(worker_id);

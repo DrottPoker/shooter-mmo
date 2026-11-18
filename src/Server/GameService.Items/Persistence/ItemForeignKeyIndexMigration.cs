@@ -14,8 +14,8 @@ internal static class ItemForeignKeyIndexMigration
     //   items; without the condition it serves both.
     // - No query reads item operations by request hash.
     // The migration builds the indexes inside its transaction, which blocks writes to each table
-    // while it builds. That is fine at today's sizes; a large live table needs create index
-    // concurrently, which runs outside a transaction and the migration runner cannot run yet.
+    // while it builds. That is fine at today's sizes; a large live table needs a migration from
+    // DatabaseMigration.CreateIndexConcurrently, which the runner runs outside a transaction.
     public const string Sql = """
         alter table item_operation_changes
             drop constraint item_operation_changes_item_instance_id_fkey;
