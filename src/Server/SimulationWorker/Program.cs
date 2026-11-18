@@ -180,6 +180,7 @@ builder.Services.AddSingleton<WorldActorMetrics>();
 builder.Services.AddSingleton<WorldInteractionAuthorityService>();
 builder.Services.AddSingleton<ConnectionEntityBindingRegistry>();
 builder.Services.AddSingleton<RealtimeTransportReadiness>();
+builder.Services.AddSingleton<RealtimeLoopLiveness>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SimulationWorkerRegistrationLease>();
 builder.Services.AddSingleton<GameServiceAvailabilityMetrics>();

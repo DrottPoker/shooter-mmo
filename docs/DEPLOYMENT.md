@@ -25,13 +25,15 @@ that stack, and this runbook. Everything that needs a real host is listed under
 
 ```text
 player ---TLS---> proxy ---HTTP---> GameService ---> PostgreSQL
-player ---UDP---> SimulationWorker ---HTTP + worker secret---> GameService
-                  SimulationWorker and GameService ---> Redis
+player ---sealed UDP---> SimulationWorker ---HTTP + worker secret---> GameService
+                         SimulationWorker and GameService ---> Redis
 ```
 
 A player talks to the proxy for everything but the game itself, and to the worker's UDP port for
 the game. The worker never talks to a player over HTTP and never reaches PostgreSQL: it asks
 GameService for everything durable, as [Project Architecture](PROJECT_ARCHITECTURE.md) describes.
+GameService also audits its own database, at start and every hour, as
+[The Economy Audit](#the-economy-audit) describes.
 
 ## The Images
 
@@ -162,6 +164,8 @@ GameService, set in the Compose file for the stack:
 | `Http:TrustedProxies` | the `edge` range | The proxies whose `X-Forwarded-For` counts, so rate limits see the player and not the proxy |
 | `ServiceAuthentication:SimulationWorkers:<workerId>` | the worker's secret | One secret per worker; GameService refuses the shared `SIMULATION_WORKER_SERVICE_SECRET` outside Development |
 
+`Audit:Enabled` needs no setting: it is on outside Development, so GameService audits the economy
+at start and every hour, as [The Economy Audit](#the-economy-audit) describes.
 `Database:RunMigrationsOnStartup` is false outside Development, so the `migrate` job brings the
 database up to date before GameService starts, and a start refuses a database that is not current.
 `Http:ShutdownDrainSeconds`, 10 by default, must be longer than the proxy's health check interval
@@ -231,8 +235,20 @@ at the host and port 80 to be reachable. With another proxy or a load balancer i
 add its address to `Http:TrustedProxies` and set `Http:ForwardLimit` to the number of proxies in
 the chain.
 
-TLS covers the HTTP API only. The realtime UDP traffic goes to the worker's own port, and
-[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) describes it.
+TLS covers the HTTP API only, and the realtime traffic needs none of its own. Everything that a
+player and the worker exchange over UDP is encrypted and authenticated by keys that never travel
+over UDP, in one mode that no setting turns off, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. GameService makes a
+transport key with every join ticket and hands it out only in HTTPS answers: to the player in the
+answer of `POST /api/shards/{shardId}/join`, which is why that answer must travel over TLS, and
+to the worker in the answer of its call that consumes the ticket, as
+[Join Tickets And Simulation Sessions](SERVICE_FEATURES.md#join-tickets-and-simulation-sessions)
+describes. The player proves that it holds the key before GameService lets a ticket be used, so
+someone who sees the ticket id on the wire can neither join with it nor spend it. A join answer
+through a proxy without TLS would give the key away, and so would a worker call that is not
+private, as [The Call Between Worker And GameService](#the-call-between-worker-and-gameservice)
+says. The worker's UDP port therefore needs a firewall rule and nothing else: no certificate, no
+proxy, and no TLS in front of it.
 
 ## The Call Between Worker And GameService
 
@@ -241,9 +257,12 @@ checkpoints, the join tickets it consumes, and every item, vendor, quest, and de
 Each call carries the worker's id and secret in the headers `X-Simulation-Worker-ID` and
 `X-Simulation-Worker-Secret`, and the secret is the only thing that stands between a caller and
 the authority of a Shard: whoever has it can consume join tickets, release sessions, and commit
-operations as the worker.
+operations as the worker. The answer to the call that consumes a join ticket carries the ticket's
+transport key, from which the player's sealed realtime traffic is opened, so whoever reads that
+answer can read what the player's connection says.
 
-So the call must stay where the secret cannot be read. In the stack it travels over the `backend`
+So the call must stay where neither the secret nor the key can be read. In the stack it travels
+over the `backend`
 network, which has no route out and holds nothing but the stack's own containers. Anywhere else it
 must stay on a private network, or go over TLS: point `SimulationWorker:GameServiceBaseUrl` at an
 `https` name, through the proxy, which then also forwards the worker routes. The worker refuses
@@ -266,7 +285,7 @@ refused.
 | Service | Check | Healthy when |
 | --- | --- | --- |
 | GameService | `dotnet Mmorpg.GameService.dll probe http http://localhost:8080/health/ready` | `/health/ready` answers 2xx: PostgreSQL and Redis answer, and GameService is not stopping |
-| SimulationWorker | `dotnet Mmorpg.SimulationWorker.dll probe file /tmp/worker-ready 20` | The worker wrote its health file within 20 seconds: its UDP port is bound and its registration lease is valid |
+| SimulationWorker | `dotnet Mmorpg.SimulationWorker.dll probe file /tmp/worker-ready 20` | The worker wrote its health file within 20 seconds: its UDP port is bound, its registration lease is valid, and its realtime loop completed a tick in the last 5 seconds |
 | Proxy | `wget` of Caddy's admin API on its loopback | Caddy runs and holds its configuration |
 | PostgreSQL | `pg_isready` | It accepts connections |
 | Redis | `redis-cli ping` | It answers `PONG` with its password |
@@ -276,6 +295,26 @@ The images have no shell, `curl`, or `wget`, so each .NET service answers its ow
 as [Container Health Checks](SERVICE_FEATURES.md#container-health-checks) describes. The worker
 has no HTTP surface, so while it is ready it writes a file every 5 seconds and deletes it when it
 is not ready and when it stops, and the check reads the file's age.
+
+What the worker's health means: the worker is bound, registered, and playing. The first two do not
+prove the third. A realtime loop that hangs, in a deadlock or an endless loop in a handler, leaves
+the UDP port bound, and the registration lease is renewed by another service, so the worker would
+look alive while nobody could play. The loop therefore stamps the time of every completed tick, and
+the health file is written only while the last tick is at most 5 seconds old, 150 ticks, far longer
+than any pause the loop takes in normal operation, a garbage collection of milliseconds or a catch-up of
+five ticks. When the bound is passed the file is deleted, the check turns unhealthy within about 30 seconds, and the
+worker logs one warning for the episode that names how long the loop has been silent; it logs
+nothing more until the loop ticks again, and the file then returns by itself. A worker that is
+stopping is not judged: the loop stops ticking in the orderly stop, which takes seconds, and the
+file is removed at the stop signal anyway.
+
+What it does not mean: unhealthy is a label, not an action. Compose's `restart: unless-stopped`
+restarts a container that exits and does nothing for one that is only unhealthy, so in the stack a
+hung worker stays unhealthy, and so stays out of `up --wait`, until someone restarts it. An
+orchestrator that restarts or replaces unhealthy containers, which a real deployment needs, turns
+the label into a recovery. Until then a hung worker goes on heartbeating, because its heartbeat is
+another service, so GameService keeps its Shard online and keeps placing players on it while its
+connected players receive no snapshots.
 
 `--health-check-only` of the worker does not fit a running container. It loads and validates all
 configuration and content, which takes seconds, and it needs the UDP port that the running worker
@@ -301,6 +340,8 @@ matters:
    that waits too long for a lock fails and applies nothing; run it again.
 5. Start GameService, then the workers. GameService starts only against a current database, and a
    worker registers when GameService answers.
+6. Run `audit` once the workers are back, as [The Economy Audit](#the-economy-audit) describes,
+   so an update that left the economy inconsistent shows at once and not at the next hour.
 
 In the stack, from the repository root:
 
@@ -315,8 +356,8 @@ docker @compose up -d --wait
 
 `up` runs `migrate` again as GameService's dependency, which does nothing when the plan was
 applied already, recreates the services whose image changed, and waits until they are healthy.
-Run the smoke test afterwards with `-NoBuild`, as
-[Local Development](LOCAL_DEVELOPMENT.md#run-the-production-like-stack) describes.
+Then `docker @compose run --rm migrate audit` checks the economy. Run the smoke test afterwards with
+`-NoBuild`, as [Local Development](LOCAL_DEVELOPMENT.md#run-the-production-like-stack) describes.
 
 What players see: a player on a worker that stops returns to character select with the text of
 `server_shutdown`, and the character keeps its place and vitals. While GameService is stopped, the
@@ -353,6 +394,40 @@ backup: restore each kind of backup once to a scratch database and compare its t
 holds personal data, so keep it as the database itself is kept. Nothing runs these commands on a
 schedule yet.
 
+## The Economy Audit
+
+GameService audits its own database: whether every item is in exactly one place, whether every
+slot, stack, and definition is valid, whether every character's gold equals its ledger, and what
+the retained history says about conservation. It reads in one snapshot and repairs nothing. The
+checks and what they cannot answer are in
+[Economy Audit](GAME_SERVICE_MODULES.md#economy-audit), and the settings are the `Audit:*` rows of
+[Configuration Defaults](SERVICE_FEATURES.md#gameservice).
+
+- **It runs by itself.** `Audit:Enabled` is on outside Development, so GameService in the stack runs
+  the audit at start and then every `Audit:IntervalSeconds`, 3600, which is hourly. Nothing in the
+  Compose file sets it. Each run logs one line at `Information`, an `Error` line for every check
+  that found a violation with examples by id, and a `Warning` for a check that could not run.
+- **It is measured.** The meters `game_service.audit.runs` by outcome, `last_run_timestamp`,
+  `last_run_duration`, and `violations` by check go to the monitoring stack with the
+  `-Telemetry` overlay, and two alerts watch them: `EconomyAuditViolations`, critical, when a check
+  found a violation in its latest run, and `EconomyAuditFailed`, warning, when a run could not run
+  every check in two hours. [Monitoring](MONITORING.md#gameservice) lists the meters and
+  [the alerts](MONITORING.md#alerts) what each means.
+- **An operator runs it by hand** from the GameService image, like `migrate`:
+
+  ```powershell
+  docker @compose run --rm migrate audit
+  docker @compose run --rm migrate audit --json
+  ```
+
+  The exit code is 0 when the economy is consistent, 1 when a check found a violation, and 2 when
+  the audit could not run, also when `migrate` would still change the database. It reads the
+  database only, so it can run beside a live GameService, and the report names every check with
+  what it examined, as
+  [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy) describes. Run it before and after
+  an update and after a restore, and keep the report of a violation: the examples name ids and
+  never a name.
+
 ## What To Watch
 
 | What | Where | Healthy |
@@ -361,6 +436,7 @@ schedule yet.
 | The Shard is online | `GET /api/shards` | `isOnline` is true with free capacity; false means no worker with a valid registration holds it |
 | Every container is healthy | `docker compose ps` | `healthy`, and `migrate` exited with 0 |
 | No service logs an error | The console logs, level `fail` and `crit` for the .NET services | None |
+| The economy audit | The `Error` lines of the scheduled audit in GameService's log, `docker compose run --rm migrate audit`, and the alerts `EconomyAuditViolations` and `EconomyAuditFailed` | The audit ends `clean` and finds no violation |
 | The service meters and the alerts | The monitoring stack of [Monitoring](MONITORING.md), with the `-Telemetry` overlay | No alert fires |
 
 [Monitoring](MONITORING.md) owns the metrics, the logs, the dashboards, and the alerts, including
@@ -409,6 +485,8 @@ it in order, and checks the stop. Exit code 0 means every check held:
 - It checks `/health/ready`, that the Development routes are absent, that a request that forges
   `X-Forwarded-For` is limited as its real client, and that the worker routes refuse a missing
   secret, a wrong secret, another worker's id, and a player's session.
+- After the play, the `audit` command of the GameService image reads the whole database and must
+  find the economy that the players left consistent, with exit code 0.
 - A player stays in the world through the stop. The worker stops first and writes its last
   checkpoint, goes offline, and tells that player `server_shutdown`. GameService stops next, with
   a watcher asking the proxy for readiness: it must see `ready`, then `503 stopping` while

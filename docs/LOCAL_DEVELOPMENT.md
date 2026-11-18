@@ -334,7 +334,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DeployStack.ps1
 ```
 
 Expected result: the script builds the smoke test tool, starts the stack, joins one player who
-stays in the world, runs the player path for half a minute of movement, stops the stack in order,
+stays in the world, runs the player path for half a minute of movement, runs the `audit` command of
+the GameService image against what the players did, stops the stack in order,
 and prints one line per check. It ends with `Result: every one of <n> checks passed` and exit
 code 0 after about two minutes, and leaves nothing running. Its logs, one file per service and
 one for each part of the test, are in `artifacts/deploy-smoke/<timestamp>`. The checks are in

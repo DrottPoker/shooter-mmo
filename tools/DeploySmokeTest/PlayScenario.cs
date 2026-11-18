@@ -205,9 +205,10 @@ public sealed class PlayScenario(SmokeOptions options, StackApi api, SmokeReport
             $"join {player.Index}",
             join.CharacterId == player.Character!.Id
                 && join.Shard.Id == options.ShardId
-                && !string.IsNullOrWhiteSpace(join.JoinTicket)
+                && join.JoinTicketId != Guid.Empty
+                && join.TransportKey is { Length: RealtimeTransportKeys.TransportKeySize }
                 && !join.IsReconnect,
-            $"a ticket for {player.CharacterName} on {join.Shard.Id}");
+            $"a ticket and a transport key for {player.CharacterName} on {join.Shard.Id}");
         report.Check(
             $"worker endpoint {player.Index}",
             options.ExpectedEndpoint is null || options.ExpectedEndpoint == $"{join.Endpoint.Host}:{join.Endpoint.UdpPort}",

@@ -220,6 +220,7 @@ public sealed class SimulationWorkerStopOrderTests
         services.AddSingleton(harness.PerformanceMetrics!);
         services.AddSingleton(harness.Availability);
         services.AddSingleton(harness.StopReason);
+        services.AddSingleton<RealtimeLoopLiveness>();
         services.AddSimulationWorkerHostedServices();
         var realtime = services.Single(descriptor =>
             descriptor.ServiceType == typeof(IHostedService)

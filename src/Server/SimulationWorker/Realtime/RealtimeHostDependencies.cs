@@ -17,7 +17,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // missing optional service gets the default that RealtimeServerComposition applies: a new
 // interest manager, metrics the server owns, no registration lease, no world actors, a Shard
 // rule set without player versus player, no admin tools, a GameService that always counts as
-// available, and a stop that is a normal shutdown.
+// available, a stop that is a normal shutdown, and a loop whose ticks nobody reads.
 internal sealed record RealtimeHostDependencies(
     SimulationWorkerConfig Config,
     SimulationJoinService JoinService,
@@ -42,7 +42,8 @@ internal sealed record RealtimeHostDependencies(
     SimulationShardRules? ShardRules = null,
     DevelopmentAdminOptions? DevelopmentAdmin = null,
     GameServiceAvailability? GameServiceAvailability = null,
-    SimulationWorkerStopReason? StopReason = null)
+    SimulationWorkerStopReason? StopReason = null,
+    RealtimeLoopLiveness? LoopLiveness = null)
 {
     // Registers the record from the services that Program.cs registers.
     public static void Register(IServiceCollection services)
@@ -71,6 +72,7 @@ internal sealed record RealtimeHostDependencies(
             provider.GetRequiredService<SimulationShardRules>(),
             provider.GetRequiredService<DevelopmentAdminOptions>(),
             provider.GetRequiredService<GameServiceAvailability>(),
-            provider.GetRequiredService<SimulationWorkerStopReason>()));
+            provider.GetRequiredService<SimulationWorkerStopReason>(),
+            provider.GetRequiredService<RealtimeLoopLiveness>()));
     }
 }

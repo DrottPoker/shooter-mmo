@@ -3946,7 +3946,8 @@ the stack. It needs Docker and nothing else, and it runs beside the development 
    Expected result: every line is `[ok]`, the registrations, logins, characters, joins, half a
    minute of movement over UDP for three players, the leaves, and the logouts; the worker routes
    answer `401 invalid_service_credentials`, the Development routes answer `404`, and a forged
-   `X-Forwarded-For` is limited as one client. The stop part shows the hold player told
+   `X-Forwarded-For` is limited as one client. Then the `audit` command of the GameService image
+   reports `The economy is consistent.` with exit code 0. The stop part shows the hold player told
    `server_shutdown`, GameService answering `503 stopping` through the proxy before it goes, the
    worker's last checkpoint, no error in any log, and exit code 0 for every container. The script
    ends with `Result: every one of <n> checks passed`, and `docker ps` lists no container of the

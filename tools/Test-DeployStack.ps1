@@ -6,8 +6,9 @@
 # proxy, trusting the proxy's own certificate authority explicitly, it registers accounts, logs in,
 # creates characters, lists the Shards, joins, moves for half a minute over UDP, leaves, and logs
 # out; it checks /health/ready, that a forged X-Forwarded-For is limited as the real client, that
-# the worker's routes refuse a wrong secret, and that the Development routes are absent. A player
-# who stays in the world through the stop sees what the stop does:
+# the worker's routes refuse a wrong secret, and that the Development routes are absent. Then the
+# `audit` command of the GameService image must find the economy of what the players did
+# consistent. A player who stays in the world through the stop sees what the stop does:
 #
 #   1. The worker stops while GameService answers: it writes its last checkpoint and goes offline,
 #      and the player is told server_shutdown.
@@ -206,6 +207,16 @@ try {
     }
 
     Add-Result "player path" ($playExit -eq 0) "tools/DeploySmokeTest play exited with code $playExit"
+
+    # The economy after the play: the audit command of the GameService image, as an operator runs
+    # it, reads every item, slot, stack, and ledger row of the database in one snapshot and must
+    # find them consistent. The players are still in the world, and the audit only reads.
+    Write-DeployStep "The economy audit."
+    $audit = Get-DeployComposeLines @("run", "--rm", "-T", "--no-deps", "migrate", "audit") -Telemetry:$Telemetry
+    [IO.File]::WriteAllText((Join-Path $ResultsDirectory "audit.log"), (($audit.Lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+    $audit.Lines | ForEach-Object { Write-Host "  $_" }
+    $consistent = (($audit.Lines -join "`n").Contains("The economy is consistent."))
+    Add-Result "economy audit" ($audit.ExitCode -eq 0 -and $consistent) "audit through the GameService image exited with code $($audit.ExitCode)$(if ($consistent) { ' and found the economy consistent' } else { ' without finding the economy consistent' })"
 
     if (-not $KeepRunning) {
         Write-DeployStep "The orderly stop."

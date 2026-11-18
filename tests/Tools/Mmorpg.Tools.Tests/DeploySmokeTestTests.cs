@@ -153,10 +153,12 @@ public sealed class DeploySmokeTestTests
     {
         var characterId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+        var transportKey = Enumerable.Range(1, RealtimeTransportKeys.TransportKeySize).Select(value => (byte)value).ToArray();
         var json = $$"""
             {"shard":{"id":"local-shard-1","displayName":"Local Shard 1","worldId":"development-world-2","isOnline":true,"activePlayers":0,"capacity":1000},
              "endpoint":{"workerId":"deploy-worker-1","runtimeId":"abc","host":"127.0.0.1","udpPort":28015,"protocolVersion":{{RealtimeProtocol.Version}}},
-             "characterId":"{{characterId}}","joinTicket":"ticket-1","expiresAt":"2026-11-18T12:00:00Z","isReconnect":false}
+             "characterId":"{{characterId}}","joinTicketId":"{{ticketId}}","transportKey":"{{Convert.ToBase64String(transportKey)}}","expiresAt":"2026-11-18T12:00:00Z","isReconnect":false}
             """;
 
         var join = System.Text.Json.JsonSerializer.Deserialize<JoinAnswer>(json, StackApi.Json)!;
@@ -167,6 +169,8 @@ public sealed class DeploySmokeTestTests
         Assert.Equal(2, identity.BotIndex);
         Assert.Equal(accountId, identity.AccountId);
         Assert.Equal(characterId, identity.CharacterId);
+        Assert.Equal(ticketId, identity.TicketId);
+        Assert.Equal(transportKey, identity.TransportKey);
         Assert.Equal("Smoke One", identity.CharacterName);
         Assert.Equal("local-shard-1", identity.ShardId);
         Assert.Equal("development-world-2", identity.WorldId);
