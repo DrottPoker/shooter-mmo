@@ -10,17 +10,17 @@
 # that the projects target; change the three together. docs/DEPLOYMENT.md describes the images.
 
 # The context, once, so the stages below copy from one place.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS sources
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100 AS sources
 WORKDIR /src
 COPY . .
 
 # Only the files that decide the restore, so that its layer stays cached while only code changes.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS restore-inputs
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100 AS restore-inputs
 COPY --from=sources /src /src
 RUN find /src -type f ! \( -name '*.csproj' -o -name 'packages.lock.json' -o -name '*.props' \
         -o -name '*.targets' -o -name 'global.json' \) -delete
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100 AS build
 ENV DOTNET_NOLOGO=true \
     DOTNET_CLI_TELEMETRY_OPTOUT=true
 WORKDIR /src
