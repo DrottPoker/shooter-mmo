@@ -3899,3 +3899,66 @@ three and a half minutes, unless a death event of an open or recently closed
 corpse holds it, and no ended simulation session older than four minutes is
 left. The client keeps playing throughout. Remove the three variables, or
 close the terminal, before you start GameService for anything else.
+
+## Production-Like Stack
+
+Checks of the server as a deployment runs it: two images in the Production environment behind a
+TLS proxy, with PostgreSQL and Redis that have passwords. [Deployment](DEPLOYMENT.md) describes
+the stack. It needs Docker and nothing else, and it runs beside the development stack.
+
+1. Start it:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Start-DeployStack.ps1
+   ```
+
+   Expected result: the script builds both images, waits until every service is healthy, and
+   prints `https://localhost:8443`, the UDP address `127.0.0.1:28015`, and the path of the root
+   certificate `artifacts/deploy-stack/root-ca.crt`.
+
+2. Look at the containers and at what faces the outside:
+
+   ```powershell
+   docker compose -p shooter-mmo-deploy -f deploy/docker-compose.production-like.yml --env-file deploy/stack.env ps
+   ```
+
+   Expected result: `postgres`, `redis`, `game-service`, `simulation-worker`, and `proxy` are
+   `healthy`, `migrate` has exited, and only the proxy's `8443` and the worker's `28015/udp` are
+   published, on `127.0.0.1`. PostgreSQL and Redis show no port.
+
+3. Call GameService through the proxy, trusting only the stack's own authority:
+
+   ```powershell
+   curl.exe --ssl-no-revoke --cacert artifacts/deploy-stack/root-ca.crt https://localhost:8443/health/ready
+   curl.exe --ssl-no-revoke --cacert artifacts/deploy-stack/root-ca.crt https://localhost:8443/api/shards
+   ```
+
+   Expected result: readiness is `ready` with PostgreSQL and Redis reachable, and the Shard list
+   names `local-shard-1` with `isOnline` true. The same call without `--cacert` fails with a
+   certificate error, because nothing but the stack's authority vouches for the certificate.
+
+4. Play through it with the smoke test, which stops the stack when it ends:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DeployStack.ps1
+   ```
+
+   Expected result: every line is `[ok]`, the registrations, logins, characters, joins, half a
+   minute of movement over UDP for three players, the leaves, and the logouts; the worker routes
+   answer `401 invalid_service_credentials`, the Development routes answer `404`, and a forged
+   `X-Forwarded-For` is limited as one client. Then the `audit` command of the GameService image
+   reports `The economy is consistent.` with exit code 0. The stop part shows the hold player told
+   `server_shutdown`, GameService answering `503 stopping` through the proxy before it goes, the
+   worker's last checkpoint, no error in any log, and exit code 0 for every container. The script
+   ends with `Result: every one of <n> checks passed`, and `docker ps` lists no container of the
+   project `shooter-mmo-deploy`.
+
+5. Stop what is left and remove the stack's data:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Stop-DeployStack.ps1 -RemoveVolumes
+   ```
+
+   Expected result: the containers, the network, and the volumes `shooter-mmo-deploy_postgres_data`,
+   `shooter-mmo-deploy_proxy_data`, and `shooter-mmo-deploy_proxy_config` are gone, and
+   `deploy/stack.env` stays for the next start.

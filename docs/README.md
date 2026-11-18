@@ -58,6 +58,8 @@ How to work on a part of the project.
 - [Development Worlds](DEVELOPMENT_WORLDS.md): the two development maps, how they are
   rebuilt, and the World Builder that makes a World's water and the beds it carves into
   the terrain from shapes.
+- [Deployment](DEPLOYMENT.md): the runbook: the server images, the production-like stack, every
+  setting that must be set, ports, TLS, updates, backups, sizing, and what is not there yet.
 - [Monitoring](MONITORING.md): metrics, logs, traces, dashboards, alerts, and the local
   monitoring stack.
 - [Stack Stress Testing](STACK_STRESS_TESTING.md): repeatable load tests of a worker or the full
@@ -84,6 +86,7 @@ How to work on a part of the project.
 | A metric, log, trace, dashboard, or alert | [Monitoring](MONITORING.md) |
 | How to check a feature by hand | [Manual Testing](MANUAL_TESTING.md) |
 | Setup, running the stack, checks, pull requests, Unity Editor automation, or operations | [Local Development](LOCAL_DEVELOPMENT.md) |
+| The server images, the production-like stack, a deployment's settings, ports, TLS, update order, backups, or sizing | [Deployment](DEPLOYMENT.md) |
 | Making or changing art | [Art Pipeline](ART_PIPELINE.md) |
 | A development World's layout, World collision and water authoring, or the World Builder | [Development Worlds](DEVELOPMENT_WORLDS.md) |
 | Authoring content or adding a kind of content | [Game Content](../content/README.md) |

@@ -11,7 +11,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // a CPU clock it also reads the loop thread's CPU time around each tick. A phase that throws is
 // logged and skipped for this tick through the loop guard, and the later phases still run,
 // unless the phase is a prerequisite of them, which ends the tick. At most five ticks catch up per
-// call before the clock resynchronizes. Loop-confined.
+// call before the clock resynchronizes. Every completed tick stamps the loop's liveness, which the
+// health file reads. Loop-confined.
 internal sealed class SimulationTickLoop
 {
     private readonly RealtimeSimulationClock clock;
@@ -21,6 +22,7 @@ internal sealed class SimulationTickLoop
     private readonly ILogger logger;
     private readonly RealtimeNetworkMetrics? networkMetrics;
     private readonly ThreadCpuClock? cpuClock;
+    private readonly RealtimeLoopLiveness? liveness;
     private readonly SimulationTickPhase[] orderedPhases;
     private readonly RealtimeLoopStep[] phaseSteps;
     private readonly RealtimePerformanceMetrics.DurationTimer[] phaseTimers;
@@ -38,7 +40,8 @@ internal sealed class SimulationTickLoop
         RealtimeLoopGuard loopGuard,
         ILogger logger,
         RealtimeNetworkMetrics? networkMetrics = null,
-        ThreadCpuClock? cpuClock = null)
+        ThreadCpuClock? cpuClock = null,
+        RealtimeLoopLiveness? liveness = null)
     {
         this.clock = clock;
         this.entityRegistry = entityRegistry;
@@ -47,6 +50,7 @@ internal sealed class SimulationTickLoop
         this.logger = logger;
         this.networkMetrics = networkMetrics;
         this.cpuClock = cpuClock;
+        this.liveness = liveness;
         orderedPhases = phases.InTickOrder();
         phaseSteps = [.. orderedPhases.Select(phase => loopGuard.TickPhase(phase.Name))];
         phaseTimers = [.. orderedPhases.Select(phase => performanceMetrics.TickPhaseTimer(phase.Name))];
@@ -110,7 +114,9 @@ internal sealed class SimulationTickLoop
 
             double? cpuMilliseconds = null;
             var cpuEnded = cpuClock?.Read() ?? 0L;
-            var tickDuration = Stopwatch.GetElapsedTime(tickStarted);
+            // The tick's end is one timestamp for its duration and for the liveness.
+            var tickEnded = Stopwatch.GetTimestamp();
+            var tickDuration = Stopwatch.GetElapsedTime(tickStarted, tickEnded);
             if (cpuClock is not null)
             {
                 cpuMilliseconds = cpuClock.Milliseconds(cpuStarted, cpuEnded, tickDuration.TotalMilliseconds);
@@ -123,6 +129,7 @@ internal sealed class SimulationTickLoop
                 (networkMetrics?.SpawnPackets ?? 0) - spawnsBefore,
                 (networkMetrics?.DespawnPackets ?? 0) - despawnsBefore,
                 cpuMilliseconds);
+            liveness?.TickCompleted(tickEnded);
             nextSimulationTick += simulationInterval;
             processedTicks++;
         }

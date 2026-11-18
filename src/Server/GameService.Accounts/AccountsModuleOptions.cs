@@ -175,18 +175,27 @@ public sealed class SimulationWorkerCredentials
     }
 
     // Outside Development every worker has its own secret, so one leaked secret names one
-    // worker, and a secret that is set but would be ignored does not mislead anyone.
+    // worker, and a secret that is set but would be ignored does not mislead anyone. A secret
+    // that the repository's tooling publishes protects nothing either.
     public IReadOnlyList<string> ErrorsOutsideDevelopment()
     {
-        if (string.IsNullOrWhiteSpace(sharedSecret))
+        var errors = new List<string>();
+        if (!string.IsNullOrWhiteSpace(sharedSecret))
         {
-            return [];
+            errors.Add(
+                $"{SharedSecretKey} is accepted only in the Development environment; give every worker its own secret in {SectionName}:<workerId> and remove {SharedSecretKey}.");
         }
 
-        return
-        [
-            $"{SharedSecretKey} is accepted only in the Development environment; give every worker its own secret in {SectionName}:<workerId> and remove {SharedSecretKey}."
-        ];
+        foreach (var (workerId, secret) in workerSecrets)
+        {
+            if (!string.IsNullOrWhiteSpace(secret) && ConfigurationValidation.IsRepositorySecret(secret))
+            {
+                errors.Add(
+                    $"{SectionName}:{workerId} is a secret that the repository publishes; outside the Development environment it needs a real secret.");
+            }
+        }
+
+        return errors;
     }
 
     private void ValidateWorkerSecrets(ICollection<string> errors)

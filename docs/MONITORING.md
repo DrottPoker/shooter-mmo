@@ -91,7 +91,9 @@ Telemetry__OtlpEndpoint=http://127.0.0.1:4317
 ```
 
 Then start GameService and SimulationWorker as
-[Local Development](LOCAL_DEVELOPMENT.md#backend-services) describes.
+[Local Development](LOCAL_DEVELOPMENT.md#backend-services) describes. The
+[production-like stack](DEPLOYMENT.md#telemetry) exports to this stack through
+an overlay that joins its network, so it needs no setting in `.env`.
 
 Expected result: both processes log `Exporting metrics, traces, and logs over
 OTLP to http://127.0.0.1:4317/.` at startup. Without the setting they log

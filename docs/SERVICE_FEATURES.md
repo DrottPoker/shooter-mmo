@@ -177,7 +177,9 @@ message that lists every problem, when:
   proxy passes on and the names that health checks and SimulationWorker use. A
   request for another host gets `400` before any route runs. Development keeps
   `*` in `appsettings.Development.json`.
-- `SIMULATION_WORKER_SERVICE_SECRET` is set. Every worker has its own secret in
+- `SIMULATION_WORKER_SERVICE_SECRET` is set, or the secret of a worker is one
+  that the repository publishes, such as the one of the load tooling. Every
+  worker has its own secret in
   `ServiceAuthentication:SimulationWorkers:<workerId>`, and sets the same value
   as its own `SimulationWorker:GameServiceSecret`. Development keeps the shared
   secret, so the local stack and the tools work as before.
@@ -187,6 +189,24 @@ message that lists every problem, when:
   publish. Redis takes its password as `password=` in the connection string,
   and the readiness probes of GameService and SimulationWorker authenticate with
   it.
+
+SimulationWorker applies the same rules to its own settings and refuses to
+start, with one message that lists every problem, when outside Development:
+
+- `SIMULATION_WORKER_SERVICE_SECRET` is set. The worker's secret is
+  `SimulationWorker:GameServiceSecret`, the one that GameService holds for its
+  worker id.
+- `SimulationWorker:GameServiceSecret` is a placeholder or a secret that the
+  repository publishes, or `ConnectionStrings:Redis` has an empty, placeholder,
+  or published password.
+- `SimulationWorker:AdvertisedHost` is a wildcard address, `0.0.0.0` or `::`,
+  which no player can connect to.
+- `SimulationWorker:GameServiceBaseUrl` is plain `http` to an IP address that
+  is neither private, loopback, nor link-local, which would send the worker's
+  secret in the clear over a public address. A host name is not judged, so
+  keeping that call on a private network or behind TLS stays the operator's
+  rule, as [Deployment](DEPLOYMENT.md#the-call-between-worker-and-gameservice)
+  describes.
 
 ### Orderly Shutdown
 
@@ -209,6 +229,42 @@ All of it must fit `Http:ShutdownTimeoutSeconds`, 30 by default, the host's
 shutdown timeout, which must exceed the drain; whatever still runs then is
 abandoned. A container runtime must wait at least that long before it kills the
 process.
+
+### Container Health Checks
+
+The service images have no shell, `curl`, or `wget`, so the .NET services answer
+their own container health checks. The first argument `probe` runs before any
+host or configuration exists, prints one line that says why, and exits with `0`
+when healthy and `1` otherwise:
+
+- `probe http <url> [timeoutSeconds]` is healthy when the URL answers with a
+  2xx status within the timeout, 3 seconds by default and at most 60.
+  GameService's check is `probe http http://localhost:8080/health/ready`, so it
+  turns unhealthy at the stop signal and while PostgreSQL or Redis does not
+  answer. The line names the host, port, and path of the URL and never its query.
+- `probe file <path> <maxAgeSeconds>` is healthy when the file was written
+  within the age. SimulationWorker has no HTTP surface, so while it is ready,
+  with its UDP port bound, a valid registration lease, and a realtime loop that
+  completed a tick within the last 5 seconds, it writes the file of
+  `SimulationWorker:HealthFilePath` every 5 seconds, deletes it when it is not
+  ready and when it stops, and its check is `probe file <path> 20`. A worker
+  without the setting writes no file.
+
+The loop condition is the one that a hung worker fails: its port stays bound
+and the registry heartbeat, a service of its own, keeps renewing the lease, so
+without it a worker whose loop thread deadlocks would look ready while nobody
+can play. The loop writes the time of every completed tick with one volatile
+write, the file service reads it, and a silence longer than 5 seconds, 150
+ticks, removes the file and logs one warning for the episode that names how
+long the loop was silent. The warning does not repeat until the loop ticked
+again, which also returns the file; a worker that is stopping is not judged,
+and a worker whose loop never ticked logs its own line. The check only labels
+the container: a runtime that restarts containers on exit does not act on an
+unhealthy one, as [Health Checks](DEPLOYMENT.md#health-checks) describes.
+
+`--health-check-only` of the worker is the check of a worker that does not run:
+it loads all configuration and content and needs the UDP port that a running
+worker holds, so it cannot be the health check of a container.
 
 ## Accounts And Authentication
 
@@ -2660,7 +2716,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
 | `GracefulDisconnectMaximumMilliseconds` | `2000` | Longest wait for the client to acknowledge the message that says why the worker ends its connection, before the disconnect, from 1 to the `JoinHandshakeTimeoutSeconds` that is also LiteNetLib's disconnect timeout, as [Realtime UDP Transport](#realtime-udp-transport) describes |
 | `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
-| `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters; outside Development the secret that GameService holds for this worker id in `ServiceAuthentication:SimulationWorkers:<workerId>` |
+| `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters; outside Development the secret that GameService holds for this worker id in `ServiceAuthentication:SimulationWorkers:<workerId>`, never a placeholder or a published one |
 | `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval, and the session heartbeat requests, and the releases at shutdown, that run at once, at most 128 |
 | `SimulationSessionHeartbeatBatchSize` | `250` | Sessions that one session heartbeat request names at most, 1 to 500 |
 | `SimulationSessionHeartbeatRetryMilliseconds` | `2000` | How long a session heartbeat request that timed out, could not reach GameService, or got a server error waits before it goes again, shorter than the heartbeat interval, as [Session Heartbeat](#session-heartbeat) describes |
@@ -2671,6 +2727,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `UncertainOperationRetryHorizonSeconds` | `600` | How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is retried, counted only while GameService answers, at least `GameServiceOutageToleranceSeconds` plus 60 and at most 3,600 seconds. GameService's `Retention:ItemHistory` must stay far above it |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
 | `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |
+| `HealthFilePath` | none | File that the worker writes every 5 seconds while it is ready, with its port bound, a valid lease, and a loop that ticked in the last 5 seconds, and deletes when it is not, for the container health check, as [Container Health Checks](#container-health-checks) describes; a relative path starts at the working directory |
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
 | `LingeringBodySeconds` | `20` | How long a character's body stays in the world after its connection ended and after every hit it takes, 1 to 3,600 seconds, as [Lingering Bodies](#lingering-bodies) describes |
 | `TickPhaseFailureLimit` | `30` | How many runs in a row one tick phase or loop step may fail before the worker stops itself, at least 1, as [Realtime UDP Transport](#realtime-udp-transport) describes |

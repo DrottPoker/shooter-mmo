@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Testing;
 
 namespace Mmorpg.GameService.Platform.Tests;
@@ -97,17 +98,19 @@ public sealed partial class HttpServerOptionsTests
     }
 
     // Every literal password in the repository's Compose files and CI workflow is public, so
-    // GameService refuses each one outside Development.
+    // GameService refuses each one outside Development. The production-like stack in deploy
+    // holds none: every password there is a variable that its generated environment file sets.
     [Fact]
     public void EveryPasswordThatTheRepositoryPublishesIsAPlaceholder()
     {
         var files = Directory.GetFiles(RepositoryPaths.Root, "docker-compose*.yml")
+            .Concat(Directory.GetFiles(Path.Combine(RepositoryPaths.Root, "deploy"), "docker-compose*.yml"))
             .Concat(Directory.GetFiles(Path.Combine(RepositoryPaths.Root, ".github", "workflows"), "*.yml"))
             .ToArray();
         var passwords = files
             .SelectMany(file => PasswordPattern().Matches(File.ReadAllText(file)))
             .Select(match => match.Groups["password"].Value.Trim().Trim('"', '\''))
-            .Where(password => !password.StartsWith("${", StringComparison.Ordinal))
+            .Where(password => !password.StartsWith('$'))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -117,6 +120,23 @@ public sealed partial class HttpServerOptionsTests
             ConfigurationValidation.IsPlaceholderPassword(password),
             $"The repository publishes the password '{password}'; add it to ConfigurationValidation.RepositoryPasswords."));
         Assert.All(ConfigurationValidation.RepositoryPasswords, password => Assert.Contains(password, passwords));
+    }
+
+    // The load tooling's worker secret is public too, so the services refuse it outside Development.
+    [Fact]
+    public void EveryWorkerSecretThatTheLoadToolingPublishesIsAPlaceholder()
+    {
+        var source = File.ReadAllText(Path.Combine(RepositoryPaths.Root, "tools", "StackStressGenerator", "StressLoadPlan.cs"));
+        var secrets = WorkerSecretPattern().Matches(source)
+            .Select(match => match.Groups["secret"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.NotEmpty(secrets);
+        Assert.All(secrets, secret => Assert.True(
+            ConfigurationValidation.IsRepositorySecret(secret),
+            $"The load tooling publishes the worker secret '{secret}'; add it to PlaceholderSecrets.RepositorySecrets."));
+        Assert.All(PlaceholderSecrets.RepositorySecrets, secret => Assert.Contains(secret, secrets));
     }
 
     private static HttpServerOptions Read(Dictionary<string, string?> settings)
@@ -148,4 +168,8 @@ public sealed partial class HttpServerOptionsTests
     // requirepass.
     [GeneratedRegex(@"(?:POSTGRES_PASSWORD:\s*|;Password=|requirepass\s+)(?<password>[^;\s]+)", RegexOptions.IgnoreCase)]
     private static partial Regex PasswordPattern();
+
+    // A literal worker secret constant of the load plan.
+    [GeneratedRegex(@"WorkerSecret\s*=\s*""(?<secret>[^""]+)""")]
+    private static partial Regex WorkerSecretPattern();
 }

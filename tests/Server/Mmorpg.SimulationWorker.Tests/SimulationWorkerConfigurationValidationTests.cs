@@ -529,7 +529,7 @@ public sealed class SimulationWorkerConfigurationValidationTests
             set.PerformanceReportPath);
     }
 
-    private static Dictionary<string, string?> WorkerSettings()
+    internal static Dictionary<string, string?> WorkerSettings()
     {
         return new Dictionary<string, string?>
         {
