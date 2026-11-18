@@ -257,6 +257,10 @@ def render_clips(output: str, armature: str, clips: list[str], speed: float, ski
         numbers = measure(arm, action, skip)
         _play(arm, action)
         _aim(camera, sun, *_bounds(scene, frames, bodies, used))
+        # A looping clip ends on its first pose again, which the next play shows, so a play leaves
+        # its last frame out and the loop runs on without a held frame.
+        if action.get("loop", False) and len(frames) > 1:
+            frames = frames[:-1]
         # A moving ground moves on through every play, so each play is rendered; a still one once.
         plays = PLAYS if speed > 0.0 else 1
         ground.location = base

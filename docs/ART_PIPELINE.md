@@ -1491,7 +1491,8 @@ lowest point 0.015 m: <path>`, and the video
 `artifacts\art-previews\Human_Actions_SwordSlash.mp4`: every body the file
 shows, for a library its rig's body and its preview bodies, from the front
 right on a checkered ground of quarter-meter squares, the clip played three
-times, 960x540 at 30 frames per second in H.264. A tool or a weapon is held in
+times, a looping clip without its last frame, which is its first again, so the
+loop runs on evenly, 960x540 at 30 frames per second in H.264. A tool or a weapon is held in
 the clips the review sheet holds it in, such as the iron sword in
 `SwordSlash`. Without `-Clip` every clip of the asset is rendered. With
 `-Speed` the ground moves back at that speed in m/s, the speed the game moves
