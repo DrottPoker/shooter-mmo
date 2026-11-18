@@ -22,7 +22,8 @@ public sealed class SimulationJoinService(
     CharacterQuestLogStore? questLogs = null,
     QuestCatalogRuntimeDocument? questCatalog = null,
     ILogger<SimulationJoinService>? logger = null,
-    SimulationSessionReleaseService? releaseService = null)
+    SimulationSessionReleaseService? releaseService = null,
+    PresenceMetrics? presenceMetrics = null)
 {
     // One span covers the ticket consumption and any release a rejected join needs. The session
     // store counts the join as in flight until it registered its session or failed, because a
@@ -64,6 +65,7 @@ public sealed class SimulationJoinService(
         }
 
         var requestedAt = DateTime.UtcNow;
+        var requestedTimestamp = sessionStore.GetTimestamp();
         var consumedTicket = await gameServiceClient.ConsumeJoinTicketAsync(
             joinRequest,
             config.SimulationWorkerId,
@@ -86,7 +88,7 @@ public sealed class SimulationJoinService(
         SimulationJoinResult<ActiveSimulationSession> result;
         try
         {
-            result = await RegisterConsumedTicketAsync(consumedTicket.Value, requestedAt, cancellationToken);
+            result = await RegisterConsumedTicketAsync(consumedTicket.Value, requestedAt, requestedTimestamp, cancellationToken);
         }
         catch (Exception)
         {
@@ -106,6 +108,7 @@ public sealed class SimulationJoinService(
     private async Task<SimulationJoinResult<ActiveSimulationSession>> RegisterConsumedTicketAsync(
         ConsumedSimulationJoinTicketResponse consumedTicket,
         DateTime requestedAt,
+        long requestedTimestamp,
         CancellationToken cancellationToken)
     {
 
@@ -146,7 +149,7 @@ public sealed class SimulationJoinService(
                 "The session lease is shorter than this worker's GameService outage tolerance.");
         }
 
-        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket, requestedAt);
+        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket, requestedAt, requestedTimestamp);
         try
         {
             return await RegisterAsync(session, consumedTicket, cancellationToken);
@@ -187,6 +190,22 @@ public sealed class SimulationJoinService(
         }
 
         var registration = sessionStore.Register(session);
+
+        // A newer join of this session consumed its ticket after this one, so GameService holds
+        // its token and this join's token is refused everywhere: nothing to release, and the
+        // session is the newer join's. The client's reconnect rules give up on this code, since
+        // the session belongs to another connection that a retry would only take over again.
+        if (registration == ActiveSimulationSessionRegistration.StaleGeneration)
+        {
+            presenceMetrics?.RecordJoinRefused("stale_generation");
+            logger?.LogInformation(
+                "Refused the join of simulation session {SimulationSessionId} with generation {Generation}: a join that consumed its ticket after this one registered the session already.",
+                session.SimulationSessionId,
+                session.Generation);
+            return SimulationJoinResult<ActiveSimulationSession>.Conflict(
+                "simulation_session_changed",
+                "A newer join of this character took its simulation session over.");
+        }
 
         if (registration == ActiveSimulationSessionRegistration.Conflict)
         {

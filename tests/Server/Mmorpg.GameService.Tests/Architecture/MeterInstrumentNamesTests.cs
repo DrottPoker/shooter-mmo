@@ -32,6 +32,8 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Items||Histogram`1|game_service.items.transactions.duration|ms",
         "Mmorpg.GameService.Items||ObservableGauge`1|game_service.items.corpses|",
         "Mmorpg.GameService.Items||ObservableGauge`1|game_service.items.recovery.backlog|",
+        "Mmorpg.GameService.Placement||Counter`1|game_service.placement.character_states|",
+        "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.sessions.expired_unreleased|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.capacity|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.online|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.players|",

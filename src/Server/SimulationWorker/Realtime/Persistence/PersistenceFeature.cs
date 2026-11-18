@@ -40,7 +40,8 @@ internal static class PersistenceFeature
                 dependencies.GameServiceClient,
                 core.Config.SimulationWorkerId,
                 core.Completions,
-                core.Logger);
+                core.Logger,
+                core.PresenceMetrics);
         var persistence = new CharacterStatePersistence(
             core.Config,
             core.StaticCollisionWorld.Revision,
@@ -51,7 +52,8 @@ internal static class PersistenceFeature
             core.OperationTracker,
             operations,
             core.Logger,
-            core.GameServiceAvailability);
+            core.GameServiceAvailability,
+            core.PresenceMetrics);
         var hooks = core.Registries.Hooks;
         hooks.AddPlayerPlacement(persistence.Place);
         hooks.AddPlayerJoined(persistence.OnPlayerJoined);

@@ -30,6 +30,9 @@ internal sealed class PlacementMetricsReporterService(
                 shard.IsOnline,
                 shard.ActivePlayers,
                 shard.Capacity)));
+            metrics.ObserveExpiredUnreleased(
+                await scope.ServiceProvider.GetRequiredService<SimulationSessionService>()
+                    .CountExpiredUnreleasedAsync(cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -38,6 +41,7 @@ internal sealed class PlacementMetricsReporterService(
         {
             // Unknown is not online: dropping the series lets the shard alerts fire.
             metrics.ObserveShards([]);
+            metrics.ObserveExpiredUnreleased(null);
             logger.LogError(exception, "Placement metrics refresh failed.");
         }
     }

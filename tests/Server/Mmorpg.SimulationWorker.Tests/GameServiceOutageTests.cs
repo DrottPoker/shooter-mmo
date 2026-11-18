@@ -40,7 +40,7 @@ public sealed class GameServiceOutageTests
 
         Assert.False(worker.Lifetime.StopRequested.Task.IsCompleted);
         Assert.False(worker.Availability.IsAvailable);
-        Assert.True(worker.Sessions.IsCurrent(session, worker.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(session));
         Assert.Single(worker.Sessions.ListActiveSessions());
         // The local registration lease ran out after its 30 seconds, which only closes joins.
         Assert.Equal(silentSeconds < 29, worker.Lease.IsValid);
@@ -155,6 +155,7 @@ public sealed class GameServiceOutageTests
 
         private OutageWorker()
         {
+            Sessions = new ActiveSimulationSessionStore(Time);
             GameService = new OutageGameService(Time);
             httpClient = new HttpClient(GameService) { BaseAddress = new Uri("http://game-service.test") };
             Availability = new GameServiceAvailability(Time, AvailabilityLogger);
@@ -216,7 +217,7 @@ public sealed class GameServiceOutageTests
 
         public StopRecordingLifetime Lifetime { get; } = new();
 
-        public ActiveSimulationSessionStore Sessions { get; } = new();
+        public ActiveSimulationSessionStore Sessions { get; }
 
         public CharacterItemStateStore ItemStates { get; } = new();
 

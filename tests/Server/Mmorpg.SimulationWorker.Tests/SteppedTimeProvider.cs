@@ -12,6 +12,7 @@ internal sealed class SteppedTimeProvider : TimeProvider
     private readonly List<SteppedTimer> timers = [];
     private readonly long startUtcTicks;
     private long elapsedTicks;
+    private long wallClockStepTicks;
 
     public SteppedTimeProvider(DateTimeOffset start)
     {
@@ -33,11 +34,20 @@ internal sealed class SteppedTimeProvider : TimeProvider
         }
     }
 
+    // Steps the wall clock alone, as an operator or a time service does: timestamps and timers do
+    // not move, only GetUtcNow does.
+    public void StepWallClock(TimeSpan step)
+    {
+        Interlocked.Add(ref wallClockStepTicks, step.Ticks);
+    }
+
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
     public override DateTimeOffset GetUtcNow()
     {
-        return new DateTimeOffset(startUtcTicks + Interlocked.Read(ref elapsedTicks), TimeSpan.Zero);
+        return new DateTimeOffset(
+            startUtcTicks + Interlocked.Read(ref elapsedTicks) + Interlocked.Read(ref wallClockStepTicks),
+            TimeSpan.Zero);
     }
 
     public override long GetTimestamp()

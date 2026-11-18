@@ -64,8 +64,8 @@ public sealed class RealtimeLoopFailureTests
             $"movement of player entity {failing.Entity.NetworkEntityId}",
             error.Message,
             StringComparison.Ordinal);
-        Assert.False(fixture.SessionStore.IsCurrent(failing.Session, DateTime.UtcNow));
-        Assert.True(fixture.SessionStore.IsCurrent(walkerBefore.Session, DateTime.UtcNow));
+        Assert.False(fixture.SessionStore.IsCurrent(failing.Session));
+        Assert.True(fixture.SessionStore.IsCurrent(walkerBefore.Session));
 
         var supervision = SupervisorService.Create(fixture);
         supervision.Supervisor.EnforcePeerState();
@@ -90,7 +90,7 @@ public sealed class RealtimeLoopFailureTests
             Assert.Null(other.Context.PendingDisconnect);
             Assert.DoesNotContain(other.Peer.Sent, sent => sent.Type == RealtimeMessageType.ServerDisconnect);
             Assert.True(fixture.Entities.TryGetPlayer(other.Entity.NetworkEntityId, out _));
-            Assert.True(fixture.SessionStore.IsCurrent(other.Session, DateTime.UtcNow));
+            Assert.True(fixture.SessionStore.IsCurrent(other.Session));
         }
     }
 
@@ -268,7 +268,7 @@ public sealed class RealtimeLoopFailureTests
 
         loop.ProcessDueTicks(nextTick, TimeSpan.FromMilliseconds(1000d / 30d), ref nextTick);
 
-        Assert.True(fixture.SessionStore.IsCurrent(burdened.Session, DateTime.UtcNow));
+        Assert.True(fixture.SessionStore.IsCurrent(burdened.Session));
         Assert.True(fixture.Entities.TryGetPlayer(burdened.Entity.NetworkEntityId, out _));
         Assert.Equal(carry.ItemStateRevision + 1, burdened.Entity.Movement.CarryState.ItemStateRevision);
         Assert.NotNull(burdened.Context.PendingDisconnect);

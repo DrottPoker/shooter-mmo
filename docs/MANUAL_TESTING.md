@@ -605,6 +605,50 @@ Expected result:
   from the new login within 20 seconds resumes the body where it stood; another
   character of the account gets the message of step 5 until the body is gone.
 
+### A Death That Waits For GameService
+
+Needs the stack, the Editor character in the wolf woods of `Local Shard 1` with
+an item in its bag, and the worker and GameService as separate processes, as
+[Local Development](LOCAL_DEVELOPMENT.md) starts them. The worker plays on for
+up to 120 seconds without GameService, so everything below takes less than that.
+
+1. Wait for the character to have been saved: the worker's `character
+   checkpoint` runs every 30 seconds, so wait a minute after walking to a
+   place.
+2. Stop GameService. Walk the character into a wolf and let the wolf kill it;
+   the character lies dead, and the notice that saving is paused shows.
+3. Stop the worker with Ctrl+C within the 120 seconds, then start GameService
+   and the worker again and enter the World with the same character.
+
+Expected result: the character enters alive where the checkpoint of step 1 left
+it, with the health it had then and the item in its bag, and no corpse lies
+where it died. The worker logged `GameService does not answer, so the uncommitted
+shots and quest kill credits of <n> sessions are not committed at shutdown` and
+no death was committed, as
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+describes.
+
+### Presence In The Metrics
+
+Needs the stack, the monitoring stack of [Monitoring](MONITORING.md) with both
+services exporting, and the Editor character in the World.
+
+1. In the Prometheus UI, query `simulation_worker_presence_lingering_bodies`.
+2. Press F2, click `Leave Shard`, and query again every few seconds.
+3. Enter the World again with the same character within 20 seconds, leave once
+   more, and let the 20 seconds pass.
+4. Query `sum by (reason) (simulation_worker_presence_bodies_ended_total)` and
+   `sum by (result) (simulation_worker_presence_reconnects_total)`.
+
+Expected result: the gauge reads 1 from step 2 until the body goes and 0 after
+it; `simulation_worker_realtime_players_real` drops by one at the leave and the
+body is not counted there. After step 4 `bodies_ended` has `resumed` 1 and
+`time_up` 1 for this worker, and `reconnects` has `resumed` 1. Within a
+minute `simulation_worker_presence_checkpoint_states_total{outcome="saved"}`
+has grown, and `game_service_placement_character_states_total` shows
+`source="checkpoint", outcome="saved"` and, after the last leave,
+`source="release"`.
+
 ### A Lost Connection
 
 Needs the stack and an account with two characters, the first one in the World

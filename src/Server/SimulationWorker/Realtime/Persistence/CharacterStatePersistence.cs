@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Combat;
@@ -18,11 +19,13 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // the final state is captured for the release that follows, whichever path runs it. A reconnect
 // whose join comes after the entity went places its new entity from that state, also when
 // GameService refused the release because the reconnect had rotated the session's token, and the
-// new entity takes the state over. A dead
-// player is saved as its respawn leaves it: at the World spawn with full health and mana. The
-// vitals are read from combat whenever they are needed: the removed hooks run in reverse
-// registration order, so this feature, added after combat, sees a player go while combat still
-// holds it. Loop-confined; the checkpoint call runs in CharacterStateAuthorityOperations.
+// new entity takes the state over. A dead player is saved as its respawn leaves it, at the World
+// spawn with full health and mana, only once its death committed: before that nothing says that the
+// character respawned, so a checkpoint leaves it out and the state that GameService holds stays the
+// last one the character had alive. The vitals are read from combat whenever they are needed: the
+// removed hooks run in reverse registration order, so this feature, added after combat, sees a
+// player go while combat still holds it. Loop-confined; the checkpoint call runs in
+// CharacterStateAuthorityOperations.
 internal sealed class CharacterStatePersistence(
     SimulationWorkerConfig config,
     string collisionRevision,
@@ -33,7 +36,8 @@ internal sealed class CharacterStatePersistence(
     RealtimeOperationTracker operationTracker,
     CharacterStateAuthorityOperations? operations,
     ILogger logger,
-    GameServiceAvailability availability) : IRealtimeCompletionHandler
+    GameServiceAvailability availability,
+    PresenceMetrics? metrics = null) : IRealtimeCompletionHandler
 {
     private const float MaximumCoordinate = 1_000_000f;
     private const float MaximumYawDegrees = 360f;
@@ -113,7 +117,7 @@ internal sealed class CharacterStatePersistence(
             combat.TryRestoreVitals(combatant, state.State.Health, state.State.Mana);
         }
 
-        players.Add(entity.NetworkEntityId, new TrackedPlayer(entity)
+        players.Add(entity.NetworkEntityId, new TrackedPlayer(entity, Stopwatch.GetTimestamp())
         {
             LastSaved = isNewEntity ? restored?.Saved : null
         });
@@ -148,6 +152,7 @@ internal sealed class CharacterStatePersistence(
         }
 
         checkpointInFlight = false;
+        var confirmed = Stopwatch.GetTimestamp();
         for (var index = 0; index < completed.AnsweredCount; index++)
         {
             var entry = completed.Entries[index];
@@ -155,7 +160,15 @@ internal sealed class CharacterStatePersistence(
                 && player.Entity.Session.SimulationSessionId == entry.Session.SimulationSessionId)
             {
                 player.LastSaved = entry.State;
+                player.ConfirmedTimestamp = confirmed;
             }
+        }
+
+        // Every state of the pass is confirmed, so nothing waits that the pass saw; a change since
+        // then shows at the next pass. A pass that failed leaves its players waiting.
+        if (completed.AnsweredCount == completed.Entries.Count)
+        {
+            metrics?.ObserveOldestUnsaved(null);
         }
     }
 
@@ -244,6 +257,7 @@ internal sealed class CharacterStatePersistence(
 
         nextCheckpointTick = tick.ServerTick + checkpointIntervalTicks;
         List<CharacterCheckpointEntry>? entries = null;
+        var oldestUnsaved = long.MaxValue;
         foreach (var entity in tick.Players)
         {
             if (!players.TryGetValue(entity.NetworkEntityId, out var player)
@@ -254,13 +268,17 @@ internal sealed class CharacterStatePersistence(
                 continue;
             }
 
+            oldestUnsaved = Math.Min(oldestUnsaved, player.ConfirmedTimestamp);
             (entries ??= []).Add(new CharacterCheckpointEntry(entity.NetworkEntityId, entity.Session, ++lastSequence, snapshot));
         }
 
         if (entries is null)
         {
+            metrics?.ObserveOldestUnsaved(null);
             return true;
         }
+
+        metrics?.ObserveOldestUnsaved(oldestUnsaved);
 
         checkpointInFlight = true;
         operationTracker.Track(operations.SendCheckpointAsync(this, entries));
@@ -278,12 +296,21 @@ internal sealed class CharacterStatePersistence(
         }
     }
 
-    // The state as the player has it now, or as the respawn leaves a dead one; null when combat
-    // does not hold the player, or for a state outside what GameService stores, which only a
-    // fault in the simulation could make.
+    // The state as the player has it now, or as the respawn leaves a dead one whose death
+    // committed; null when combat does not hold the player, when its death has not committed, or
+    // for a state outside what GameService stores, which only a fault in the simulation could make.
     private CharacterStateSnapshot? Snapshot(TrackedPlayer player)
     {
         if (!combat.TryGetPlayerCombatant(player.Entity.NetworkEntityId, out var combatant))
+        {
+            return null;
+        }
+
+        // A death that GameService has not committed is not real yet, so nothing says
+        // "respawned" for it: the state that GameService holds stays the last one the character
+        // had alive, and a worker that stops or dies before the commit returns the character
+        // alive with its items.
+        if (!combatant.IsAlive && combat.IsDeathPending(player.Entity.Session))
         {
             return null;
         }
@@ -398,11 +425,15 @@ internal sealed class CharacterStatePersistence(
 
     private readonly record struct Placement(Guid CharacterId, RestoredState? State);
 
-    private sealed class TrackedPlayer(PlayerSimulationEntity entity)
+    private sealed class TrackedPlayer(PlayerSimulationEntity entity, long confirmedTimestamp)
     {
         public PlayerSimulationEntity Entity { get; } = entity;
 
         // What GameService holds for the character as far as the worker knows, or null.
         public CharacterStateSnapshot? LastSaved { get; set; }
+
+        // When GameService last confirmed a state of the player, or when it joined: how long a
+        // change that is not saved yet has been waiting.
+        public long ConfirmedTimestamp { get; set; } = confirmedTimestamp;
     }
 }

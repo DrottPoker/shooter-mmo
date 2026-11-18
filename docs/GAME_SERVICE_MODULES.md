@@ -1098,6 +1098,7 @@ topology names.
 | 47 | `202611141410_item_data_steps` | Items |
 | 48 | `202611141420_character_item_state_backfill` | Items |
 | 49 | `202611171400_join_ticket_transport_key` | Placement |
+| 50 | `202611181200_simulation_session_generation` | Placement |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -1170,6 +1171,12 @@ a join ticket and made `ticket_hash` nullable, because a ticket is found by its
 id now and the hash is no longer written. The contract that drops
 `ticket_hash`, its unique constraint, and its index is still open. A pending
 ticket of the version before has no key and is refused; it lives 30 seconds.
+`202611181200_simulation_session_generation` added `session_generation` to
+`character_simulation_sessions` with the default 1, which the consume of a
+reconnect's ticket raises by one, so the version before still inserts and
+updates sessions without naming it, and a session that it rotates keeps its
+number until the new version consumes the next ticket. The worker treats a
+consume answer without the number as unordered.
 
 A data move over a table that grows with players, such as a recompute or a
 backfill of every character or item, is never one statement inside a schema

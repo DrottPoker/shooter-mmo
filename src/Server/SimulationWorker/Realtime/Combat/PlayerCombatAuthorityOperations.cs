@@ -91,6 +91,28 @@ internal sealed class PlayerCombatAuthorityOperations(
         completions.Post(handler, new PlayerDeathCompleted(context, combatSession, attempt, request, result));
     }
 
+    // One attempt at a death that the realtime shutdown makes; the answer is returned, since no loop
+    // finalizes a completion any more.
+    public async Task<GameServiceResult<PlayerDeathPartitionResponse>> ProcessDeathForShutdownAsync(
+        Guid simulationSessionId,
+        SimulationPlayerDeathRequest request)
+    {
+        try
+        {
+            return gameServiceClient is null
+                ? Unavailable<PlayerDeathPartitionResponse>()
+                : await gameServiceClient.ProcessPlayerDeathAsync(simulationSessionId, request, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while committing the death of simulation session {SimulationSessionId} at shutdown.",
+                simulationSessionId);
+            return Failed<PlayerDeathPartitionResponse>();
+        }
+    }
+
     public async Task CreditQuestKillAsync(
         IRealtimeCompletionHandler handler,
         RealtimePeerContext context,

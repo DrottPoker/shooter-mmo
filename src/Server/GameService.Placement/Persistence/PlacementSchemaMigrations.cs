@@ -14,6 +14,7 @@ internal static class PlacementSchemaMigrations
         new(SimulationSessionAccountEndMigration.Id, SimulationSessionAccountEndMigration.Sql),
         new(PlacementForeignKeyIndexMigration.Id, PlacementForeignKeyIndexMigration.Sql),
         new(PlacementRetentionIndexMigration.Id, PlacementRetentionIndexMigration.Sql),
-        new(JoinTicketTransportKeyMigration.Id, JoinTicketTransportKeyMigration.Sql)
+        new(JoinTicketTransportKeyMigration.Id, JoinTicketTransportKeyMigration.Sql),
+        new(SimulationSessionGenerationMigration.Id, SimulationSessionGenerationMigration.Sql)
     ];
 }

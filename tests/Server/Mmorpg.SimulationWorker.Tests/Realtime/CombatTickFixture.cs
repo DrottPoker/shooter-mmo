@@ -43,11 +43,15 @@ internal sealed class CombatTickFixture : IDisposable
         WorldActorRuntime? worldActors = null,
         bool sessions = false,
         TimeProvider? availabilityClock = null,
-        TimeSpan? joinHandshakeTimeout = null)
+        TimeSpan? joinHandshakeTimeout = null,
+        bool checkpoints = false,
+        TimeSpan? checkpointInterval = null)
     {
+        SessionStore = new ActiveSimulationSessionStore(metrics: Presence);
         Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions
         {
-            JoinHandshakeTimeout = joinHandshakeTimeout ?? TimeSpan.FromSeconds(2)
+            JoinHandshakeTimeout = joinHandshakeTimeout ?? TimeSpan.FromSeconds(2),
+            CharacterCheckpointInterval = checkpointInterval
         });
         var staticCollision = CollisionTestWorldFactory.Create();
         CollisionWorld = new CompositeCollisionWorld(
@@ -66,7 +70,8 @@ internal sealed class CombatTickFixture : IDisposable
         ReleaseService = new SimulationSessionReleaseService(
             client,
             SessionStore,
-            CharacterStateTestData.SessionStores(ItemStates));
+            CharacterStateTestData.SessionStores(ItemStates),
+            metrics: Presence);
         var host = new RealtimeHostDependencies(
             Config,
             new SimulationJoinService(
@@ -75,7 +80,8 @@ internal sealed class CombatTickFixture : IDisposable
                 ItemStates,
                 Config,
                 identity,
-                releaseService: ReleaseService),
+                releaseService: ReleaseService,
+                presenceMetrics: Presence),
             ReleaseService,
             SessionStore,
             ItemStates,
@@ -89,7 +95,8 @@ internal sealed class CombatTickFixture : IDisposable
             WorkerIdentity: WorldActors is null ? null : identity,
             WorldActorStore: WorldActors,
             ShardRules: shardRules,
-            GameServiceAvailability: availability);
+            GameServiceAvailability: availability,
+            PresenceMetrics: Presence);
         var clock = new RealtimeSimulationClock();
         LoopGuard = new RealtimeLoopGuard(
             Config.TickPhaseFailureLimit,
@@ -142,7 +149,11 @@ internal sealed class CombatTickFixture : IDisposable
         var combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActorFeature);
         if (sessions)
         {
-            PersistenceFeature.Add(Core, PersistenceDependencies.CreateDefault(), ReleaseService.FinalStates, combat);
+            PersistenceFeature.Add(
+                Core,
+                checkpoints ? new PersistenceDependencies(client) : PersistenceDependencies.CreateDefault(),
+                ReleaseService.FinalStates,
+                combat);
         }
 
         Combat = combat.Combat;
@@ -200,7 +211,10 @@ internal sealed class CombatTickFixture : IDisposable
 
     public SimulationSessionReleaseService ReleaseService { get; }
 
-    public ActiveSimulationSessionStore SessionStore { get; } = new();
+    public ActiveSimulationSessionStore SessionStore { get; }
+
+    // What the presence features count.
+    public PresenceMetrics Presence { get; } = new();
 
     public CharacterItemStateStore ItemStates { get; } = new();
 
@@ -373,6 +387,24 @@ internal sealed class CombatTickFixture : IDisposable
         supervisor.ReleaseOrphanedSessions();
     }
 
+    // Runs the supervisor's pass over the peers: it ends the connection of a peer whose session
+    // was replaced or ended.
+    public void EnforcePeerState()
+    {
+        supervisor.EnforcePeerState();
+    }
+
+    // The realtime shutdown after the transport stopped: the calls in flight finish, and the
+    // registered steps flush and clear in their order.
+    public async Task RunShutdownStepsAsync()
+    {
+        await Core.OperationTracker.WaitForAllAsync();
+        foreach (var step in Core.Registries.ShutdownSteps.Steps)
+        {
+            await step.Run();
+        }
+    }
+
     public Combatant CombatantOf(CombatTickPlayer player)
     {
         Assert.True(Combat.TryGetPlayerCombatant(player.EntityId, out var combatant));
@@ -383,6 +415,7 @@ internal sealed class CombatTickFixture : IDisposable
     {
         httpClient.Dispose();
         networkMetrics.Dispose();
+        Presence.Dispose();
         performanceMetrics.Dispose();
     }
 }

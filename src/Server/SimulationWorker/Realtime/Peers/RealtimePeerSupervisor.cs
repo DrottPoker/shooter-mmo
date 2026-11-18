@@ -236,6 +236,6 @@ internal sealed class RealtimePeerSupervisor(
 
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
-        return sessionStore.IsCurrent(session, DateTime.UtcNow);
+        return sessionStore.IsCurrent(session);
     }
 }

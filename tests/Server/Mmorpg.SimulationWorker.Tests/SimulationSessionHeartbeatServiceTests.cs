@@ -69,7 +69,7 @@ public sealed class SimulationSessionHeartbeatServiceTests
         await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(gameService.Requests);
-        Assert.True(worker.Sessions.IsCurrent(renewed, DateTime.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(renewed));
         Assert.False(worker.Sessions.TryGetAccountSessionEnd(renewed, out _));
         Assert.True(worker.ItemStates.TryGet(renewed.CharacterId, renewed.SimulationSessionId, out _));
 
@@ -78,7 +78,7 @@ public sealed class SimulationSessionHeartbeatServiceTests
         Assert.Equal("session_revoked", refusal!.Code);
         Assert.False(worker.ItemStates.TryGet(refused.CharacterId, refused.SimulationSessionId, out _));
 
-        Assert.True(worker.Sessions.IsCurrent(replaced, DateTime.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(replaced));
         Assert.True(worker.Sessions.TryGetAccountSessionEnd(replaced, out var end));
         Assert.Equal("account_session_replaced", end);
 
@@ -106,13 +106,13 @@ public sealed class SimulationSessionHeartbeatServiceTests
 
         await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(worker.Sessions.IsCurrent(reconnecting, DateTime.UtcNow));
-        Assert.True(worker.Sessions.IsCurrent(ended, DateTime.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(reconnecting));
+        Assert.True(worker.Sessions.IsCurrent(ended));
         var reconnected = reconnecting with { SimulationSessionToken = "reconnected-token" };
         Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, worker.Sessions.Register(reconnected));
         worker.Sessions.EndJoin(join);
 
-        Assert.True(worker.Sessions.IsCurrent(reconnected, DateTime.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(reconnected));
         Assert.True(worker.ItemStates.TryGet(reconnecting.CharacterId, reconnecting.SimulationSessionId, out _));
         Assert.False(worker.Sessions.IsCurrentGeneration(ended));
         Assert.True(worker.Sessions.TryTakeInvalidation(ended.SimulationSessionId, out var refusal));
@@ -203,6 +203,30 @@ public sealed class SimulationSessionHeartbeatServiceTests
         Assert.Equal(session.SessionExpiresAt, current!.SessionExpiresAt);
     }
 
+    // A round whose requests all went through counts as renewed, and one that gave up after its
+    // retries as failed, so an operator sees leases that no longer get renewed.
+    [Fact]
+    public async Task RoundsAreCountedAsRenewedOrFailed()
+    {
+        using var metrics = new PresenceMetrics();
+        using var counts = new PresenceMetricsListener();
+        var failing = new SessionHeartbeatHandler { FailuresBeforeAnswer = int.MaxValue };
+        using (var worker = new HeartbeatWorker(failing, batchSize: 250, interval: TimeSpan.FromSeconds(1), retryDelay: TimeSpan.FromMilliseconds(300), metrics: metrics))
+        {
+            worker.AddSession();
+            await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
+        }
+
+        using (var worker = new HeartbeatWorker(new SessionHeartbeatHandler(), batchSize: 250, metrics: metrics))
+        {
+            worker.AddSession();
+            await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(1, counts.Of("simulation_worker.presence.session_heartbeat_rounds", "failed"));
+        Assert.Equal(1, counts.Of("simulation_worker.presence.session_heartbeat_rounds", "renewed"));
+    }
+
     // The worker's session store, item states, and heartbeat service over a scripted GameService.
     private sealed class HeartbeatWorker : IDisposable
     {
@@ -212,7 +236,8 @@ public sealed class SimulationSessionHeartbeatServiceTests
             SessionHeartbeatHandler gameService,
             int batchSize,
             TimeSpan? interval = null,
-            TimeSpan? retryDelay = null)
+            TimeSpan? retryDelay = null,
+            PresenceMetrics? metrics = null)
         {
             httpClient = new HttpClient(gameService) { BaseAddress = new Uri("http://game-service.test") };
             var client = new GameServiceClient(httpClient);
@@ -226,7 +251,8 @@ public sealed class SimulationSessionHeartbeatServiceTests
                     SimulationSessionHeartbeatBatchSize = batchSize,
                     SimulationSessionHeartbeatRetryDelay = retryDelay ?? TimeSpan.FromMilliseconds(20)
                 },
-                NullLogger<SimulationSessionHeartbeatService>.Instance);
+                NullLogger<SimulationSessionHeartbeatService>.Instance,
+                metrics: metrics);
         }
 
         public ActiveSimulationSessionStore Sessions { get; } = new();

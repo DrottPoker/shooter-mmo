@@ -53,7 +53,7 @@ internal sealed class RealtimePeerLifecycle(
 
         if (context.Session is { } session)
         {
-            if (sessionStore.IsCurrent(session, DateTime.UtcNow)
+            if (sessionStore.IsCurrent(session)
                 || sessionStore.IsSupersededByReconnect(session))
             {
                 teardown.LeaveBody(context, session);
