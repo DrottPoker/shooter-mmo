@@ -173,7 +173,7 @@ inside the modules.
 
 | Owner | Tables and objects |
 | --- | --- |
-| Platform | `schema_migrations`; advisory lock `7104202607071600` |
+| Platform | `schema_migrations`; advisory locks `7104202607071600` (one migration) and `7104202611180900` (one whole migrate-and-seed) |
 | Accounts | `accounts`, `account_sessions` |
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, `character_simulation_states`, and `character_data_steps` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
@@ -1107,8 +1107,11 @@ its `AccountsSchemaMigrations`, `CharactersSchemaMigrations`, `PlacementSchemaMi
 every module's list, sorted by ordinal id. Startup fails when an id repeats or
 when the merged list does not start with the shipped history, so every new
 migration must sort after the last shipped one. A new migration also appends
-its id to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
-`MigrationHistoryTests`.
+its id to `GameServiceSchema.FrozenHistory`, its id and SQL hash to
+`MigrationHistoryTests`, and a row to the table above. `MigrationHistoryTests`
+fails for a registered migration that is not in its history, so a migration
+cannot ship without its hash, and it compares the three lists with each other,
+including the owner column.
 
 ### Running Migrations
 
@@ -1129,27 +1132,103 @@ therefore runs `migrate` before the new version starts.
 [Migrate The Database](LOCAL_DEVELOPMENT.md#migrate-the-database) shows the
 command.
 
-The runner first reads the recorded ids, so a database without a pending
+After the verb, the command's own option, `--plan` for `migrate` and `--json`
+for `audit`, counts at any position and exactly as written. The configuration's
+command line provider silently ignores what it does not understand, so every
+other argument must be one that it reads as written: `--key=value`,
+`--key value`, `/key=value`, `/key value`, or `key=value`. A bare word, a
+switch without a value, a value that looks like another argument, a single
+dash, and a near miss of the option, such as `--Plan`, `--plan=true`, or
+`--dry-run`, make the command exit with 1 before it reads the configuration or
+connects to anything, with one line that names the argument and the usage. A
+plan therefore never falls through to a migration.
+
+A database can be ahead of the build: it records migrations that the build does
+not contain, because a newer release migrated it. `migrate` and `migrate --plan`
+refuse it with exit code 1 and a message that names the unknown ids and says
+that a newer release migrated it. They apply and seed nothing, because mirroring
+this build's catalogs over a newer release's would undo it, and no option
+overrides that. A start with `Database:RunMigrationsOnStartup` false goes on
+when nothing else is pending, because the expand rule below promises that the
+version before runs on the next schema, and logs one warning that names the
+unknown ids. When a migration or a seed difference is pending too, it refuses
+and says that the database is newer than this build, without advising
+`migrate`, which would refuse it. A start with the setting true, the
+Development convenience where a developer switches branches, migrates and seeds
+as before and logs the same warning. `audit` refuses such a database with exit
+code 2, and the scheduled audit logs a warning at each interval instead of
+running, because the checks encode this build's schema and rules, which let it
+run on the newer schema but do not make its judgment of what the newer release
+wrote right: it could report violations that are not there or miss ones that
+are. [Rolling Back A Release](#rolling-back-a-release) says when an older build
+can run on a newer database.
+
+A migrate-and-seed, which the `migrate` command and a start with
+`Database:RunMigrationsOnStartup` run, first takes a second advisory lock,
+`7104202611180900`, as a session lock on a connection of its own outside the
+pool, so a pool of one connection still has its connection for the work, and
+holds it until its last seed is written. So two processes never migrate and seed at the
+same time, and a build that waited for a newer release reads that release's
+ids when its turn comes and refuses, as
+[Rolling Back A Release](#rolling-back-a-release) describes, instead of seeding
+from a read it made before. `migrate --plan` and a start without migrations only
+read and do not take it.
+
+The runner then reads the recorded ids, so a database without a pending
 migration sees one read. Each pending migration runs in its own transaction: it
 takes the transaction form of the advisory lock, then sets the transaction's
 `lock_timeout` to `Database:MigrationLockTimeoutMilliseconds`, checks that no
-other process recorded the migration meanwhile, runs its SQL, and records its
-id. Waiting for another migrating process therefore never times out, but a
-migration that waits longer for a lock that live traffic holds fails with a
-message that names it and the setting, and nothing of it is applied, instead of
-queueing behind the traffic and blocking every statement behind itself. It
-runs again with the next `migrate`.
+other process recorded the migration meanwhile, runs its SQL with the command
+timeout `Database:MigrationCommandTimeoutSeconds`, and records its id.
+
+Two waits are bounded, and two are not. Waiting for the advisory lock, which
+another migrating process holds for as long as its migration runs, never times
+out: the lock statements pass no command timeout, so Npgsql's 30 seconds do not
+cut the wait off, and the `lock_timeout` is set only after the lock is held. The
+SQL of a migration runs under its own explicit command timeout, 300 seconds by
+default, because the connection's 30 seconds would fail every migration that
+runs longer; a migration that exceeds it is cancelled with a message that names
+it and the setting, and nothing of it is applied. The lock timeout bounds how
+long a statement of the migration waits for a table lock that live traffic
+holds. A statement that does not get its lock in time fails with a message that
+names the migration and the setting, and nothing of the migration is applied, so
+the statements that queue behind its request wait for at most that time. It does
+not bound a statement that got its lock: an `alter table` that has its lock
+holds the table until the migration commits, and every access to the table waits
+for it however long the SQL runs, which is why [Compatible Migrations](#compatible-migrations)
+keep long work out of a migration. A failed migration runs again with the next
+`migrate`.
 
 PostgreSQL builds an index concurrently only outside a transaction. A migration
 from `DatabaseMigration.CreateIndexConcurrently` is one
 `create index concurrently` statement that names its index. The runner runs it
-alone under the session form of the same advisory lock, without a lock timeout,
-because a concurrent build blocks no traffic while it waits, and records it only
+alone under the session form of the same advisory lock, with neither a lock
+timeout nor a command timeout, because a concurrent build blocks no traffic
+while it waits and takes as long as its table needs, and records it only
 after the index is built. A failed build leaves the index invalid, so the next
 run first drops an invalid index of that name with `drop index concurrently`
 and builds it again, and keeps a valid one that a run built before it stopped.
 `MigrationHistoryTests` pins a migration outside a transaction with its index
 name.
+
+### Rolling Back A Release
+
+The schema never rolls back: a migration has no down step, and
+`schema_migrations` only grows. To go back to the code of an older release,
+start the older build against the database that the newer release migrated. The
+expand rule of [Compatible Migrations](#compatible-migrations) keeps every
+migration compatible with the version before it, so an older build runs on a
+newer schema, and a start without migrations goes on with a warning, only while
+the seeded content and the data steps did not change: the mirrored item and
+quest catalog revisions and the revisions of the [data steps](#data-steps) must
+still be the ones that the older build computes. When the newer release changed
+any of them, the older build's start refuses the database as newer than the
+build, and `migrate` refuses it too, because mirroring the older catalogs over
+the newer ones would undo that release. A release that has also contracted away
+a column or table that the older build reads, or that changed how a client joins
+or the realtime protocol, cannot be rolled back at all. The way back is then a
+backup of the database from before the newer release migrated, restored together
+with the older build, so a deploy takes that backup before it runs `migrate`.
 
 ### Compatible Migrations
 
@@ -1170,6 +1249,25 @@ a join ticket and made `ticket_hash` nullable, because a ticket is found by its
 id now and the hash is no longer written. The contract that drops
 `ticket_hash`, its unique constraint, and its index is still open. A pending
 ticket of the version before has no key and is refused; it lives 30 seconds.
+
+`ExpandContractTests` checks the rule for the SQL of every migration after the
+legacy baseline. It scans each migration for a dropped table or column, a renamed
+table or column, a column that becomes `not null`, and a changed column type, and
+fails for a migration that has one unless the migration is in its list of
+contract migrations, each with the id of the expand migration that it completes.
+Dropping or renaming a constraint, an index, or a trigger, and relaxing a column,
+are the expand side and pass. Four migrations from before the rule, which
+renamed or dropped in the release that stopped using the old name, stay in a
+list of their own that no new migration joins. A second list holds the
+contracts that are still owed, each with the table and column that it drops: the
+one entry today is `202611171400_join_ticket_transport_key`, and the test checks
+that every entry names a registered expand and a column that still exists, so
+the contract that drops it removes the entry. The check reads the SQL only. A
+new column that is `not null` without a default is found by review, and a
+release that changes how a client joins or the realtime protocol, as that one
+did, cannot mix versions for joins: a client joins only a worker of its
+own protocol version, as [Versioning](REALTIME_PROTOCOL.md#versioning)
+describes, which is not a schema matter.
 
 A data move over a table that grows with players, such as a recompute or a
 backfill of every character or item, is never one statement inside a schema
@@ -1224,7 +1322,14 @@ the window, from the first batch of the pass with such a row, and 0 when the
 task finished without one. Every row tells the lag except the operation of a
 death: it becomes due only when its death event leaves with its closed corpse,
 the corpse's lifetime and a window after it completed, and goes in the same
-pass, so its age is no lag. The `closed_corpses` lag covers that wait.
+pass, so its age is no lag. The `closed_corpses` lag covers that wait. A task
+whose pass failed before it measured a lag has none: the age of the oldest due
+row is what the failed batch would have read, so it is unknown while the task
+cannot run, and the host drops the task's lag series instead of keeping the
+value of an earlier pass, which would show a stuck task as a healthy one. A lag
+that a failed pass measured in its first batch is reported. The failure itself
+is the counter `game_service.retention.failures`, as
+[Monitoring](MONITORING.md#gameservice) describes.
 
 `RetentionHostedService` runs a pass at start and then every
 `Retention:IntervalSeconds`, one pass at a time: a pass that outlasts the
@@ -1233,10 +1338,18 @@ order, then again every task whose batch was full, round after round, until no
 task deleted a full batch or the pass used its budget, `Retention:PassBudgetPercent`
 of the interval. A backlog therefore drains within a pass instead of one batch
 per interval, and no task waits behind another's backlog. Each batch is a
-transaction of its own with a 30-second statement timeout and a one-second lock
-timeout. A batch that fails is logged, as an error or, for a lock or statement
-timeout, as a warning, and its task waits for the next pass while the others go
-on. Several GameService processes may run passes at once.
+transaction of its own with a one-second lock timeout and a statement timeout of
+at most 30 seconds. The tasks send their commands with the command timeout of
+the connection, 30 seconds unless the connection string sets another, and the
+statement timeout stays at least five seconds below it, 25 seconds by default,
+so the server ends a slow statement first and the batch fails as a PostgreSQL
+error that the pass survives, not as a dropped connection. A batch that fails
+is logged, as an error or, for a lock or statement timeout, as a warning, and
+counted by its task and its reason, `lock_timeout`, `statement_timeout`, or
+`error`, and its task waits for the next pass while the others go on. Every
+GameService process runs its own retention host with no leader, so several
+passes may run at once, and the tasks stay out of each other's way with
+`skip locked` below.
 
 Every task selects its rows with `for update skip locked` in the order of their
 end, through an index in that order, so it locks only the rows it deletes and
@@ -1258,6 +1371,18 @@ whether they are empty in the next statement.
 | `account_sessions` | Accounts | SessionHistory | Account sessions | the token's stored end, also when the session was revoked earlier | a simulation session or a join ticket names it |
 
 The gold ledger, `character_currency_ledger`, is never trimmed.
+
+`TableLifecycleTests` keeps the history bounded by giving every table a class,
+over the list of tables of `TableOwnershipTests` and over the tables of a
+migrated database: reference data, which content, configuration, and the code
+set; state of an account; state of a character; history that one of the tasks
+above trims, whose name the class carries; or history kept on purpose, with its
+reason, which today is the gold ledger. A table of character state may also
+name the task that trims the part of it that history makes, such as the
+containers of closed corpses. The test fails for a table without a class, for a
+class that names a task that no module registers, and for a registered task
+that trims no classified table, so a new table cannot grow without a bound
+unnoticed.
 
 A row that another task's rows name waits for them. Inside a module the task
 whose rows name the others runs first: closed corpses before item operations,
@@ -1347,7 +1472,9 @@ register as `IAuditCheck`, Characters' before Items':
 - GameService's `AuditHostedService` runs it at start and then every
   `Audit:IntervalSeconds` while `Audit:Enabled` is on, which it is by default
   everywhere except in the Development environment. It logs and publishes the
-  audit metrics, as [Monitoring](MONITORING.md#gameservice) describes.
+  audit metrics, as [Monitoring](MONITORING.md#gameservice) describes. On a
+  database that a newer release migrated it logs a warning instead of running,
+  as [Running Migrations](#running-migrations) describes.
 - The `audit` command runs it once, as
   [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy) describes. It
   first plans like `migrate --plan` and refuses a database that `migrate` would
@@ -1602,7 +1729,9 @@ boundary test checks the item command handlers of every module.
 
 | Test | What it protects |
 | --- | --- |
-| `MigrationHistoryTests` | Migration ids, order, SQL hashes, which migrations run outside a transaction with their index, the merge rules, and the ids recorded by a fresh database |
+| `MigrationHistoryTests` | Migration ids, order, SQL hashes, which migrations run outside a transaction with their index, the merge rules, the ids recorded by a fresh database, that every registered migration is in the frozen history, and that the three lists of that history agree |
+| `ExpandContractTests` | The expand and contract rule of [Compatible Migrations](#compatible-migrations): a drop, rename, `not null`, or type change belongs to a listed contract or to a migration from before the rule, and the owed contracts are well formed |
+| `TableLifecycleTests` | That every table has a class, from reference data to history trimmed by a registered retention task, as [Retention](#retention) describes |
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, `Mmorpg.GameService.Placement`, and `Mmorpg.GameService.Retention` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `ForeignKeyIndexTests` | In a migrated database, every foreign key has an index that leads with its columns or a reason in the allow-list, no allow-listed key is stale, and the log columns of [Foreign Keys](#foreign-keys) have no foreign key |

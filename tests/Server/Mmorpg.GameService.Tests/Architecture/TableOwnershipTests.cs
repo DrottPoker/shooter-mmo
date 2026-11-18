@@ -8,7 +8,7 @@ namespace Mmorpg.GameService.Tests.Architecture;
 // published SQL fragment. The compiler cannot check SQL strings, so this scans them.
 public sealed partial class TableOwnershipTests
 {
-    private static readonly IReadOnlyDictionary<string, string> TableOwners =
+    internal static readonly IReadOnlyDictionary<string, string> TableOwners =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["schema_migrations"] = GameServiceSourceMap.Platform,

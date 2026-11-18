@@ -3868,6 +3868,23 @@ it lists the missing migrations and seed changes and changes nothing. `migrate`
 prints what it applied, ends with `The database is current.`, and `$LASTEXITCODE`
 is `0`. Neither starts the web host.
 
+Check that a plan never runs as a migration, whatever the order of the
+arguments. The last two refuse before they connect, so they also work with
+PostgreSQL stopped:
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --Retention:BatchSize=500 --plan
+dotnet run --project src/Server/GameService -- migrate --Plan
+$LASTEXITCODE
+dotnet run --project src/Server/GameService -- migrate --dry-run
+$LASTEXITCODE
+```
+
+Expected result: the first prints the plan and changes nothing. The other two
+print one line, such as `migrate did not run: '--Plan' is not the option --plan,
+which is written exactly so, without a value.`, followed by the usage, and
+`$LASTEXITCODE` is `1`.
+
 Then start GameService the way every environment but Development does, and make
 the database fall behind once, as [Look Into The Database](#look-into-the-database)
 describes:
@@ -3892,6 +3909,32 @@ and names `Mmorpg.GameService migrate`. Run
 start with the variable reports ready. Remove the variable with
 `Remove-Item Env:Database__RunMigrationsOnStartup` before you start GameService
 for anything else.
+
+Now play the part of a rollback to an older build: record a migration that this
+build does not know, as [Look Into The Database](#look-into-the-database)
+describes.
+
+```text
+insert into schema_migrations (id) values ('209912315959_from_a_newer_release');
+```
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --plan
+dotnet run --project src/Server/GameService -- migrate
+$LASTEXITCODE
+$env:Database__RunMigrationsOnStartup = "false"
+dotnet run --project src/Server/GameService
+```
+
+Expected result: `migrate --plan` and `migrate` each print `migrate --plan
+failed:` or `migrate failed:` with `The database is newer than this build`
+and `209912315959_from_a_newer_release`, apply and seed nothing, and
+`$LASTEXITCODE` is `1`. The start reports ready and logs one warning that
+names the unknown migration. Change a catalog revision again with the update
+above and the start refuses, says that the database is newer than this build,
+and does not advise `migrate`. Clean up with
+`delete from schema_migrations where id = '209912315959_from_a_newer_release';`
+and `Remove-Item Env:Database__RunMigrationsOnStartup`.
 
 A second start of GameService with unchanged content logs no
 `Database seed change` line: it neither recomputes the carry state nor reads the
@@ -3973,6 +4016,25 @@ three and a half minutes, unless a death event of an open or recently closed
 corpse holds it, and no ended simulation session older than four minutes is
 left. The client keeps playing throughout. Remove the three variables, or
 close the terminal, before you start GameService for anything else.
+
+To see a stuck task, hold a lock on one of its tables while GameService runs
+with the same variables. In `psql`, as [Look Into The Database](#look-into-the-database)
+describes, leave this transaction open:
+
+```text
+begin;
+lock table item_destructions in access exclusive mode;
+```
+
+Expected result: about every 15 seconds GameService logs `Retention task
+item_destructions gave up a batch with 55P03` at warning level, never at error
+level, and the other tasks keep deleting. With the monitoring stack running,
+`game_service_retention_failures_total{task="item_destructions",reason="lock_timeout"}`
+grows by one per pass, `game_service_retention_lag_seconds{task="item_destructions"}`
+has no series while the task fails, and `RetentionTaskFailing` fires once the
+failures have gone on for several minutes. After `rollback;` the next pass
+deletes the due rows, the counter stops, the lag series returns with the time
+that the rows waited, and the alert resolves.
 
 ## Production-Like Stack
 

@@ -8,8 +8,8 @@ internal static class PlacementRetentionIndexMigration
     // released or, unreleased, when its lease expired, and a join ticket when it was consumed or
     // expired, so their indexes hold that moment as one expression. The migration builds the
     // indexes inside its transaction, which blocks writes to each table while it builds. That is
-    // fine at today's sizes; a large live table needs create index concurrently, which runs
-    // outside a transaction and the migration runner cannot run yet.
+    // fine at today's sizes; a large live table needs a migration from
+    // DatabaseMigration.CreateIndexConcurrently, which the runner runs outside a transaction.
     public const string Sql = """
         create index ix_character_simulation_sessions_retention
             on character_simulation_sessions((coalesce(released_at, expires_at)), id);
