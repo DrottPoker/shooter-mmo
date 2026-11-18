@@ -83,7 +83,7 @@ public sealed class SimulationWorkerRegistryGuardTests
         await harness.StartAsync();
 
         await harness.WaitForHeartbeatsAsync(1);
-        Assert.True(harness.Lease.IsValid);
+        Harness.WaitUntil(() => harness.Lease.IsValid, "The first answer did not give the worker its lease.");
         answer.RegistrySeconds = 14;
         answer.SessionSeconds = 20;
         await harness.WaitForHeartbeatsAsync(4);
@@ -109,8 +109,11 @@ public sealed class SimulationWorkerRegistryGuardTests
 
         await harness.WaitForHeartbeatsAsync(3);
 
+        // The service logs an answer a moment after the handler counted the request.
+        Harness.WaitUntil(
+            () => harness.Logger.Entries.Count(entry => entry.Level == LogLevel.Error) >= 3,
+            "The worker must try again at its normal pace.");
         var errors = harness.Logger.Entries.Where(entry => entry.Level == LogLevel.Error).ToArray();
-        Assert.True(errors.Length >= 3, "The worker must try again at its normal pace.");
         Assert.All(errors, entry =>
         {
             Assert.Contains(ServiceContract.MismatchCode, entry.Message, StringComparison.Ordinal);
@@ -133,7 +136,15 @@ public sealed class SimulationWorkerRegistryGuardTests
 
         await harness.WaitForHeartbeatsAsync(2);
 
-        Assert.All(answer.Requests, request => Assert.Equal(ServiceContract.Version, request.ServiceContractVersion));
+        // The service keeps sending while the test looks, so the test looks at a copy.
+        SimulationWorkerHeartbeatRequest[] requests;
+        lock (answer.Requests)
+        {
+            requests = [.. answer.Requests];
+        }
+
+        Assert.True(requests.Length >= 2);
+        Assert.All(requests, request => Assert.Equal(ServiceContract.Version, request.ServiceContractVersion));
         await harness.Service.StopAsync(CancellationToken.None);
     }
 
@@ -217,6 +228,11 @@ public sealed class SimulationWorkerRegistryGuardTests
             await StartAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await Lifetime.StopRequested.Task.WaitAsync(timeout.Token);
+        }
+
+        public static void WaitUntil(Func<bool> condition, string because)
+        {
+            Assert.True(SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(10)), because);
         }
 
         public async Task WaitForHeartbeatsAsync(int count)
