@@ -123,6 +123,7 @@ public sealed class AuditRunnerTests
             Options,
             metrics,
             TimeProvider.System,
+            new DatabaseAheadState(),
             logger);
 
         var report = await service.RunOnceAsync(CancellationToken.None);
@@ -145,6 +146,35 @@ public sealed class AuditRunnerTests
         Assert.Equal(LogLevel.Warning, logger.Entries[2].Level);
         Assert.StartsWith("Economy audit check broken could not run: ", logger.Entries[2].Message, StringComparison.Ordinal);
         Assert.Contains("42P01", logger.Entries[2].Message, StringComparison.Ordinal);
+    }
+
+    // The checks encode this build's schema and rules, so a database that a newer release migrated
+    // is not audited: the run logs why, reads nothing, and counts no run.
+    [Fact]
+    public async Task AScheduledRunDoesNotJudgeADatabaseThatANewerReleaseMigrated()
+    {
+        await using var dataSource = NpgsqlDataSource.Create("Host=127.0.0.1;Port=1;Database=audit_test;Username=test;Password=test");
+        var logger = new RecordingLogger();
+        using var metrics = new AuditMetrics();
+        var ahead = new DatabaseAheadState();
+        ahead.Record(["209912315959_from_a_newer_release"]);
+        var service = new AuditHostedService(
+            dataSource,
+            [new SqlCheck("reader", "select 1")],
+            Options,
+            metrics,
+            TimeProvider.System,
+            ahead,
+            logger);
+
+        var report = await service.RunOnceAsync(CancellationToken.None);
+
+        Assert.Null(report);
+        Assert.Empty(metrics.CaptureViolations());
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Contains("209912315959_from_a_newer_release", entry.Message, StringComparison.Ordinal);
+        Assert.Contains("newer than this build", entry.Message, StringComparison.Ordinal);
     }
 
     [Fact]

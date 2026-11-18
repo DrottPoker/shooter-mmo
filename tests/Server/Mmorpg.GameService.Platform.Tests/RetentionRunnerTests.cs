@@ -109,6 +109,90 @@ public sealed class RetentionRunnerTests
         Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Message.Contains("waiting", StringComparison.Ordinal));
     }
 
+    [PostgresIntegrationFact]
+    public async Task AFailedBatchIsCountedByTaskAndReason()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        using var capture = new RetentionMetricsCapture();
+        using var metrics = new RetentionMetrics();
+        var runner = Runner(
+            dataSource,
+            [
+                new ThrowingTask("broken", new InvalidOperationException("broken")),
+                new ThrowingTask(
+                    "waiting",
+                    new PostgresException("lock not available", "ERROR", "ERROR", PostgresErrorCodes.LockNotAvailable)),
+                new ThrowingTask(
+                    "slow",
+                    new PostgresException("canceling statement", "ERROR", "ERROR", PostgresErrorCodes.QueryCanceled)),
+                new BacklogTask("fine", 3)
+            ],
+            metrics);
+
+        var first = await runner.RunPassAsync(CancellationToken.None);
+        var second = await runner.RunPassAsync(CancellationToken.None);
+
+        Assert.Equal(
+            ["broken=error", "fine=", "slow=statement_timeout", "waiting=lock_timeout"],
+            first.Tasks.Select(task => $"{task.Task}={task.FailureReason}").Order(StringComparer.Ordinal));
+        Assert.Equal(
+            ["broken/error=2", "slow/statement_timeout=2", "waiting/lock_timeout=2"],
+            capture.Failures
+                .Select(failure => $"{failure.Key.Task}/{failure.Key.Reason}={failure.Value}")
+                .Order(StringComparer.Ordinal));
+        Assert.Equal(3, second.Tasks.Count(task => task.Failed));
+    }
+
+    // A task that measured its lag in one pass and then failed has no lag series any more: the
+    // value of the earlier pass would show a task that is stuck as a healthy one.
+    [PostgresIntegrationFact]
+    public async Task TheLagSeriesOfATaskWhoseLastPassFailedIsDropped()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        using var capture = new RetentionMetricsCapture();
+        using var metrics = new RetentionMetrics();
+        var flaky = new FlakyTask("flaky", new RetentionBatchResult(3, Window + TimeSpan.FromSeconds(90)));
+        var runner = Runner(dataSource, [flaky, new BacklogTask("steady", 0)], metrics);
+
+        await runner.RunPassAsync(CancellationToken.None);
+        var healthy = capture.ObserveLags();
+        flaky.Fails = true;
+        await runner.RunPassAsync(CancellationToken.None);
+        var failing = capture.ObserveLags();
+        flaky.Fails = false;
+        await runner.RunPassAsync(CancellationToken.None);
+        var recovered = capture.ObserveLags();
+
+        Assert.Equal(90d, healthy["flaky"], 3);
+        Assert.Equal(0d, healthy["steady"]);
+        Assert.False(failing.ContainsKey("flaky"));
+        Assert.Equal(0d, failing["steady"]);
+        Assert.True(recovered.ContainsKey("flaky"));
+    }
+
+    // The server ends a slow statement before the client gives up on its command, so the batch
+    // fails as a statement timeout that the log calls a warning, not as a dropped connection.
+    [PostgresIntegrationFact]
+    public async Task ASlowBatchEndsAtTheStatementTimeoutBeforeTheClientsCommandTimeout()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(
+            new NpgsqlConnectionStringBuilder(database.ConnectionString) { CommandTimeout = 3 }.ConnectionString);
+        var logger = new RecordingLogger();
+        using var capture = new RetentionMetricsCapture();
+        using var metrics = new RetentionMetrics();
+
+        var pass = await Runner(dataSource, [new SleepingTask("sleepy", 2.5)], metrics, logger: logger)
+            .RunPassAsync(CancellationToken.None);
+
+        Assert.Equal(RetentionFailureReasons.StatementTimeout, pass.Tasks.Single().FailureReason);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning && entry.Message.Contains("sleepy", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.Equal(["sleepy/statement_timeout=1"], capture.Failures.Select(failure => $"{failure.Key.Task}/{failure.Key.Reason}={failure.Value}"));
+    }
+
     // The first batch takes the oldest due rows, so its oldest row says how long rows had been due
     // when the pass began; a pass that finds nothing due has no lag.
     [PostgresIntegrationFact]
@@ -290,6 +374,48 @@ public sealed class RetentionRunnerTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult(next < batches.Length ? batches[next++] : RetentionBatchResult.None);
+        }
+    }
+
+    // Answers one batch, and throws while Fails is set.
+    private sealed class FlakyTask(string name, RetentionBatchResult answer) : IRetentionTask
+    {
+        public string Name => name;
+
+        public RetentionClass Class => RetentionClass.ItemHistory;
+
+        public bool Fails { get; set; }
+
+        public Task<RetentionBatchResult> DeleteDueAsync(
+            PostgresTransactionScope scope,
+            RetentionBatch batch,
+            CancellationToken cancellationToken)
+        {
+            return Fails
+                ? throw new InvalidOperationException("flaky")
+                : Task.FromResult(answer);
+        }
+    }
+
+    // Runs a statement that outlasts the statement timeout, with the connection's own command
+    // timeout, as a module's task does.
+    private sealed class SleepingTask(string name, double seconds) : IRetentionTask
+    {
+        public string Name => name;
+
+        public RetentionClass Class => RetentionClass.ItemHistory;
+
+        public async Task<RetentionBatchResult> DeleteDueAsync(
+            PostgresTransactionScope scope,
+            RetentionBatch batch,
+            CancellationToken cancellationToken)
+        {
+            await using var command = new NpgsqlCommand(
+                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"select pg_sleep({seconds});"),
+                scope.Connection,
+                scope.Transaction);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return RetentionBatchResult.None;
         }
     }
 

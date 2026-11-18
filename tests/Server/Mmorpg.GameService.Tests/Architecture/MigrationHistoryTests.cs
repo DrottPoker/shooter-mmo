@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService;
@@ -15,7 +16,7 @@ namespace Mmorpg.GameService.Tests.Architecture;
 
 // The migration runner stores only ids, so an edited historic migration would never
 // run again on existing databases. These hashes freeze the applied history.
-public sealed class MigrationHistoryTests
+public sealed partial class MigrationHistoryTests
 {
     // Append new migrations here when they ship. Never edit an existing line. A migration
     // outside a transaction carries its index after the hash, so its kind is frozen too.
@@ -83,6 +84,38 @@ public sealed class MigrationHistoryTests
         Assert.Equal(
             string.Join(Environment.NewLine, FrozenHistory),
             string.Join(Environment.NewLine, actual));
+    }
+
+    // The prefix test above compares only what is frozen, so a migration that has no frozen hash
+    // would pass it. A migration is added to the history before it merges.
+    [Fact]
+    public void EveryRegisteredMigrationIsInTheFrozenHistory()
+    {
+        var registered = Migrations().Select(migration => migration.Id).ToArray();
+        var frozen = FrozenHistory.Select(IdOf).ToArray();
+
+        var unfrozen = registered.Except(frozen, StringComparer.Ordinal).ToArray();
+        Assert.True(
+            unfrozen.Length == 0,
+            "Append the id and the SQL hash of each new migration to FrozenHistory here, its id to "
+            + "GameServiceSchema.FrozenHistory, and a row to the migration table in "
+            + "docs/GAME_SERVICE_MODULES.md: " + string.Join(", ", unfrozen));
+        Assert.Equal(frozen, registered);
+    }
+
+    // The history lives in three places that a test can read: GameServiceSchema, this test, and
+    // the table of docs/GAME_SERVICE_MODULES.md, which also names each migration's owner.
+    [Fact]
+    public void TheThreeCopiesOfTheHistoryAgree()
+    {
+        var frozen = FrozenHistory.Select(IdOf).ToArray();
+        var documented = DocumentedMigrations();
+
+        Assert.Equal(frozen, GameServiceSchema.FrozenHistory);
+        Assert.Equal(frozen, documented.Select(row => row.Id));
+        Assert.Equal(Enumerable.Range(1, frozen.Length), documented.Select(row => row.Number));
+        var owners = MigrationOwners();
+        Assert.All(documented, row => Assert.Equal(owners[row.Id], row.Owner));
     }
 
     [Fact]
@@ -158,6 +191,51 @@ public sealed class MigrationHistoryTests
         Assert.EndsWith(Sha256(inTransaction.Sql), Describe(inTransaction), StringComparison.Ordinal);
         Assert.EndsWith(" outside-transaction ix_test", Describe(outside), StringComparison.Ordinal);
     }
+
+    private static string IdOf(string frozenLine)
+    {
+        return frozenLine[..frozenLine.IndexOf(' ', StringComparison.Ordinal)];
+    }
+
+    // The rows of the migration table under the Migrations heading of the modules document.
+    private static IReadOnlyList<(int Number, string Id, string Owner)> DocumentedMigrations()
+    {
+        var lines = File.ReadAllLines(Path.Combine(RepositoryPaths.Root, "docs", "GAME_SERVICE_MODULES.md"));
+        var start = Array.IndexOf(lines, "## Migrations");
+        Assert.True(start >= 0, "docs/GAME_SERVICE_MODULES.md has no Migrations heading.");
+        var rows = new List<(int Number, string Id, string Owner)>();
+        foreach (var line in lines.Skip(start + 1).TakeWhile(line => !line.StartsWith("###", StringComparison.Ordinal)))
+        {
+            var match = MigrationRow().Match(line);
+            if (match.Success)
+            {
+                rows.Add((int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture), match.Groups["id"].Value, match.Groups["owner"].Value));
+            }
+        }
+
+        return rows;
+    }
+
+    // The owner column of the table: the host baseline, or the module that lists the migration.
+    private static Dictionary<string, string> MigrationOwners()
+    {
+        var owners = LegacyBaselineMigrations.All.ToDictionary(
+            migration => migration.Id,
+            _ => "host baseline",
+            StringComparer.Ordinal);
+        foreach (var module in ProductionModules())
+        {
+            foreach (var migration in module.Migrations)
+            {
+                owners[migration.Id] = module.Name;
+            }
+        }
+
+        return owners;
+    }
+
+    [GeneratedRegex(@"^\| (?<number>\d+) \| `(?<id>[0-9]{12}_[a-z0-9_]+)` \| (?<owner>[^|]+?) \|\s*$")]
+    private static partial Regex MigrationRow();
 
     private static string Describe(DatabaseMigration migration)
     {

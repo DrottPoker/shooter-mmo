@@ -28,6 +28,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddApiProblemDetails();
         services.AddSingleton<DatabaseMigrationRunner>();
+        services.AddSingleton<DatabaseAheadState>();
         services.AddSingleton(options.Retention);
         services.AddSingleton<RetentionMetrics>();
         services.AddSingleton<RetentionRunner>();

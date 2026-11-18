@@ -2589,8 +2589,9 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Http:RequestHeadersTimeoutSeconds`, `KeepAliveTimeoutSeconds` | `15`, `130` | How long Kestrel waits for the request headers, 1 to 300, and keeps an idle connection, 1 to 3,600 |
 | `Http:ShutdownDrainSeconds` | `10`, and `0` in `appsettings.Development.json` | How long GameService still serves after its readiness turned to `stopping`, 0 to 300, as [Orderly Shutdown](#orderly-shutdown) describes |
 | `Http:ShutdownTimeoutSeconds` | `30` | The host's shutdown timeout, which the drain, the requests in flight, and the background services share; longer than the drain and at most 3,600 |
-| `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
-| `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a migration in a transaction waits for a lock that other sessions hold before it fails and applies nothing, 100 to 600,000 |
+| `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change; a database that a newer release migrated, with nothing else pending, only logs a warning, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
+| `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a statement of a migration in a transaction waits for a table lock that other sessions hold before the migration fails and applies nothing, 100 to 600,000. It does not apply to the wait for the migration lock, which never times out, nor to a statement that has its lock |
+| `Database:MigrationCommandTimeoutSeconds` | `300` | How long the SQL of a migration in a transaction may run before it is cancelled and the migration applies nothing, 1 to 86,400. The connection's own command timeout, 30 seconds by default, does not apply to a migration |
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
 | `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
 | `Redis:CommandTimeoutMilliseconds` | `2000` | How long the Redis client waits for a connection or a command's answer, 100 to 60,000 |
@@ -2741,7 +2742,12 @@ content fail before UDP admission.
   corpse; a destruction no longer holds its operation. After its row went, a
   retried operation id runs again, which every deterministic system operation
   id survives, as [Retention](GAME_SERVICE_MODULES.md#retention) describes with
-  every rule of the tasks. The gold ledger is never trimmed.
+  every rule of the tasks. The gold ledger is never trimmed. A task that fails
+  or falls behind shows in [Monitoring](MONITORING.md#gameservice): its failed
+  batches are counted by task and reason, its lag series is dropped while its
+  last pass failed, and the alerts `RetentionTaskFailing` and
+  `RetentionLagHigh` fire for a task that keeps failing and a task whose
+  oldest due row waited more than 15 minutes.
 - The economy audit checks item custody, slots, stacks, definitions, the gold
   ledger, and the retained history in one read-only snapshot: at start and
   every `Audit:IntervalSeconds` when `Audit:Enabled` is on, which is the default
@@ -2749,12 +2755,21 @@ content fail before UDP admission.
   never writes. The command prints a readable report, or JSON with `--json`,
   and exits with 0 when the economy is consistent, 1 when a check found a
   violation, and 2 when the audit could not run, also when `migrate` would
-  still change the database. The checks and what they cannot answer are in
+  still change the database or a newer release migrated it. The checks and what
+  they cannot answer are in
   [Economy Audit](GAME_SERVICE_MODULES.md#economy-audit), how to run the
   command in [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy), and
   its logs and metrics in [Monitoring](MONITORING.md#gameservice).
-- Every database unit uses statement and lock limits plus `skip locked` batch
-  selection where concurrent maintenance is permitted.
+- Scheduled work runs in every GameService process, with no leader, so several
+  instances do the same work at once, and each kind stays safe in its own way.
+  Every retention batch has a statement timeout, a lock timeout, and
+  `skip locked` row selection, so two instances never delete the same row or
+  wait for each other. Recovery expiry and durable corpse expiry select their due rows
+  without locks, because each expiry runs as an item transaction under a
+  deterministic operation id: two instances that pick the same row run the same
+  id, and the item transaction's locks and its stored operation let one of them
+  change the row and the other find it done. The audit only reads, in one
+  snapshot.
 - The item metrics and logs are in [Monitoring](MONITORING.md#logs).
 
 ## Not Yet Implemented

@@ -272,7 +272,7 @@ own in `PlatformMeters.Names`:
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
-| `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, and the lag. |
+| `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, the failed passes by reason, and the lag. |
 | `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
@@ -298,11 +298,12 @@ own in `PlatformMeters.Names`:
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 | `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
 | `game_service.retention.duration` | histogram, ms | The time one task spent in one pass, all its batches together, labeled `task`. |
+| `game_service.retention.failures` | counter | Passes in which a task's batch failed, labeled `task` and `reason`: `lock_timeout` for a lock that other sessions held longer than the batch's one-second lock timeout, `statement_timeout` for a statement that outlasted the batch's statement timeout, or `error` for anything else, such as a lost connection. A task fails at most once per pass, and waits for the next one while the others go on. One failure now and then is routine; a task that keeps failing is the `RetentionTaskFailing` alert. |
 | `game_service.audit.runs` | counter | Runs of the scheduled [economy audit](GAME_SERVICE_MODULES.md#economy-audit), labeled `outcome`: `clean`, `violations`, or `failed` when nothing was found but the run or a check could not run. |
 | `game_service.audit.last_run_timestamp` | gauge, s | The Unix time at which the latest run ended; nothing before the first run. |
 | `game_service.audit.last_run_duration` | gauge, s | How long the latest run took, all its checks in one snapshot. |
 | `game_service.audit.violations` | gauge | The violations that each check found in its latest run that ran, labeled `check` with the check's id from [Audit Checks](GAME_SERVICE_MODULES.md#audit-checks). A check that could not run keeps its count from before. Any value above 0 is a broken economy. |
-| `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
+| `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. A task whose pass failed before it measured a lag has no series: the oldest due row's age is what the failed batch would have read, so it is unknown, and a kept value would show a stuck task as a healthy one. The series returns with the task's next pass that measures one, and `game_service.retention.failures` and `RetentionTaskFailing` cover the time in between. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
 
 The periodic item summary log counts only committed and rejected transactions.
 Vendor trades and gathering yields show in the transaction instruments by their
@@ -507,7 +508,14 @@ entries of both processes, and the trace share one id.
 - The retention host logs a pass that deleted rows at `Information`, with its
   rows and time and the rows of every task, a pass that used its budget with
   rows still due at `Warning`, naming the tasks, a batch that gave up on a lock
-  or statement timeout at `Warning`, and a task that failed at `Error`.
+  or statement timeout at `Warning`, and a task that failed at `Error`; every
+  failed batch is also counted in `game_service.retention.failures`.
+- A start against a database that a newer release migrated, which the build
+  runs on while nothing else is pending, logs one `Warning` that names the
+  migrations that the build does not know, as
+  [Rolling Back A Release](GAME_SERVICE_MODULES.md#rolling-back-a-release)
+  describes. The scheduled economy audit then logs a warning at each interval
+  instead of running, and records no audit run.
 - SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
   messages below `Warning`. Domain failures and HTTP warnings remain visible,
   but high-frequency bot join and release requests do not drown out worker
@@ -600,9 +608,11 @@ look before it becomes critical.
 | `RedisFailures` | warning | GameService could not reach Redis in the last five minutes. |
 | `EconomyAuditViolations` | critical | A check of the economy audit found a violation in its latest run: an item lost or in two places, an invalid stack or slot, or gold that does not match its ledger. The GameService log names the examples by id. |
 | `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
+| `RetentionTaskFailing` | warning | A retention task failed at least five times in the last ten minutes and has kept doing so for five minutes. A pass runs every minute by default, so a task that fails in each pass shows here while a lone lock timeout does not. The GameService log names the task and why. |
+| `RetentionLagHigh` | warning | The oldest due row of a retention task had waited more than 15 minutes when its latest pass began, and this has held for ten minutes, so the task falls behind its table. The lag stays within about one `Retention:IntervalSeconds` while a task keeps up, 60 seconds by default, so raise the threshold in the rule with the interval. A task whose last pass failed has no lag series, which `RetentionTaskFailing` covers. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, pool, and economy audit rules.
+tests for the availability, tick, error-rate, pool, economy audit, and retention rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull

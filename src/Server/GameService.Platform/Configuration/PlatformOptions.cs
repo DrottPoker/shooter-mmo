@@ -21,6 +21,9 @@ public sealed record PlatformOptions(
     public const string MigrationLockTimeoutKey = "Database:MigrationLockTimeoutMilliseconds";
     public const int DefaultMigrationLockTimeoutMilliseconds = 5_000;
 
+    public const string MigrationCommandTimeoutKey = "Database:MigrationCommandTimeoutSeconds";
+    public const int DefaultMigrationCommandTimeoutSeconds = 300;
+
     public const string RedisCommandTimeoutKey = "Redis:CommandTimeoutMilliseconds";
     public const int DefaultRedisCommandTimeoutMilliseconds = 2_000;
 
@@ -33,6 +36,12 @@ public sealed record PlatformOptions(
     // queues behind live traffic and blocks everything behind itself.
     public TimeSpan MigrationLockTimeout { get; init; } =
         TimeSpan.FromMilliseconds(DefaultMigrationLockTimeoutMilliseconds);
+
+    // How long the SQL of one migration in a transaction may run before the client cancels it. It
+    // is explicit because Npgsql's own default of 30 seconds would fail any migration that runs
+    // longer. The waits for the migration lock and a concurrent index build have no timeout.
+    public TimeSpan MigrationCommandTimeout { get; init; } =
+        TimeSpan.FromSeconds(DefaultMigrationCommandTimeoutSeconds);
 
     // The Retention section, which the retention host and every module's retention tasks share.
     public RetentionOptions Retention { get; init; } = RetentionOptions.Default;
@@ -69,6 +78,14 @@ public sealed record PlatformOptions(
                 MigrationLockTimeoutKey,
                 100,
                 600_000,
+                errors);
+        var migrationCommandTimeoutSeconds = configuration[MigrationCommandTimeoutKey] is null
+            ? DefaultMigrationCommandTimeoutSeconds
+            : ConfigurationValidation.ValidateIntRange(
+                configuration,
+                MigrationCommandTimeoutKey,
+                1,
+                86_400,
                 errors);
         var postgresMaximumPoolSize = ConfigurationValidation.ValidatePositiveInt(
             configuration,
@@ -111,6 +128,7 @@ public sealed record PlatformOptions(
             runMigrationsOnStartup)
         {
             MigrationLockTimeout = TimeSpan.FromMilliseconds(migrationLockTimeoutMilliseconds),
+            MigrationCommandTimeout = TimeSpan.FromSeconds(migrationCommandTimeoutSeconds),
             RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds),
             Retention = retention,
             Http = http,

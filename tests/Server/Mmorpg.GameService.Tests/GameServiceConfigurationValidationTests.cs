@@ -103,6 +103,32 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Contains("Database:MigrationLockTimeoutMilliseconds must be an integer from 100 to 600000", exception.Message);
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("86401")]
+    [InlineData("soon")]
+    public void TheMigrationCommandTimeoutIsOptionalAndBounded(string invalid)
+    {
+        var defaults = GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(AuthSettings(includeSecrets: true))
+            .Build());
+        var settings = AuthSettings(includeSecrets: true);
+        settings["Database:MigrationCommandTimeoutSeconds"] = "900";
+        var set = GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build());
+        settings["Database:MigrationCommandTimeoutSeconds"] = invalid;
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+                .AddInMemoryCollection(settings)
+                .Build()));
+
+        Assert.Equal(TimeSpan.FromSeconds(300), defaults.Platform.MigrationCommandTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(900), set.Platform.MigrationCommandTimeout);
+        Assert.Contains("Database:MigrationCommandTimeoutSeconds must be an integer from 1 to 86400", exception.Message);
+    }
+
     [Fact]
     public void GameServiceRejectsMissingSecretsAndConnections()
     {

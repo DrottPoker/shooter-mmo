@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Platform.Audit;
@@ -5,13 +6,16 @@ namespace Mmorpg.GameService.Platform.Audit;
 // Runs the economy audit at start and then every Audit:IntervalSeconds, one run at a time, when
 // Audit:Enabled is on. Each run logs one line, an error for every check that found a violation,
 // and a warning for every check that could not run, and updates the audit metrics. Several
-// GameService processes each run their own audit; it only reads.
+// GameService processes each run their own audit; it only reads. A database that a newer release
+// migrated is not audited: a run logs a warning instead, because the checks encode this build's
+// schema and rules.
 internal sealed class AuditHostedService(
     NpgsqlDataSource dataSource,
     IEnumerable<IAuditCheck> checks,
     AuditOptions options,
     AuditMetrics metrics,
     TimeProvider timeProvider,
+    DatabaseAheadState aheadState,
     ILogger<AuditHostedService> logger) : BackgroundService
 {
     private readonly IAuditCheck[] checks = checks.ToArray();
@@ -40,6 +44,16 @@ internal sealed class AuditHostedService(
 
     internal async Task<AuditReport?> RunOnceAsync(CancellationToken cancellationToken)
     {
+        if (aheadState.IsAhead)
+        {
+            logger.LogWarning(
+                "The economy audit does not run: the database is newer than this build, because a newer release "
+                + "migrated it ({UnknownMigrations}), and the checks judge only data that this build's schema "
+                + "and rules describe. Run the audit of the newer release.",
+                string.Join(", ", aheadState.UnknownMigrations));
+            return null;
+        }
+
         AuditReport report;
         try
         {
