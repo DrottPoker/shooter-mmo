@@ -163,7 +163,7 @@ entity, peer, or runtime id as a label.
 
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; peers that the worker disconnected by reason; spawn, despawn, and snapshot entity records, spawns that could not be built, and entities that waited to enter a view; the entity ids used. |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase, of the parts of the phases that time themselves, and of every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
@@ -178,6 +178,7 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | --- | --- | --- |
 | `simulation_worker.realtime.peers` | gauge | Connected peers. |
 | `simulation_worker.realtime.entities` | gauge | Simulated player entities. |
+| `simulation_worker.realtime.entity_ids.used` | gauge | The entity ids that the worker gave out since it started, for players and world actors alike. An id is never given out twice, so the number only grows, up to 4,294,967,295; [Entity Ids](#entity-ids) says what happens then and what `SimulationEntityIdsHalfUsed` asks for. |
 | `simulation_worker.realtime.players.real` | gauge | Joined real players. |
 | `simulation_worker.realtime.players.synthetic` | gauge | Joined synthetic development bots. |
 | `simulation_worker.realtime.peers.unauthenticated` | gauge | Peers that have not joined yet. |
@@ -191,10 +192,13 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
 | `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
 | `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
+| `simulation_worker.realtime.peers.disconnected` | counter | Peers that the worker disconnected by itself, labeled `reason`: `reliable_queue_full` when the peer's reliable queues held more than `Admission:MaxReliableQueuedPackets` packets, which a client that stops acknowledging reaches in about a second. Every one also writes a warning line with the queued count, so a player who was cut off can be found. Entities enter a view only while the connection's queue has room for them, as [Interest Management](SERVICE_FEATURES.md#interest-management) describes, so a crowd never reaches it, however slow the client acknowledges; a value above zero means reliable traffic of another kind that no budget bounds. |
 | `simulation_worker.realtime.snapshot_dropped.packets` | counter | Dropped snapshot packets. |
 | `simulation_worker.realtime.snapshot_backpressure_dropped.packets` | counter | The snapshot packets among them that the aggregate snapshot budget dropped. |
 | `simulation_worker.realtime.joins.accepted`, `.joins.rejected` | counter | Accepted and rejected joins. |
 | `simulation_worker.realtime.spawn.packets`, `.despawn.packets` | counter | Spawn and despawn packets. |
+| `simulation_worker.realtime.spawn.failures` | counter | Spawns that could not be built for one connection, which then does not see that entity, as [Interest Management](SERVICE_FEATURES.md#interest-management) describes. Every one also writes an error line with the entity and the peer, so any value above zero needs a look. |
+| `simulation_worker.realtime.interest.entries_deferred` | counter | Entities within a connection's enter radius that had to wait for a later refresh, labeled `cause`: `burst` when more entities waited than one burst of entries holds, and `queue` when the connection's reliable queue had no room for them. A big crowd or a burst of joins raises `burst`, and a client that acknowledges slowly raises `queue`, which tells the two apart; a quiet world raises neither. |
 | `simulation_worker.realtime.snapshot.entity_records` | counter | Entity records in remote snapshots. |
 
 The instruments of `Mmorpg.SimulationWorker.Performance`:
@@ -602,6 +606,7 @@ look before it becomes critical.
 | `SnapshotDrops` | warning | More than 5 percent of a worker's snapshot packets are dropped for five minutes. |
 | `CompletedOperationBacklog` | warning | More than 50 completed authority operations wait for the loop for one minute. |
 | `JoinRejections` | warning | More than 20 percent of a worker's joins are rejected for five minutes. |
+| `SimulationEntityIdsHalfUsed` | warning | A worker gave out more than half of its entity ids; [Entity Ids](#entity-ids) says what to do. |
 | `GameServiceErrorRate` | critical | More than 1 percent of GameService requests return 5xx for five minutes. |
 | `GameServiceSlowRoute` | warning | A route's p95 latency is above 500 ms for five minutes. |
 | `DatabasePoolSaturated` | warning | GameService uses more than 90 percent of its PostgreSQL pool for two minutes. |
@@ -614,11 +619,40 @@ look before it becomes critical.
 | `RetentionLagHigh` | warning | The oldest due row of a retention task had waited more than 15 minutes when its latest pass began, and this has held for ten minutes, so the task falls behind its table. The lag stays within about one `Retention:IntervalSeconds` while a task keeps up, 60 seconds by default, so raise the threshold in the rule with the interval. A task whose last pass failed has no lag series, which `RetentionTaskFailing` covers. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, pool, economy audit, and retention rules.
+tests for the availability, tick, error-rate, entity id, pool, economy audit, and
+retention rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull
 request and on every push to `development` and `main`.
+
+### Entity Ids
+
+A worker gives every player and every world actor a network entity id from a
+counter that starts at 1 when the worker starts. An id is never given out
+twice, not even after its entity left, so a client never mistakes a new entity
+for an old one: a joining player, a reconnect that replaces an entity, and a
+respawning Mob each take the next one. A remote snapshot record carries the id
+in 32 bits, so the counter stops at 4,294,967,295, and
+`simulation_worker.realtime.entity_ids.used` shows how far it is. Even 100 new
+ids a second, a rate of joins and respawns far above any playtest, use all of
+them only after 497 days. `SimulationEntityIdsHalfUsed` fires at half of them,
+which at that rate is after 248 days, or sooner when a join, respawn, or
+reconnect loop burns ids; the join and spawn counters show which.
+
+When every id is used, no player can join and no Mob can respawn: a join fails
+with `internal_error`, and the worker writes this critical line whenever an id
+was asked for, at most once a minute:
+
+```text
+[SIMULATION] All 4294967295 simulation entity ids are used, so no player can join and no Mob can respawn on this worker.
+```
+
+Restart the worker, which starts the counter at 1 again. A stop saves the
+remaining players in one last checkpoint and ends their sessions, as
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) describes,
+and they join again. Restart it at a quiet hour once the alert fires, so the
+line never appears.
 
 ## During A Playtest
 

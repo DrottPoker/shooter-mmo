@@ -326,7 +326,7 @@ internal sealed class RealtimeSessionHandler(
                 RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
                 new RealtimeShardRules(shardRules?.Current.PlayerVersusPlayer ?? false))));
         hooks.RaisePlayerJoined(completed.Context, entity);
-        presence.SendEntityBaseline(peer, joiningInterest.Visible);
+        presence.SendEntityBaseline(peer, joiningInterest.EnteredNearestFirst);
         presence.SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();
         networkMetrics.SetActiveEntities(presence.ActiveEntityCount);

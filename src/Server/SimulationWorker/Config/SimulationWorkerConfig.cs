@@ -7,6 +7,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Networking;
 using Mmorpg.Server.Common.Worlds;
+using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.SimulationWorker.Config;
@@ -641,6 +642,17 @@ public sealed record SimulationWorkerConfig(
         if (networkPollIntervalMilliseconds > 1000)
         {
             errors.Add("SimulationWorker:NetworkPollIntervalMilliseconds must not exceed 1000.");
+        }
+
+        // Entries to a view fill the reliable queue only up to half of this limit, and that half
+        // has to hold one whole burst of them, or no connection could ever take a burst in.
+        if (maxReliableQueuedPackets > 0 && maxReliableQueuedPackets < ReliableQueueEntryBudget.MinimumQueueLimit)
+        {
+            errors.Add(
+                $"SimulationWorker:Admission:MaxReliableQueuedPackets must be at least {ReliableQueueEntryBudget.MinimumQueueLimit}: "
+                + $"entities enter a view only while the reliable queue holds less than half of it, "
+                + $"and that half has to hold one burst of {SimulationInterestManager.MaximumEnteredPerRefresh} entities "
+                + $"of {ReliableQueueEntryBudget.PacketsPerEntry} packets each.");
         }
 
         // LiteNetLib times the peer out after JoinHandshakeTimeoutSeconds, so a longer wait

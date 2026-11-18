@@ -2745,6 +2745,57 @@ describes.
    walks faster than it does afterwards, neither at the start nor a moment
    later.
 
+### A Crowd Enters A View A Budget At A Time
+
+A connection gets at most 128 entities into its view between two of its
+refreshes, the nearest first, and only while its reliable queue has room for
+them, as [Interest Management](SERVICE_FEATURES.md#interest-management)
+describes, so a crowd can never fill the reliable queue that disconnects a peer,
+however slowly the client acknowledges.
+
+1. Start the infrastructure, GameService, and the stress arena worker as
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#run-the-local-population)
+   describes, and start 200 bots, more than one view takes at once, all inside
+   one interest radius:
+
+   ```powershell
+   dotnet run --project tools/ActiveSimulationBots --configuration Release -- --ActiveSimulationBots:MinimumActiveBots 200 --ActiveSimulationBots:MaximumActiveBots 200
+   ```
+
+2. Join `Local Stress Arena` with the Unity client once the bots have joined.
+   Expected result: the bots come into view around the character within about a
+   second of the first picture, the nearest first and a few a frame, not all at
+   once. The client is not disconnected, the stress arena worker's log has no
+   line `Disconnecting UDP peer`, and a second client that joins the same way
+   sees the crowd the same.
+3. With the [monitoring stack](MONITORING.md#run-the-monitoring-stack) running,
+   open Explore in Grafana and read
+   `simulation_worker_realtime_interest_entries_deferred_total`. Expected
+   result: the series with `cause="burst"` grew while the bots and the client
+   joined, and both causes stay at the same value while the crowd stands, since
+   nothing waits any more. The counter
+   `simulation_worker_realtime_peers_disconnected_total` has no series.
+4. Leave the client, and join again through the `poor` profile of the network
+   impairment proxy, a round trip of 200 ms, as
+   [Play On A Bad Network](#play-on-a-bad-network) describes. Expected result:
+   the 200 bots fill in over a second or two instead of a second: 400 packets
+   at a window of 64 per round trip take about 1.3 s, and the loss of the
+   profile slows it further, a few bots at a time and still nearest first; the
+   client is not disconnected, and the worker log has no line `Disconnecting
+   UDP peer`. The `cause="queue"` series grew while the crowd filled in.
+5. Run the worker-level checks of a crowd of 700 entities around one
+   connection, on a line that keeps up and on lines with a round trip of 200 and
+   400 ms, and of a client that acknowledges nothing for three seconds:
+
+   ```powershell
+   dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~EntryBurstTests"
+   ```
+
+   Expected result: five tests pass; with `--logger "console;verbosity=detailed"`
+   each prints how long the crowd took to be in the view, under a second on a
+   line that keeps up, and to be delivered, about 5 s at 200 ms and 10 s at
+   400 ms.
+
 ## Art In The Game
 
 The models, materials, clips, catalogs, prefabs, and item presentation of

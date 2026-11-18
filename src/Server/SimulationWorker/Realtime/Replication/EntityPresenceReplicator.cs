@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -14,8 +15,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // state at once: the viewers that see the entity in detail, and every viewer for an urgent
 // change. The others missed that state, as the interest manager remembers per viewer and entity,
 // and get its newest version when the entity comes into detail for them, and otherwise on the
-// entity's slot once a second, which FarStateRefresher runs. Loop-confined, like the interest
-// manager.
+// entity's slot once a second, which FarStateRefresher runs. A spawn that cannot be built costs
+// that entity for that connection only: it is logged and counted, and the connection does not see
+// the entity, so nothing about it reaches a client that never got its spawn. Loop-confined, like
+// the interest manager.
 internal sealed class EntityPresenceReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -25,7 +28,8 @@ internal sealed class EntityPresenceReplicator(
     SimulationInterestManager interestManager,
     RealtimeNetworkMetrics networkMetrics,
     RealtimeSimulationClock clock,
-    RealtimeLifecycleHooks hooks)
+    RealtimeLifecycleHooks hooks,
+    ILogger? logger = null)
 {
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
@@ -33,6 +37,8 @@ internal sealed class EntityPresenceReplicator(
     private readonly List<int> actorStateRecipients = [];
     private Func<ulong, bool>? isVisibleToAnyConnection;
     private uint refreshCycle;
+    private long reportedDeferredByBurst;
+    private long reportedDeferredByQueue;
 
     public int ActiveEntityCount => entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
 
@@ -158,6 +164,25 @@ internal sealed class EntityPresenceReplicator(
         interestManager.Clear();
     }
 
+    // The spawns of the entities in the connection's first view, in the order given, which is
+    // nearest first for the entities that its first refresh brought in.
+    public void SendEntityBaseline(IRealtimePeerConnection peer, IReadOnlyList<ulong> entityIds)
+    {
+        for (var index = 0; index < entityIds.Count; index++)
+        {
+            var entityId = entityIds[index];
+            if (entityRegistry.TryGetPlayer(entityId, out var entity))
+            {
+                SendSpawn(peer, entity!);
+            }
+            else if (worldActorStore is not null
+                && worldActorStore.TryGetByEntityId(entityId, out var actor))
+            {
+                SendWorldActorSpawn(peer, actor!);
+            }
+        }
+    }
+
     public void SendEntityBaseline(IRealtimePeerConnection peer, IReadOnlySet<ulong> visibleEntityIds)
     {
         entityRegistry.CopyPlayersTo(playerBuffer);
@@ -222,10 +247,11 @@ internal sealed class EntityPresenceReplicator(
                 continue;
             }
 
+            // The entities that entered go nearest first.
             var sendsStarted = Stopwatch.GetTimestamp();
-            for (var index = 0; index < update.Entered.Count; index++)
+            for (var index = 0; index < update.EnteredNearestFirst.Count; index++)
             {
-                var enteredEntityId = update.Entered[index];
+                var enteredEntityId = update.EnteredNearestFirst[index];
                 if (entityRegistry.TryGetPlayer(enteredEntityId, out var enteredEntity))
                 {
                     SendSpawn(peer, enteredEntity!);
@@ -278,7 +304,24 @@ internal sealed class EntityPresenceReplicator(
         }
 
         PruneDespawned();
+        ReportDeferredEntries();
         return presenceTicks;
+    }
+
+    // Tells the metrics how many entities waited for a later refresh since the last report, by
+    // why they waited.
+    private void ReportDeferredEntries()
+    {
+        var byBurst = interestManager.DeferredByBurstCount;
+        var byQueue = interestManager.DeferredByQueueCount;
+        if (byBurst != reportedDeferredByBurst || byQueue != reportedDeferredByQueue)
+        {
+            networkMetrics.RecordInterestEntriesDeferred(
+                byBurst - reportedDeferredByBurst,
+                byQueue - reportedDeferredByQueue);
+            reportedDeferredByBurst = byBurst;
+            reportedDeferredByQueue = byQueue;
+        }
     }
 
     // Drops world actor tombstones that no connection still sees.
@@ -364,7 +407,18 @@ internal sealed class EntityPresenceReplicator(
     private void SendSpawn(IRealtimePeerConnection peer, PlayerSimulationEntity entity)
     {
         interestManager.TakeMissed(peer.Id, entity.NetworkEntityId);
-        sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
+        byte[] packet;
+        try
+        {
+            packet = RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity));
+        }
+        catch (Exception exception) when (CanWithhold(peer, entity.NetworkEntityId, exception))
+        {
+            WithholdAfterFailedSpawn(peer, entity.NetworkEntityId, exception);
+            return;
+        }
+
+        sender.SendControl(peer, packet);
         networkMetrics.RecordSpawnPacket();
         hooks.RaiseSpawnSent(peer, entity.NetworkEntityId);
     }
@@ -375,15 +429,46 @@ internal sealed class EntityPresenceReplicator(
     {
         // The pose is the one of the current tick, the tick that snapshots name.
         interestManager.TakeMissed(peer.Id, actor.NetworkEntityId);
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeWorldActorSpawn(
+        byte[] packet;
+        try
+        {
+            packet = RealtimeProtocol.EncodeWorldActorSpawn(
                 WorldActorProtocolMapper.ToSpawn(
                     actor,
                     clock.ServerTick,
-                    IsActorMoving?.Invoke(actor) ?? false)));
+                    IsActorMoving?.Invoke(actor) ?? false));
+        }
+        catch (Exception exception) when (CanWithhold(peer, actor.NetworkEntityId, exception))
+        {
+            WithholdAfterFailedSpawn(peer, actor.NetworkEntityId, exception);
+            return;
+        }
+
+        sender.SendControl(peer, packet);
         networkMetrics.RecordSpawnPacket();
         hooks.RaiseSpawnSent(peer, actor.NetworkEntityId);
+    }
+
+    // A spawn that cannot be built costs its entity for this connection, but not the connection's
+    // own entity, whose spawn the join needs: that failure ends the join, as before.
+    private bool CanWithhold(IRealtimePeerConnection peer, ulong entityId, Exception exception)
+    {
+        return exception is not OutOfMemoryException
+            && !(connectionBindings.TryGetEntityId(peer.Id, out var controlledEntityId) && controlledEntityId == entityId);
+    }
+
+    // The connection does not see the entity any more, so no snapshot, state, event, or despawn
+    // names an entity that its client never got, and the entity stays out while it is within the
+    // connection's enter radius, so it is not built and failed again at every refresh.
+    private void WithholdAfterFailedSpawn(IRealtimePeerConnection peer, ulong entityId, Exception exception)
+    {
+        interestManager.Withhold(peer.Id, entityId);
+        networkMetrics.RecordSpawnFailure();
+        logger?.LogError(
+            exception,
+            "[SIMULATION] The spawn of entity {EntityId} could not be built for UDP peer {PeerId}, so that peer does not see it.",
+            entityId,
+            peer.Id);
     }
 
     private void SendWorldActorDespawn(

@@ -249,6 +249,37 @@ public sealed class SimulationWorkerConfigurationValidationTests
             exception.Message);
     }
 
+    // Entities enter a view only while the reliable queue holds less than half of the limit that
+    // disconnects a peer, and that half must hold one burst of 128 entities of 2 packets: 512
+    // is the least limit that does, and a smaller one is a configuration error that says so.
+    [Theory]
+    [InlineData("511", true)]
+    [InlineData("256", true)]
+    [InlineData("512", false)]
+    [InlineData("1024", false)]
+    public void SimulationWorkerRejectsAQueueLimitThatLeavesNoRoomForABurstOfEntries(string limit, bool rejected)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:Admission:MaxReliableQueuedPackets"] = limit;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (!rejected)
+        {
+            Assert.Equal(
+                int.Parse(limit, System.Globalization.CultureInfo.InvariantCulture),
+                SimulationWorkerConfig.FromConfiguration(configuration).Admission.MaxReliableQueuedPackets);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+
+        Assert.Contains(
+            "SimulationWorker:Admission:MaxReliableQueuedPackets must be at least 512: entities enter a view only while the reliable queue holds less than half of it, and that half has to hold one burst of 128 entities of 2 packets each.",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SimulationWorkerRejectsAnInterestRefreshIntervalLongerThanOneSecond()
     {

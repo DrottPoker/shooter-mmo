@@ -3401,7 +3401,12 @@ bounded:
   World shows anyway, and what was not ready comes into view as anything that
   comes later does. A World without other players or actors in view shows in the
   frame after the content of the local look loaded. The cloth world still grows
-  when a crowd that comes later outgrows it.
+  when a crowd that comes later outgrows it. The players and actors in view are
+  those whose spawns arrived: the worker sends a crowd's spawns a budget at a
+  time, the nearest first, as
+  [Interest Management](SERVICE_FEATURES.md#interest-management) describes, so
+  the cover waits for the first batch only, and the rest of a crowd comes into
+  view over the next refreshes, like anything that comes later.
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   takes about 1.75 ms, since the cloth measures are shared per model, and several
   players often come into interest in one frame, so `WorldSceneContext` puts

@@ -1969,7 +1969,15 @@ as fast as the machine allows and the budgets still refill as at the tick rate.
 Each layout places its players and Mobs from a fixed seed. A fixed share walks
 straight legs to random points of its ground at the World's walk speed, a
 walking Mob at 1.4 m/s, and the rest stands. After 90 ticks of warm-up, 900
-ticks, 30 seconds of the World, are measured.
+ticks, 30 seconds of the World, are measured. The peers do not join, so every
+view fills through the interest refresh, a burst of entities at a time, as
+[Interest Management](SERVICE_FEATURES.md#interest-management) describes, and
+the warm-up is long enough for it: the 499 others of `crowd-500` are in view
+after four refreshes of a connection, 24 ticks at the most. The transport
+doubles have no reliable queue, so only the burst limit applies and the
+benchmark does not measure the room of a queue. The worker-level checks that a
+crowd beyond the reliable queue limit enters without a disconnect, on lines that
+keep up and on slow ones, are in `EntryBurstTests`.
 
 The benchmark runs every layout twice and reports the second run. The ticks
 follow each other without a pause, so during a first run the runtime is still
