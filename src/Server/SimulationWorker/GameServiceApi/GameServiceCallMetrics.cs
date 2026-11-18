@@ -29,6 +29,10 @@ public sealed class GameServiceCallMetrics : IDisposable
     {
         callFailures = meter.CreateCounter<long>("simulation_worker.game_service.call_failures");
         renewalsWithheld = meter.CreateCounter<long>("simulation_worker.registry.renewals_withheld");
+
+        // The series exists as zero from the start, so the first withheld renewal is an increase
+        // that an alert can see.
+        renewalsWithheld.Add(0);
     }
 
     // Operation is the name that GameServiceClient gives the call; the group is registry, session,

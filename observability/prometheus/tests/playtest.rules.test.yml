@@ -370,6 +370,71 @@ tests:
             exp_annotations:
               summary: The realtime loop of the worker w1 went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
 
+  - name: A worker whose first withheld renewal comes before its first report still alerts
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_registry_renewals_withheld_total{instance="w1"}'
+        values: '_x8 1x60'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+            exp_annotations:
+              summary: The realtime loop of the worker w1 went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
+      - eval_time: 14m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts: []
+
+  - name: The first abandoned operation of a kind alerts although its series begins at one
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_abandoned_operations_total{instance="w1", kind="death"}'
+        values: '_x8 1x60'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AbandonedDurableOperations
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+              kind: death
+            exp_annotations:
+              summary: The worker w1 gave up a durable operation of the kind death that never committed, which is lost progress; its error line names the operation id.
+
+  - name: Sustained auth_busy alerts when only the password hashing lane ever refused
+    interval: 15s
+    input_series:
+      - series: 'game_service_accounts_password_hashing_refusals_total{operation="verify"}'
+        values: '0+15x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LoginsRefusedAsBusy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.
+
+  - name: Sustained auth_busy alerts when only the revocation slots ever refused
+    interval: 15s
+    input_series:
+      - series: 'game_service_redis_session_cache_operations_total{result="revocation_refused"}'
+        values: '0+15x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LoginsRefusedAsBusy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.
+
   - name: Sustained auth_busy counts the password hashing lane and the revocation slots together
     interval: 15s
     input_series:

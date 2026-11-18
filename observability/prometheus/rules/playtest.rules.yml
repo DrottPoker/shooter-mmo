@@ -181,8 +181,17 @@ groups:
         annotations:
           summary: The worker {{ $labels.instance }} has had no answer from GameService for more than a minute, so items, trade, and quests are paused for its players, and it stops by itself once its outage tolerance has passed.
 
+      # A counter with labels has no series until its first event, so that event shows as a series
+      # that begins above zero, which increase() does not count. The second part catches it: a
+      # series that is there now and was not ten minutes ago.
       - alert: AbandonedDurableOperations
-        expr: sum by (instance, kind) (increase(simulation_worker_game_service_abandoned_operations_total[10m])) > 0
+        expr: |
+          sum by (instance, kind) (increase(simulation_worker_game_service_abandoned_operations_total[10m])) > 0
+            or
+          sum by (instance, kind) (
+            simulation_worker_game_service_abandoned_operations_total
+              unless simulation_worker_game_service_abandoned_operations_total offset 10m
+          ) > 0
         labels:
           severity: critical
         annotations:
@@ -204,17 +213,27 @@ groups:
         annotations:
           summary: Calls of the worker {{ $labels.instance }} to GameService keep failing on the route group {{ $labels.route }} with the reason {{ $labels.reason }}.
 
+      # The worker reports the counter as zero from its start, and the second part covers a loop
+      # that went silent before the first report, as for the abandoned operations above.
       - alert: WorkerRenewalsWithheld
-        expr: sum by (instance) (increase(simulation_worker_registry_renewals_withheld_total[10m])) > 0
+        expr: |
+          sum by (instance) (increase(simulation_worker_registry_renewals_withheld_total[10m])) > 0
+            or
+          sum by (instance) (
+            simulation_worker_registry_renewals_withheld_total
+              unless simulation_worker_registry_renewals_withheld_total offset 10m
+          ) > 0
         labels:
           severity: critical
         annotations:
           summary: The realtime loop of the worker {{ $labels.instance }} went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
 
       - alert: LoginsRefusedAsBusy
+        # Either counter has no series until it first refuses, and a sum with an absent side is
+        # empty, so each side counts as zero while it is absent.
         expr: |
-          sum(rate(game_service_accounts_password_hashing_refusals_total[5m]))
-            + sum(rate(game_service_redis_session_cache_operations_total{result="revocation_refused"}[5m]))
+          (sum(rate(game_service_accounts_password_hashing_refusals_total[5m])) or vector(0))
+            + (sum(rate(game_service_redis_session_cache_operations_total{result="revocation_refused"}[5m])) or vector(0))
             > 0.05
         for: 5m
         labels:
