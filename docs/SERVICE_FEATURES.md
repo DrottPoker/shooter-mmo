@@ -1107,7 +1107,12 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   waiting to be sent is disconnected, so a client that never acknowledges cannot
   grow server memory without bound. LiteNetLib sends at most 64 unacknowledged
   reliable packets per channel and queues the rest, and the limit counts those
-  queues of every reliable channel together.
+  queues of every reliable channel together. The worker writes a warning with the
+  queued count and the limit and counts the disconnect in
+  `simulation_worker.realtime.peers.disconnected` under the reason
+  `reliable_queue_full`. A crowd cannot reach it: entities enter a view only while
+  the queue has room for them, as [Interest Management](#interest-management)
+  describes.
 - An unexpected exception costs as little of the Shard as possible. A packet,
   a completed operation, or a connection, disconnection, or connection request
   that fails costs only its own peer. A player whose own movement step or look
@@ -1173,7 +1178,10 @@ authentication, and domain failures to structured results:
 
 - `SimulationEntityRegistry` owns nonzero network entity ids: a counter from 1
   that stops with an error at 4,294,967,295, the largest id that a remote
-  snapshot record carries.
+  snapshot record carries. An id is never given out twice. The worker reports
+  the ids used, an alert warns at half of them, and a worker that used all of
+  them logs a critical line and needs a restart, as
+  [Entity Ids](MONITORING.md#entity-ids) describes.
 - Persistent character id and transient network entity id are separate.
 - `ConnectionEntityBindingRegistry` enforces one peer per entity and one entity
   per peer.
@@ -1241,6 +1249,16 @@ authentication, and domain failures to structured results:
   `simulation_worker.simulation.snapshot.entity_updates_deferred` counter.
 - A Mob travels in the remote snapshots like a remote player and by the same
   rules, as [Mob Brains](#mob-brains) describes.
+- The snapshot sequence and the server tick are 32 bits and wrap, after 3.3 years
+  of snapshots at 15 a second and 4.5 years of ticks at 30, and every comparison
+  of them is modular, so nothing stops at the wrap. The slots that stagger the
+  records, their refresh and far slots, and the far states by entity id are the
+  sequence or the tick modulo an interval that 2^32 is no multiple of, so the wrap
+  moves them once: with the default intervals a record comes at most one snapshot
+  later than its interval, and a state that a viewer missed waits at most two
+  seconds instead of one. A snapshot sequence is committed before the broadcast
+  reports under it, so a broadcast that fails never leaves its sequence to the
+  next one.
 
 ## Interest Management
 
@@ -1267,6 +1285,65 @@ observers. Each peer has a visibility set:
   so a 15 Hz snapshot rate refreshes a third of them per snapshot interval. The band
   between the enter and exit radius keeps an entity visible while its viewer
   waits for its turn, and joins and leaves still update visibility at once.
+- A connection gets at most the smaller of two budgets of entities into its view
+  between two of its refreshes, the refresh itself included. Each entity that
+  enters costs a reliable spawn and, for a combatant, a reliable combatant state:
+  2 packets on the world channel.
+  - A burst, `SimulationInterestManager.MaximumEnteredPerRefresh`, 128 entities,
+    256 reliable packets, all of them in the queue when the peer supervisor looks
+    right after the tick: a quarter of the `Admission:MaxReliableQueuedPackets`
+    that disconnects a peer.
+  - The room of the connection's reliable queue: the packets that wait for its
+    peer, the count that the supervisor judges, are read once at the refresh, and
+    the room is the packets that fit below a high-water mark, half of
+    `MaxReliableQueuedPackets`, 512 by default, at 2 packets an entity. A queue at
+    or over the mark lets nothing in but the connection's own entity, which
+    always enters. The other half of the limit is for everything else that is
+    reliable: the join's own messages, the combat events and far states of the
+    same tick, and the answers to what the player does.
+  - The second budget is what keeps a slow line connected. LiteNetLib delivers a
+    window of 64 packets per round trip, so a line of 200 ms takes 320 packets a
+    second, while a crowd that keeps entering adds a burst at every refresh, up to
+    1,280 a second. A fixed burst would queue 1,400 packets for a hub of 700
+    entities in about a second, drain 350 of them, and disconnect the player, who
+    would reconnect into the same crowd. With the room, the crowd enters as fast
+    as the client acknowledges and the queue stays at the mark. A client that
+    acknowledges nothing stops getting entries at the mark, and the queue limit
+    stays a safety net for traffic that no budget bounds.
+  - The nearest entities within the enter radius enter first, and their spawns are
+    sent in that order, the connection's own entity before any other, and the rest
+    wait for the connection's next refresh. On a line that keeps up, a crowd of 500
+    around a player is in its view after four refreshes: the first is the join's,
+    with its baseline, and the other three follow every 3 snapshots, so the whole
+    crowd is in view between 0.4 and 0.6 s after the join at the default rates; the
+    128 nearest entities come with the join itself. On a slow line the line bounds
+    the time: 500 entities are 1,000 packets, 3.1 s at 200 ms and 6.3 s at 400 ms,
+    and a crowd of 701, which `EntryBurstTests` plays, is delivered after 4.8 s and
+    9.6 s, in 17 and 32 batches, with the queue at the mark of 512 and never at the
+    limit.
+  - An entity that waits is not in the view at all, as if it were beyond the enter
+    radius: it has no viewer pair, so no spawn, state, look, snapshot record, or
+    combat event for its viewers is sent about it, no list of the entity's viewers
+    names the connection, and nothing counts it as shown. No despawn is sent when
+    it leaves before it entered. Leaving a view is never delayed: an entity that
+    leaves goes with its despawn in the refresh that finds it gone, whatever the
+    budget is. A combat event still reaches whoever controls its source or target.
+  - A join or a respawn enters the connections that see its place at once while
+    their entries since their last refresh are within what that refresh allowed,
+    the smaller budget, and at their next refresh otherwise.
+  - `simulation_worker.realtime.interest.entries_deferred` counts the entities
+    that waited, by cause: `burst` for those beyond one burst, which a crowd that
+    forms or a burst of joins raises, and `queue` for those that the connection's
+    reliable queue had no room for, which a slow client raises. A quiet world
+    raises neither.
+- A spawn that cannot be built for a connection, such as one whose character name
+  the packet cannot carry, costs that entity for that connection only. The worker
+  writes an error with the entity and the peer, counts it in
+  `simulation_worker.realtime.spawn.failures`, takes the entity out of the
+  connection's view, and keeps it out while it stays within the connection's
+  enter radius, so it is not built and failed again at every refresh. The refresh
+  goes on with the other entities and connections. A join whose own entity's
+  spawn cannot be built fails.
 - The same refresh decides which visible entities are near: within
   `NearRadius`, 50 m by default, or still within `NearExitRadius`, 58 m, when
   they were near before. An entity that becomes visible between two refreshes
@@ -1295,7 +1372,11 @@ observers. Each peer has a visibility set:
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
   contains at most 71 current entity records of 14 bytes, as
   [Remote Entity Record](REALTIME_PROTOCOL.md#remote-entity-record) describes.
-- Cell size, radii, and the refresh interval are worker-owned configuration.
+- Cell size, radii, and the refresh interval are worker-owned configuration. The
+  budget of entries is not: it follows from LiteNetLib's window and from the
+  queue limit. The worker refuses to start with a `MaxReliableQueuedPackets`
+  below 512, because the half of it that entries may fill has to hold one burst
+  of 256 packets.
 
 This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
@@ -2702,8 +2783,9 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Http:RequestHeadersTimeoutSeconds`, `KeepAliveTimeoutSeconds` | `15`, `130` | How long Kestrel waits for the request headers, 1 to 300, and keeps an idle connection, 1 to 3,600 |
 | `Http:ShutdownDrainSeconds` | `10`, and `0` in `appsettings.Development.json` | How long GameService still serves after its readiness turned to `stopping`, 0 to 300, as [Orderly Shutdown](#orderly-shutdown) describes |
 | `Http:ShutdownTimeoutSeconds` | `30` | The host's shutdown timeout, which the drain, the requests in flight, and the background services share; longer than the drain and at most 3,600 |
-| `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
-| `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a migration in a transaction waits for a lock that other sessions hold before it fails and applies nothing, 100 to 600,000 |
+| `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change; a database that a newer release migrated, with nothing else pending, only logs a warning, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
+| `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a statement of a migration in a transaction waits for a table lock that other sessions hold before the migration fails and applies nothing, 100 to 600,000. It does not apply to the wait for the migration lock, which never times out, nor to a statement that has its lock |
+| `Database:MigrationCommandTimeoutSeconds` | `300` | How long the SQL of a migration in a transaction may run before it is cancelled and the migration applies nothing, 1 to 86,400. The connection's own command timeout, 30 seconds by default, does not apply to a migration |
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
 | `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
 | `Redis:CommandTimeoutMilliseconds` | `2000` | How long the Redis client waits for a connection or a command's answer, 100 to 60,000 |
@@ -2795,7 +2877,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `UdpQuotas:AggregateSnapshotBytesPerSecond`, `AggregateSnapshotByteBurst` | 38 MiB, 4 MiB | Unreliable snapshot bytes of the whole worker, with fair recipient rotation |
 | `Admission:MaxUnauthenticatedPeers`, `MaxUnauthenticatedPeersPerAddress` | `256`, `8` | Remote peers that have not joined yet |
 | `Admission:ConnectionAttemptsPerAddressPerSecond`, `ConnectionAttemptBurstPerAddress` | `5`, `20` | New connections per remote address |
-| `Admission:MaxReliableQueuedPackets` | `1024` | Reliable packets that wait behind the 64 unacknowledged ones LiteNetLib sends per channel, of every reliable channel together, before a disconnect |
+| `Admission:MaxReliableQueuedPackets` | `1024` | Reliable packets that wait behind the 64 unacknowledged ones LiteNetLib sends per channel, of every reliable channel together, before a disconnect; at least 512, since entities enter a view only while the queue holds less than half of it, as [Interest Management](#interest-management) describes |
 | `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; a positive cell size of at most 4,096 m, a positive enter radius, an exit radius from the enter radius to 10,000 m, and at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
 | `InterestManagement:NearRadius`, `NearExitRadius` | `50`, `58` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |
@@ -2855,7 +2937,12 @@ content fail before UDP admission.
   corpse; a destruction no longer holds its operation. After its row went, a
   retried operation id runs again, which every deterministic system operation
   id survives, as [Retention](GAME_SERVICE_MODULES.md#retention) describes with
-  every rule of the tasks. The gold ledger is never trimmed.
+  every rule of the tasks. The gold ledger is never trimmed. A task that fails
+  or falls behind shows in [Monitoring](MONITORING.md#gameservice): its failed
+  batches are counted by task and reason, its lag series is dropped while its
+  last pass failed, and the alerts `RetentionTaskFailing` and
+  `RetentionLagHigh` fire for a task that keeps failing and a task whose
+  oldest due row waited more than 15 minutes.
 - The economy audit checks item custody, slots, stacks, definitions, the gold
   ledger, and the retained history in one read-only snapshot: at start and
   every `Audit:IntervalSeconds` when `Audit:Enabled` is on, which is the default
@@ -2863,12 +2950,21 @@ content fail before UDP admission.
   never writes. The command prints a readable report, or JSON with `--json`,
   and exits with 0 when the economy is consistent, 1 when a check found a
   violation, and 2 when the audit could not run, also when `migrate` would
-  still change the database. The checks and what they cannot answer are in
+  still change the database or a newer release migrated it. The checks and what
+  they cannot answer are in
   [Economy Audit](GAME_SERVICE_MODULES.md#economy-audit), how to run the
   command in [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy), and
   its logs and metrics in [Monitoring](MONITORING.md#gameservice).
-- Every database unit uses statement and lock limits plus `skip locked` batch
-  selection where concurrent maintenance is permitted.
+- Scheduled work runs in every GameService process, with no leader, so several
+  instances do the same work at once, and each kind stays safe in its own way.
+  Every retention batch has a statement timeout, a lock timeout, and
+  `skip locked` row selection, so two instances never delete the same row or
+  wait for each other. Recovery expiry and durable corpse expiry select their due rows
+  without locks, because each expiry runs as an item transaction under a
+  deterministic operation id: two instances that pick the same row run the same
+  id, and the item transaction's locks and its stored operation let one of them
+  change the row and the other find it done. The audit only reads, in one
+  snapshot.
 - The item metrics and logs are in [Monitoring](MONITORING.md#logs).
 
 ## Not Yet Implemented

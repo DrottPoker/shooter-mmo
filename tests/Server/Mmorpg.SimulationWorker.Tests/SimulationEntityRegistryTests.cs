@@ -1,8 +1,10 @@
+using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.Tests.Realtime;
 using Mmorpg.Testing.Content;
 
 namespace Mmorpg.SimulationWorker.Tests;
@@ -50,6 +52,52 @@ public sealed class SimulationEntityRegistryTests
         var exception = Assert.Throws<InvalidOperationException>(() => registry.AllocateNetworkEntityId());
         Assert.Contains("exhausted", exception.Message, StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => registry.RegisterPlayer(CreateSession(), CreateMovement));
+    }
+
+    // The gauge of the ids used reads this number: every id given out counts, for players and
+    // for anything else that takes one, and an id is not given back when its entity leaves.
+    [Fact]
+    public void TheIssuedEntityIdsCountEveryIdThatWasGivenOutAndNeverShrink()
+    {
+        var registry = new SimulationEntityRegistry();
+        Assert.Equal(0, registry.IssuedEntityIds);
+
+        var first = registry.RegisterPlayer(CreateSession(), CreateMovement);
+        registry.AllocateNetworkEntityId();
+        Assert.Equal(2, registry.IssuedEntityIds);
+
+        Assert.True(registry.RemovePlayer(first.Entity.NetworkEntityId, first.Entity.Session.SimulationSessionId, out _));
+        Assert.Equal(2, registry.IssuedEntityIds);
+
+        var last = new SimulationEntityRegistry(uint.MaxValue);
+        Assert.Equal(uint.MaxValue - 1L, last.IssuedEntityIds);
+        last.AllocateNetworkEntityId();
+        Assert.Equal(uint.MaxValue, last.IssuedEntityIds);
+        Assert.Throws<InvalidOperationException>(() => last.AllocateNetworkEntityId());
+        Assert.Equal(uint.MaxValue, last.IssuedEntityIds);
+    }
+
+    // The worker that used every id says so, clearly and not once per failed join: a critical
+    // line with the restart that an operator needs, at most once a minute.
+    [Fact]
+    public void AnExhaustedCounterLogsOneClearCriticalLineInsteadOfOneForEveryFailedAllocation()
+    {
+        var logger = new CapturingLogger<SimulationEntityRegistry>();
+        var registry = new SimulationEntityRegistry(uint.MaxValue, logger);
+        Assert.Equal(uint.MaxValue, registry.AllocateNetworkEntityId());
+        Assert.Empty(logger.Entries);
+
+        Assert.Throws<InvalidOperationException>(() => registry.AllocateNetworkEntityId());
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterPlayer(CreateSession(), CreateMovement));
+        Assert.Throws<InvalidOperationException>(() => registry.AllocateNetworkEntityId());
+
+        var line = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Critical, line.Level);
+        Assert.Contains(
+            "All 4294967295 simulation entity ids are used, so no player can join and no Mob can respawn",
+            line.Message,
+            StringComparison.Ordinal);
+        Assert.Contains("Restart the worker", line.Message, StringComparison.Ordinal);
     }
 
     [Fact]

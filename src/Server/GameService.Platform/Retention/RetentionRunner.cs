@@ -7,15 +7,27 @@ using Npgsql;
 namespace Mmorpg.GameService.Platform.Retention;
 
 // What one task did in a pass: its batches, the rows they deleted, its time, the lag when its
-// first batch measured one, and whether rows may still be due because it failed or the pass ended.
+// first batch measured one, why it failed if it did (one of RetentionFailureReasons), and whether
+// rows may still be due because it failed or the pass ended.
 internal sealed record RetentionTaskPass(
     string Task,
     int Batches,
     int Deleted,
     TimeSpan Duration,
     TimeSpan? Lag,
-    bool Failed,
-    bool MoreDue);
+    string? FailureReason,
+    bool MoreDue)
+{
+    public bool Failed => FailureReason is not null;
+}
+
+// Why a task's batch failed, the `reason` label of the retention failure counter: a small fixed set.
+internal static class RetentionFailureReasons
+{
+    public const string LockTimeout = "lock_timeout";
+    public const string StatementTimeout = "statement_timeout";
+    public const string Error = "error";
+}
 
 internal sealed record RetentionPass(IReadOnlyList<RetentionTaskPass> Tasks, TimeSpan Duration, bool OutOfBudget)
 {
@@ -31,8 +43,27 @@ internal sealed class RetentionRunner
 {
     // A batch locks only the rows it deletes, with skip locked, so it never waits for play; the
     // lock timeout guards the rows that a delete reaches through its foreign keys.
-    internal static readonly TimeSpan StatementTimeout = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan MaximumStatementTimeout = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(1);
+
+    // The server ends a slow statement this long before the client gives up on the command, so a
+    // slow batch fails as a PostgreSQL error that the pass survives and logs as a warning, not as a
+    // dropped connection. The tasks send their commands with the connection's command timeout.
+    internal static readonly TimeSpan ClientTimeoutMargin = TimeSpan.FromSeconds(5);
+
+    // The statement timeout of a batch on a connection whose commands time out on the client after
+    // clientCommandTimeoutSeconds: the maximum, or less when the client would give up sooner than
+    // the margin allows. A client without a timeout leaves the maximum.
+    internal static TimeSpan StatementTimeoutFor(int clientCommandTimeoutSeconds)
+    {
+        if (clientCommandTimeoutSeconds <= 0)
+        {
+            return MaximumStatementTimeout;
+        }
+
+        var seconds = clientCommandTimeoutSeconds - ClientTimeoutMargin.TotalSeconds;
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 1d, MaximumStatementTimeout.TotalSeconds));
+    }
 
     private readonly NpgsqlDataSource dataSource;
     private readonly IReadOnlyList<IRetentionTask> tasks;
@@ -103,7 +134,7 @@ internal sealed class RetentionRunner
             outOfBudget);
         foreach (var task in pass.Tasks.Where(task => task.Batches > 0 || task.Failed))
         {
-            metrics.RecordPass(task.Task, task.Deleted, task.Duration, task.Lag);
+            metrics.RecordPass(task.Task, task.Deleted, task.Duration, task.Lag, task.FailureReason);
         }
 
         Log(pass);
@@ -129,7 +160,7 @@ internal sealed class RetentionRunner
                 """,
                 new
                 {
-                    StatementTimeout = Milliseconds(StatementTimeout),
+                    StatementTimeout = Milliseconds(StatementTimeoutFor(connection.CommandTimeout)),
                     LockTimeout = Milliseconds(LockTimeout)
                 },
                 transaction,
@@ -151,7 +182,11 @@ internal sealed class RetentionRunner
             is PostgresErrorCodes.LockNotAvailable
             or PostgresErrorCodes.QueryCanceled)
         {
-            state.Fail(timeProvider.GetElapsedTime(started));
+            state.Fail(
+                timeProvider.GetElapsedTime(started),
+                exception.SqlState == PostgresErrorCodes.LockNotAvailable
+                    ? RetentionFailureReasons.LockTimeout
+                    : RetentionFailureReasons.StatementTimeout);
             logger.LogWarning(
                 "Retention task {RetentionTask} gave up a batch with {SqlState}; the next pass tries again.",
                 state.Task.Name,
@@ -160,7 +195,7 @@ internal sealed class RetentionRunner
         }
         catch (Exception exception)
         {
-            state.Fail(timeProvider.GetElapsedTime(started));
+            state.Fail(timeProvider.GetElapsedTime(started), RetentionFailureReasons.Error);
             logger.LogError(exception, "Retention task {RetentionTask} failed.", state.Task.Name);
             return false;
         }
@@ -202,7 +237,7 @@ internal sealed class RetentionRunner
         private TimeSpan duration;
         private TimeSpan? lag;
         private bool lagMeasured;
-        private bool failed;
+        private string? failureReason;
         private bool finished;
 
         public IRetentionTask Task { get; } = task;
@@ -224,16 +259,16 @@ internal sealed class RetentionRunner
             finished = !full;
         }
 
-        public void Fail(TimeSpan elapsed)
+        public void Fail(TimeSpan elapsed, string reason)
         {
-            failed = true;
+            failureReason = reason;
             finished = true;
             duration += elapsed;
         }
 
         public RetentionTaskPass Capture()
         {
-            return new RetentionTaskPass(Task.Name, batches, deleted, duration, lag, failed, !finished);
+            return new RetentionTaskPass(Task.Name, batches, deleted, duration, lag, failureReason, !finished);
         }
     }
 }

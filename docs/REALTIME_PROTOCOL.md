@@ -661,9 +661,13 @@ that the client predicts with.
 ## Replication Messages
 
 `EntitySpawn` announces a player entity with its kind, persistent id, display
-name, archetype, server tick, initial state, and look. A remote simulation
-snapshot chunk carries the snapshot sequence, server tick, chunk index and
-count, and up to `MaximumSnapshotEntitiesPerChunk` (71) `EntitySnapshot`
+name, archetype, server tick, initial state, and look. It and the
+`WorldActorSpawn` and `CombatantState` that follow it travel on the world
+channel in bursts that a budget per connection bounds, so a crowd that enters a
+view can never fill the reliable queue that disconnects a peer, as
+[Interest Management](SERVICE_FEATURES.md#interest-management) describes. A
+remote simulation snapshot chunk carries the snapshot sequence, server tick,
+chunk index and count, and up to `MaximumSnapshotEntitiesPerChunk` (71) `EntitySnapshot`
 records, as many as fit the 1,023-byte unreliable packet: the 20 bytes of the
 frame header and chunk fields, and 14 bytes per record.
 

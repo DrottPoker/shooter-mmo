@@ -34,6 +34,33 @@ public sealed class SimulationTickCadenceTests
         Assert.Equal([5u, 11u, 17u, 23u, 29u], Runs(revalidation, 30));
     }
 
+    // The server tick wraps after 2^32 ticks. At rates that divide it, the snapshot ticks and the
+    // ticks before them go on in the same pattern across the wrap, a lane never lands on a
+    // snapshot tick, and a pass that waits for a free tick counts its wait across the wrap.
+    [Fact]
+    public void TheSnapshotAndInterestTicksGoOnAcrossTheWrapOfTheServerTick()
+    {
+        var cadence = new SimulationTickCadence(30, 15);
+        var lane = cadence.AddLane("revalidation", 6);
+
+        for (var step = 0u; step < 60; step++)
+        {
+            var tick = unchecked(uint.MaxValue - 29 + step);
+            Assert.Equal(tick % 2 == 0, cadence.IsSnapshotTick(tick));
+            Assert.Equal(tick % 2 == 1, cadence.IsBeforeSnapshotTick(tick));
+            Assert.False(lane.IsDue(tick) && cadence.IsSnapshotTick(tick));
+        }
+
+        // Tick 2^32 - 1 is the tick before the snapshot tick 0.
+        Assert.True(cadence.IsBeforeSnapshotTick(uint.MaxValue));
+        Assert.True(cadence.IsSnapshotTick(0));
+
+        // Tick 0 is a snapshot tick, so a pass that became due 11 ticks before the wrap has waited
+        // 11 ticks there and waits on; one due 41 ticks before has waited over a second.
+        Assert.False(cadence.IsFreeFor(0, uint.MaxValue - 10));
+        Assert.True(cadence.IsFreeFor(0, uint.MaxValue - 40));
+    }
+
     // With three ticks per snapshot a lane prefers the tick that the interest refresh leaves free.
     [Fact]
     public void ALaneKeepsOffTheInterestTickWhereAnotherTickIsFree()

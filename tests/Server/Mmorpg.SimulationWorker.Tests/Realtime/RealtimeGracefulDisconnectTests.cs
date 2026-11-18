@@ -1,3 +1,5 @@
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
@@ -139,6 +141,70 @@ public sealed class RealtimeGracefulDisconnectTests
         var disconnect = Assert.Single(fixture.Directory.Disconnected);
         Assert.Null(disconnect.Data);
         Assert.Empty(player.Peer.Sent);
+    }
+
+    // The disconnect for the backlog is never silent: one warning line names the peer, the queued
+    // count, and the limit, and the peers.disconnected counter counts it under its reason, so an
+    // operator sees a player who was cut off, and a crowd that did it, in the metrics.
+    [Fact]
+    public void ADisconnectForTheBacklogIsLoggedWithTheQueuedCountAndCountedWithItsReason()
+    {
+        using var fixture = new RealtimeLoopFixture();
+
+        // Only the instruments that this thread creates are listened to, as other tests create
+        // metrics under the same meter name at the same time.
+        var testThread = Environment.CurrentManagedThreadId;
+        var creating = false;
+        var measured = new Dictionary<string, long>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (creating
+                    && Environment.CurrentManagedThreadId == testThread
+                    && instrument.Name == "simulation_worker.realtime.peers.disconnected")
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == RealtimeNetworkMetrics.DisconnectReasonTagName)
+                {
+                    measured[(string)tag.Value!] = value;
+                }
+            }
+        });
+        listener.Start();
+        creating = true;
+        using var metrics = new RealtimeNetworkMetrics();
+        creating = false;
+        var supervisor = new RealtimePeerSupervisor(
+            fixture.Config,
+            fixture.Registry,
+            fixture.Directory,
+            fixture.Sender,
+            fixture.SessionStore,
+            fixture.Teardown,
+            fixture.Bodies,
+            fixture.SessionOperations,
+            metrics,
+            fixture.Logger);
+        var player = fixture.ConnectPlayer(1);
+        var limit = fixture.Config.Admission.MaxReliableQueuedPackets;
+        player.Peer.QueuedReliablePackets[RealtimeProtocol.WorldChannel] = limit + 7;
+
+        supervisor.EnforcePeerState();
+        listener.RecordObservableInstruments();
+
+        Assert.Single(fixture.Directory.Disconnected);
+        Assert.Equal(new Dictionary<string, long> { ["reliable_queue_full"] = 1 }, measured);
+        var warning = Assert.Single(fixture.Logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains($"UDP peer 1 with {limit + 7} reliable packets in its queues", warning.Message, StringComparison.Ordinal);
+        Assert.Contains($"more than the {limit} that are allowed", warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]

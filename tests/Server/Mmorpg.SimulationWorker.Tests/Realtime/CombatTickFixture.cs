@@ -20,7 +20,8 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // The production core and combat features, composed as RealtimeServerComposition composes them,
 // around recording peers and driven one tick at a time, so a test reads every combatant and
-// every message after every tick without sockets or loop timing. Players join directly, without
+// every message after every tick without sockets or loop timing. With snapshots, the interest
+// refresh, the far states, and the snapshots run in the ticks too. Players join directly, without
 // the join handshake, and see each other once ShowEveryoneToEveryone sent their spawns. With
 // world actors, their runtime is activated and the Mobs think and walk in the ticks. With
 // sessions, the join handler, the lingering bodies, the item operations, and the persistence of
@@ -45,7 +46,9 @@ internal sealed class CombatTickFixture : IDisposable
         TimeProvider? availabilityClock = null,
         TimeSpan? joinHandshakeTimeout = null,
         bool checkpoints = false,
-        TimeSpan? checkpointInterval = null)
+        TimeSpan? checkpointInterval = null,
+        bool snapshots = false,
+        SimulationInterestManager? interestManager = null)
     {
         SessionStore = new ActiveSimulationSessionStore(metrics: Presence);
         Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions
@@ -92,6 +95,7 @@ internal sealed class CombatTickFixture : IDisposable
             new CorpseViewerRegistry(),
             staticCollision,
             CollisionWorld,
+            InterestManager: interestManager,
             WorkerIdentity: WorldActors is null ? null : identity,
             WorldActorStore: WorldActors,
             ShardRules: shardRules,
@@ -168,6 +172,12 @@ internal sealed class CombatTickFixture : IDisposable
             worldActorFeature.Driver.RespawnMob = combat.MobDeaths.Respawn;
             worldActorFeature.Driver.KeepActive = Mobs.IsBusy;
             worldActorFeature.Driver.Activate();
+        }
+
+        if (snapshots)
+        {
+            // The interest refresh, the far states, and the snapshots, as the worker runs them.
+            SnapshotFeature.Add(Core, combat);
         }
 
         loop = new SimulationTickLoop(
@@ -287,13 +297,15 @@ internal sealed class CombatTickFixture : IDisposable
         }
     }
 
-    // The player's interest is computed again and it receives the spawns of everything it sees.
+    // The player's interest is computed again and it receives the spawns of everything it sees,
+    // as a join sends them: what its refresh brought in nearest first, then what it saw already.
     public void ShowWorldTo(CombatTickPlayer player)
     {
-        Core.Presence.RefreshConnection(player.Context.PeerId, player.EntityId);
+        var update = Core.Presence.RefreshConnection(player.Context.PeerId, player.EntityId);
+        var entered = update.EnteredNearestFirst.ToArray();
         Core.Presence.SendEntityBaseline(
             player.Peer,
-            new HashSet<ulong>(Core.Presence.GetVisibleOrdered(player.Context.PeerId)));
+            [.. entered, .. Core.Presence.GetVisibleOrdered(player.Context.PeerId).Except(entered)]);
     }
 
     public void SendCombatIntent(CombatTickPlayer player, RealtimeCombatIntent intent)
@@ -387,8 +399,8 @@ internal sealed class CombatTickFixture : IDisposable
         supervisor.ReleaseOrphanedSessions();
     }
 
-    // Runs the supervisor's pass over the peers: it ends the connection of a peer whose session
-    // was replaced or ended.
+    // Runs the supervision that ends the loop iteration: it ends the connection of a peer whose
+    // session was replaced or ended, or whose reliable queues hold too many packets.
     public void EnforcePeerState()
     {
         supervisor.EnforcePeerState();
