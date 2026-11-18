@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
 namespace Mmorpg.Tools.DeploySmokeTest;
 
@@ -80,12 +82,19 @@ public sealed class StackApi(HttpClient client, TimeSpan? rateLimitMargin = null
         return Succeeded(response, "shard list").Read<ShardAnswer[]>();
     }
 
+    // The join names the protocol version and simulation revision of this build, as a player's
+    // client does, so a worker of other versions refuses it before a ticket exists.
     public async Task<JoinAnswer> JoinAsync(string sessionToken, string shardId, Guid characterId, CancellationToken cancellationToken = default)
     {
         var response = await SendAsync(
             HttpMethod.Post,
             $"/api/shards/{Uri.EscapeDataString(shardId)}/join",
-            new { characterId },
+            new
+            {
+                characterId,
+                protocolVersion = (int)RealtimeProtocol.Version,
+                simulationRevision = GameSimulationCompatibility.Revision
+            },
             sessionToken,
             cancellationToken: cancellationToken);
         return Succeeded(response, "join").Read<JoinAnswer>();
@@ -98,7 +107,8 @@ public sealed class StackApi(HttpClient client, TimeSpan? rateLimitMargin = null
 
     // Registering and logging in are limited per client address, and a second run within the same
     // minute meets the window of the first. It waits out a Retry-After of at most a minute, twice,
-    // as a player's client waits before it tries again, and fails with the refusal after that. The\n    // margin is how long it waits beyond the Retry-After.
+    // as a player's client waits before it tries again, and fails with the refusal after that. The
+    // margin is how long it waits beyond the Retry-After.
     private async Task<StackResponse> SendPacedAsync(string path, object body, CancellationToken cancellationToken)
     {
         for (var attempt = 0; ; attempt++)

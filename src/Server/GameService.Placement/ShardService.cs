@@ -23,6 +23,7 @@ internal sealed class ShardService(
     IQuestCatalogRevisionProvider questCatalogRevisionProvider,
     ICharacterAppearances characterAppearances,
     ICharacterSimulationStates characterSimulationStates,
+    PlacementMetrics metrics,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -189,6 +190,22 @@ internal sealed class ShardService(
                 $"Character is already active on shard {activeSession.ShardId}.");
         }
 
+        // The version question comes before anything is superseded or issued: a client that does
+        // not fit the Shard's worker gets no ticket and costs no pending ticket, and the refusal
+        // is counted.
+        var shardWorker = await ReadShardWorkerVersionsAsync(
+            connection,
+            transaction,
+            normalizedShardId,
+            (int)options.WorkerHeartbeatTimeout.TotalSeconds,
+            cancellationToken);
+        if (shardWorker is { } versions
+            && RefuseVersions(request, normalizedShardId, versions) is { } versionRefusal)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return versionRefusal;
+        }
+
         // The account's own pending ticket is superseded by this request, so it must
         // not count against capacity when the placement is chosen.
         await connection.ExecuteAsync(new CommandDefinition(
@@ -237,6 +254,21 @@ internal sealed class ShardService(
                 activeSession is null
                     ? "No healthy simulation worker currently has capacity for this shard."
                     : "The simulation worker that owns the active character session is unavailable.");
+        }
+
+        // The worker that the locked placement chose is the one that counts, so a worker that was
+        // replaced since the read above is judged by its own versions.
+        if (RefuseVersions(
+                request,
+                normalizedShardId,
+                new WorkerVersions(
+                    placement.ProtocolVersion,
+                    placement.SimulationRevision,
+                    placement.WorldId,
+                    placement.CollisionRevision)) is { } placementRefusal)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return placementRefusal;
         }
 
         // Combat data and loot come from the worker's catalog and custody from GameService's,
@@ -503,6 +535,67 @@ internal sealed class ShardService(
                 SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState),
                 TransportKey = joinTicket.TransportKey
             });
+    }
+
+    // The 409 that refuses a join whose client does not fit the worker, counted by Shard and
+    // reason, or null when it fits.
+    private ServiceResult<JoinShardResponse>? RefuseVersions(
+        JoinShardRequest request,
+        string shardId,
+        WorkerVersions worker)
+    {
+        var refusal = JoinVersionCheck.Refusal(
+            request.ProtocolVersion,
+            request.SimulationRevision,
+            request.WorldId,
+            request.CollisionRevision,
+            worker);
+        if (refusal is null)
+        {
+            return null;
+        }
+
+        metrics.RecordJoinRefusal(shardId, refusal);
+        return JoinVersionCheck.Conflict<JoinShardResponse>(refusal, worker);
+    }
+
+    // The versions that the Shard's fresh, online worker reported, whatever its capacity, or null
+    // when the Shard has no such worker, which the placement answers with shard_unavailable. A
+    // Shard has at most one worker.
+    private static async Task<WorkerVersions?> ReadShardWorkerVersionsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string shardId,
+        int heartbeatTimeoutSeconds,
+        CancellationToken cancellationToken)
+    {
+        var row = await connection.QuerySingleOrDefaultAsync<WorkerVersionsRow>(new CommandDefinition(
+            """
+            select worker.protocol_version as "ProtocolVersion",
+                   worker.simulation_revision as "SimulationRevision",
+                   shard.world_id as "WorldId",
+                   worker.collision_revision as "CollisionRevision"
+            from shards shard
+            join simulation_assignments assignment
+              on assignment.shard_id = shard.id
+             and assignment.released_at is null
+            join simulation_workers worker
+              on worker.id = assignment.worker_id
+             and worker.is_online
+             and worker.last_heartbeat_at
+                 + make_interval(secs => @HeartbeatTimeoutSeconds) > now()
+            where shard.id = @ShardId;
+            """,
+            new { ShardId = shardId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+            transaction,
+            cancellationToken: cancellationToken));
+        return row is null
+            ? null
+            : new WorkerVersions(
+                row.ProtocolVersion,
+                row.SimulationRevision,
+                row.WorldId,
+                row.CollisionRevision);
     }
 
     // Whether the request's proof is the one that the ticket's transport key makes, compared in
@@ -1013,6 +1106,12 @@ internal sealed class ShardService(
         string WorkerRuntimeId,
         Guid? TargetSimulationSessionId,
         byte[] TransportKey);
+
+    private sealed record WorkerVersionsRow(
+        int ProtocolVersion,
+        string SimulationRevision,
+        string WorldId,
+        string CollisionRevision);
 
     private sealed record SimulationTicketOwnerRow(
         Guid AccountId,

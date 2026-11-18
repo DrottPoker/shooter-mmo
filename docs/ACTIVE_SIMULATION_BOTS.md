@@ -252,8 +252,13 @@ Expected result:
   exponential backoff and jitter.
 - A ticket response the bot cannot use counts as a ticket rejection, with
   `invalid_authority_response`, instead of stopping the tool. Like the Unity
-  client, a bot never connects to a worker on another protocol version, and the
-  slot reports `protocol_version_mismatch` instead.
+  client, a bot names its protocol version and simulation revision in the ticket
+  request, so GameService refuses it with `incompatible_protocol`,
+  `shard_not_updated`, or `incompatible_simulation` when its worker runs other
+  versions, as [Versions Of A Join](SERVICE_FEATURES.md#versions-of-a-join)
+  describes, and the slot counts that refusal. A bot never connects to a worker
+  on another protocol version either, and the slot reports
+  `protocol_version_mismatch` instead.
 - A bot whose session failed or completed releases its UDP connection in the
   same poll, so the worker frees its character at once. The transport drops the
   connection after 10 seconds without any packet, the Unity client's default;

@@ -2,6 +2,9 @@ using System;
 using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Worlds;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
 namespace Mmorpg.Client.Networking
 {
@@ -73,8 +76,10 @@ namespace Mmorpg.Client.Networking
 
     // Asks GameService for a join ticket for one character on one shard and joins the worker with
     // it: the part of entering a World that Enter World on CharacterSelect and the reconnect
-    // share. The caller checks the ticket before the join, decides what a failure means, and
-    // enters the World; nothing here changes the client session.
+    // share. The request names the versions of this client, so GameService refuses a client that
+    // does not fit the Shard's worker before it issues a ticket. The caller checks the ticket
+    // before the join, decides what a failure means, and enters the World; nothing here changes
+    // the client session.
     public sealed class WorldJoin
     {
         private readonly IClientSession clientSession;
@@ -88,11 +93,14 @@ namespace Mmorpg.Client.Networking
             realtimeSession = realtime ?? throw new ArgumentNullException(nameof(realtime));
         }
 
-        // acceptTicket sees a complete ticket before the join and returns false to stop there.
+        // worldId is the World that the caller believes the Shard runs, whose baked collision
+        // revision the request names. acceptTicket sees a complete ticket before the join and
+        // returns false to stop there.
         public IEnumerator Run(
             string characterId,
             string characterName,
             string shardId,
+            string worldId,
             Func<JoinShardResponse, bool> acceptTicket,
             Action<WorldJoinResult> onDone)
         {
@@ -112,7 +120,7 @@ namespace Mmorpg.Client.Networking
                 clientSession.Settings.GameServiceBaseUrl,
                 clientSession.SessionToken,
                 shardId,
-                new JoinShardRequest { characterId = characterId },
+                CreateRequest(characterId, worldId),
                 value => ticket = value,
                 value => ticketError = value);
 
@@ -158,6 +166,26 @@ namespace Mmorpg.Client.Networking
                     RealtimeClientErrorKind.Network,
                     "connection_closed",
                     "The join ended without a session.")));
+        }
+
+        // The join request of this client: its protocol version and simulation revision, and the
+        // collision revision that it baked for the World, when it has the World's collision data.
+        // A client without it names no World, and GameService leaves the data to the later check.
+        internal static JoinShardRequest CreateRequest(string characterId, string worldId)
+        {
+            var request = new JoinShardRequest
+            {
+                characterId = characterId,
+                protocolVersion = RealtimeProtocol.Version,
+                simulationRevision = GameSimulationCompatibility.Revision
+            };
+            if (UnityWorldCollisionLoader.TryReadRevision(worldId, out var revision, out _))
+            {
+                request.worldId = worldId;
+                request.collisionRevision = revision;
+            }
+
+            return request;
         }
     }
 }

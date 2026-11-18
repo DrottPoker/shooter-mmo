@@ -382,7 +382,7 @@ public sealed class NpcItemLifecycleIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             ShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(

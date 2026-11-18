@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using Mmorpg.Client.Core;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -67,7 +69,9 @@ namespace Mmorpg.Client.Editor
                     kind,
                     commit ?? string.Empty,
                     !string.IsNullOrEmpty(status),
-                    DateTime.UtcNow.ToString(ClientBuildInfo.TimeFormat, CultureInfo.InvariantCulture)));
+                    DateTime.UtcNow.ToString(ClientBuildInfo.TimeFormat, CultureInfo.InvariantCulture),
+                    RealtimeProtocol.Version,
+                    GameSimulationCompatibility.Revision));
         }
 
         public static void Write(ClientBuildInfo info)

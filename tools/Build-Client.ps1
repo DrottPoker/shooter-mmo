@@ -246,7 +246,7 @@ if ($Plan) {
     Write-Output "  Environment:  $Environment, $($environmentDocument.gameServiceBaseUrl), from $environmentFile"
     Write-Output "  Kind:         $kind ($(if ($Development) { 'IL2CPP, Low stripping, OptimizeSize, C++ Release, development build' } else { 'IL2CPP, Low stripping, OptimizeSpeed, C++ Master' }))"
     Write-Output "  Unity:        $editorPath, batch mode, $buildMethod"
-    Write-Output "  Stamp:        the commit of HEAD, whether git status shows changes, and the UTC time"
+    Write-Output "  Stamp:        the commit of HEAD, whether git status shows changes, the UTC time, and the realtime protocol version and simulation revision of the code, which the Editor adds"
     Write-Output "  Output:       $outputFolder (emptied first), summary $summaryPath"
     Write-Output "  Afterwards:   restore the Unity-owned tracked files the build changed, then fail unless git status is as before"
     if ($StartCheck) {
@@ -366,6 +366,8 @@ $summary = @(
     "  Kind:                $kind",
     "  Commit:              $commit$(if ($dirty) { ' with uncommitted changes' })",
     "  Built at:            $builtAt",
+    "  Realtime protocol:   $(if ($report) { $report.protocolVersion } else { 'unknown' })",
+    "  Simulation revision: $(if ($report) { $report.simulationRevision } else { 'unknown' })",
     "  Scripting backend:   $(if ($report) { $report.scriptingBackend } else { 'unknown' })",
     "  Stripping level:     $(if ($report) { $report.strippingLevel } else { 'unknown' })",
     "  IL2CPP code gen:     $(if ($report) { $report.il2cppCodeGeneration } else { 'unknown' })",

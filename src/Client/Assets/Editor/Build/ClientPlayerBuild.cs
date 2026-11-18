@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using Mmorpg.Client.Core;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -119,7 +121,9 @@ namespace Mmorpg.Client.Editor
                     kind,
                     Argument(arguments, "-clientBuildCommit"),
                     string.Equals(Argument(arguments, "-clientBuildDirty"), "true", StringComparison.OrdinalIgnoreCase),
-                    time));
+                    time,
+                    RealtimeProtocol.Version,
+                    GameSimulationCompatibility.Revision));
         }
 
         private static string Argument(IReadOnlyList<string> arguments, string name)
@@ -147,6 +151,8 @@ namespace Mmorpg.Client.Editor
         public string commit;
         public bool dirty;
         public string builtAtUtc;
+        public int protocolVersion;
+        public string simulationRevision;
         public string scriptingBackend;
         public string strippingLevel;
         public string il2cppCodeGeneration;
@@ -179,6 +185,8 @@ namespace Mmorpg.Client.Editor
                 commit = request.Stamp.Commit,
                 dirty = request.Stamp.Dirty,
                 builtAtUtc = request.Stamp.BuiltAtUtc,
+                protocolVersion = request.Stamp.ProtocolVersion,
+                simulationRevision = request.Stamp.SimulationRevision,
                 scriptingBackend = kind.ScriptingBackend.ToString(),
                 strippingLevel = kind.StrippingLevel.ToString(),
                 il2cppCodeGeneration = kind.CodeGeneration.ToString(),
