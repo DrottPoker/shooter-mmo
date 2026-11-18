@@ -9,6 +9,9 @@ import numpy as np
 
 MIRROR = "mirror"
 FIXED = "fixed"
+# A vertex of a part that has no skin to lie on, such as the inside of the mouth: it stays where it
+# was built, and so do the vertices that subdividing puts between such vertices.
+RIGID = "rigid"
 
 
 def _unit(v):
@@ -185,8 +188,8 @@ class Net:
         points = self.array()
         vertex_faces = self.vertex_faces()
         neighbours = [np.array(sorted(n)) for n in self.neighbours()]
-        own_skins = [sorted({self.skins[f] for f in faces}) for faces in vertex_faces]
-        fixed = np.array([FIXED in h for h in self.holds])
+        own_skins = [sorted({self.skins[f] for f in faces if self.skins[f] in skins}) for faces in vertex_faces]
+        fixed = np.array([FIXED in h or RIGID in h or not own for h, own in zip(self.holds, own_skins)])
         is_open = np.zeros(len(points), bool)
         is_open[list(self.open_vertices())] = True
 

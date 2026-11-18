@@ -17,7 +17,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from human_build import body, foot as feet, hand as hands  # noqa: E402
+from human_build import body, foot as feet, hand as hands, head as heads  # noqa: E402
 from human_build.net import Net  # noqa: E402
 from human_build.surface import Surface  # noqa: E402
 
@@ -60,6 +60,22 @@ def build(label, out_path, parts):
         hands.build_hand(net, hand)
     if "neck" in parts:
         body.build_neck(net, measures)
+    head = None
+    if "head" in parts and "neck" in parts:
+        cage = bpy.data.objects[f"HeadCage_{label}"]
+        cage_points = [tuple(cage.matrix_world @ v.co) for v in cage.data.vertices]
+        cage_faces = [tuple(p.vertices) for p in cage.data.polygons]
+        eyes, radius = {}, 0.0
+        for side in ("R", "L"):
+            eye = bpy.data.objects[f"Reference_{label}_Eye_{side}"]
+            co = np.array([eye.matrix_world @ v.co for v in eye.data.vertices])
+            eyes[side] = co.mean(0)
+            radius = float((co.max(0) - co.min(0)).max() / 2)
+        head = heads.Head(measures, cage_points, cage_faces, eyes, radius)
+        print(f"HUMAN_BUILD head cage scaled {head.size:.3f}, mouth half width {head.half_mouth * 1000:.0f} mm")
+        for line in head.face.report():
+            print("HUMAN_BUILD", line)
+        heads.build_head(net, head)
     foot = None
     if "leg" in parts:
         _rings, joints = body.build_legs(net, measures)
@@ -73,11 +89,15 @@ def build(label, out_path, parts):
     for problem in problems:
         print("HUMAN_BUILD_FAILED", problem)
     fine = net.subdivided()
+    if head is not None:
+        heads.refine_head(fine, net, head)
     skins = dict(measures.skins())
     if hand is not None:
         skins.update(hand.skins())
     if foot is not None:
         skins.update(foot.skins())
+    if head is not None:
+        skins.update(head.skins())
     fine.fit(skins, rounds=10)
     whole = fine.mirrored()
     points = whole.array()
@@ -112,4 +132,4 @@ def build(label, out_path, parts):
 
 if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
-    build(arguments[0], arguments[1], set(arguments[2].split(",")) if len(arguments) > 2 else {"arm", "neck", "leg", "hand", "foot"})
+    build(arguments[0], arguments[1], set(arguments[2].split(",")) if len(arguments) > 2 else {"arm", "neck", "leg", "hand", "foot", "head"})

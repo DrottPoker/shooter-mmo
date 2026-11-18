@@ -20,6 +20,8 @@ BODIES = (("Male", "GEO-body_male_realistic", 1.79), ("Female", "GEO-body_female
 # The multires level of the reference surface: level 2 has about 170,000 vertices, enough for a net
 # of 7,000 faces, and keeps the files small.
 SCULPT_LEVEL = 2
+HEAD = "Head - Generic Topology"
+HEAD_SHAPES = (("Male", "Real_MALE"), ("Female", "Real_FEMALE"))
 # The body's hips lie this far in front of the origin, as on the bodies the game has, so the
 # origin stays under the body's weight.
 HIPS_FORWARD = 0.015
@@ -74,8 +76,22 @@ def build(out_path):
                 eyes.append(("L" if child.name.endswith(".L") else "R", eye))
         made.append((label, sculpt, base, eyes))
 
+    # The head cage of the bundle, a coarse cage of quads with loops around the eyes and the mouth,
+    # in its male and its female shape, turned to face +Y where it lies.
+    heads = []
+    head = bpy.data.objects[HEAD]
+    turn = Matrix.Rotation(math.pi, 4, "Z")
+    for label, key in HEAD_SHAPES:
+        mesh = bpy.data.meshes.new(f"HeadCage_{label}")
+        blocks = head.data.shape_keys.key_blocks
+        points = [turn @ (head.matrix_world @ blocks[key].data[i].co) for i in range(len(head.data.vertices))]
+        mesh.from_pydata([tuple(p) for p in points], [], [tuple(p.vertices) for p in head.data.polygons])
+        mesh.update()
+        heads.append(mesh)
+
     # A fresh file with only the reference meshes.
     keep = {id(mesh) for _label, sculpt, base, eyes in made for mesh in (sculpt, base, *[e for _s, e in eyes])}
+    keep |= {id(mesh) for mesh in heads}
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
     for collection in list(bpy.data.collections):
@@ -100,6 +116,9 @@ def build(out_path):
         points = _points(sculpt)
         print(f"HUMAN_BUILD_REFERENCE {label}: {len(points)} vertices, height {points[:, 2].max():.4f} m, "
               f"width {points[:, 0].max() - points[:, 0].min():.4f} m, mirror offset {abs(points[:, 0].min() + points[:, 0].max()):.5f} m")
+    for mesh in heads:
+        reference.objects.link(bpy.data.objects.new(mesh.name, mesh))
+        print(f"HUMAN_BUILD_REFERENCE {mesh.name}: {len(mesh.vertices)} vertices, {len(mesh.polygons)} faces")
     bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_path, compress=True, relative_remap=False)
     print(f"HUMAN_BUILD_SAVED {out_path}")
