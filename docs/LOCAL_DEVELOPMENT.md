@@ -296,8 +296,76 @@ describes. A worker stopped this way marks its shard offline at once; a worker t
 until the worker heartbeat timeout passes. `docker compose stop` stops
 PostgreSQL and Redis and keeps the data.
 
-## Unity Client
+## Run The Production-Like Stack
 
+The services run as two `dotnet run` processes in the Development environment. The
+production-like stack runs the two server images in the Production environment, behind a TLS
+proxy, with PostgreSQL and Redis that have passwords and publish no port: the way a deployment
+runs them. It runs on this machine only and assumes no real host. [Deployment](DEPLOYMENT.md)
+describes the stack, every setting, and what a real deployment needs on top. It shares no
+port, container, or volume with the development stack, so both can run at once.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Start-DeployStack.ps1
+```
+
+Expected result: the script makes `deploy/stack.env` with three random secrets when the file does
+not exist, which Git ignores and nothing prints, builds both images, starts the containers, waits
+until every service is healthy, copies the proxy's root certificate to
+`artifacts/deploy-stack/root-ca.crt`, and prints where the stack listens:
+
+| Address | Service |
+| --- | --- |
+| `https://localhost:8443` | GameService through the TLS proxy; trust the root certificate above to reach it |
+| `127.0.0.1:28015/udp` | The SimulationWorker of `local-shard-1`, the address it advertises |
+
+PostgreSQL and Redis publish no port. A start takes about 40 seconds with the images built and
+about a minute and a half from nothing. `-NoBuild` starts the images that are built,
+`-Telemetry` exports to the [monitoring stack](MONITORING.md#run-the-monitoring-stack), which must
+run first, and `STACK_BIND_ADDRESS`, `PROXY_HTTPS_PORT`, `WORKER_UDP_PORT`, and
+`WORKER_ADVERTISED_HOST` change the published ports, as
+[The Variables](DEPLOYMENT.md#the-variables) describes. A start stops with a message when
+another program holds a port.
+
+Play through it with the smoke test:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DeployStack.ps1
+```
+
+Expected result: the script builds the smoke test tool, starts the stack, joins one player who
+stays in the world, runs the player path for half a minute of movement, stops the stack in order,
+and prints one line per check. It ends with `Result: every one of <n> checks passed` and exit
+code 0 after about two minutes, and leaves nothing running. Its logs, one file per service and
+one for each part of the test, are in `artifacts/deploy-smoke/<timestamp>`. The checks are in
+[The Smoke Test](DEPLOYMENT.md#the-smoke-test). `-KeepRunning` runs the player path only and
+leaves the stack up, `-RemoveVolumes` removes the volumes when it ends, `-NoBuild` and
+`-Telemetry` act as for the start, and `-WalkSeconds` sets the length of the movement. A weekly
+workflow runs it in CI, and `tools/Verify-Deployment.ps1` checks the deploy files without
+starting anything.
+
+Stop the stack in order, as [Update A Deployment](DEPLOYMENT.md#update-a-deployment) describes:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Stop-DeployStack.ps1
+```
+
+Expected result: the proxy and the worker stop first, then GameService, then PostgreSQL and
+Redis, and the containers and the network are removed. The PostgreSQL data and the proxy's
+certificate authority stay in their volumes, so the next start continues where this one ended.
+`-RemoveVolumes` also deletes them, which is every account and character of the stack. Every
+command of these scripts names the Compose project `shooter-mmo-deploy`, so they never touch
+another project's containers, images, networks, or volumes.
+
+To drive the stack by hand, use the project and the files of the scripts:
+
+```powershell
+$compose = "compose", "-p", "shooter-mmo-deploy", "-f", "deploy/docker-compose.production-like.yml", "--env-file", "deploy/stack.env"
+docker @compose ps
+docker @compose logs --no-log-prefix game-service
+```
+
+## Unity Client
 Open `src/Client` in the Unity Editor of the [requirements](#requirements),
 with Unity Hub or with `unity open src/Client`, and wait until the import and
 script compilation finish. With GameService and a worker running, open
@@ -726,8 +794,8 @@ not a bound to raise.
 CI runs the full quality gate for every pull request, split into parallel jobs
 that [Backend Tests](../tests/README.md#continuous-integration) describes: the
 backend checks and unit tests, the PostgreSQL and Redis integration tests, the
-monitoring configuration, and both Unity suites. Run the whole gate locally in
-one command:
+monitoring configuration, the build of the server images, and both Unity
+suites. Run the whole gate locally in one command:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Changes.ps1 -All
@@ -748,6 +816,7 @@ repository root:
 & .\tools\art\Verify-ArtAssets.ps1
 python -m unittest discover -s tools/art/blender/tests
 & .\tools\Verify-Observability.ps1
+& .\tools\Verify-Deployment.ps1
 dotnet restore Mmorpg.slnx --locked-mode
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
@@ -784,6 +853,15 @@ Expected result:
 - The art pipeline's Python tests pass.
 - `Observability verification passed: collector, Prometheus, alert tests, and
   <n> dashboards.` It needs Docker and leaves nothing running.
+- `Result: the deploy files hold every rule`: the Compose file of the
+  [production-like stack](#run-the-production-like-stack) renders, no secret has
+  a default, no database port is published, every image tag is pinned, every
+  service has a health check, a restart policy, and a read-only root file
+  system, Git ignores the secrets file, the build context holds no client, art,
+  or tests, and the secrets generator makes distinct random secrets and prints
+  none. It needs Docker Compose and starts nothing. CI also builds both server
+  images in the job `Server images`, which no local check repeats; starting the
+  stack builds them.
 - Restore accepts every committed `packages.lock.json`, format reports no file
   to change, and the build ends with zero warnings and zero errors.
 - Each content verifier and the protocol verifier finds the checked-in
@@ -849,7 +927,10 @@ ends with a summary:
   measurement, its helpers, and its Mob variant run
   `tools/ci/Test-ClientCrowdCommon.ps1`, the Mob variant also the tool tests.
   Monitoring configuration runs `tools/Verify-Observability.ps1` and every test
-  project, and the test containers' Compose file runs every test project.
+  project, and the test containers' Compose file runs every test project. The
+  files of the production-like stack, its Compose files, Dockerfile,
+  `.dockerignore`, scripts, and weekly workflow, and `.gitignore` run
+  `tools/Verify-Deployment.ps1`.
   Documentation runs nothing, except `docs/MONITORING.md`, which a test reads.
   Shared build, format, and test settings and the script itself run the full
   gate, and so does a file that no rule matches. A content compiler's verifier
@@ -898,7 +979,8 @@ in the same task.
 ## Dependency Updates
 
 Dependabot proposes NuGet and GitHub Actions updates against `development`
-once a month. Unity Package Manager updates stay manual, because Dependabot does
+once a month, and the image tags of the Dockerfile and the Compose files in
+`deploy`, which are pinned to versions so that it has something to update. Unity Package Manager updates stay manual, because Dependabot does
 not own `Packages/manifest.json`: update a Unity package in a focused branch,
 let Unity rewrite `packages-lock.json`, and run both Unity suites and the
 backend gate before merging. The experimental Unity Pipeline package has its

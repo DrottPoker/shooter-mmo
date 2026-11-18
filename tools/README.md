@@ -32,6 +32,7 @@ These run in CI and, when the changes call for them, in `Test-Changes.ps1`.
 | --- | --- |
 | `Verify-DependencyPolicy.ps1` | Exact package versions, one xUnit version, the Unity lock file, and aligned LiteNetLib versions |
 | `Verify-Observability.ps1` | The monitoring stack configuration, alert rule tests, and dashboards. See [Monitoring](../docs/MONITORING.md) |
+| `Verify-Deployment.ps1` | The deploy files without starting anything: the Compose file renders, no secret has a default, no database port is published, every image tag is pinned, every service has a health check, a restart policy, and a read-only root file system, Git ignores the secrets file, the build context is small, and the secrets generator is random and silent. See [Deployment](../docs/DEPLOYMENT.md) |
 | `Verify-TestResults.ps1` | That every test in the TRX results passed, so a skipped test fails the build |
 | `art/Verify-ArtAssets.ps1` | That every art asset is approved and every committed model and texture is its recorded export |
 
@@ -52,6 +53,22 @@ compilers also write the [text table](../content/README.md#text-tables) of their
 | `WorldCollisionCompiler/` | Compiles the collision chunks of every World, including the resource nodes that block movement, the water surfaces, and the deep water edges |
 | `ContentPipeline/` | The library the compilers share, also used by the Unity content tools |
 | `ProtocolGenerator/` | Generates the realtime protocol code from its schema. See [Realtime Protocol](../docs/REALTIME_PROTOCOL.md) |
+
+## Deployment
+
+The server images, the production-like stack that runs them, and its smoke test are described in
+[Deployment](../docs/DEPLOYMENT.md), with the commands in
+[Run The Production-Like Stack](../docs/LOCAL_DEVELOPMENT.md#run-the-production-like-stack). Every
+command names its own Compose project, so none touches another project's containers.
+
+| Tool | Does |
+| --- | --- |
+| `New-DeploySecrets.ps1` | Makes `deploy/stack.env`, which Git ignores, with random secrets when it does not exist; `-Force` replaces it while no PostgreSQL volume holds the old password; it prints no secret |
+| `Start-DeployStack.ps1` | Builds the two images, makes the secrets when missing, starts the stack, waits until every service is healthy, copies the proxy's root certificate to `artifacts/deploy-stack`, and prints where the stack listens; `-NoBuild` and `-Telemetry` |
+| `Stop-DeployStack.ps1` | Stops the stack in order and removes its containers and network; `-RemoveVolumes` also removes its data |
+| `Test-DeployStack.ps1` | Starts the stack, plays through it with `DeploySmokeTest`, stops it in order, checks the stop and the logs, and exits with 0 only when every check held; `-KeepRunning`, `-RemoveVolumes`, `-NoBuild`, `-Telemetry`, and `-WalkSeconds` |
+| `DeployStackCommon.ps1` | Shared helpers of these scripts: the Compose project and files, every Docker call, the secrets file, the health wait, and the export of the root certificate |
+| `DeploySmokeTest/` | The player path of the smoke test, built on `SimulationBotClient`: `play` registers, logs in, joins, moves over UDP, leaves, and checks what a stranger meets; `hold` keeps one player in the world; `watch-ready` watches readiness through the proxy while GameService stops. It trusts the proxy's own certificate authority explicitly and never turns verification off |
 
 ## Load And Bot Tools
 

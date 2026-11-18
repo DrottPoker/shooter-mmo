@@ -39,3 +39,36 @@ updates:
     labels:
       - dependencies
       - ci
+
+  # The pinned tags of the server images and of the production-like stack's Compose files.
+  - package-ecosystem: docker
+    directory: /deploy
+    target-branch: development
+    schedule:
+      interval: monthly
+      time: "07:00"
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 3
+    groups:
+      deploy-images:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - backend
+
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    target-branch: development
+    schedule:
+      interval: monthly
+      time: "07:15"
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 3
+    groups:
+      deploy-compose-images:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - backend

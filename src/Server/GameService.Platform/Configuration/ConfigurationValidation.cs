@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Platform.Configuration;
@@ -7,28 +8,24 @@ namespace Mmorpg.GameService.Platform.Configuration;
 // human-readable error instead of throwing, so one startup failure lists every problem.
 public static class ConfigurationValidation
 {
-    // The literal passwords of the repository's own Compose files and CI workflow. They are
-    // public, so a deployment outside Development must never use one. A guard test keeps the
-    // list in step with those files.
-    public static IReadOnlyList<string> RepositoryPasswords { get; } =
-    [
-        "stack_stress_local_only",
-        "shooter_mmo_tests_password"
-    ];
+    // The placeholders and published values that protect nothing live in PlaceholderSecrets,
+    // which SimulationWorker reads too.
+    public static IReadOnlyList<string> RepositoryPasswords => PlaceholderSecrets.RepositoryPasswords;
 
-    // Every secret placeholder in .env.example starts with this prefix.
     public static bool IsPlaceholderSecret(string secret)
     {
-        return secret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase);
+        return PlaceholderSecrets.IsPlaceholderSecret(secret);
     }
 
-    // A password that protects nothing: empty, a placeholder of .env.example, or a password
-    // that the repository publishes.
     public static bool IsPlaceholderPassword(string? password)
     {
-        return string.IsNullOrWhiteSpace(password)
-            || IsPlaceholderSecret(password)
-            || RepositoryPasswords.Contains(password, StringComparer.Ordinal);
+        return PlaceholderSecrets.IsPlaceholderPassword(password);
+    }
+
+    // A service secret that the repository's tooling publishes.
+    public static bool IsRepositorySecret(string secret)
+    {
+        return PlaceholderSecrets.RepositorySecrets.Contains(secret, StringComparer.Ordinal);
     }
 
     // An optional integer: the default when the key is absent, else a value in the range.

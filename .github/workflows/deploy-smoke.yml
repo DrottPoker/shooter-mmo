@@ -1,0 +1,55 @@
+name: Deploy smoke test
+
+# Once a week, and when started by hand, this builds the two server images, starts the
+# production-like stack of deploy/docker-compose.production-like.yml on the runner, plays through
+# it as a player does over its TLS proxy, stops it in order, and checks the stop. It is the check
+# that the deploy shape works as a whole, which the pull request job only builds. A failed run
+# keeps the logs of every service for two weeks. docs/DEPLOYMENT.md describes the stack.
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-smoke
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  smoke:
+    name: Production-like stack smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      # The test builds the images and the smoke test tool, makes its own secrets, and removes the
+      # stack and its volumes when it ends. Its exit code is the verdict.
+      - name: Run the smoke test
+        shell: pwsh
+        run: ./tools/Test-DeployStack.ps1 -RemoveVolumes
+
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deploy-smoke-logs
+          path: artifacts/deploy-smoke
+          if-no-files-found: warn
+          retention-days: 14

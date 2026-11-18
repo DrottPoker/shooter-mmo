@@ -53,6 +53,7 @@
   <Folder Name="/tools/">
     <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
     <Project Path="tools/ContentPipeline/Mmorpg.Tools.ContentPipeline.csproj" />
+    <Project Path="tools/DeploySmokeTest/Mmorpg.Tools.DeploySmokeTest.csproj" />
     <Project Path="tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
     <Project Path="tools/NetworkImpairmentProxy/Mmorpg.Tools.NetworkImpairmentProxy.csproj" />
     <Project Path="tools/ProtocolGenerator/Mmorpg.Tools.ProtocolGenerator.csproj" />

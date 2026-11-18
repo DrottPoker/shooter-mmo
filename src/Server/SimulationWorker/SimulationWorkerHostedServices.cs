@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.SimulationWorker.Corpses;
+using Mmorpg.SimulationWorker.Health;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
@@ -29,6 +30,7 @@ public static class SimulationWorkerHostedServices
         services.AddHostedService<GameServiceOutageMonitor>();
         services.AddHostedService<DurableCorpseRestorationService>();
         services.AddHostedService<RealtimeMetricsReporterService>();
+        services.AddHostedService<SimulationWorkerHealthFileService>();
         return services;
     }
 }

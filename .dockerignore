@@ -1,0 +1,19 @@
+# The build context of the server images in deploy/ is the repository root. It holds only what
+# the GameService and SimulationWorker projects compile and copy: the shared build settings, the
+# server projects, the shared .NET code with its generated World data, and the authored content.
+# The Unity client, the art sources, the tools, the tests, and local build output stay out.
+**
+
+!.editorconfig
+!Directory.Build.props
+!global.json
+!content/**
+!src/Server/**
+!src/Shared/**
+
+**/bin/
+**/obj/
+**/*.meta
+src/Shared/*/Client/
+src/Shared/*/Editor/
+src/Shared/*/Schema~/

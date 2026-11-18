@@ -279,6 +279,7 @@ as parallel jobs for every pull request, every push to `development` and
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
 | `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |
+| `Server images` | `tools/Verify-Deployment.ps1`, which checks the deploy files, and the build of both server images of `deploy/Dockerfile` with Docker Buildx and a layer cache, pushed nowhere |
 | `Unity quality gate` | `tools/Run-UnityTests.ps1`: the Unity EditMode and PlayMode suites, on the self-hosted Windows runner |
 
 The two integration jobs start their own PostgreSQL, with its data in memory,
@@ -288,6 +289,15 @@ from the `packages.lock.json` files. Every test project writes one TRX file to
 fails the job when any test in them did not run or pass. Each job uploads its
 `TestResults` folder as an artifact. The observability job needs no .NET and
 runs the pinned Collector and Prometheus images through the runner's Docker.
+The images job needs no .NET either: it checks the deploy files and builds the
+two images with the layer cache of the Actions cache, so a change that leaves
+the project and lock files alone only compiles and copies.
+
+`.github/workflows/deploy-smoke.yml` is a second workflow. It runs every week
+and on request, on a GitHub-hosted Linux runner, `tools/Test-DeployStack.ps1`:
+the whole production-like stack, played through and stopped in order, as
+[Deployment](../docs/DEPLOYMENT.md#the-smoke-test) describes. It keeps the logs
+of every service as an artifact for two weeks, and a failed run is the signal.
 
 The Unity job runs Unity without a graphics device (`-nographics`), where a
 camera cannot draw, so `tools/Run-UnityTests.ps1` leaves out the Unity tests of

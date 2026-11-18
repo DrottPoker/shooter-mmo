@@ -6,6 +6,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Characters;
 using Mmorpg.Server.Common.Configuration;
+using Mmorpg.Server.Common.Health;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Telemetry;
@@ -27,6 +28,13 @@ using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Quests;
+
+// `probe` is the health check of a container: it runs before any host or configuration exists.
+if (ContainerProbe.IsProbe(args))
+{
+    Environment.ExitCode = await ContainerProbe.RunAsync(args, Console.Out, CancellationToken.None);
+    return;
+}
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
@@ -53,6 +61,17 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = SimulationWorkerConfig.FromConfiguration(builder.Configuration);
+if (!builder.Environment.IsDevelopment())
+{
+    var environmentErrors = config.ErrorsOutsideDevelopment(builder.Configuration);
+    if (environmentErrors.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "SimulationWorker configuration is invalid:" + Environment.NewLine
+            + string.Join(Environment.NewLine, environmentErrors.Select(error => $"- {error}")));
+    }
+}
+
 var telemetryOptions = TelemetryOptions.FromConfiguration(builder.Configuration);
 var workerIdentity = SimulationWorkerIdentity.Create();
 builder.AddServerTelemetry(

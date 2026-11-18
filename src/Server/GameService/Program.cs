@@ -4,6 +4,14 @@ using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Configuration;
+using Mmorpg.Server.Common.Health;
+
+// `probe` is the health check of a container: it runs before any host or configuration exists.
+if (ContainerProbe.IsProbe(args))
+{
+    Environment.ExitCode = await ContainerProbe.RunAsync(args, Console.Out, CancellationToken.None);
+    return;
+}
 
 // `migrate` and `migrate --plan` run instead of the web host; the other arguments configure.
 var (databaseCommand, configurationArgs) = GameServiceDatabaseCommandLine.Parse(args);
