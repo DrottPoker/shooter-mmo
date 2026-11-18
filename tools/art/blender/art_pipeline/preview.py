@@ -878,6 +878,40 @@ def _tool_copies(root: bpy.types.Object) -> tuple[bpy.types.Object, list[bpy.typ
     return copies[root], list(copies.values())
 
 
+def held_tools(armatures: list[bpy.types.Object], held: list[tuple[str, str, str]]
+               ) -> dict[str, list[tuple[bpy.types.Object, str, bpy.types.Object, list[bpy.types.Object]]]]:
+    """The tools used with clips, each given as its .blend file, the clip, and its socket bone, by
+    clip: every armature's copy of each tool used with it, with the armature, the socket bone, the
+    copy's root, and its objects, all hidden."""
+    tools: dict[str, list[tuple[bpy.types.Object, str, bpy.types.Object, list[bpy.types.Object]]]] = {}
+    for path, clip, socket in held:
+        root = _append_tool(path)
+        for armature in armatures:
+            if socket not in armature.pose.bones:
+                raise ArtPipelineError(f"{armature.name} has no socket bone {socket} to hold {path}.")
+            copy, objects = _tool_copies(root)
+            tools.setdefault(clip, []).append((armature, socket, copy, objects))
+    return tools
+
+
+def show_held(tools: dict[str, list[tuple]], clip: str) -> list[tuple]:
+    """Shows the tools used with the clip and hides every other; returns those used with it."""
+    used = tools.get(clip, [])
+    for copies in tools.values():
+        for _armature, _socket, _root, objects in copies:
+            for obj in objects:
+                obj.hide_render = not any(objects is entry[3] for entry in used)
+    return used
+
+
+def place_held(used: list[tuple]) -> None:
+    """Puts each used tool on its armature's socket in the current frame, as the game holds it."""
+    for armature, socket, root, _objects in used:
+        root.matrix_world = armature.matrix_world @ armature.pose.bones[socket].matrix
+    if used:
+        bpy.context.view_layer.update()
+
+
 def render_clip_sheet(output: str, cell: int, held: list[tuple[str, str, str]] | None = None) -> str:
     """Every clip of an animation library at evenly spaced frames, from its first to its last, on
     the bodies of the Reference collection and their ground grid. A tool used with a clip, given as
@@ -890,16 +924,8 @@ def render_clip_sheet(output: str, cell: int, held: list[tuple[str, str, str]] |
     shown = set(reference.all_objects) if reference is not None else set()
     for obj in scene.objects:
         obj.hide_render = obj not in shown
-    # By clip: every body's copy of each tool used with it, with its armature and socket bone.
-    tools: dict[str, list[tuple[bpy.types.Object, str, bpy.types.Object, list[bpy.types.Object]]]] = {}
     armatures = [arm] + sorted((o for o in shown if o.type == "ARMATURE"), key=lambda o: o.name)
-    for path, clip, socket in held or []:
-        root = _append_tool(path)
-        for armature in armatures:
-            if socket not in armature.pose.bones:
-                raise ArtPipelineError(f"{armature.name} has no socket bone {socket} to hold {path}.")
-            copy, objects = _tool_copies(root)
-            tools.setdefault(clip, []).append((armature, socket, copy, objects))
+    tools = held_tools(armatures, held or [])
     camera, sun = _studio(scene, cell)
     bodies = [o for o in shown if o.type == "MESH" and o.name != "Reference_Ground"]
     low, high = _bounds(bodies)
@@ -916,21 +942,14 @@ def render_clip_sheet(output: str, cell: int, held: list[tuple[str, str, str]] |
             if action.slots:
                 arm.animation_data.action_slot = action.slots[0]
             end = int(action.frame_range[1])
-            used = tools.get(action.name, [])
-            for copies in tools.values():
-                for _armature, _socket, _root, objects in copies:
-                    for obj in objects:
-                        obj.hide_render = not any(objects is entry[3] for entry in used)
+            used = show_held(tools, action.name)
             for view, yaw in enumerate(CLIP_YAWS):
                 row = index * len(CLIP_YAWS) + view
                 top = row * cell
                 _aim(camera, sun, center, radius, yaw)
                 for column in range(CLIP_FRAMES):
                     scene.frame_set(round(column * end / (CLIP_FRAMES - 1)))
-                    for armature, socket, root, _objects in used:
-                        root.matrix_world = armature.matrix_world @ armature.pose.bones[socket].matrix
-                    if used:
-                        bpy.context.view_layer.update()
+                    place_held(used)
                     pixels = _render(scene, os.path.join(scratch, f"{row}_{column}.png"))
                     # Image rows run bottom up, so the first clip is drawn at the top.
                     bottom = sheet.shape[0] - top - cell

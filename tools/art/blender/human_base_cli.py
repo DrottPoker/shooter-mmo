@@ -1,5 +1,5 @@
-"""Blender entry point of the human base character tools. tools/art/Sync-HumanBase.ps1 and
-tools/art/Sync-AnimationLibrary.ps1 run each step in its own Blender:
+"""Blender entry point of the human base character tools. tools/art/Sync-HumanBase.ps1,
+tools/art/Sync-AnimationLibrary.ps1, and tools/art/Import-ArtClip.ps1 run each step in its own Blender:
 
     blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
         --python tools/art/blender/human_base_cli.py -- <step> <arguments>
@@ -19,12 +19,15 @@ Steps:
     rig-review-file <male.blend> <female.blend> <review.blend>
     generate-clips <library.blend> <armature> <Idle,Walk,Jog> <skeleton.json>
     check-clips <library.blend> <armature>
+    import-clip <library.blend> <armature> <source file> <map.json> <Clip+Clip> <Name> <-|L|R|LR> <skeleton.json>
 
-Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, and the result
-of compare is HUMAN_BASE_SAME yes or no, so the PowerShell scripts can read them from Blender's
+Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, the result
+of compare is HUMAN_BASE_SAME yes or no, and the motion numbers of an imported clip are
+HUMAN_BASE_MOTION and a JSON object, so the PowerShell scripts can read them from Blender's
 log.
 """
 
+import json
 import os
 import sys
 
@@ -32,7 +35,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from human_base import animate, checks, review, rig, rig_review  # noqa: E402
+from human_base import animate, checks, retarget, review, rig, rig_review  # noqa: E402
 
 STEPS = {
     "sync": (4, rig.sync),
@@ -52,6 +55,10 @@ CHECKS = {
 RENDERS = {
     "review": (3, review.render),
     "review-rig": (4, rig_review.render),
+}
+# Steps that add to a file and report on what they added.
+IMPORTS = {
+    "import-clip": (8, retarget.import_clip),
 }
 
 
@@ -93,6 +100,18 @@ def main(argv: list[str]) -> int:
         for path in run(*args):
             print(f"HUMAN_BASE_REPORT review sheet {path}")
         return 0
+    if step in IMPORTS:
+        count, run = IMPORTS[step]
+        if not _count(step, args, count):
+            return 2
+        lines, failures, motion = run(*args)
+        for line in lines:
+            print(f"HUMAN_BASE_REPORT {line}")
+        if motion is not None:
+            print(f"HUMAN_BASE_MOTION {json.dumps(motion, separators=(',', ':'))}")
+        for failure in failures:
+            print(f"HUMAN_BASE_FAILED {failure}")
+        return 1 if failures else 0
     if step == "rig-review-file":
         if not _count(step, args, 3):
             return 2

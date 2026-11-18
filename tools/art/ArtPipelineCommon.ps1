@@ -417,6 +417,50 @@ function Get-ArtHeldLibrary([string]$Skeleton, [string]$HoldClip) {
     return $null
 }
 
+function Get-ArtHeldAttachmentArguments($Manifest) {
+    # The --held-attachment arguments of an animation library: each tool held in the clip it is used
+    # with, and each weapon in its hold and attack clips, when the library has the clip.
+    $arguments = @()
+    foreach ($directory in @(Get-ArtAssetDirectories)) {
+        $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
+        $named = @("useClip", "holdClip", "attackClip" | Where-Object {
+                $null -ne $json.PSObject.Properties[$_] -and $Manifest.Clips -ccontains [string]$json.$_ })
+        if ($named.Count -eq 0) {
+            continue
+        }
+
+        $held = Read-ArtAssetManifest $directory
+        if ($held.Socket.Skeleton -ceq $Manifest.Skeleton) {
+            foreach ($clip in @($held.UseClip, $held.HoldClip, $held.AttackClip | Where-Object { $null -ne $_ })) {
+                $arguments += @("--held-attachment", "$($held.SourcePath)=${clip}:$($held.Socket.Bone)")
+            }
+        }
+    }
+
+    return $arguments
+}
+
+function Format-ArtMotion($Motion) {
+    # The motion numbers of one clip, an ART_MOTION record, as one line for a person.
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $fastest = if ($null -ne $Motion.fastestBone) {
+        "fastest $($Motion.fastestBone) at $(([double]$Motion.fastestSpeed).ToString('0.0', $culture)) m/s"
+    }
+    else {
+        "no bone moves"
+    }
+
+    $line = "$($Motion.clip): $(([double]$Motion.seconds).ToString('0.00', $culture)) s; " +
+        "root travels $(([double]$Motion.rootTravel).ToString('0.00', $culture)) m and sinks to $(([double]$Motion.rootLowest * 100).ToString('0', $culture)) %; " +
+        "$fastest; $(([double]$Motion.movingShare * 100).ToString('0', $culture)) % of the joints turn; " +
+        "lowest point $(([double]$Motion.lowestPoint).ToString('0.000', $culture)) m"
+    if ([double]$Motion.loopGap -gt 0.0) {
+        $line += "; the loop jumps $(([double]$Motion.loopGap).ToString('0.000', $culture)) m"
+    }
+
+    return $line
+}
+
 function Read-ArtRigReference([string]$Asset, [string]$Skeleton, [string]$Field) {
     # A skinned asset of the given skeleton that an animation library names: its repository path,
     # its .blend file, its armature, and its manifest path. Its approvals are checked on its own.
