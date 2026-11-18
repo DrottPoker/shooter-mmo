@@ -83,7 +83,7 @@
       "rule": "item_invariant_violations",
       "limit": 0,
       "unit": "count",
-      "description": "Maximum. Exact item quantities, unique occupied slots, valid custody, and no pending item operation after a full-stack run."
+      "description": "Maximum. Fixture quantities that differ and violations of GameService's economy audit, whose every check must run, after a full-stack run."
     },
     {
       "rule": "process_memory_growth",

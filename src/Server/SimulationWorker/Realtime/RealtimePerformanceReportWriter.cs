@@ -279,6 +279,21 @@ internal sealed record RealtimePerformanceReportEntry(
     public IReadOnlyDictionary<string, RealtimeMessageCountEntry> ReceivedByMessage { get; init; } =
         new Dictionary<string, RealtimeMessageCountEntry>();
 
+    // The UDP datagrams of the interval, which carry the messages above together with
+    // LiteNetLib's own packets, and their bytes, the sealing layer's included; the bytes that the
+    // sealing layer added in both directions; and the received datagrams it dropped.
+    public long DatagramsIn { get; init; }
+
+    public long DatagramBytesIn { get; init; }
+
+    public long DatagramsOut { get; init; }
+
+    public long DatagramBytesOut { get; init; }
+
+    public long SealingOverheadBytes { get; init; }
+
+    public long DroppedDatagrams { get; init; }
+
     public static RealtimePerformanceReportEntry From(RealtimeMetricsInterval interval)
     {
         var network = interval.Delta;
@@ -363,7 +378,13 @@ internal sealed record RealtimePerformanceReportEntry(
             TickCpuMs = performance.SimulationTickCpu is { } cpu ? cpu.AverageMilliseconds * cpu.Samples : null,
             TickNotRunning = RealtimeDurationEntry.From(performance.SimulationTickNotRunning),
             SentByMessage = ToEntries(network.SentByMessage),
-            ReceivedByMessage = ToEntries(network.ReceivedByMessage)
+            ReceivedByMessage = ToEntries(network.ReceivedByMessage),
+            DatagramsIn = network.DatagramsReceived,
+            DatagramBytesIn = network.DatagramBytesReceived,
+            DatagramsOut = network.DatagramsSent,
+            DatagramBytesOut = network.DatagramBytesSent,
+            SealingOverheadBytes = network.SealingOverheadBytes,
+            DroppedDatagrams = network.DroppedDatagrams
         };
     }
 

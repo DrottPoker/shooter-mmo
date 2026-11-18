@@ -93,6 +93,8 @@ public sealed class QuestFlowIntegrationTests
         Assert.Equal(await QuestLogRevisionAsync(context, session.CharacterId), kept.Revision);
         Assert.True(worker.Items.TryGet(session.CharacterId, session.SimulationSessionId, out var carry));
         Assert.Equal(abandoned.ItemStateRevision, carry!.ItemStateRevision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker names the credited Mob and its tags, GameService counts the kill once per
@@ -143,6 +145,8 @@ public sealed class QuestFlowIntegrationTests
         var kept = worker.Log();
         Assert.Equal(1, kept.ActiveQuests[Wolves].Progress["wolves"]);
         Assert.Equal(await QuestLogRevisionAsync(context, session.CharacterId), kept.Revision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A yield that names the vein counts for the errand's ore in the gathering transaction, and
@@ -195,6 +199,8 @@ public sealed class QuestFlowIntegrationTests
         var kept = worker.Log();
         Assert.Equal(1, kept.ActiveQuests[Errand].Progress["ore"]);
         Assert.Equal(await QuestLogRevisionAsync(context, session.CharacterId), kept.Revision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker asks which of three rolled trophies the quest still needs, gets the two it asks
@@ -253,6 +259,8 @@ public sealed class QuestFlowIntegrationTests
             cancellationToken);
         Assert.True(stillNeeded.Succeeded, stillNeeded.Error?.Code + ": " + stillNeeded.Error?.Message);
         Assert.Equal([new WorkerQuestDrop(Trophies, Trophy, 1)], stillNeeded.Value!.Drops);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static WorkerQuestDropRequest QuestDrops(ActiveSimulationSession session, IReadOnlyList<WorkerQuestDrop> drops)
@@ -402,8 +410,8 @@ public sealed class QuestFlowIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new Mmorpg.GameService.Placement.ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 WorkerRuntimeId,
                 ShardId),

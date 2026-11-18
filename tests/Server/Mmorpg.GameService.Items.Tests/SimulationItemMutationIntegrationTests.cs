@@ -73,6 +73,8 @@ public sealed class SimulationItemMutationIntegrationTests
         var result = await committed.Content.ReadFromJsonAsync<ItemTransactionResult>();
         Assert.NotNull(result);
         Assert.True(result.Succeeded);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -182,6 +184,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(
             ItemTransactionErrorCodes.WrongSimulationWorker,
             stale.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -241,6 +245,8 @@ public sealed class SimulationItemMutationIntegrationTests
 
         Assert.True(retry.Succeeded, retry.Error?.Message);
         Assert.Equal(committed.Value!.OperationId, retry.Value!.OperationId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -331,8 +337,8 @@ public sealed class SimulationItemMutationIntegrationTests
             CancellationToken.None);
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         var reconnect = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                reconnectTicket.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                reconnectTicket.Value!,
                 WorkerId,
                 RuntimeId,
                 ShardId),
@@ -342,6 +348,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(committedCarry.Revision, reconnect.Value.ItemStateRevision);
         Assert.Equal(committedCarry.CarriedWeight, reconnect.Value.CarriedWeight);
         Assert.Equal(committedCarry.CarryCapacity, reconnect.Value.CarryCapacity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -442,6 +450,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(snapshot.ItemStateRevision, after.ItemStateRevision);
         Assert.NotNull(after.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item);
         Assert.Single(after.RecoveryStorage.Deliveries);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -510,6 +520,8 @@ public sealed class SimulationItemMutationIntegrationTests
             after.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
         Assert.Null(after.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item);
         Assert.Null(after.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 1).Item);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -588,6 +600,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(
             sword.ItemInstanceId,
             restored.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 1).Item!.ItemInstanceId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -731,6 +745,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(
             bagPotion.ItemInstanceId,
             afterRejection.EquippedBag!.Contents.Slots.Single(slot => slot.SlotIndex == 4).Item!.ItemInstanceId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task AssertRejectedAsync(
@@ -822,8 +838,8 @@ public sealed class SimulationItemMutationIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 RuntimeId,
                 ShardId),

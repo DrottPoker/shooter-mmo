@@ -7,6 +7,7 @@ using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Placement.Development;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Quests;
 using Mmorpg.Server.Telemetry;
@@ -58,6 +59,7 @@ internal sealed record GameServiceConfiguration(
         var itemCatalog = ItemCatalogSource.FromConfiguration(configuration);
         var questCatalog = QuestCatalogSource.FromConfiguration(configuration);
         var telemetry = TelemetryOptions.FromConfiguration(configuration);
+        var audit = AuditOptions.FromConfiguration(configuration, environment.IsDevelopment());
 
         // Content serves exactly the catalog files that Items and Quests load.
         var content = ContentModuleOptions.FromConfiguration(
@@ -66,7 +68,7 @@ internal sealed record GameServiceConfiguration(
             questCatalog.RuntimeCatalogPath);
 
         return new GameServiceConfiguration(
-            core.Platform,
+            core.Platform with { Audit = audit },
             core.Accounts with { RedisAcceleration = redisAcceleration },
             core.Characters,
             core.Placement with

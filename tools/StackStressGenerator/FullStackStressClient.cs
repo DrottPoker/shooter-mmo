@@ -538,7 +538,8 @@ public sealed record FullStackJoinShardResponse(
     FullStackShardResponse Shard,
     FullStackSimulationEndpointResponse Endpoint,
     Guid CharacterId,
-    string JoinTicket,
+    Guid JoinTicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt,
     bool IsReconnect);
 

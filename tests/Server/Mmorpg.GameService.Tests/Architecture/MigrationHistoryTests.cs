@@ -68,7 +68,8 @@ public sealed class MigrationHistoryTests
         "202611141320_account_session_retention_index 707f8234ab6387214a6d6cf7a3327a53cf32204df8a8d317e25f79b09e97ef67",
         "202611141400_character_data_steps adc96e22961ed540b2958da7486fd408f7ea57de0b2b6c417d043d8260dcfe19",
         "202611141410_item_data_steps daf051bd68062ff80e27e594b563f75172486e456a166fe2bf018286d85155cf",
-        "202611141420_character_item_state_backfill 1b5bb0b2dd2b19193eb302758451e00f1263318e4de9f31341feb7e504dcf78a"
+        "202611141420_character_item_state_backfill 1b5bb0b2dd2b19193eb302758451e00f1263318e4de9f31341feb7e504dcf78a",
+        "202611171400_join_ticket_transport_key c3336a50ace449753b0b9cccb9f7bbc586b5b8477521943c4a2d006b4fd665e9"
     ];
 
     [Fact]

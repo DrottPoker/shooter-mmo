@@ -443,7 +443,7 @@ public sealed class StressQualityBoundary
             "item_invariant_violations" => !fullStack
                 ? Measurement.Skip("no durable items in worker-only mode")
                 : report.Postgres?.ItemInvariants is { } invariants
-                    ? Measurement.Of(invariants.Violations, null)
+                    ? MeasureItemInvariants(invariants)
                     : Measurement.Missing("the item invariants were not checked."),
             "generator_poll_lateness_p99_ms" => report.GeneratorTiming?.PollLateness is { } lateness
                 ? Measurement.Of(lateness.P99Ms, Invariant($"{lateness.Samples} poll rounds of the steady interval, worst {lateness.MaximumMs:0.0} ms"))
@@ -462,6 +462,16 @@ public sealed class StressQualityBoundary
                         : Measurement.Skip("the proxy's counts are read once it stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs"),
             _ => throw new InvalidOperationException($"The rule '{rule}' has no measurement.")
         };
+    }
+
+    // The fixture quantities and every violation of GameService's economy audit. A violation fails
+    // the rule with its count; an audit that could not run every check measured nothing.
+    private static Measurement MeasureItemInvariants(StressItemInvariantSummary invariants)
+    {
+        var note = Invariant($"fixture loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}; {invariants.Audit.Describe()}");
+        return invariants.Violations > 0 || invariants.Audit.Ran
+            ? Measurement.Of(invariants.Violations, note)
+            : Measurement.Missing(note);
     }
 
     // The last fifth's average over the second fifth's, of the worst process; only a planned

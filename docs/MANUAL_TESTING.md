@@ -438,15 +438,15 @@ Expected result:
   [CLIENT] Character '<name>' (<character-id>) is requesting access to shard 'local-shard-1'.
   [AUTH] GameService issued a short-lived join ticket for character '<name>' on shard 'local-shard-1'.
   [CLIENT] Opening UDP connection to SimulationWorker 'local-simulation-worker-1' runtime '<worker-runtime-id>' at 127.0.0.1:27015/udp for shard 'local-shard-1'.
-  [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to SimulationWorker.
+  [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the join request with the ticket's proof to SimulationWorker.
   [SIMULATION] Account '<account-id>' with character '<name>' (<character-id>) connected to shard 'local-shard-1' for world 'development-world-2' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
   [CLIENT] Server-authoritative movement is active at 30 ticks per second with 15 snapshots per second. Player versus player is allowed on this Shard.
   ```
 
 - An authentication, API, transport, timeout, protocol, or SimulationWorker
   rejection appears as a red Console error with its category and stable error
-  code. No password, bearer token, join ticket, service secret, or simulation
-  session token ever appears in the Console.
+  code. No password, bearer token, join ticket, transport key, service secret,
+  or simulation session token ever appears in the Console.
 
 ### Leave And Log Out
 
@@ -1003,7 +1003,10 @@ Keep the Game view focused in Development World 2.
    the camera follows it and the ground under the pointer moves ahead.
 6. Drag with the middle mouse button, then hold each arrow key. Expected result:
    dragging turns and tilts the camera around the character, left and right
-   turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees.
+   turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees. Open
+   the inventory, click its search field, type a word, and hold the left and
+   right arrow keys. Expected result: the caret moves through the word and the
+   camera stays still; after Escape the arrow keys turn the camera again.
 7. Scroll the mouse wheel both ways. Expected result: each notch zooms by about
    15 percent between 0.6 and 15 meters, and the zoom eases instead of jumping.
    Fully zoomed in, the camera stays about 30 centimeters from the head and the
@@ -3003,6 +3006,44 @@ The other two-client checks sit with their features:
 [looting one corpse together](#two-clients-at-one-corpse), and
 [looks, garments, and corpses](#other-players-bots-and-corpses).
 
+## Sealed Realtime Transport
+
+Every UDP datagram of a joined client is encrypted and authenticated, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. This
+check shows that what someone on the path sends is dropped, counted, and
+changes nothing for the player.
+
+1. [Join with the Unity client](#join-with-the-unity-client) and walk.
+2. Watch the worker terminal for its `Worker status` line, which comes every
+   `NetworkMetricsLogSeconds`.
+3. While the character walks, send three forged datagrams to the worker from
+   PowerShell: one in the sealed format that no key made, one clear owner
+   channel packet, and one of no known kind:
+
+   ```powershell
+   $udp = [System.Net.Sockets.UdpClient]::new()
+   $sealed = [byte[]](1, 0, 0, 0, 0, 1, 0, 0, 0) + [byte[]]::new(40)
+   $clear = [byte[]](0, 1, 0, 0, 14) + [byte[]]::new(20)
+   $unknown = [byte[]](7, 7, 7)
+   foreach ($datagram in @($sealed, $clear, $unknown)) {
+       [void]$udp.Send($datagram, $datagram.Length, "127.0.0.1", 27015)
+   }
+   $udp.Dispose()
+   ```
+
+Expected result: while one character plays, the status line names the
+datagrams per second in both directions and the sealing overhead in the form
+`datagrams <n> received/s and <n> sent/s with <n> KiB/s of sealing, 0.0
+dropped/s`, where the sealing rate is 25 bytes for every datagram of both
+directions together. After the forged datagrams the next status line shows a
+dropped rate above 0, and with the [monitoring stack](MONITORING.md#run-the-monitoring-stack)
+`simulation_worker_realtime_datagrams_dropped_total` grows for the reasons
+`unauthenticated`, `clear_not_allowed`, and `malformed`. The worker answers none
+of them and logs nothing for them, and the character walks on without a hitch
+or a disconnect. The forged datagrams come from another endpoint than the
+client's; the tests of `RealtimeSealedTransportTests` send them from the
+client's own endpoint through a relay on the path, with the same result.
+
 ## Play On A Bad Network
 
 Every other check runs on loopback. This one puts the network impairment proxy
@@ -3606,13 +3647,21 @@ $join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
 $join.shard.id
 $join.shard.worldId
 $join.endpoint
+$join.joinTicketId
+[Convert]::FromBase64String($join.transportKey).Length
 ```
 
-Expected result: `local-shard-1`, `development-world-2`, and an endpoint that
+Expected result: `local-shard-1`, `development-world-2`, an endpoint that
 names `local-simulation-worker-1`, its current runtime, host `127.0.0.1`, and
-UDP port `27015`, which the public shard list never shows. The ticket is
-short-lived and is consumed only by the UDP handshake of a client; no HTTP
-route of the worker takes it.
+UDP port `27015`, which the public shard list never shows, a ticket id, and a
+transport key of `32` bytes. The ticket is short-lived and is consumed only by
+the UDP handshake of a client, which proves the key without sending it; no HTTP
+route of the worker takes it. In the database the pending ticket holds its key
+until the consume or a newer ticket clears it:
+
+```text
+select id, octet_length(transport_key) as key_bytes, consumed_at from simulation_join_tickets order by created_at desc limit 3;
+```
 
 ### Logout And Session Revocation
 
@@ -3773,6 +3822,44 @@ for anything else.
 A second start of GameService with unchanged content logs no
 `Database seed change` line: it neither recomputes the carry state nor reads the
 stored looks.
+
+### The Economy Audit
+
+Play for a few minutes with a client: buy and sell at Mira, gather, loot a
+wolf, die, and loot your corpse, as the sections above describe. Then audit the
+local database from a second terminal while GameService keeps running. The
+running service holds its build output, so the command runs that build:
+
+```powershell
+dotnet run --project src/Server/GameService --no-build -- audit
+$LASTEXITCODE
+dotnet run --project src/Server/GameService --no-build -- audit --json
+```
+
+Expected result: the report lists every check of
+[Audit Checks](GAME_SERVICE_MODULES.md#audit-checks) as `ok` with what it
+examined, ends with `The economy is consistent.`, and `$LASTEXITCODE` is `0`;
+the JSON form says `"outcome": "clean"` and `"exitCode": 0`. No line names a
+player or a character by name. A violation, which the integration tests plant
+on purpose, would be marked `VIOLATED` with examples by id and exit with `1`.
+
+Then stop GameService and start it with the scheduled audit on and a short
+interval:
+
+```powershell
+$env:Audit__Enabled = "true"
+$env:Audit__IntervalSeconds = "60"
+dotnet run --project src/Server/GameService
+```
+
+Expected result: right after the start and then every minute GameService logs
+`Economy audit ran <n> of <n> checks in <ms> ms: 0 violations in 0 checks, 0
+checks could not run.` With the monitoring stack running, as
+[Run The Monitoring Stack](MONITORING.md#run-the-monitoring-stack) describes,
+Prometheus shows `game_service_audit_violations` at `0` for every check and
+`game_service_audit_runs_total{outcome="clean"}` growing, and neither
+`EconomyAuditViolations` nor `EconomyAuditFailed` fires. Remove both variables,
+or close the terminal, before you start GameService for anything else.
 
 ### Logs
 

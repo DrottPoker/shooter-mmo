@@ -323,6 +323,7 @@ public sealed class EconomyOperationValidationTests
 
         Assert.Equal((200, PurchaseJson), purchase);
         Assert.Equal((200, SaleJson), sale);
+        await EconomyAudit.AssertCleanAsync(scenario.Context);
     }
 
     private const string PurchaseJson =
@@ -471,11 +472,11 @@ public sealed class EconomyOperationValidationTests
             Assert.NotEmpty(cases);
         }
 
+        public PostgresIntegrationTestContext Context => context;
+
         public Task SetCurrencyAsync(long currency)
         {
-            return new ItemScenarioWorld(context).ExecuteSqlAsync(
-                "update characters set currency = @Currency where id = @CharacterId;",
-                new { Currency = currency, session.CharacterId });
+            return context.SetCurrencyAsync(session.CharacterId, currency);
         }
 
         // Posts a request of the kind at the character's and the ore's current revisions, and

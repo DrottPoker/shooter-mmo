@@ -107,6 +107,8 @@ public sealed class AccountSessionEndItemIntegrationTests
             CancellationToken.None);
         Assert.True(death.Succeeded, death.Error?.Message);
         Assert.Equal(death.Value!.Corpse.CorpseId, (await LoadItemAsync(context, ringId))!.CorpseId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -133,6 +135,8 @@ public sealed class AccountSessionEndItemIntegrationTests
             (StatusCodes.Status401Unauthorized, ItemTransactionErrorCodes.AccountSessionReplaced),
             (relocate.StatusCode, relocate.Error!.Code));
         Assert.Equal(1, (await LoadItemAsync(context, ringId))!.SlotIndex);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static SimulationItemOperationRequest Relocate(
@@ -227,7 +231,7 @@ public sealed class AccountSessionEndItemIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(join.Value!, WorkerId, RuntimeId, ShardId),
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;

@@ -152,7 +152,7 @@ public sealed class PlacementRetentionIntegrationTests
         var join = await TicketAsync(context, account, characterId);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(join.Value!, WorkerId, RuntimeId, ShardId),
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;

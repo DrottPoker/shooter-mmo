@@ -35,7 +35,7 @@ How the system is built.
 - [Project Architecture](PROJECT_ARCHITECTURE.md): terminology, topology, process boundaries,
   data ownership, trust boundaries, and the core runtime flows.
 - [GameService Modules](GAME_SERVICE_MODULES.md): the GameService module projects, their
-  contracts, tables, lock order, migrations, retention, and guard tests.
+  contracts, tables, lock order, migrations, retention, the economy audit, and guard tests.
 - [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md): the client assemblies, folders,
   runtime structure, networking, content loading, and client flows.
 - [Realtime Protocol](REALTIME_PROTOCOL.md): the binary wire format, the schema and its
@@ -78,7 +78,7 @@ How to work on a part of the project.
 | --- | --- |
 | A game rule, its intent, or a planned feature | The matching design document |
 | A boundary, ownership, threading, or flow between processes | [Project Architecture](PROJECT_ARCHITECTURE.md) |
-| GameService module structure, tables, locks, migrations, or retention | [GameService Modules](GAME_SERVICE_MODULES.md) |
+| GameService module structure, tables, locks, migrations, retention, or the economy audit | [GameService Modules](GAME_SERVICE_MODULES.md) |
 | A Unity class structure, client flow, or extension rule | [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) |
 | A realtime message or the current protocol version | [Realtime Protocol](REALTIME_PROTOCOL.md) |
 | What the player sees and the controls | [Game Features](GAME_FEATURES.md) |

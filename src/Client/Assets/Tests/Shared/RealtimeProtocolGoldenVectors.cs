@@ -589,13 +589,18 @@ namespace Mmorpg.SharedTests
                 "70 69 72 65 64 18 00 54 68 65 20 6a 6f 69 6e 20 " +
                 "74 69 63 6b 65 74 20 65 78 70 69 72 65 64 2e",
             ["Session/JoinRejected/exact-packet-limit"] = "sha256:1193:f154e71e8891959f109220d06bcf5477d321b09c9ab6985201cce2e1eede68bd",
-            ["Session/JoinRequest/ascii"] =
-                "11 00 74 69 63 6b 65 74 2e 76 31 2e 61 62 63 2d " +
-                "31 32 33",
-            ["Session/JoinRequest/maximum-length"] = "sha256:1026:04d5494bf4f12da9772b666b28c13e865f91e67779652313f06b542f1563be9f",
-            ["Session/JoinRequest/multibyte"] =
-                "17 00 62 69 6c 6a 65 74 74 2d c3 a5 c3 a4 c3 b6 " +
-                "2d e2 9c 93 2d f0 9f 98 80",
+            ["Session/JoinRequest/empty ticket id"] =
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "10 40 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e " +
+                "4f 20 80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d " +
+                "8e 8f 90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d " +
+                "9e 9f",
+            ["Session/JoinRequest/typical"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "10 40 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e " +
+                "4f 20 80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d " +
+                "8e 8f 90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d " +
+                "9e 9f",
             ["Session/LeaveAccepted/left at once"] =
                 "00 00",
             ["Session/LeaveAccepted/lingering body"] =

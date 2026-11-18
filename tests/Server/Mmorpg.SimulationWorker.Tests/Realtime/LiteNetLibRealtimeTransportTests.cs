@@ -148,11 +148,19 @@ public sealed class LiteNetLibRealtimeTransportTests
                 lifecycle,
                 new RealtimeMessageDispatcher(fixture.Registry, fixture.Sender, fixture.Metrics, NullLogger.Instance, new RealtimeMessageRoutes()));
             var loopback = new LoopbackPeer(fixture, transport, new RealtimeRecordingClient(name, null));
+            loopback.Client.UseKeysOf(name);
             loopback.Client.Connect(config.UdpPort);
             await loopback.PollUntilAsync(
                 () => loopback.Client.IsConnected && lifecycle.PeerIds.Count == 1,
                 "the client to connect");
             Assert.True(transport.TryGetConnectedPeer(lifecycle.PeerIds[0], out var peer));
+
+            // As a join does, so what the worker sends next is sealed.
+            using (var keys = RealtimeTestTickets.KeysOf(name))
+            {
+                peer.Seal(keys);
+            }
+
             loopback.Peer = peer;
             return loopback;
         }

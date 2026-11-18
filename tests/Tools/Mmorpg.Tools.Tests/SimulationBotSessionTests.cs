@@ -15,7 +15,8 @@ public sealed class SimulationBotSessionTests
         Guid.Parse("8d1f4c2e-58f4-4a52-a0b3-5f0c6d1e2a01"),
         Guid.Parse("3c0b9a7d-1e2f-4b6a-9d8c-7e6f5a4b3c02"),
         "Active Bot 1",
-        "ticket-1",
+        Guid.Parse("5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c03"),
+        Enumerable.Range(0, RealtimeTransportKeys.TransportKeySize).Select(value => (byte)value).ToArray(),
         "local-shard-2",
         "development-world-1");
 
@@ -105,8 +106,9 @@ public sealed class SimulationBotSessionTests
         AssertState(bot.Session, SimulationBotClientState.Joined);
     }
 
+    // The join request carries the ticket id and a fresh nonce with its proof, never the key.
     [Fact]
-    public void JoinsWithItsTicketOnTheSessionChannel()
+    public void JoinsWithItsTicketsProofOnTheSessionChannel()
     {
         var transport = new RecordingTransport();
         var session = NewSession();
@@ -118,8 +120,16 @@ public sealed class SimulationBotSessionTests
         var sent = Assert.Single(transport.Sent);
         Assert.Equal(RealtimeProtocol.SessionChannel, sent.Channel);
         Assert.Equal(RealtimeDelivery.ReliableOrdered, sent.Delivery);
-        Assert.True(RealtimeProtocol.TryDecodeJoinRequest(sent.Packet, out var ticket, out _));
-        Assert.Equal(Identity.Ticket, ticket);
+        Assert.True(RealtimeProtocol.TryDecodeJoinRequest(sent.Packet, out var request, out _));
+        Assert.Equal(Identity.TicketId, request.TicketId);
+        using var keys = RealtimeTransportKeys.Derive(Identity.TransportKey);
+        Assert.True(RealtimeJoinProof.Verify(
+            keys.ProofKey,
+            RealtimeProtocol.Version,
+            Identity.TicketId,
+            Identity.ShardId,
+            request.ClientNonce,
+            request.Proof));
     }
 
     [Fact]

@@ -113,6 +113,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             ItemOperationKinds.Destroy,
             snapshot,
             Item(snapshot.PermanentInventory, 7)));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -215,6 +217,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             Equipped(snapshot, "bag")) with
         { DestinationContainerId = inventory, DestinationSlotIndex = 7 });
         Assert.Null(snapshot.EquippedBag);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<CharacterInventorySnapshotResponse> AssertReportedAsync(
@@ -384,8 +388,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 RuntimeId,
                 ShardId),

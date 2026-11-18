@@ -197,6 +197,16 @@ public sealed record StressRunSummary(
                 // Payload bytes per joined client and second, as the worker counts them.
                 numbers["bytesInPerBotPerSecond"] = worker.Counters["bytesIn"].Total / worker.SteadySeconds / players;
                 numbers["bytesOutPerBotPerSecond"] = worker.Counters["bytesOut"].Total / worker.SteadySeconds / players;
+
+                // The datagrams on the wire and the bytes that sealing adds to them, both
+                // directions; absent for an older worker's file, so its baseline still compares.
+                if (worker.Counters["datagramsIn"].Total > 0)
+                {
+                    numbers["datagramsInPerSecond"] = worker.Counters["datagramsIn"].Total / worker.SteadySeconds;
+                    numbers["datagramsOutPerSecond"] = worker.Counters["datagramsOut"].Total / worker.SteadySeconds;
+                    numbers["sealingOverheadBytesPerBotPerSecond"] =
+                        worker.Counters["sealingOverheadBytes"].Total / worker.SteadySeconds / players;
+                }
             }
         }
 

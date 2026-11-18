@@ -33,6 +33,8 @@ public sealed class QuestAdminIntegrationTests
         Assert.Equal((Errand, "work"), OnlyQuest(accepted));
         Assert.Equal(Letter, Assert.Single(await LineageItemsAsync(context, characterId, Errand)).DefinitionId);
         Assert.Equal((409, QuestTransactionErrorCodes.QuestAlreadyActive), (twice.StatusCode, twice.Error!.Code));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // An objective, then the rest of the work step, then the return step; the letter from the
@@ -66,6 +68,8 @@ public sealed class QuestAdminIntegrationTests
         Assert.Null(QuestLogOf(ready.Value!));
         ItemScenarioWorld.AssertCommitted(turnedIn);
         Assert.Equal(1, Assert.Single(QuestLogSection.Read(turnedIn)!.Quests).CompletionCount);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The trophies collect two quest letters, the ore run three ordinary ores, and the wolves
@@ -95,6 +99,8 @@ public sealed class QuestAdminIntegrationTests
         var log = await ReadQuestLogAsync(context, characterId);
         Assert.Empty(log.ActiveQuests);
         Assert.Equal(3, log.CompletedQuests.Count);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A reset forgets a quest with its lineage items, the chain also the quests that require
@@ -132,6 +138,8 @@ public sealed class QuestAdminIntegrationTests
         Assert.True(everything.Succeeded, everything.Error?.Message);
         Assert.Equal((OreRun, null), OnlyQuest(everything));
         ItemScenarioWorld.AssertCommitted(again);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -169,6 +177,8 @@ public sealed class QuestAdminIntegrationTests
         Assert.Equal((403, QuestTransactionErrorCodes.DevelopmentToolsDisabled), (refused.StatusCode, refused.Error!.Code));
         Assert.Empty((await ReadQuestLogAsync(context, player.Character.Id)).ActiveQuests);
         Assert.Equal(400, resetAllWithAQuest.StatusCode);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static (string QuestId, string? StepId) OnlyQuest(ServiceResult<SimulationItemOperationResponse> result)

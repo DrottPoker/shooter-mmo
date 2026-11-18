@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
+using Mmorpg.GameService.Platform.Audit;
 
 namespace Mmorpg.GameService.Platform.Retention;
 
@@ -62,5 +63,5 @@ internal sealed class RetentionMetrics : IDisposable
 // The meters that Platform creates, which the host exports beside every module's.
 public static class PlatformMeters
 {
-    public static IReadOnlyList<string> Names { get; } = [RetentionMetrics.MeterName];
+    public static IReadOnlyList<string> Names { get; } = [RetentionMetrics.MeterName, AuditMetrics.MeterName];
 }

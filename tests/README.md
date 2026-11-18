@@ -16,7 +16,7 @@ and the check before every push in
 | --- | --- | --- |
 | `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, a fake Redis that answers the readiness probes, per-test databases copied from templates, golden files, trait names, and the metric names that the files in `observability` reference |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, quest catalog, and collision world loaders that use the content tools |
-| `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition and its offline variant, the API test hosts, services that issue policy and quest item commands as the system actor, the item scenario world, the traced item transaction service with its SQL trace recorder, and the GameService source map and assembly list |
+| `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition and its offline variant, the API test hosts, services that issue policy and quest item commands as the system actor, the item scenario world, `EconomyAudit`, which runs the economy audit with every module's checks and which scenario tests end with, the traced item transaction service with its SQL trace recorder, and the GameService source map and assembly list |
 | `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog, world actor, and quest catalog compilers; links the Unity EditMode movement scenario, realtime protocol golden cases, and content hash coverage helper |
 | `Mmorpg.Server.Common.Tests` | `Server/Mmorpg.Server.Common.Tests` | `Mmorpg.Server.Common` |
 | `Mmorpg.Server.Telemetry.Tests` | `Server/Mmorpg.Server.Telemetry.Tests` | `Mmorpg.Server.Telemetry`: export options, metric views, resource, sampling, and provider registration |
@@ -49,6 +49,10 @@ namespace.
   SimulationWorker together, goes into `Mmorpg.Integration.Tests`.
 - Shared runtime code that also compiles into Unity is tested in
   `Mmorpg.Shared.Tests`.
+- A test of the art pipeline's Python code goes into `tools/art/blender/tests`
+  and runs without Blender; how its modules are read, and what each file pins,
+  is in
+  [Python Tests Of The Pipeline](../docs/ART_PIPELINE.md#python-tests-of-the-pipeline).
 - Helpers used by one project stay in that project. Move a helper into a
   `Testing` library only when a second project needs it: generic helpers into
   `Mmorpg.Testing`, content loaders into `Mmorpg.Testing.Content`, and helpers
@@ -165,11 +169,24 @@ Expected result: every test passes inside its five-second regression budget,
 among them spatial selection and snapshot encoding and decoding for 25,000
 entities and 1,000 observers.
 
-The `Category=Benchmark` test is `ReplicationBenchmarkTests.MeasureTheReplicationLayouts`
+The `Category=Benchmark` tests are `ReplicationBenchmarkTests.MeasureTheReplicationLayouts`
 in `Mmorpg.SimulationWorker.Tests`, the
 [Replication Benchmark](../docs/STACK_STRESS_TESTING.md#replication-benchmark),
-which `tools/Measure-Replication.ps1` runs. A run of a whole test project
-without a filter runs it too, in about ten seconds; it writes nothing unless
+which `tools/Measure-Replication.ps1` runs, and
+`RealtimeTransportSecurityTests.MeasureTheCipherPerDatagram` in
+`Mmorpg.Shared.Tests`, which seals and opens datagrams of 60, 300, and 1,200
+bytes with both ChaCha20-Poly1305 implementations and writes the nanoseconds per
+datagram to the test output, and to a file when `MMORPG_CIPHER_BENCHMARK_RESULT`
+names one:
+
+```powershell
+dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release `
+  --filter "FullyQualifiedName~MeasureTheCipherPerDatagram" `
+  --logger "console;verbosity=detailed"
+```
+
+A run of a whole test project without a filter runs them too; the replication
+benchmark takes about ten seconds and writes nothing unless
 `MMORPG_REPLICATION_RESULT` names a file. Its fast companion,
 `ASmallLayoutKeepsItsDeterministicNumbers`, runs with every test run.
 
@@ -548,6 +565,16 @@ Error texts are not pinned, only the accept or reject outcome. The vectors
 change only together with an intended protocol change and a protocol version
 bump, as [Versioning](../docs/REALTIME_PROTOCOL.md#versioning) describes. Never
 update them to make a failing refactor pass.
+
+`RealtimeTransportSecurityCases.cs` beside them holds the cases of the sealed
+transport, run by `Mmorpg.Shared.Tests`, the EditMode tests, and the `Player`
+category: the RFC 8439 vectors of ChaCha20-Poly1305, the RFC 5869 vectors of
+HKDF, the pinned key schedule, join proof, and sealed datagram of fixed inputs,
+the join proof against every other input, the replay window, and the client and
+worker layer cores with clear, sealed, replayed, altered, and foreign
+datagrams. Only .NET has the platform implementation, so `Mmorpg.Shared.Tests`
+also checks it against the vectors and against the managed one with random
+inputs, and the managed HKDF against the platform's.
 
 `RealtimeProtocolGolden.EncodeVectors()` returns the packet of every vector by
 name for tests of a receiver. `Mmorpg.Tools.Tests` links the golden files and

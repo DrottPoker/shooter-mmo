@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameProtocol;
+using Mmorpg.GameService.Testing;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.Tools.StackStressGenerator;
 
@@ -59,7 +60,7 @@ public sealed class StressAuthorityContractTests
 
         var ticket = authority.IssueTicket(1);
         var joined = await client.ConsumeJoinTicketAsync(
-            ticket.Ticket,
+            JoinTicketProofs.JoinRequest(ticket.TicketId, ticket.TransportKey, options.ShardId),
             options.WorkerId,
             runtimeId,
             options.ShardId,

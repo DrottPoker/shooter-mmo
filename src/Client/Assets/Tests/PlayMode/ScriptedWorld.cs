@@ -56,7 +56,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return hub.Session.Join(Placement(collisionRevision), value => joined = value, error => Assert.Fail(error.ToDiagnostic()));
             session.EnterWorld(joined);
             Context.Initialize(session, hub.Session, hub.Movement, hub.Players, hub.Looks, hub.Admin, new LocalPlayerSource(),
-                new WorldPointerFocus(), null, null, null, budget);
+                new WorldInputFocus(), null, null, null, budget);
             Context.enabled = true;
         }
 
@@ -151,7 +151,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     collisionRevision = collisionRevision
                 },
                 characterId = CharacterId,
-                joinTicket = "ticket-content",
+                joinTicketId = Guid.NewGuid().ToString("D"),
+                transportKey = Convert.ToBase64String(RealtimeTransportKeys.CreateTransportKey()),
                 expiresAt = DateTime.UtcNow.AddMinutes(5).ToString("O")
             };
         }

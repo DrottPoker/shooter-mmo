@@ -5,6 +5,7 @@ using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Retention;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Server.Telemetry;
@@ -76,6 +77,7 @@ public sealed class GameServiceTelemetryTests
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();
         using var retentionMetrics = new RetentionMetrics();
+        using var auditMetrics = new AuditMetrics();
 
         var referenced = ObservabilityAssets.ReferencedMetricNames("game_service_");
 

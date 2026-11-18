@@ -67,7 +67,7 @@ namespace Mmorpg.Client.Ui
         private InventoryWindowRequests requests;
         private PlayerBodyLookSetting bodyLook;
         private CharacterPreview characterPreview;
-        private WorldPointerFocus pointerFocus;
+        private WorldInputFocus inputFocus;
         private Func<bool> pointerCapture;
         private InventoryInteractions interactions;
         private RectTransform root;
@@ -202,12 +202,12 @@ namespace Mmorpg.Client.Ui
             TextCatalog uiTexts,
             PlayerBodyLookSetting lookSetting = null,
             CharacterPreview preview = null,
-            WorldPointerFocus focus = null)
+            WorldInputFocus focus = null)
         {
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             characterPreview = preview;
-            pointerFocus = focus;
+            inputFocus = focus;
             theme = uiTheme;
             controller = inventoryController;
             corpseController = corpses;
@@ -588,9 +588,9 @@ namespace Mmorpg.Client.Ui
                 dragCoordinator.DragEnded -= OnDragEnded;
             }
 
-            if (pointerFocus != null && pointerCapture != null)
+            if (inputFocus != null && pointerCapture != null)
             {
-                pointerFocus.RemoveCapture(pointerCapture);
+                inputFocus.RemoveCapture(pointerCapture);
             }
         }
 
@@ -744,10 +744,10 @@ namespace Mmorpg.Client.Ui
             dragCoordinator.DroppedOutside += OnDroppedOutside;
             dragCoordinator.DragStarted += OnDragStarted;
             dragCoordinator.DragEnded += OnDragEnded;
-            if (pointerFocus != null)
+            if (inputFocus != null)
             {
                 pointerCapture = () => dragCoordinator != null && dragCoordinator.CapturesPointer;
-                pointerFocus.AddCapture(pointerCapture);
+                inputFocus.AddCapture(pointerCapture);
             }
 
             // The root only groups the windows and draws nothing, so a click beside or between

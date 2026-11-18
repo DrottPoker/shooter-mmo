@@ -54,6 +54,8 @@ public sealed class EquipmentStackIntegrationTests
         Assert.Equal(50, (await world.LoadItemAsync(split)).Quantity);
         Assert.Equal(55, await LoadCarriedWeightAsync(world, characterId));
         Assert.Equal(0, await CountEquippedAsync(world, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // Part of a stack equips into an empty slot and tops up an equipped or carried stack; the
@@ -111,6 +113,8 @@ public sealed class EquipmentStackIntegrationTests
         ItemScenarioWorld.AssertCommitted(await MergeAsync(world, characterId, arrows, carried, 15));
         Assert.Equal(45, (await world.LoadItemAsync(carried)).Quantity);
         Assert.Equal(0, await CountItemAsync(world, arrows));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -133,6 +137,8 @@ public sealed class EquipmentStackIntegrationTests
         Assert.False(result.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.ItemStackLimitExceeded, result.Error!.Code);
         Assert.Equal(0, await CountEquippedAsync(world, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -161,6 +167,8 @@ public sealed class EquipmentStackIntegrationTests
 
         await world.EquipAsync(characterId, sword, "main_hand");
         Assert.Equal(2, await CountEquippedAsync(world, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -192,6 +200,8 @@ public sealed class EquipmentStackIntegrationTests
         ItemScenarioWorld.AssertCommitted(await EquipAsync(world, characterId, sword, "main_hand"));
         Assert.Equal(bow, await world.FindItemAsync(inventoryId, 3));
         Assert.Equal(sword, await LoadEquippedItemAsync(world, characterId, "main_hand"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -214,6 +224,8 @@ public sealed class EquipmentStackIntegrationTests
         Assert.Equal(equipped, await LoadEquippedItemAsync(world, characterId, "ammunition"));
         Assert.Equal(30, (await world.LoadItemAsync(equipped)).Quantity);
         Assert.Equal(carried, await world.FindItemAsync(inventoryId, 1));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -237,6 +249,8 @@ public sealed class EquipmentStackIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotBlocked, blocked.Error!.Code);
         Assert.Equal(sword, await LoadEquippedItemAsync(world, characterId, "main_hand"));
         Assert.Equal(bow, await world.FindItemAsync(inventoryId, 2));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -278,6 +292,8 @@ public sealed class EquipmentStackIntegrationTests
         Assert.Equal(
             "active",
             await LoadContainerLifecycleAsync(world, (await world.LoadItemAsync(newBag)).BagContentsContainerId!.Value));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -307,6 +323,8 @@ public sealed class EquipmentStackIntegrationTests
         await SetLevelAsync(context, characterId, 3);
         ItemScenarioWorld.AssertCommitted(await EquipAsync(world, characterId, helm, "head"));
         Assert.Equal(1, await CountEquippedAsync(world, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -356,6 +374,8 @@ public sealed class EquipmentStackIntegrationTests
             equipped));
         Assert.Equal(50, (await world.LoadItemAsync(equipped)).Quantity);
         Assert.Equal(5, (await world.LoadItemAsync(carried)).Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task SetLevelAsync(

@@ -60,8 +60,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(LocalRuntimeId, join.Value.Endpoint.RuntimeId);
 
         var wrongWorker = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value,
                 "another-worker",
                 LocalRuntimeId,
                 LocalShardId),
@@ -72,7 +72,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal("wrong_simulation_worker", wrongWorker.Error!.Code);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
 
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value);
 
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         Assert.Equal(player.Character.Id, consumed.Value!.CharacterId);
@@ -89,7 +89,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.False(consumed.Value.IsReconnect);
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
-        var consumedAgain = await ConsumeLocalTicketAsync(context, join.Value.JoinTicket);
+        var consumedAgain = await ConsumeLocalTicketAsync(context, join.Value);
         Assert.False(consumedAgain.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumedAgain.StatusCode);
 
@@ -126,6 +126,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.Null(heartbeatAfterRelease.Lease);
         Assert.Equal("invalid_simulation_session", heartbeatAfterRelease.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -156,7 +158,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(revokeWithPendingTicket.Succeeded, revokeWithPendingTicket.Error?.Message);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
 
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         var revokeWithActiveSession = await context.SessionService.RevokeAsync(
@@ -173,6 +175,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
             victim.Registration.SessionToken,
             CancellationToken.None));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -251,7 +255,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         Assert.Equal(snapshot.ItemStateRevision, consumed.Value!.ItemStateRevision);
         Assert.Equal(snapshot.CarriedWeight, consumed.Value.CarriedWeight);
@@ -295,13 +299,15 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         var reconnect = await ConsumeLocalTicketAsync(
             context,
-            reconnectTicket.Value!.JoinTicket);
+            reconnectTicket.Value!);
         Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
         Assert.True(reconnect.Value!.IsReconnect);
         Assert.Equal(heartbeat.ItemStateRevision, reconnect.Value.ItemStateRevision);
         Assert.Equal(heartbeat.CarriedWeight, reconnect.Value.CarriedWeight);
         Assert.Equal(heartbeat.CarryCapacity, reconnect.Value.CarryCapacity);
         Assert.Equal(heartbeat.Equipment, reconnect.Value.Equipment);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker enforces the rule set of the Shard row, so a changed row reaches it.
@@ -326,6 +332,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.True(changed.Succeeded, changed.Error?.Message);
         Assert.Equal("closed-test", changed.Value!.RuleSet);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -368,7 +376,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         // A reconnect to the owning worker is rejected once that worker reports another catalog.
@@ -397,6 +405,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(missing.Succeeded);
         Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -449,6 +459,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(missing.Succeeded);
         Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -483,6 +495,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.True(retry.Succeeded, retry.Error?.Message);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -545,6 +559,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.False(secondJoin.Succeeded);
         Assert.Equal("shard_unavailable", secondJoin.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -570,7 +586,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
-        var firstSession = await ConsumeLocalTicketAsync(context, firstJoin.Value!.JoinTicket);
+        var firstSession = await ConsumeLocalTicketAsync(context, firstJoin.Value!);
         Assert.True(firstSession.Succeeded, firstSession.Error?.Message);
 
         var secondPlayer = await context.RegisterPlayerAsync(
@@ -591,6 +607,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.False(shard.IsOnline);
         Assert.Equal(1, shard.ActivePlayers);
         Assert.Equal(1, shard.Capacity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -616,7 +634,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var consumedSessions = new List<ConsumedSimulationJoinTicketResponse>();
         foreach (var ticket in tickets)
         {
-            var consume = await ConsumeLocalTicketAsync(context, ticket.Value!.JoinTicket);
+            var consume = await ConsumeLocalTicketAsync(context, ticket.Value!);
             if (consume.Succeeded)
             {
                 consumedSessions.Add(consume.Value!);
@@ -654,7 +672,7 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var reconnect = await ConsumeLocalTicketAsync(
             context,
-            reconnectTicket.Value.JoinTicket);
+            reconnectTicket.Value);
         Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
         Assert.True(reconnect.Value!.IsReconnect);
         Assert.Equal(firstSession.SimulationSessionId, reconnect.Value.SimulationSessionId);
@@ -694,6 +712,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(crossShardAfterRelease.Succeeded, crossShardAfterRelease.Error?.Message);
         Assert.Equal("worker-local-shard-2", crossShardAfterRelease.Value!.Endpoint.WorkerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -736,6 +756,8 @@ public sealed class AuthSimulationFlowIntegrationTests
                       'ux_simulation_join_tickets_active_character',
                       'ux_simulation_assignments_active_shard');
                 """));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -753,7 +775,7 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var firstSimulationSession = await ConsumeLocalTicketAsync(
             context,
-            firstJoin.Value!.JoinTicket);
+            firstJoin.Value!);
         Assert.True(firstSimulationSession.Succeeded, firstSimulationSession.Error?.Message);
 
         var secondCharacter = await context.CharacterService.CreateAsync(
@@ -815,6 +837,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(secondCharacterId),
             CancellationToken.None);
         Assert.True(replacementJoin.Succeeded, replacementJoin.Error?.Message);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -849,6 +873,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.Equal(1, authenticatedLoginCount);
         Assert.Equal(1, await CountActiveAccountSessionsAsync(context));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -902,6 +928,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(future.Succeeded);
         Assert.Equal("invalid_worker_started_at", future.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -980,6 +1008,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             0,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_assignments where released_at is null;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1012,6 +1042,8 @@ public sealed class AuthSimulationFlowIntegrationTests
                   and not is_online
                   and runtime_id is null;
                 """));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1048,6 +1080,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             afterHeartbeat.Value!,
             shard => shard.Id == "unbound-shard"
                 && shard.WorldId == "development-world-2");
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1064,7 +1098,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(activePlayer.Character.Id),
             CancellationToken.None);
         Assert.True(activeJoin.Succeeded, activeJoin.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, activeJoin.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, activeJoin.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         var pendingPlayer = await context.RegisterPlayerAsync(
@@ -1106,6 +1140,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
         Assert.Equal("development-world-2", Assert.Single(shards.Value!).WorldId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1161,6 +1197,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Contains("1 open durable corpses", blocked.Error.Message);
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
         Assert.Equal("development-world-1", Assert.Single(shards.Value!).WorldId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1202,6 +1240,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             0,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_workers where id = 'simulation-worker-a' and is_online;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1229,8 +1269,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
         var firstSession = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                firstJoin.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                firstJoin.Value!,
                 LocalWorkerId,
                 "first-runtime",
                 LocalShardId),
@@ -1272,18 +1312,16 @@ public sealed class AuthSimulationFlowIntegrationTests
             1,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_assignments where worker_id = 'local-simulation-worker-1' and shard_id = 'secondary-shard' and released_at is null;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static Task<ServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeLocalTicketAsync(
         PostgresIntegrationTestContext context,
-        string ticket)
+        JoinShardResponse ticket)
     {
         return context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                ticket,
-                LocalWorkerId,
-                LocalRuntimeId,
-                LocalShardId),
+            JoinTicketProofs.Consume(ticket, LocalWorkerId, LocalRuntimeId, LocalShardId),
             CancellationToken.None);
     }
 

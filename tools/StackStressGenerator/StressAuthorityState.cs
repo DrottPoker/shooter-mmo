@@ -18,8 +18,7 @@ public sealed class StressAuthorityState
 
     private readonly object gate = new();
     private readonly StressGeneratorOptions options;
-    private readonly Dictionary<string, PendingTicket> pendingTickets =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, PendingTicket> pendingTickets = [];
     private readonly Dictionary<Guid, StressSession> sessions = [];
     private readonly TaskCompletionSource<StressWorkerRegistration> workerRegistered =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -169,10 +168,11 @@ public sealed class StressAuthorityState
             var accountId = CreateDeterministicGuid("account", botIndex);
             var characterId = CreateDeterministicGuid("character", botIndex);
             var characterName = $"Stress Bot {botIndex}";
-            var ticket = CreateToken();
+            var ticketId = Guid.NewGuid();
+            var transportKey = RealtimeTransportKeys.CreateTransportKey();
             var expiresAt = DateTime.UtcNow.Add(TicketLifetime);
             pendingTickets.Add(
-                HashToken(ticket),
+                ticketId,
                 new PendingTicket(
                     accountId,
                     characterId,
@@ -181,14 +181,16 @@ public sealed class StressAuthorityState
                     worker.RuntimeId,
                     worker.ShardId,
                     worker.WorldId,
-                    expiresAt));
+                    expiresAt,
+                    (byte[])transportKey.Clone()));
             ticketsIssued++;
             return new StressIssuedTicket(
                 botIndex,
                 accountId,
                 characterId,
                 characterName,
-                ticket,
+                ticketId,
+                transportKey,
                 expiresAt);
         }
     }
@@ -199,11 +201,16 @@ public sealed class StressAuthorityState
         ArgumentNullException.ThrowIfNull(request);
         lock (gate)
         {
-            var ticketHash = HashToken(request.Ticket ?? string.Empty);
-            if (!pendingTickets.TryGetValue(ticketHash, out var ticket)
-                || ticket.ExpiresAt <= DateTime.UtcNow)
+            // As GameService: the proof comes first, and a wrong one leaves the ticket as it was.
+            if (!pendingTickets.TryGetValue(request.TicketId, out var ticket)
+                || ticket.ExpiresAt <= DateTime.UtcNow
+                || !ProvesTransportKey(request, ticket))
             {
-                pendingTickets.Remove(ticketHash);
+                if (ticket is not null && ticket.ExpiresAt <= DateTime.UtcNow)
+                {
+                    RemoveTicket(request.TicketId);
+                }
+
                 ticketRejections++;
                 return StressAuthorityResult<StressConsumedTicketResponse>.Failure(
                     401,
@@ -222,7 +229,8 @@ public sealed class StressAuthorityState
                     "The stress join ticket does not match the requesting worker runtime and shard.");
             }
 
-            pendingTickets.Remove(ticketHash);
+            var transportKey = (byte[])ticket.TransportKey.Clone();
+            RemoveTicket(request.TicketId);
             var sessionId = Guid.NewGuid();
             var sessionToken = CreateToken();
             var expiresAt = DateTime.UtcNow.Add(SessionLeaseDuration);
@@ -258,8 +266,41 @@ public sealed class StressAuthorityState
                     false)
                 {
                     IsSyntheticBot = true,
-                    SessionLeaseDurationMilliseconds = (long)SessionLeaseDuration.TotalMilliseconds
+                    SessionLeaseDurationMilliseconds = (long)SessionLeaseDuration.TotalMilliseconds,
+                    TransportKey = transportKey
                 });
+        }
+    }
+
+    private static bool ProvesTransportKey(StressConsumeTicketRequest request, PendingTicket ticket)
+    {
+        if (request.ProtocolVersion is < 1 or > ushort.MaxValue)
+        {
+            return false;
+        }
+
+        var proofKey = RealtimeTransportKeys.DeriveProofKey(ticket.TransportKey);
+        try
+        {
+            return RealtimeJoinProof.Verify(
+                proofKey,
+                (ushort)request.ProtocolVersion,
+                request.TicketId,
+                ticket.ShardId,
+                request.ClientNonce,
+                request.Proof);
+        }
+        finally
+        {
+            Array.Clear(proofKey);
+        }
+    }
+
+    private void RemoveTicket(Guid ticketId)
+    {
+        if (pendingTickets.Remove(ticketId, out var ticket))
+        {
+            Array.Clear(ticket.TransportKey);
         }
     }
 
@@ -468,7 +509,8 @@ public sealed class StressAuthorityState
         string WorkerRuntimeId,
         string ShardId,
         string WorldId,
-        DateTime ExpiresAt);
+        DateTime ExpiresAt,
+        byte[] TransportKey);
 
     private sealed record StressSession(
         Guid SessionId,

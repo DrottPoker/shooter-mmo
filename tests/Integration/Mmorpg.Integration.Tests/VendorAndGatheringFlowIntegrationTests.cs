@@ -125,6 +125,8 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             ["development", "vendor_purchase", "vendor_sale", "vendor_purchase"],
             ledger.Select(entry => entry.SourceKind));
         Assert.Equal(snapshot.Currency, ledger.Sum(entry => entry.Delta));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<long> CommitAsync(
@@ -191,8 +193,8 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new Mmorpg.GameService.Placement.ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 WorkerRuntimeId,
                 ShardId),

@@ -56,12 +56,12 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Area | Implemented | Next or deferred |
 | --- | --- | --- |
 | Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout, and a body that stays 20 seconds after a leave or a lost connection, longer while attacked, which its player resumes by coming back in time; the client keeps the World through a lost connection and joins again by itself for those 20 seconds, says why it returned to character select or login, and counts down a body after a leave | Body times per gameplay rule area; character deletion is an open question |
-| Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Production orchestration |
+| Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets that the client proves without sending their key, encrypted and authenticated UDP traffic, offline Shard-to-World rebinding | Production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
 | Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
 | Death and corpses | Death partition, durable player corpses, live and durable Mob corpses, concurrent looting, Loot all | Final corpse presentation |
-| Economy | Gold with a ledger, one NPC vendor with fixed prices | More vendors, player trading, auction house |
+| Economy | Gold with a ledger, one NPC vendor with fixed prices, and an audit of items and gold over the whole database | More vendors, player trading, auction house |
 | Gathering and professions | Mining and woodcutting on shared nodes | Profession levels, crafting |
 | Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn, Mob tagging with loot rights, world bosses that give every contributor their own loot | Abilities, the combat triangle, threat, Mob abilities |
 | Quests | Quest content with steps, objectives, chains, and rewards, quest NPCs, kill, collect, deliver, talk, and gather objectives, quest drops, the quest log and tracker, and Quest Studio | Experience rewards, more objective kinds, and repeatable schedules |
@@ -104,11 +104,13 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The content compilers and their verification | Foundation | |
 | Module and assembly boundaries with their guard tests, and the quality gate | Foundation | |
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
+| The sealed realtime transport: the join proof, the key schedule, and the sealed datagrams | Provisional | One cipher and no new keys within a session; the service channel between worker and GameService must be private by deployment |
 | Content delivery to the client | Provisional | The client fetches the item and quest catalogs and the text tables of one locale by revision once at start, caches them, and falls back to its bundled set as a whole; no swap while it runs, one locale, and the item presentation catalog and binary assets still ship in the build |
 | Player-facing text | Provisional | Item, quest, and actor text and the text for every code that a server sends or the client gives a failure it finds itself come from the text tables; no compiled content and no server holds a text of the content, only the codes of normal play have a text of their own, and of the client's own texts the quest windows, the item rule reasons, the inventory, storage, corpse, and vendor windows, the login and character screens, the combat HUD status texts, and the world menu with its messages take theirs from a table; the literals of the `Temporary` panels and the F2 and F3 menus stay English by decision, and a technical failure that the client finds shows the text of its code while its English diagnostic goes to the log |
 | Player presence: join, leave, and disconnect | Provisional | Of a live character only its items, place, facing, health, and mana are stored; a body stays 20 seconds everywhere until gameplay rule areas give each area its own time |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |
+| The economy audit: its checks, the scheduled run, the `audit` command, and its use in the load tool and the tests | Provisional | It reports and repairs nothing: no repair tools, admin screens, or history browser. Conservation is checked only per retained operation and only for the operation kinds of Items |
 | Worker and GameService resilience: lease durations, heartbeats, and backpressure | Provisional | |
 | World actors, interaction, and capabilities | Provisional | |
 | Combat, Mobs, and their numbers | Provisional | |
@@ -119,7 +121,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The content tools and the World Builder | Provisional | |
 | The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |
 | The UI kit and the windows built on it | Provisional | |
-| The UI window manager: the layer table, the window stack, Escape, the keys of the interface, and the typing guard | Provisional | No dragged windows, saved positions, or docking; the camera's arrow keys still turn the camera while a text field has focus |
+| The UI window manager: the layer table, the window stack, Escape, the keys of the interface, and the typing guard | Provisional | No dragged windows, saved positions, or docking |
 | Monitoring, the client measurements, stress tools, the network impairment proxy, and bots | Provisional | |
 | The deploy shape: the server images, the production-like stack, its smoke test, and the runbook | Provisional | One GameService and one worker on one machine with a local certificate authority and the local topology; no real host, domain, certificate, image registry, secret store, automated deployment, scheduled backup, or account recovery, as [Deployment](DEPLOYMENT.md#not-there-yet) lists |
 | The client's player build, its environments, and the build stamp | Provisional | One target, Windows x64 with IL2CPP; one GameService address per environment file; no signing, installer, or update channel; the F2 Debug menu with Leave Shard stays in a release build until a game menu exists |

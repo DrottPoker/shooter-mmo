@@ -1,13 +1,14 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Characters.Persistence;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.Server.Common.Characters;
 
 namespace Mmorpg.GameService.Characters;
 
-// Characters: characters, ownership, character currency, character level, character looks, and
-// every character's saved place and vitals.
+// Characters: characters, ownership, character currency with the audit of its ledger, character
+// level, character looks, and every character's saved place and vitals.
 public sealed class CharactersModule(CharactersModuleOptions options) : IGameServiceModule
 {
     public string Name => "Characters";
@@ -32,6 +33,10 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
         services.AddSingleton<ICharacterProgression, CharacterProgression>();
         services.AddSingleton<ICharacterSimulationStates, CharacterSimulationStates>();
         services.AddScoped<CharacterService>();
+        foreach (var check in CharactersAudit.Checks)
+        {
+            services.AddSingleton<IAuditCheck>(check);
+        }
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

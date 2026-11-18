@@ -179,7 +179,7 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
 | `tools/art/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid in the target pose that every visible body in the game shows, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
 | `tools/art/blender/art_pipeline_cli.py` | Blender entry point for the scripts. |
-| `tools/art/blender/tests` | Python tests of the art pipeline that run without Blender, and their fixtures. |
+| `tools/art/blender/tests` | Python tests of the art pipeline that run without Blender, their fixtures, and `blender_source.py`, which reads the pure logic of a Blender module from its source; see [Python Tests Of The Pipeline](#python-tests-of-the-pipeline). |
 | `src/Client/Assets/Editor/Art/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/Art/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
 | `src/Client/Assets/Editor/Art/ArtMaterialCreator.cs` | `MMORPG > Tools > Art Pipeline > Create Missing Materials`: creates the project material of every exported material that has none, from its export record, and gives every garment texture's material the dye mask and natural colors of its record. |
@@ -2108,6 +2108,53 @@ python -m unittest discover -s tools/art/blender/tests
 Expected result: `Ran <n> tests` and `OK`. After a change of the cloth in the
 client or of a body or garment that it hangs on, run the menu, commit the
 fixtures, and run the Python tests again.
+
+### Python Tests Of The Pipeline
+
+`tools/art/blender/tests` holds the Python tests of the pipeline's code. They
+use `unittest` and the standard library, so they run without Blender, in CI and
+in `tools/Test-Changes.ps1` as the check `blender-python` for a change below
+`art/` or `tools/art/blender/`:
+
+```powershell
+python -m unittest discover -s tools/art/blender/tests
+```
+
+Expected result: `Ran <n> tests` and `OK`, in a few seconds. What the tests pin
+is the logic that needs no Blender, and most of the pipeline's modules start
+with `import bpy` although most of their functions never use it, so
+`tests/blender_source.py` reads such a module the way it is written: `load()`
+takes the named definitions from the module's source, with the constants,
+functions, and standard library imports of the same file that they use, and
+runs only those. It runs the module's own text, with no copy and no stand-in for
+`bpy`; a definition that needs Blender fails in the test that reaches it with a
+`NameError` naming `bpy`, `bmesh`, or `mathutils`. A function that comes to need
+Blender is moved, with its test, into a module of the standard library of its
+own, as `cloth_core.py` is, and the old module imports it back.
+
+| Test file | Pins |
+| --- | --- |
+| `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
+| `test_blender_source.py` | The loader itself. |
+| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains. |
+| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
+| `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies. |
+| `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
+| `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
+| `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes. |
+| `test_rig_tables.py` | The test poses, the rig's zone, chain, and hinge tables, and the gait model against the Humanoid skeleton, the exported clips, and the Unity locomotion speeds. |
+| `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
+| `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
+| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
+| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the file is skipped and the run says `skipped=1`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+
+A test says what must hold, with small inputs whose answer follows from the
+input, and where a table in Python must agree with the client, a content file,
+an `asset.json`, or a PowerShell script, it reads the other side from the
+repository and compares. New logic that needs no Blender gets a test in the same
+change. What drives Blender itself, such as the rules that read objects, nodes,
+and modifiers, and the preview and review rendering, is checked by
+`Approve-ArtAsset.ps1` and `Export-ArtAsset.ps1` in Blender.
 
 ### The Wardrobe
 

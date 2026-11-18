@@ -14,7 +14,7 @@ namespace Mmorpg.SharedTests
         {
             return new Dictionary<RealtimeMessageType, Codec>
             {
-                [RealtimeMessageType.JoinRequest] = Typed<string>(
+                [RealtimeMessageType.JoinRequest] = Typed<RealtimeJoinRequest>(
                     RealtimeProtocol.TryDecodeJoinRequest,
                     RealtimeProtocol.EncodeJoinRequest),
                 [RealtimeMessageType.JoinAccepted] = Typed<RealtimeJoinAccepted>(

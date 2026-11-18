@@ -80,7 +80,12 @@ SimulationWorker admission or UDP session validation. GameService generates an
 in-memory account id, character id, and name such as `Active Bot 1`, binds a
 short-lived one-time ticket to the exact Shard, worker, and runtime, and
 validates the in-memory session token of every bot session in a worker's
-session heartbeat and of every release.
+session heartbeat and of every release. The ticket is a public id and a
+transport key, like a player's: the bot joins with a proof of the key and
+seals its datagrams with the keys derived from it, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes, and
+the worker's consume checks the proof before it takes the ticket. A consumed or
+superseded bot ticket stays known, without its key, until it expires.
 
 The development ticket endpoint has four independent guards:
 

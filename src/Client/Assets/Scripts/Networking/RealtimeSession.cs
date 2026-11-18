@@ -87,7 +87,9 @@ namespace Mmorpg.Client.Networking
         private RealtimeMessageTable messages;
         private RealtimeClientError operationError;
         private RealtimeClientError pendingUnexpectedDisconnect;
-        private string pendingJoinTicket = string.Empty;
+        // The join request for the pending placement: the ticket id, a fresh nonce, and the proof
+        // made with the ticket's proof key, which is zeroed once the request is made.
+        private byte[] pendingJoinRequest;
         private JoinShardResponse pendingPlacement;
         private float operationDeadline;
         // A session that ended stops its transport after the poll that found the end.
@@ -240,9 +242,14 @@ namespace Mmorpg.Client.Networking
 
             if (placement.endpoint.protocolVersion != RealtimeProtocol.Version)
             {
+                // A worker ahead of this client means the player must update the game. A worker
+                // behind it still runs the release before, which a deployment is replacing, so
+                // the player can only wait.
                 var error = new RealtimeClientError(
                     RealtimeClientErrorKind.Validation,
-                    "incompatible_protocol",
+                    placement.endpoint.protocolVersion > RealtimeProtocol.Version
+                        ? "incompatible_protocol"
+                        : "shard_not_updated",
                     "The assigned SimulationWorker uses realtime protocol version "
                     + placement.endpoint.protocolVersion + ", but this client requires version "
                     + RealtimeProtocol.Version + ".");
@@ -270,7 +277,11 @@ namespace Mmorpg.Client.Networking
             ResetOperation();
             pendingPlacement = placement;
             connection.SetEndpoint(placement.endpoint.host.Trim(), placement.endpoint.udpPort);
-            pendingJoinTicket = placement.joinTicket.Trim();
+            var keys = DeriveTransportKeys(placement);
+            pendingJoinRequest = RealtimeProtocol.EncodeJoinRequest(RealtimeJoinProof.CreateRequest(
+                keys.ProofKey,
+                Guid.Parse(placement.joinTicketId),
+                placement.shard.id));
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Opening UDP connection to SimulationWorker '" + placement.endpoint.workerId
@@ -291,7 +302,7 @@ namespace Mmorpg.Client.Networking
                 {
                     State = RealtimeConnectionState.Connecting;
                     operationDeadline = realtimeClock() + settings.RealtimeTimeoutSeconds;
-                    connection.Connect(RealtimeProtocol.ConnectionKey);
+                    connection.Connect(RealtimeProtocol.ConnectionKey, keys);
                 }
             }
             catch (Exception)
@@ -302,6 +313,11 @@ namespace Mmorpg.Client.Networking
                     RealtimeClientErrorKind.Network,
                     "udp_connect_failed",
                     "The UDP client could not connect to the assigned SimulationWorker endpoint.");
+            }
+            finally
+            {
+                // The transport holds its own copies of the datagram keys.
+                keys.Dispose();
             }
 
             if (connectionStartError != null)
@@ -475,8 +491,8 @@ namespace Mmorpg.Client.Networking
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "UDP transport connected to " + connection.Host + ":" + connection.Port
-                + "/udp. Sending the short-lived join ticket to SimulationWorker.");
-            var joinPacket = RealtimeProtocol.EncodeJoinRequest(pendingJoinTicket);
+                + "/udp. Sending the join request with the ticket's proof to SimulationWorker.");
+            var joinPacket = pendingJoinRequest;
             SendReliable(RealtimeMessageType.JoinRequest, joinPacket);
             diagnostics.RecordSentPacket(joinPacket.Length);
         }
@@ -560,7 +576,7 @@ namespace Mmorpg.Client.Networking
                 isReconnect = accepted.IsReconnect
             };
             JoinedSession = joined;
-            pendingJoinTicket = string.Empty;
+            pendingJoinRequest = null;
             pendingPlacement = null;
             operationError = null;
             MovementSession = movementSession;
@@ -765,7 +781,7 @@ namespace Mmorpg.Client.Networking
             presence.Clear("session_reset");
             ReleaseSession();
             leaveAccepted = false;
-            pendingJoinTicket = string.Empty;
+            pendingJoinRequest = null;
             pendingPlacement = null;
         }
 
@@ -792,7 +808,7 @@ namespace Mmorpg.Client.Networking
         {
             stopTransportAfterPoll = false;
             connection.Stop();
-            pendingJoinTicket = string.Empty;
+            pendingJoinRequest = null;
             pendingPlacement = null;
         }
 
@@ -835,8 +851,44 @@ namespace Mmorpg.Client.Networking
                 && !string.IsNullOrWhiteSpace(placement.endpoint.simulationRevision)
                 && !string.IsNullOrWhiteSpace(placement.endpoint.collisionRevision)
                 && Guid.TryParse(placement.characterId, out _)
-                && !string.IsNullOrWhiteSpace(placement.joinTicket)
+                && Guid.TryParse(placement.joinTicketId, out var ticketId)
+                && ticketId != Guid.Empty
+                && IsTransportKey(placement.transportKey)
                 && !string.IsNullOrWhiteSpace(placement.expiresAt);
+        }
+
+        private static bool IsTransportKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            try
+            {
+                var key = Convert.FromBase64String(value);
+                var valid = key.Length == RealtimeTransportKeys.TransportKeySize;
+                Array.Clear(key, 0, key.Length);
+                return valid;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        // The keys of the placement's join ticket; the decoded transport key is zeroed at once.
+        private static RealtimeTransportKeys DeriveTransportKeys(JoinShardResponse placement)
+        {
+            var transportKey = Convert.FromBase64String(placement.transportKey);
+            try
+            {
+                return RealtimeTransportKeys.Derive(transportKey);
+            }
+            finally
+            {
+                Array.Clear(transportKey, 0, transportKey.Length);
+            }
         }
 
         private static bool MatchesPendingPlacement(

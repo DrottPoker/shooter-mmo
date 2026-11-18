@@ -1,6 +1,7 @@
 using System;
 using System.Net.Sockets;
 using LiteNetLib;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.Client.Networking
 {
@@ -26,7 +27,9 @@ namespace Mmorpg.Client.Networking
         // Opens the socket; false when it cannot, as while it still runs.
         bool Start(int disconnectTimeoutMilliseconds);
 
-        void Connect(string host, int port, string connectionKey);
+        // Connects with the keys of the join, which seal every datagram once the worker's sealed
+        // datagrams arrive. The transport copies them; the caller zeroes its own.
+        void Connect(string host, int port, string connectionKey, RealtimeTransportKeys keys);
 
         // Sends to the connected server.
         void Send(byte[] packet, byte channel, DeliveryMethod deliveryMethod);

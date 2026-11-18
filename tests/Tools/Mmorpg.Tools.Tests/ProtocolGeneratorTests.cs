@@ -32,7 +32,7 @@ public sealed class ProtocolGeneratorTests
     {
         var result = ProtocolGeneration.Run(ProtocolGeneratorOptions.Create(RepositoryPaths.Root, verifyOnly: true));
 
-        Assert.Equal(45, result.Model.Version);
+        Assert.Equal(46, result.Model.Version);
         Assert.Equal(46, result.Model.Messages.Count);
     }
 
@@ -118,7 +118,7 @@ public sealed class ProtocolGeneratorTests
         var lockedVersions = ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys.ToArray();
         Assert.Equal(current, lockedVersions[^1]);
 
-        repository.EditSchema(schema => schema["protocol"]!["connectionKey"] = "Mmorpg.Realtime.v9");
+        repository.EditSchema(schema => schema["protocol"]!["connectionKey"] = "Mmorpg.Realtime.changed");
         var changed = Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(generate));
         Assert.Contains("Increase protocol.version", changed.Message, StringComparison.Ordinal);
 

@@ -101,7 +101,7 @@ public sealed class RealtimeMetricsReporterService(
         var delta = interval.Delta;
         var sampleSeconds = interval.Seconds;
         logger.LogInformation(
-            "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s, of which snapshots {SnapshotKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
+            "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s, of which snapshots {SnapshotKiBPerSecond:F1} KiB/s; datagrams {ReceivedDatagramsPerSecond:F1} received/s and {SentDatagramsPerSecond:F1} sent/s with {SealingOverheadKiBPerSecond:F1} KiB/s of sealing, {DroppedDatagramsPerSecond:F1} dropped/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
             snapshot.ActiveRealPlayers,
             snapshot.ActiveSyntheticBots,
             snapshot.UnauthenticatedPeers,
@@ -115,6 +115,10 @@ public sealed class RealtimeMetricsReporterService(
             delta.SentPackets / sampleSeconds,
             delta.SentBytes / sampleSeconds / 1024d,
             delta.SnapshotBytes / sampleSeconds / 1024d,
+            delta.DatagramsReceived / sampleSeconds,
+            delta.DatagramsSent / sampleSeconds,
+            delta.SealingOverheadBytes / sampleSeconds / 1024d,
+            delta.DroppedDatagrams / sampleSeconds,
             delta.DroppedSnapshotPackets / sampleSeconds,
             delta.QuotaRejectedPackets / sampleSeconds,
             sampleSeconds);

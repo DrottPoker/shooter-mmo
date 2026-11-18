@@ -1,15 +1,17 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Placement.Development;
 
+// Bot tickets work as a player's: a public id and a transport key, and the worker's consume
+// proves the key. A consumed ticket stays known until its expiry, so a second consume of it is
+// refused here instead of reaching the database.
 internal sealed class DevelopmentSimulationBotAuthority(
     DevelopmentSimulationBotOptions options,
     TimeProvider timeProvider)
 {
-    private const string TicketPrefix = "development-bot.";
-
     // Synthetic bots own no items, so any positive capacity keeps them at full speed.
     private const long SyntheticBotCarryCapacity = 1;
     private static readonly TimeSpan SessionTombstoneLifetime = TimeSpan.FromMinutes(5);
@@ -17,8 +19,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
 
     private readonly object gate = new();
     private readonly Dictionary<Guid, BotIdentity> identities = [];
-    private readonly Dictionary<string, PendingBotTicket> pendingTickets =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, PendingBotTicket> pendingTickets = [];
     private readonly Dictionary<Guid, BotSession> sessions = [];
 
     public ServiceResult<DevelopmentSimulationBotTicketResponse> IssueTicket(
@@ -58,16 +59,17 @@ internal sealed class DevelopmentSimulationBotAuthority(
 
             // A bot asks again only after it gave up its connection, so its own unconsumed
             // ticket is superseded, as a player's is, and stops holding a connection.
-            foreach (var supersededHash in pendingTickets
-                         .Where(pair => pair.Value.BotInstanceId == request.BotInstanceId)
+            foreach (var supersededId in pendingTickets
+                         .Where(pair => pair.Value.BotInstanceId == request.BotInstanceId && !pair.Value.Consumed)
                          .Select(pair => pair.Key)
                          .ToArray())
             {
-                pendingTickets.Remove(supersededHash);
+                RetireTicket(supersededId);
             }
 
             var pendingForRuntime = pendingTickets.Values.Count(ticket =>
                 ticket.ExpiresAt > now
+                && !ticket.Consumed
                 && string.Equals(ticket.WorkerId, placement.WorkerId, StringComparison.Ordinal)
                 && string.Equals(ticket.WorkerRuntimeId, placement.RuntimeId, StringComparison.Ordinal));
             var activeBotsForRuntime = sessions.Values.Count(session =>
@@ -103,10 +105,11 @@ internal sealed class DevelopmentSimulationBotAuthority(
                 : known with { LastTouchedAt = now };
             identities[request.BotInstanceId] = identity;
 
-            var ticket = TicketPrefix + TokenGenerator.CreateToken();
+            var ticketId = Guid.NewGuid();
+            var transportKey = RealtimeTransportKeys.CreateTransportKey();
             var expiresAt = now.Add(options.JoinTicketLifetime);
             pendingTickets.Add(
-                TokenGenerator.HashToken(ticket),
+                ticketId,
                 new PendingBotTicket(
                     request.BotInstanceId,
                     identity.AccountId,
@@ -116,7 +119,8 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     placement.WorldId,
                     placement.WorkerId,
                     placement.RuntimeId,
-                    expiresAt));
+                    expiresAt,
+                    (byte[])transportKey.Clone()));
 
             return ServiceResult<DevelopmentSimulationBotTicketResponse>.Ok(
                 new DevelopmentSimulationBotTicketResponse(
@@ -133,7 +137,8 @@ internal sealed class DevelopmentSimulationBotAuthority(
                         placement.ProtocolVersion,
                         placement.SimulationRevision,
                         placement.CollisionRevision),
-                    ticket,
+                    ticketId,
+                    transportKey,
                     expiresAt));
         }
     }
@@ -143,22 +148,19 @@ internal sealed class DevelopmentSimulationBotAuthority(
         out ServiceResult<ConsumedSimulationJoinTicketResponse> result)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Ticket is null
-            || !request.Ticket.StartsWith(TicketPrefix, StringComparison.Ordinal))
-        {
-            result = default!;
-            return false;
-        }
-
         var now = timeProvider.GetUtcNow().UtcDateTime;
         lock (gate)
         {
             Cleanup(now);
-            var ticketHash = TokenGenerator.HashToken(request.Ticket);
-            if (!pendingTickets.TryGetValue(ticketHash, out var ticket)
-                || ticket.ExpiresAt <= now)
+            if (!pendingTickets.TryGetValue(request.TicketId, out var ticket))
             {
-                pendingTickets.Remove(ticketHash);
+                result = default!;
+                return false;
+            }
+
+            // A wrong proof leaves the ticket as it was, as GameService does with a player's.
+            if (ticket.Consumed || ticket.ExpiresAt <= now || !ProvesTransportKey(request, ticket))
+            {
                 result = ServiceResult<ConsumedSimulationJoinTicketResponse>.Unauthorized(
                     "invalid_join_ticket",
                     "The development bot join ticket is invalid, expired, or already consumed.");
@@ -186,7 +188,9 @@ internal sealed class DevelopmentSimulationBotAuthority(
                 return true;
             }
 
-            pendingTickets.Remove(ticketHash);
+            var transportKey = (byte[])ticket.TransportKey.Clone();
+            Array.Clear(ticket.TransportKey);
+            pendingTickets[request.TicketId] = ticket with { Consumed = true };
             var sessionToken = TokenGenerator.CreateToken();
             var session = new BotSession(
                 Guid.NewGuid(),
@@ -223,9 +227,46 @@ internal sealed class DevelopmentSimulationBotAuthority(
                 {
                     IsSyntheticBot = true,
                     SessionLeaseDurationMilliseconds =
-                        (long)options.SessionLeaseLifetime.TotalMilliseconds
+                        (long)options.SessionLeaseLifetime.TotalMilliseconds,
+                    TransportKey = transportKey
                 });
             return true;
+        }
+    }
+
+    private static bool ProvesTransportKey(ConsumeSimulationJoinTicketRequest request, PendingBotTicket ticket)
+    {
+        var proofKey = RealtimeTransportKeys.DeriveProofKey(ticket.TransportKey);
+        try
+        {
+            return request.ProtocolVersion is >= 1 and <= ushort.MaxValue
+                && RealtimeJoinProof.Verify(
+                    proofKey,
+                    (ushort)request.ProtocolVersion,
+                    request.TicketId,
+                    ticket.ShardId,
+                    request.ClientNonce,
+                    request.Proof);
+        }
+        finally
+        {
+            Array.Clear(proofKey);
+        }
+    }
+
+    // A superseded ticket stays known as consumed until its expiry, with its key zeroed.
+    private void RetireTicket(Guid ticketId)
+    {
+        var ticket = pendingTickets[ticketId];
+        Array.Clear(ticket.TransportKey);
+        pendingTickets[ticketId] = ticket with { Consumed = true };
+    }
+
+    private void RemoveTicket(Guid ticketId)
+    {
+        if (pendingTickets.Remove(ticketId, out var ticket))
+        {
+            Array.Clear(ticket.TransportKey);
         }
     }
 
@@ -301,7 +342,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
         {
             Cleanup(now);
             var pending = pendingTickets.Values
-                .Where(ticket => ticket.ExpiresAt > now)
+                .Where(ticket => ticket.ExpiresAt > now && !ticket.Consumed)
                 .Select(ticket => (ticket.WorkerId, ticket.WorkerRuntimeId, Session: 0, Ticket: 1));
             var active = sessions.Values
                 .Where(session => session.ReleasedAt is null && session.ExpiresAt > now)
@@ -326,7 +367,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
             Cleanup(now);
             return new DevelopmentSimulationBotAuthoritySnapshot(
                 identities.Count,
-                pendingTickets.Values.Count(ticket => ticket.ExpiresAt > now),
+                pendingTickets.Values.Count(ticket => ticket.ExpiresAt > now && !ticket.Consumed),
                 sessions.Values.Count(session =>
                     session.ReleasedAt is null && session.ExpiresAt > now),
                 sessions.Values.Count(session =>
@@ -421,12 +462,12 @@ internal sealed class DevelopmentSimulationBotAuthority(
 
     private void Cleanup(DateTime now)
     {
-        foreach (var ticketHash in pendingTickets
+        foreach (var ticketId in pendingTickets
                      .Where(pair => pair.Value.ExpiresAt <= now)
                      .Select(pair => pair.Key)
                      .ToArray())
         {
-            pendingTickets.Remove(ticketHash);
+            RemoveTicket(ticketId);
         }
 
         foreach (var sessionId in sessions
@@ -441,7 +482,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
         }
 
         var liveIdentityIds = pendingTickets.Values
-            .Where(ticket => ticket.ExpiresAt > now)
+            .Where(ticket => ticket.ExpiresAt > now && !ticket.Consumed)
             .Select(ticket => ticket.BotInstanceId)
             .Concat(sessions.Values
                 .Where(session => session.ReleasedAt is null && session.ExpiresAt > now)
@@ -475,7 +516,11 @@ internal sealed class DevelopmentSimulationBotAuthority(
         string WorldId,
         string WorkerId,
         string WorkerRuntimeId,
-        DateTime ExpiresAt);
+        DateTime ExpiresAt,
+        byte[] TransportKey)
+    {
+        public bool Consumed { get; init; }
+    }
 
     private sealed record BotSession(
         Guid Id,

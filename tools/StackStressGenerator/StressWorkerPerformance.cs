@@ -115,6 +115,21 @@ public sealed record StressWorkerInterval(
     public IReadOnlyDictionary<string, StressWorkerMessageCount>? SentByMessage { get; init; }
 
     public IReadOnlyDictionary<string, StressWorkerMessageCount>? ReceivedByMessage { get; init; }
+
+    // The UDP datagrams of the interval, which carry the messages together with LiteNetLib's own
+    // packets, and their bytes; the bytes that the sealing layer added in both directions; and
+    // the received datagrams it dropped. Null in a file of an older worker.
+    public long? DatagramsIn { get; init; }
+
+    public long? DatagramBytesIn { get; init; }
+
+    public long? DatagramsOut { get; init; }
+
+    public long? DatagramBytesOut { get; init; }
+
+    public long? SealingOverheadBytes { get; init; }
+
+    public long? DroppedDatagrams { get; init; }
 }
 
 // One message kind over the steady intervals: its messages and bytes, both per second, and both
@@ -268,7 +283,13 @@ public static class StressWorkerPerformance
         ("generation2Collections", interval => interval.Generation2Collections),
         ("mobPathPlans", interval => interval.MobPathPlans ?? 0),
         ("loopStepFailures", interval => interval.LoopStepFailures ?? 0),
-        ("loopIsolatedFailures", interval => interval.LoopIsolatedFailures ?? 0)
+        ("loopIsolatedFailures", interval => interval.LoopIsolatedFailures ?? 0),
+        ("datagramsIn", interval => interval.DatagramsIn ?? 0),
+        ("datagramBytesIn", interval => interval.DatagramBytesIn ?? 0),
+        ("datagramsOut", interval => interval.DatagramsOut ?? 0),
+        ("datagramBytesOut", interval => interval.DatagramBytesOut ?? 0),
+        ("sealingOverheadBytes", interval => interval.SealingOverheadBytes ?? 0),
+        ("droppedDatagrams", interval => interval.DroppedDatagrams ?? 0)
     ];
 
     private static readonly (string Name, Func<StressWorkerInterval, double> Value)[] LevelFields =

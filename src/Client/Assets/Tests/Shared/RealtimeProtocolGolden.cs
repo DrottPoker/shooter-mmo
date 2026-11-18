@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 45;
+        public const ushort PinnedVersion = 46;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -266,7 +266,7 @@ namespace Mmorpg.SharedTests
         {
             var failures = new List<string>();
             Expect(failures, "Version", RealtimeProtocol.Version, PinnedVersion);
-            Expect(failures, "ConnectionKey", RealtimeProtocol.ConnectionKey, "Mmorpg.Realtime.v8");
+            Expect(failures, "ConnectionKey", RealtimeProtocol.ConnectionKey, "Mmorpg.Realtime.v9");
             Expect(failures, "MaximumPacketSize", RealtimeProtocol.MaximumPacketSize, PinnedMaximumPacketSize);
             Expect(failures, "MaximumUnreliablePacketSize", RealtimeProtocol.MaximumUnreliablePacketSize, 1023);
             Expect(failures, "SessionChannel", RealtimeProtocol.SessionChannel, (byte)0);
@@ -355,7 +355,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2d 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2e 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);

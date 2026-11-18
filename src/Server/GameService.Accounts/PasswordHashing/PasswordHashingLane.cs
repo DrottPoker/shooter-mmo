@@ -173,7 +173,11 @@ internal sealed class PasswordHashingLane : IDisposable
         var completion = new TaskCompletionSource<PasswordHashingResult<T>>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var item = new WorkItem(
-            () => completion.TrySetResult(PasswordHashingResult<T>.Done(run())),
+            () =>
+            {
+                var result = PasswordHashingResult<T>.Done(run());
+                return () => completion.TrySetResult(result);
+            },
             exception => completion.TrySetException(exception),
             retryAfter => completion.TrySetResult(PasswordHashingResult<T>.Refuse(retryAfter)),
             Stopwatch.GetTimestamp());
@@ -280,13 +284,14 @@ internal sealed class PasswordHashingLane : IDisposable
 
             var started = Stopwatch.GetTimestamp();
             metrics.RecordWait(Stopwatch.GetElapsedTime(item.EnqueuedAt, started));
+            Action publish;
             try
             {
-                item.Run();
+                publish = item.Run();
             }
             catch (Exception exception)
             {
-                item.Fail(exception);
+                publish = () => item.Fail(exception);
             }
 
             var duration = Stopwatch.GetElapsedTime(started);
@@ -299,6 +304,10 @@ internal sealed class PasswordHashingLane : IDisposable
                     hashTicksEstimate + EstimateWeight * (duration.Ticks - hashTicksEstimate));
                 PublishLevels();
             }
+
+            // The caller gets its answer only once the thread counts as free again, so a request
+            // that follows the answer at once is not refused for a thread that just finished.
+            publish();
         }
     }
 
@@ -348,12 +357,13 @@ internal sealed class PasswordHashingLane : IDisposable
     }
 
     private sealed class WorkItem(
-        Action run,
+        Func<Action> run,
         Action<Exception> fail,
         Action<TimeSpan> refuse,
         long enqueuedAt)
     {
-        public Action Run { get; } = run;
+        // Does the work and returns what hands its result to the caller.
+        public Func<Action> Run { get; } = run;
 
         public Action<Exception> Fail { get; } = fail;
 

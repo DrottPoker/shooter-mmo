@@ -101,3 +101,35 @@ tests:
               instance: g1
             exp_annotations:
               summary: GameService g1 uses more than 90 percent of its PostgreSQL connection pool.
+
+  - name: An economy audit violation alerts by check, and a failed run warns
+    interval: 15m
+    input_series:
+      - series: 'game_service_audit_violations{job="mmorpg/game-service", instance="g1", check="item_custody_missing"}'
+        values: '0 0 2 2'
+      - series: 'game_service_audit_violations{job="mmorpg/game-service", instance="g1", check="currency_balance_matches_ledger"}'
+        values: '0 0 0 0'
+      - series: 'game_service_audit_runs_total{job="mmorpg/game-service", instance="g1", outcome="failed"}'
+        values: '0 0 0 1'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: EconomyAuditViolations
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: EconomyAuditViolations
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              check: item_custody_missing
+            exp_annotations:
+              summary: The economy audit check item_custody_missing found violations; the GameService log names them with example ids.
+      - eval_time: 30m
+        alertname: EconomyAuditFailed
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: EconomyAuditFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: The economy audit could not run every check in the last two hours; the GameService log says why.

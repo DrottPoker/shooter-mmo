@@ -44,8 +44,8 @@ public sealed class RealtimeNetworkMetricsTests
         using var metrics = new RealtimeNetworkMetrics();
         var disconnect = RealtimeProtocol.EncodeServerDisconnect("code", "message");
         var leaveAccepted = RealtimeProtocol.EncodeLeaveAccepted(30);
-        var joinRequest = RealtimeProtocol.EncodeJoinRequest("ticket");
-        var undefinedType = RealtimeProtocol.EncodeJoinRequest("ticket");
+        var joinRequest = RealtimeTestTickets.EncodeJoin("ticket");
+        var undefinedType = RealtimeTestTickets.EncodeJoin("ticket");
         undefinedType[TypeByteOffset] = 200;
 
         metrics.RecordSent(disconnect);

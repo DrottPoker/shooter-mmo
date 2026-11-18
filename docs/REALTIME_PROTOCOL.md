@@ -26,7 +26,10 @@ its message type. All numbers are little-endian.
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes,
 LiteNetLib's single-packet limit. Decoders reject wrong headers, truncated
 payloads, and trailing bytes. Encoders throw `ArgumentException` for invalid
-values and `InvalidOperationException` for a packet above the limit.
+values and `InvalidOperationException` for a packet above the limit. LiteNetLib
+carries the packets in its own packets, and every UDP datagram that carries
+those is clear or sealed, as [Transport Security](#transport-security)
+describes.
 
 | Wire type | Encoding |
 | --- | --- |
@@ -37,6 +40,150 @@ values and `InvalidOperationException` for a packet above the limit.
 | Text | A `u16` UTF-8 byte length, then the bytes. Text has 1 to the limit of UTF-16 characters, or 0 where blank text is allowed, and at most four bytes per allowed character; invalid UTF-8 is rejected |
 | Enum | One byte; undefined values are rejected |
 | Array | A `u8` count, then the elements |
+
+## Transport Security
+
+Everything that a client and SimulationWorker exchange over UDP is encrypted
+and authenticated once the join is under way, LiteNetLib's own headers,
+acknowledgements, and pings included, and the secret that makes it so never
+travels over UDP. There is one mode: no setting turns sealing off, also not in
+Development, so the tests, the bots, the load generator, and the benchmarks run
+the same transport as the client. The shared code is in
+`src/Shared/GameProtocol/Runtime/Security`.
+
+### Join Ticket And Keys
+
+A join ticket is two things, as
+[Join Tickets And Simulation Sessions](SERVICE_FEATURES.md#join-tickets-and-simulation-sessions)
+describes: a public ticket id, which may travel in clear, and a transport key,
+32 random bytes from GameService's cryptographic random source, which only the
+HTTPS answers carry: the join answer to the client, and the consume answer to
+the worker. From the transport key every side derives its keys with HKDF-SHA256
+(RFC 5869, no salt, `RealtimeTransportKeys`), each with its own label:
+
+| Key | HKDF label | Used by |
+| --- | --- | --- |
+| Proof key | `Mmorpg.Realtime.v1 join proof` | The client to prove the ticket, GameService to check the proof |
+| Client-to-worker key | `Mmorpg.Realtime.v1 client to worker` | The client to seal, the worker to open |
+| Worker-to-client key | `Mmorpg.Realtime.v1 worker to client` | The worker to seal, the client to open |
+
+Nothing uses the transport key itself. The worker zeroes the transport key and
+the proof key as soon as it derived the datagram keys, and every side zeroes its
+keys when the connection ends.
+
+### The Join
+
+The LiteNetLib connect stays in clear and carries nothing secret: the
+connection key only filters unrelated traffic. The client then sends
+`JoinRequest` with:
+
+- `TicketId`: the ticket's public id, a `guid`.
+- `ClientNonce`: 16 fresh random bytes (`JoinNonceSize`).
+- `Proof`: 32 bytes (`JoinProofSize`), HMAC-SHA256 with the proof key over the
+  ASCII label `Mmorpg.Realtime.v1 join request`, the protocol version as a
+  `u16`, the ticket id as 16 bytes in the order of `Guid.ToByteArray`, the
+  Shard id that the ticket was issued for as a `u16` UTF-8 length and its bytes,
+  and the nonce. `RealtimeJoinProof` makes and checks it.
+
+The worker forwards the id, the nonce, the proof, and the protocol version in
+its consume call. GameService checks the proof against the ticket's stored key
+in constant time before it takes any lock or changes anything, so whoever saw
+only the ticket id can neither join with it nor burn it, and a wrong proof is
+answered exactly like an unknown ticket. On success the consume answer carries
+the transport key to the worker with the session. The call between worker and
+GameService is trusted to be private: it must run over TLS or a private
+network, because it carries the key.
+
+### Sealed Datagrams
+
+A LiteNetLib packet layer seals and opens whole datagrams, so LiteNetLib's own
+packets are sealed too. Its first byte says what follows:
+
+| Bytes | Clear datagram | Sealed datagram |
+| ---: | --- | --- |
+| 1 | `0` | `1` |
+| 8 | | The counter, little-endian |
+| n | The LiteNetLib packet | The LiteNetLib packet encrypted |
+| 16 | | The tag |
+
+The cipher is ChaCha20-Poly1305 as RFC 8439 defines it. The nonce is four zero
+bytes followed by the counter, and the marker byte and the counter are the
+associated data, so a changed counter fails the tag. Each direction of each
+session has its own key and its own counter, which starts at 0 and is never
+used twice. A sealed datagram is 25 bytes longer than its packet and a clear
+one 1 byte. Every `NetManager` sets `MtuOverride` to 1,024, so LiteNetLib's
+packets keep the limits of [Wire Format](#wire-format) and a datagram is at most
+1,049 bytes.
+
+### When Sealing Starts
+
+There is no downgrade:
+
+- The worker installs the keys for the peer's endpoint the moment the consume
+  call succeeded, before the join's acceptance. From then on it seals every
+  datagram to that endpoint, its answer to the join included, and drops every
+  clear datagram from it.
+- The client has the keys before it connects. It sends clear datagrams until
+  the first sealed datagram of the worker authenticates; from then on it seals
+  everything it sends and drops every clear datagram it receives. Clear
+  datagrams of the client that were on their way at the switch are dropped by
+  the worker, and LiteNetLib sends what was reliable again.
+- Before its keys, a clear datagram may carry only LiteNetLib's connection
+  control: the connect, its accept, acknowledgements, pings, the disconnect and
+  its confirmation, and from the client also the reliable ordered session
+  channel that carries `JoinRequest`. `RealtimeClearDatagramRules` checks this,
+  inside merged packets too. A forged clear packet on another channel would
+  otherwise wait in LiteNetLib for the packets before it and arrive after the
+  switch as if sealed. The worker therefore says why it refuses a peer without
+  keys only in the data of the disconnect, as
+  [The Reason In The Disconnect](#the-reason-in-the-disconnect) describes.
+- A peer without keys reaches only the join route; the worker handles no other
+  message from it, because `RealtimeMessageDispatcher` routes a peer without a
+  session through the unauthenticated table, which holds only `JoinRequest`,
+  and the session is set only after the keys are installed.
+- A datagram that does not authenticate is dropped and counted, never answered.
+  Each side keeps a replay window of 1,024 counters per session
+  (`RealtimeReplayWindow`): a counter seen before, or older than the window, is
+  dropped. Only a datagram that authenticated moves the window.
+- The keys go when the peer disconnects or its session ends. A disconnect that
+  the worker sends keeps the peer's keys until the client confirms it or
+  LiteNetLib gives up, so the disconnect that LiteNetLib sends again every
+  300 ms after a lost one is still sealed. A reconnect uses a new ticket and so
+  new keys; a datagram of an earlier session opens nothing of the next one, even
+  from the same endpoint.
+
+The worker counts the datagrams, their bytes, the sealing overhead, and the
+dropped datagrams by reason, as
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) describes.
+
+### Cipher Implementations
+
+One small interface, `IRealtimeAead`, has two implementations that produce the
+same bytes. Both are tested against the RFC 8439 vectors and against each other
+with random inputs.
+
+| Implementation | Where |
+| --- | --- |
+| `RealtimePlatformChaCha20Poly1305` | The platform's `System.Security.Cryptography.ChaCha20Poly1305`, where `IsSupported` says so: SimulationWorker and the tools. Only the .NET 10 build of the shared library compiles it. A worker whose platform has none logs one warning at its start and uses the managed one |
+| `RealtimeManagedChaCha20Poly1305` | Written from RFC 8439, with a constant-time tag comparison: the Unity client in the Editor and in an IL2CPP player, whose class libraries have no ChaCha20-Poly1305 |
+
+`RealtimeAead.Create` picks the platform implementation when it is supported
+and the managed one otherwise. HKDF and the proof use `HMACSHA256`, which every
+runtime has. No third-party cryptography package is used.
+
+### What It Stops And What It Does Not
+
+It stops whoever sits on the path from reading the traffic, from changing,
+injecting, or replaying a datagram without being noticed, and from joining
+with, or burning, a ticket whose id it saw. It does not stop:
+
+- Denial of service on the path: dropping, delaying, or flooding datagrams, or
+  forging the clear connection control before the keys, such as a disconnect.
+- A compromised GameService or SimulationWorker, or a compromised client:
+  each of them holds the keys of the sessions it serves.
+- A reader of the consume call between worker and GameService, which therefore
+  must be private.
+- Traffic analysis: the sizes and timing of datagrams stay visible.
 
 ## Schema And Generator
 
@@ -404,7 +551,10 @@ is lost: what GameService committed is read again on the next join.
 
 ## Session Messages
 
-- `JoinRequest` carries the join ticket. `JoinAccepted` carries the simulation
+- `JoinRequest` carries the join ticket's public id, a client nonce, and the
+  proof that the client holds the ticket's transport key, as
+  [The Join](#the-join) describes; an empty ticket id is refused with
+  `missing_join_ticket`. `JoinAccepted` carries the simulation
   session, account, and character identity, the Shard and World identity, the
   controlled entity id, the simulation and collision revisions, the join and
   session expiry times, whether the join was a reconnect, the carry state, the
@@ -458,7 +608,11 @@ worker is such a `ServerDisconnect`. LiteNetLib sends the disconnect again every
 that still wait for their acknowledgement, so the data is what reaches the
 client when the reliable copy was lost or held back behind a lost packet. How
 long the worker waits before it disconnects is in
-[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport).
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport). A peer
+whose keys the worker has not installed yet drops every clear packet on a
+channel, as [When Sealing Starts](#when-sealing-starts) describes, so the worker
+sends it the message only as the data of the disconnect, which follows at once,
+such as a `JoinRejected` for a ticket that GameService refused.
 
 The data is at most 1,014 bytes: LiteNetLib puts it into one disconnect packet
 behind a 9-byte header, and attaches it only while that packet stays below the
@@ -1045,8 +1199,12 @@ only on a worker with its own version.
   not handle. Give every new client-to-server type a route in SimulationWorker,
   as [Registering A Realtime Feature](PROJECT_ARCHITECTURE.md#registering-a-realtime-feature)
   describes; `RealtimeFeatureRegistrationTests` fails for a type without one.
-- The connection key stays `Mmorpg.Realtime.v8`, so a version mismatch is
-  reported as a clear protocol error instead of a refused connection.
+- The connection key changes only when the framing of the datagrams changes,
+  such as the marker and seal of [Transport Security](#transport-security), so
+  a peer of another framing is refused at the connect, while a mismatch of the
+  protocol version alone is reported as a clear protocol error instead of a
+  refused connection. A client never connects to a worker of another version,
+  because it checks the placement first.
 
 `Schema~/realtime-protocol.lock.json` enforces the first rule. It records the
 SHA-256 fingerprint of the wire contract of every version: the magic, the

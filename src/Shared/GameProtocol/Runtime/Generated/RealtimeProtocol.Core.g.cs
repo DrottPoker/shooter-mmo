@@ -11,7 +11,7 @@ namespace Mmorpg.GameProtocol
     public enum RealtimeMessageType : byte
     {
         /// <summary>
-        /// Asks to join a simulation session with a join ticket.
+        /// Asks to join a simulation session with a join ticket's public id and the proof that the client holds the ticket's transport key, which never travels over UDP.
         /// </summary>
         JoinRequest = 1,
 
@@ -412,12 +412,12 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 45;
+        public const ushort Version = 46;
 
         /// <summary>
         /// The LiteNetLib connection key.
         /// </summary>
-        public const string ConnectionKey = "Mmorpg.Realtime.v8";
+        public const string ConnectionKey = "Mmorpg.Realtime.v9";
 
         /// <summary>
         /// The largest packet in bytes, including the seven-byte frame header.
@@ -469,6 +469,16 @@ namespace Mmorpg.GameProtocol
         /// </summary>
         public const int MaximumSnapshotEntitiesPerChunk = 71;
 
+        /// <summary>
+        /// Bytes in the client nonce of a join request.
+        /// </summary>
+        public const int JoinNonceSize = 16;
+
+        /// <summary>
+        /// Bytes in the HMAC-SHA256 proof of a join request.
+        /// </summary>
+        public const int JoinProofSize = 32;
+
         private const uint Magic = 0x4F4D4D53;
         private const int MaximumIdentifierLength = RealtimeProtocolLimits.MaximumIdentifierLength;
         private const int MaximumNameLength = RealtimeProtocolLimits.MaximumNameLength;
@@ -498,7 +508,6 @@ namespace Mmorpg.GameProtocol
         private const int MaximumErrorMessageLength = 512;
         private const int MaximumMessageArgumentNameLength = 32;
         private const int MaximumMessageArgumentValueLength = 384;
-        private const int MaximumJoinTicketLength = 1024;
         private const int MaximumItemOperationItems = 24;
         private const int MaximumItemResultItemRevisions = 32;
         private const int MaximumItemResultContainerRevisions = 8;

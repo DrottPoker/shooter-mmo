@@ -69,6 +69,8 @@ public sealed class DevelopmentItemPackageIntegrationTests
         var secondRun = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             applier.ApplyAsync(package, player.Character.Id, CancellationToken.None));
         Assert.Contains("require a character with no items", secondRun.Message);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -94,6 +96,8 @@ public sealed class DevelopmentItemPackageIntegrationTests
             player.Character.Id,
             CancellationToken.None);
         Assert.Equal(corrected.CarryCapacity, corrected.CarriedWeight);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static DevelopmentItemPackage LoadFixturePackage(

@@ -951,6 +951,10 @@ The implementation must enforce all of the following:
     transaction, and the balance never leaves its range.
 17. A vendor trade moves its items and its currency together or not at all.
 
+The [economy audit](GAME_SERVICE_MODULES.md#economy-audit) checks across the
+whole database what the stored state and the retained history can show of
+these invariants, and names what it cannot answer.
+
 ## Planned
 
 These rules are decided and wait for later work, mostly the combat work in

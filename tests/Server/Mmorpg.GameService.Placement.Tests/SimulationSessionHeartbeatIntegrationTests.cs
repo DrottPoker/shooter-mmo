@@ -223,7 +223,7 @@ public sealed class SimulationSessionHeartbeatIntegrationTests
             new DevelopmentSimulationBotPlacement(ShardId, "development-world-1", WorkerId, RuntimeId, "127.0.0.1", 27015, 100, 0, 0, 0, 1, "simulation-revision", "collision-revision"));
         Assert.True(ticket.Succeeded, ticket.Error?.Message);
         Assert.True(bots.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(ticket.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(ticket.Value!, WorkerId, RuntimeId, ShardId),
             out var bot));
         var service = ActivatorUtilities.CreateInstance<SimulationSessionService>(context.Services, bots);
 
@@ -292,7 +292,7 @@ public sealed class SimulationSessionHeartbeatIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(join.Value!, WorkerId, RuntimeId, ShardId),
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;

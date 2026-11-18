@@ -49,7 +49,9 @@ jobs:
 
       # The art pipeline's kinematic cloth lays the chains as the Unity client does.
       - name: Test the art pipeline's Python
-        run: python3 -m unittest discover -s tools/art/blender/tests -v
+        run: |
+          python3 -m pip install --quiet -r tools/art/blender/tests/requirements.txt
+          python3 -m unittest discover -s tools/art/blender/tests -v
 
       # Every tracked file must match a rule of the local change-based checks.
       - name: Verify test selection rules

@@ -85,6 +85,8 @@ public sealed class DeathLootIntegrationTests
             new { death.Corpse.CorpseId }));
         Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
         Assert.Equal("ck_corpses_expiry", exception.ConstraintName);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -133,12 +135,7 @@ public sealed class DeathLootIntegrationTests
             2,
             initial.Bank.ContainerId,
             0);
-        await using (var connection = await context.DataSource.OpenConnectionAsync())
-        {
-            await connection.ExecuteAsync(
-                "update characters set currency = 12345 where id = @CharacterId;",
-                new { CharacterId = player.Character.Id });
-        }
+        await context.SetCurrencyAsync(player.Character.Id, 12345);
 
         var beforeDeath = await fixture.GetSnapshotAsync();
         var deathEventId = Guid.NewGuid();
@@ -264,6 +261,8 @@ public sealed class DeathLootIntegrationTests
                     """,
                     new { SourceEventId = deathEventId.ToString("D") }));
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -410,6 +409,8 @@ public sealed class DeathLootIntegrationTests
                     """,
                     new { protectedDeath.Corpse.CorpseId }));
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -498,6 +499,8 @@ public sealed class DeathLootIntegrationTests
         Assert.Equal(TimeSpan.FromMinutes(5), lifecycle.ExpiresAt - lifecycle.CreatedAt);
         Assert.NotNull(lifecycle.ClosedAt);
         Assert.Equal("expired", lifecycle.CloseReason);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -586,6 +589,8 @@ public sealed class DeathLootIntegrationTests
                     "select count(*) from item_destructions where item_instance_id = any(@ItemIds);",
                     new { ItemIds = itemIds }));
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -662,6 +667,8 @@ public sealed class DeathLootIntegrationTests
                     (select count(*) from item_destructions where item_instance_id = @ItemId);
                 """,
                 new { ItemId = itemId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -752,6 +759,8 @@ public sealed class DeathLootIntegrationTests
         var restore = await restored.Content.ReadFromJsonAsync<CorpseRestoreResponse>();
         Assert.NotNull(restore);
         Assert.Equal(partition.Corpse.CorpseId, Assert.Single(restore.Corpses).CorpseId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -951,6 +960,8 @@ public sealed class DeathLootIntegrationTests
               and state = 'idle in transaction';
             """);
         Assert.Equal(0, idleTransactions);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<PlayerDeathPartitionResponse> ProcessDeathAsync(
@@ -1016,8 +1027,8 @@ public sealed class DeathLootIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 WorkerRuntimeId,
                 ShardId),

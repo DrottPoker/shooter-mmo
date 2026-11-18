@@ -163,7 +163,7 @@ entity, peer, or runtime id as a label.
 
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase, of the parts of the phases that time themselves, and of every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
@@ -184,6 +184,10 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | `simulation_worker.realtime.received.packets`, `.received.bytes` | counter | Received packets and bytes. |
 | `simulation_worker.realtime.sent.packets`, `.sent.bytes` | counter | Sent packets and bytes. |
 | `simulation_worker.realtime.sent.messages`, `.received.messages` | counter | Sent and received messages by kind, labeled `message` with the `RealtimeMessageType` name, such as `SimulationSnapshot` or `MovementInputBatch`, and only kinds with a message. A packet without a readable type, empty or with an invalid header, counts under `0`. |
+| `simulation_worker.realtime.datagrams.sent`, `.datagrams.received` | counter | UDP datagrams that the transport's sealing layer sent and received: every message, merged or alone, and LiteNetLib's own packets, such as acknowledgements and pings. Received datagrams count also when the layer dropped them. |
+| `simulation_worker.realtime.datagrams.sent.bytes`, `.datagrams.received.bytes` | counter | Every byte of those datagrams, the seal included. |
+| `simulation_worker.realtime.datagrams.overhead.bytes` | counter | The bytes that the seal added in both directions: 25 per sealed datagram and 1 per clear one, as [Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. |
+| `simulation_worker.realtime.datagrams.dropped` | counter | Received datagrams that the layer dropped unanswered, labeled `reason`: `malformed`, `unauthenticated` (another key, altered bytes, or no keys for the endpoint), `replayed`, `clear_after_sealing`, and `clear_not_allowed` (a clear packet before the keys on another channel than the join's). A steady value above zero means a broken client or traffic on the path. |
 | `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
 | `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
 | `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
@@ -271,6 +275,7 @@ own in `PlatformMeters.Names`:
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, and the lag. |
+| `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
 | Instrument | Type | Meaning |
@@ -295,6 +300,10 @@ own in `PlatformMeters.Names`:
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 | `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
 | `game_service.retention.duration` | histogram, ms | The time one task spent in one pass, all its batches together, labeled `task`. |
+| `game_service.audit.runs` | counter | Runs of the scheduled [economy audit](GAME_SERVICE_MODULES.md#economy-audit), labeled `outcome`: `clean`, `violations`, or `failed` when nothing was found but the run or a check could not run. |
+| `game_service.audit.last_run_timestamp` | gauge, s | The Unix time at which the latest run ended; nothing before the first run. |
+| `game_service.audit.last_run_duration` | gauge, s | How long the latest run took, all its checks in one snapshot. |
+| `game_service.audit.violations` | gauge | The violations that each check found in its latest run that ran, labeled `check` with the check's id from [Audit Checks](GAME_SERVICE_MODULES.md#audit-checks). A check that could not run keeps its count from before. Any value above 0 is a broken economy. |
 | `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
 
 The periodic item summary log counts only committed and rejected transactions.
@@ -303,7 +312,8 @@ operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`, and
 quest actions by `accept_quest`, `abandon_quest`, `regrant_quest_items`,
 `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest`, and
 `credit_quest_kill`.
-GameService has no separate currency or economy instrument yet.
+GameService has no instrument of single currency changes; the economy audit
+judges the balances and the ledger as a whole.
 
 ### Built-in .NET Metrics
 
@@ -400,7 +410,9 @@ entries of both processes, and the trace share one id.
   players, synthetic bots, unauthenticated peers, connected peers, entities,
   process CPU normalized to total logical-core capacity, single-core-equivalent
   CPU, working set, packet and payload rates including the snapshot payload
-  rate, snapshot drops, quota rejections, and the sample window. The
+  rate, the received and sent datagrams per second with the sealing overhead in
+  KiB per second and the dropped datagrams per second, snapshot drops, quota
+  rejections, and the sample window. The
   performance line reports, for the interval, averages, approximate p95 and p99
   upper bounds, and maximum durations of every performance histogram, the
   current and interval-maximum completed-operation and corpse-mutation backlogs,
@@ -463,7 +475,10 @@ entries of both processes, and the trace share one id.
   resynchronizations; the loop failures,
   `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
-  snapshot bytes, joins, spawns, and despawns; `sentByMessage` and
+  snapshot bytes, joins, spawns, and despawns; `datagramsIn`,
+  `datagramBytesIn`, `datagramsOut`, and `datagramBytesOut`, the UDP datagrams
+  of the interval and every byte of them, `sealingOverheadBytes`, the bytes that
+  the seal added in both directions, and `droppedDatagrams`; `sentByMessage` and
   `receivedByMessage`, the messages and bytes of every message kind with a
   message in the interval, keyed by the `RealtimeMessageType` name in type
   order, such as
@@ -485,6 +500,12 @@ entries of both processes, and the trace share one id.
   correlation and operation ids, classify expected contention below warning,
   promote significant lifecycle commits, and exclude credentials, tokens, and
   command bodies.
+- The scheduled economy audit logs one line per run at `Information` with the
+  checks that ran, its time, its violations, and the checks that could not run;
+  an `Error` line for every check that found a violation, with its count, what
+  it examined, its description, and its examples by id; a `Warning` line for
+  every check that could not run and for a run that stopped early; and, while
+  `Audit:Enabled` is off, one `Information` line at start that says so.
 - The retention host logs a pass that deleted rows at `Information`, with its
   rows and time and the rows of every task, a pass that used its budget with
   rows still due at `Warning`, naming the tasks, a batch that gave up on a lock
@@ -579,9 +600,11 @@ look before it becomes critical.
 | `ItemTransactionFailures` | warning | An item transaction failed with an unexpected error in the last five minutes. |
 | `ItemTransactionTimeouts` | warning | An item transaction hit its lock or transaction timeout in the last five minutes. |
 | `RedisFailures` | warning | GameService could not reach Redis in the last five minutes. |
+| `EconomyAuditViolations` | critical | A check of the economy audit found a violation in its latest run: an item lost or in two places, an invalid stack or slot, or gold that does not match its ledger. The GameService log names the examples by id. |
+| `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, and pool rules.
+tests for the availability, tick, error-rate, pool, and economy audit rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull
@@ -634,7 +657,8 @@ to the system, request, or database command that caused it.
   anonymous admin access and no login form, which is only acceptable on a
   developer machine. A shared or staging deployment needs authentication, TLS,
   and network restrictions first.
-- Traces and logs never contain tokens, passwords, or request bodies. Npgsql
+- Traces and logs never contain tokens, passwords, request bodies, or the
+  transport keys, join proofs, and nonces of the realtime transport. Npgsql
   spans contain SQL text with parameter placeholders, not parameter values. The
   connection pool is labeled `postgres` instead of the connection string.
 

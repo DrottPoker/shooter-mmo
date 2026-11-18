@@ -157,3 +157,19 @@ groups:
           severity: warning
         annotations:
           summary: GameService could not reach Redis in the last five minutes and fell back to PostgreSQL and local rate limits.
+
+  - name: mmorpg-economy
+    rules:
+      - alert: EconomyAuditViolations
+        expr: max by (check) (game_service_audit_violations) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: The economy audit check {{ $labels.check }} found violations; the GameService log names them with example ids.
+
+      - alert: EconomyAuditFailed
+        expr: sum(increase(game_service_audit_runs_total{outcome="failed"}[2h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: The economy audit could not run every check in the last two hours; the GameService log says why.

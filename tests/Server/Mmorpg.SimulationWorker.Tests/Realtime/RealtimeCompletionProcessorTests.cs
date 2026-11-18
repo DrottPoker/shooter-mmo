@@ -76,11 +76,13 @@ public sealed class RealtimeCompletionProcessorTests
             "[SIMULATION] Could not process a completed {OperationType} for UDP peer {PeerId}.",
             entry.Template);
         Assert.Contains("JoinCompleted", entry.Message, StringComparison.Ordinal);
-        var sent = Assert.Single(failedPeer.Sent);
-        Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);
-        Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(sent.Data, out var reason, out _));
-        Assert.Equal("internal_error", reason.Code);
+
+        // The join failed before it installed the peer's keys, so the reason travels only in the
+        // data of the disconnect.
+        Assert.Empty(failedPeer.Sent);
         Assert.NotNull(failedContext.PendingDisconnect);
+        Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(failedContext.PendingDisconnect.Data!, out var reason, out _));
+        Assert.Equal("internal_error", reason.Code);
         Assert.Empty(otherPeer.Sent);
         Assert.Null(otherContext.PendingDisconnect);
     }
@@ -104,7 +106,9 @@ public sealed class RealtimeCompletionProcessorTests
     {
         return new JoinCompleted(
             context,
-            SimulationJoinResult<ActiveSimulationSession>.Success(RealtimeTestSessions.Create()),
+            SimulationJoinResult<ActiveSimulationSession>.Success(
+                RealtimeTestSessions.Create(),
+                RealtimeTestTickets.KeysOf("processor")),
             0);
     }
 
