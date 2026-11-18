@@ -61,7 +61,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
 | Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
 | Death and corpses | Death partition, durable player corpses, live and durable Mob corpses, concurrent looting, Loot all | Final corpse presentation |
-| Economy | Gold with a ledger, one NPC vendor with fixed prices | More vendors, player trading, auction house |
+| Economy | Gold with a ledger, one NPC vendor with fixed prices, and an audit of items and gold over the whole database | More vendors, player trading, auction house |
 | Gathering and professions | Mining and woodcutting on shared nodes | Profession levels, crafting |
 | Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn, Mob tagging with loot rights, world bosses that give every contributor their own loot | Abilities, the combat triangle, threat, Mob abilities |
 | Quests | Quest content with steps, objectives, chains, and rewards, quest NPCs, kill, collect, deliver, talk, and gather objectives, quest drops, the quest log and tracker, and Quest Studio | Experience rewards, more objective kinds, and repeatable schedules |
@@ -110,6 +110,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Player presence: join, leave, and disconnect | Provisional | Of a live character only its items, place, facing, health, and mana are stored; a body stays 20 seconds everywhere until gameplay rule areas give each area its own time |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |
+| The economy audit: its checks, the scheduled run, the `audit` command, and its use in the load tool and the tests | Provisional | It reports and repairs nothing: no repair tools, admin screens, or history browser. Conservation is checked only per retained operation and only for the operation kinds of Items |
 | Worker and GameService resilience: lease durations, heartbeats, and backpressure | Provisional | |
 | World actors, interaction, and capabilities | Provisional | |
 | Combat, Mobs, and their numbers | Provisional | |

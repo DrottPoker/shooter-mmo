@@ -5,7 +5,7 @@ using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Configuration;
 
-// `migrate` and `migrate --plan` run instead of the web host; the other arguments configure.
+// `migrate`, `migrate --plan`, and `audit` run instead of the web host; the other arguments configure.
 var (databaseCommand, configurationArgs) = GameServiceDatabaseCommandLine.Parse(args);
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -46,7 +46,7 @@ if (databaseCommand is { } command)
 {
     Environment.ExitCode = await GameServiceDatabaseCommandLine.RunAsync(
         command,
-        databaseInitializer,
+        app.Services,
         Console.Out,
         Console.Error,
         CancellationToken.None);

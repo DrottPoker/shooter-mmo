@@ -397,6 +397,8 @@
         "type": "Project",
         "dependencies": {
           "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.GameService.Characters": "[1.0.0, )",
+          "Mmorpg.GameService.Items": "[1.0.0, )",
           "Mmorpg.GameSimulation": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",

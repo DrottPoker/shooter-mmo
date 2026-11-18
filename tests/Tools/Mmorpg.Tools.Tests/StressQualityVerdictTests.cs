@@ -147,6 +147,38 @@ public sealed class StressQualityVerdictTests
             rule => Assert.StartsWith("Not applicable", rule.Note, StringComparison.Ordinal));
     }
 
+    private static StressEconomyAuditSummary CleanAudit()
+    {
+        return new StressEconomyAuditSummary(
+            "clean",
+            0,
+            12,
+            null,
+            [
+                new StressEconomyAuditCheck("currency_balance_matches_ledger", 10, 0, 2, null, []),
+                new StressEconomyAuditCheck("item_custody_missing", 1220, 0, 5, null, [])
+            ]);
+    }
+
+    private static StressEconomyAuditSummary ViolatedAudit()
+    {
+        return new StressEconomyAuditSummary(
+            "violations",
+            2,
+            12,
+            null,
+            [
+                new StressEconomyAuditCheck("currency_balance_matches_ledger", 10, 0, 2, null, []),
+                new StressEconomyAuditCheck(
+                    "item_custody_missing",
+                    1220,
+                    2,
+                    5,
+                    null,
+                    ["item_instance_id=a1, problem=container_without_owner", "item_instance_id=a2, problem=container_not_live"])
+            ]);
+    }
+
     public static TheoryData<string> BrokenRules => new()
     {
         "simulation_tick_p99_ms",
@@ -170,6 +202,39 @@ public sealed class StressQualityVerdictTests
         "worker_loop_failures",
         "burst_incomplete_accounts"
     };
+
+    // The item invariants count the fixture quantities that differ and every violation of the
+    // economy audit, and the note names the violated checks; an audit that could not run every
+    // check measured nothing, and the generator's own checks fail with it.
+    [Fact]
+    public void TheItemInvariantsNameTheViolatedAuditChecks()
+    {
+        var report = FullStackReport();
+        StressRunReport WithAudit(StressEconomyAuditSummary audit) => report with
+        {
+            Postgres = report.Postgres! with
+            {
+                ItemInvariants = report.Postgres.ItemInvariants! with { Audit = audit }
+            }
+        };
+        var clean = Boundary().Evaluate(report).Rules.Single(rule => rule.Rule == "item_invariant_violations");
+        var violated = Boundary().Evaluate(WithAudit(ViolatedAudit())).Rules.Single(rule => rule.Rule == "item_invariant_violations");
+        var notRun = CleanAudit() with { Error = "connection refused" };
+        var failed = Boundary().Evaluate(WithAudit(notRun)).Rules.Single(rule => rule.Rule == "item_invariant_violations");
+
+        Assert.True(clean.Passed);
+        Assert.Equal(0, clean.Measured);
+        Assert.Contains("economy audit clean over 2 checks", clean.Note, StringComparison.Ordinal);
+        Assert.False(violated.Passed);
+        Assert.Equal(2, violated.Measured);
+        Assert.Contains("economy audit violations: item_custody_missing 2", violated.Note, StringComparison.Ordinal);
+        Assert.False(failed.Passed);
+        Assert.Null(failed.Measured);
+        Assert.Contains("the audit stopped: connection refused", failed.Note, StringComparison.Ordinal);
+        Assert.True(report.PassedOwnChecks());
+        Assert.False(WithAudit(ViolatedAudit()).PassedOwnChecks());
+        Assert.False(WithAudit(notRun).PassedOwnChecks());
+    }
 
     // A burst whose accounts all ended logged in within the deadline passes, however often the
     // lane refused them; the refusals and retries are in the note, never failures.
@@ -948,7 +1013,7 @@ public sealed class StressQualityVerdictTests
             null,
             new StressPostgresSummary(
                 "db", 10, 1, 13, 1, 5, 3, 0, 10, 0, 1000, 10, 40, 1000, 0, 100, 100, 0, 0, 0, 0, 0, 0,
-                new StressItemInvariantSummary(1210, 1210, 10, 10, 0, 0, 0)),
+                new StressItemInvariantSummary(1210, 1210, 10, 10, CleanAudit())),
             new StressFullStackSummary(
                 "run", 10, 1, 10, 10, 10, 10, 10, null,
                 new Dictionary<string, StressHttpOperationSummary>
@@ -1209,7 +1274,7 @@ public sealed class StressQualityVerdictTests
             {
                 Postgres = report.Postgres! with
                 {
-                    ItemInvariants = report.Postgres.ItemInvariants! with { PendingItemOperations = 1 }
+                    ItemInvariants = report.Postgres.ItemInvariants! with { Audit = ViolatedAudit() }
                 }
             },
             "process_memory_growth" => report with

@@ -3820,6 +3820,44 @@ A second start of GameService with unchanged content logs no
 `Database seed change` line: it neither recomputes the carry state nor reads the
 stored looks.
 
+### The Economy Audit
+
+Play for a few minutes with a client: buy and sell at Mira, gather, loot a
+wolf, die, and loot your corpse, as the sections above describe. Then audit the
+local database from a second terminal while GameService keeps running. The
+running service holds its build output, so the command runs that build:
+
+```powershell
+dotnet run --project src/Server/GameService --no-build -- audit
+$LASTEXITCODE
+dotnet run --project src/Server/GameService --no-build -- audit --json
+```
+
+Expected result: the report lists every check of
+[Audit Checks](GAME_SERVICE_MODULES.md#audit-checks) as `ok` with what it
+examined, ends with `The economy is consistent.`, and `$LASTEXITCODE` is `0`;
+the JSON form says `"outcome": "clean"` and `"exitCode": 0`. No line names a
+player or a character by name. A violation, which the integration tests plant
+on purpose, would be marked `VIOLATED` with examples by id and exit with `1`.
+
+Then stop GameService and start it with the scheduled audit on and a short
+interval:
+
+```powershell
+$env:Audit__Enabled = "true"
+$env:Audit__IntervalSeconds = "60"
+dotnet run --project src/Server/GameService
+```
+
+Expected result: right after the start and then every minute GameService logs
+`Economy audit ran <n> of <n> checks in <ms> ms: 0 violations in 0 checks, 0
+checks could not run.` With the monitoring stack running, as
+[Run The Monitoring Stack](MONITORING.md#run-the-monitoring-stack) describes,
+Prometheus shows `game_service_audit_violations` at `0` for every check and
+`game_service_audit_runs_total{outcome="clean"}` growing, and neither
+`EconomyAuditViolations` nor `EconomyAuditFailed` fires. Remove both variables,
+or close the terminal, before you start GameService for anything else.
+
 ### Logs
 
 Keep GameService and a worker running for a few minutes while a client plays.

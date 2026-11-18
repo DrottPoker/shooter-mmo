@@ -77,6 +77,8 @@ public sealed class ItemApiIntegrationTests
             $"/api/characters/{owner.Character.Id}/item-state");
         Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
         Assert.Equal("invalid_session_token", await ReadProblemCodeAsync(unauthenticated));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -149,6 +151,8 @@ public sealed class ItemApiIntegrationTests
         Assert.Equal(
             ItemTransactionErrorCodes.OfflineAccessRequired,
             await ReadProblemCodeAsync(blocked));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -197,6 +201,8 @@ public sealed class ItemApiIntegrationTests
             Assert.True(response.Headers.CacheControl?.NoStore);
             Assert.Equal(ItemApiErrorCodes.OperationIdRequired, await ReadProblemCodeAsync(response));
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -314,6 +320,8 @@ public sealed class ItemApiIntegrationTests
             await connection.QuerySingleAsync<Guid>(
                 "select container_id from item_instances where id = @ItemInstanceId;",
                 new { item.ItemInstanceId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -397,6 +405,8 @@ public sealed class ItemApiIntegrationTests
         Assert.Null(await connection.QuerySingleAsync<DateTime?>(
             "select claimed_at from recovery_deliveries where id = @DeliveryId;",
             new { DeliveryId = deliveryId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<string> ReadProblemCodeAsync(HttpResponseMessage response)

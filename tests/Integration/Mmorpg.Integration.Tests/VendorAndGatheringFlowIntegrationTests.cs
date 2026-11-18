@@ -125,6 +125,8 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             ["development", "vendor_purchase", "vendor_sale", "vendor_purchase"],
             ledger.Select(entry => entry.SourceKind));
         Assert.Equal(snapshot.Currency, ledger.Sum(entry => entry.Delta));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<long> CommitAsync(

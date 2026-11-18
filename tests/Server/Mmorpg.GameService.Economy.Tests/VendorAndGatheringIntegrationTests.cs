@@ -52,6 +52,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.Equal(purchase.OperationId, ledger[1].ItemOperationId);
         var snapshot = await SnapshotAsync(context, player);
         Assert.Equal(495, snapshot.Currency);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -92,6 +94,8 @@ public sealed class VendorAndGatheringIntegrationTests
 
         Assert.Equal(100, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -123,6 +127,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.False(result.Succeeded);
         Assert.Equal(EconomyTransactionErrorCodes.VendorAccessRequired, result.Error!.Code);
         Assert.Equal(100, await CurrencyAsync(context, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -164,6 +170,8 @@ public sealed class VendorAndGatheringIntegrationTests
         AssertRejected(full, ItemTransactionErrorCodes.InventoryFull);
         Assert.Equal(975, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -211,6 +219,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.Equal(2, (await world.LoadItemAsync(arrowsId)).Quantity);
         Assert.Equal(20, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -240,6 +250,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.Single(sales, sale => sale.Succeeded);
         Assert.Equal(40, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -272,6 +284,8 @@ public sealed class VendorAndGatheringIntegrationTests
         await world.GrantAsync(characterId, Ore, 44, state.PermanentInventoryContainerId, 1);
         var overCap = await GatherAsync(context, session, 1);
         AssertRejected(overCap, ItemTransactionErrorCodes.CarryWeightLimitExceeded);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -292,6 +306,8 @@ public sealed class VendorAndGatheringIntegrationTests
         AssertRejected(
             await GatherAsync(context, session, 1, Pack),
             EconomyTransactionErrorCodes.GatheringYieldInvalid);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -316,6 +332,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.Equal(CurrencySourceKinds.StartingBalance, ledger.SourceKind);
         Assert.Equal(75, ledger.Delta);
         Assert.Null(ledger.ItemOperationId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -344,6 +362,8 @@ public sealed class VendorAndGatheringIntegrationTests
         Assert.Single(await LedgerAsync(context, characterId));
         await Assert.ThrowsAsync<Npgsql.PostgresException>(() => context.ExecuteAsync(
             $"update characters set currency = -1 where id = '{characterId}';"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static Task<ItemTransactionResult> SellAsync(

@@ -109,6 +109,8 @@ public sealed class NpcItemLifecycleIntegrationTests
         Assert.True(normalCapabilities.CanTrade);
         Assert.True(normalCapabilities.CanListOnAuction);
         Assert.True(normalCapabilities.CanSellToVendor);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -228,6 +230,8 @@ public sealed class NpcItemLifecycleIntegrationTests
                 itemRevision: sword.Revision));
         Assert.False(insufficient.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.CurrencyInsufficient, insufficient.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // Quests grant and remove their items through the quest route, so the item route no longer
@@ -262,6 +266,8 @@ public sealed class NpcItemLifecycleIntegrationTests
         }
 
         Assert.Equal(snapshot.ItemStateRevision, (await GetSnapshotAsync(context, player)).ItemStateRevision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static SimulationItemOperationRequest CreateNpcRequest(
@@ -390,15 +396,12 @@ public sealed class NpcItemLifecycleIntegrationTests
         return consumed.Value!;
     }
 
-    private static async Task SetCurrencyAsync(
+    private static Task SetCurrencyAsync(
         PostgresIntegrationTestContext context,
         Guid characterId,
         long currency)
     {
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        await connection.ExecuteAsync(
-            "update characters set currency = @Currency where id = @CharacterId;",
-            new { CharacterId = characterId, Currency = currency });
+        return context.SetCurrencyAsync(characterId, currency);
     }
 
     private static async Task<long> GetCurrencyAsync(

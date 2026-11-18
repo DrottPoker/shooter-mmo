@@ -107,6 +107,8 @@ public sealed class CombatItemBoundaryIntegrationTests
         Assert.Empty(last.ItemRevisions);
         Assert.Empty(last.CharacterState!.Equipment);
         Assert.Null(await LoadItemAsync(context, arrowId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -173,6 +175,8 @@ public sealed class CombatItemBoundaryIntegrationTests
         Assert.Equal(10, (await LoadItemAsync(context, equippedArrowId))!.Quantity);
         Assert.Equal(30, (await LoadItemAsync(context, looseArrowId))!.Quantity);
         Assert.Equal(10, (await LoadItemAsync(context, otherArrowId))!.Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -219,6 +223,8 @@ public sealed class CombatItemBoundaryIntegrationTests
         Assert.True(replay.Succeeded, replay.Error?.Message);
         Assert.Equal(death.Value.Corpse.CorpseId, replay.Value!.Corpse.CorpseId);
         Assert.Equal(17, (await LoadItemAsync(context, arrowId))!.Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -296,6 +302,8 @@ public sealed class CombatItemBoundaryIntegrationTests
         Assert.Equal(
             (DeathKillerKinds.Character, killer.Character.Id.ToString("D")),
             await LoadKillerAsync(context, baseRequest.DeathEventId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task AssertConsumptionRejectedAsync(

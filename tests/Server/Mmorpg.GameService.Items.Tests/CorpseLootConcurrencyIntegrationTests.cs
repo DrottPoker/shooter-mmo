@@ -114,6 +114,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
                         secondDestination.ContainerId
                     }
                 }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -193,6 +195,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             stackId,
             firstDestination.ContainerId,
             secondDestination.ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -265,6 +269,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_instances where id = @ChildId and quantity = 2;",
                 new { ChildId = child }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -330,6 +336,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_instances where id = any(@BagIds);",
                 new { BagIds = new[] { corpseBag, firstBag, secondBag } }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The looter equips the corpse's Bag, so the swap checks the looter's level against it.
@@ -376,6 +384,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             death.Corpse.CorpseId,
             await LoadItemAsync(context, corpseBag),
             await LoadItemAsync(context, looterBag)));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -455,6 +465,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
                 where section.corpse_id = @CorpseId;
                 """,
                 new { CorpseId = death.Corpse.CorpseId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -515,6 +527,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
                 where item.id = @ChildId;
                 """,
                 new { ChildId = childId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -599,6 +613,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.False(rejected.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.CarryWeightLimitExceeded, rejected.Error!.Code);
         Assert.Equal(death.Corpse.CorpseId, await FindCorpseForItemAsync(context, weighted));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -720,6 +736,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             3);
         Assert.True(lootBack.Succeeded, lootBack.Error?.Message);
         await AssertLocationAsync(context, emptySlotDeposit, playerInventory.ContainerId, 3);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -853,6 +871,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.True(tunicEquipped.Succeeded, tunicEquipped.Error?.Message);
         await AssertLocationAsync(context, tunic, corpseEquipmentId, bodySlotIndex);
         Assert.Equal(viewerRevision, (await GetSnapshotAsync(context, viewer)).ItemStateRevision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -912,6 +932,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.BagStateChanged, swapped.Error!.Code);
         await AssertLocationAsync(context, corpseBag, corpseEquipmentId, bagSlotIndex);
         await AssertLocationAsync(context, looseBag, corpseInventoryId, looseBagSlotIndex);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1006,6 +1028,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.CarryWeightLimitExceeded, capRejected.Error!.Code);
         await AssertLocationAsync(context, corpseTool, corpseInventoryId, 0);
         await AssertLocationAsync(context, cappedTarget, cappedInventory.ContainerId, 1);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1078,6 +1102,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(distinct container_id::text || ':' || container_slot_index::text) from item_instances where id = any(@ItemIds);",
                 new { ItemIds = new[] { corpseItem, depositedItem } }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<ItemTransactionResult> LootAsync(

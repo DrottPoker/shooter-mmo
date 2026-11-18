@@ -126,6 +126,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.Null(heartbeatAfterRelease.Lease);
         Assert.Equal("invalid_simulation_session", heartbeatAfterRelease.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -173,6 +175,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
             victim.Registration.SessionToken,
             CancellationToken.None));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -302,6 +306,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(heartbeat.CarriedWeight, reconnect.Value.CarriedWeight);
         Assert.Equal(heartbeat.CarryCapacity, reconnect.Value.CarryCapacity);
         Assert.Equal(heartbeat.Equipment, reconnect.Value.Equipment);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker enforces the rule set of the Shard row, so a changed row reaches it.
@@ -326,6 +332,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.True(changed.Succeeded, changed.Error?.Message);
         Assert.Equal("closed-test", changed.Value!.RuleSet);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -397,6 +405,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(missing.Succeeded);
         Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -449,6 +459,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(missing.Succeeded);
         Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -483,6 +495,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.True(retry.Succeeded, retry.Error?.Message);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -545,6 +559,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.False(secondJoin.Succeeded);
         Assert.Equal("shard_unavailable", secondJoin.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -591,6 +607,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.False(shard.IsOnline);
         Assert.Equal(1, shard.ActivePlayers);
         Assert.Equal(1, shard.Capacity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -694,6 +712,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(crossShardAfterRelease.Succeeded, crossShardAfterRelease.Error?.Message);
         Assert.Equal("worker-local-shard-2", crossShardAfterRelease.Value!.Endpoint.WorkerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -736,6 +756,8 @@ public sealed class AuthSimulationFlowIntegrationTests
                       'ux_simulation_join_tickets_active_character',
                       'ux_simulation_assignments_active_shard');
                 """));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -815,6 +837,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(secondCharacterId),
             CancellationToken.None);
         Assert.True(replacementJoin.Succeeded, replacementJoin.Error?.Message);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -849,6 +873,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.Equal(1, authenticatedLoginCount);
         Assert.Equal(1, await CountActiveAccountSessionsAsync(context));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -902,6 +928,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(future.Succeeded);
         Assert.Equal("invalid_worker_started_at", future.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -980,6 +1008,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             0,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_assignments where released_at is null;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1012,6 +1042,8 @@ public sealed class AuthSimulationFlowIntegrationTests
                   and not is_online
                   and runtime_id is null;
                 """));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1048,6 +1080,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             afterHeartbeat.Value!,
             shard => shard.Id == "unbound-shard"
                 && shard.WorldId == "development-world-2");
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1106,6 +1140,8 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
         Assert.Equal("development-world-2", Assert.Single(shards.Value!).WorldId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1161,6 +1197,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Contains("1 open durable corpses", blocked.Error.Message);
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
         Assert.Equal("development-world-1", Assert.Single(shards.Value!).WorldId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1202,6 +1240,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             0,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_workers where id = 'simulation-worker-a' and is_online;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1272,6 +1312,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             1,
             await context.ExecuteScalarIntAsync(
                 "select count(*) from simulation_assignments where worker_id = 'local-simulation-worker-1' and shard_id = 'secondary-shard' and released_at is null;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static Task<ServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeLocalTicketAsync(

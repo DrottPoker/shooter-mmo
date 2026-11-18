@@ -273,6 +273,7 @@ own in `PlatformMeters.Names`:
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, and the lag. |
+| `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
 | Instrument | Type | Meaning |
@@ -297,6 +298,10 @@ own in `PlatformMeters.Names`:
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 | `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
 | `game_service.retention.duration` | histogram, ms | The time one task spent in one pass, all its batches together, labeled `task`. |
+| `game_service.audit.runs` | counter | Runs of the scheduled [economy audit](GAME_SERVICE_MODULES.md#economy-audit), labeled `outcome`: `clean`, `violations`, or `failed` when nothing was found but the run or a check could not run. |
+| `game_service.audit.last_run_timestamp` | gauge, s | The Unix time at which the latest run ended; nothing before the first run. |
+| `game_service.audit.last_run_duration` | gauge, s | How long the latest run took, all its checks in one snapshot. |
+| `game_service.audit.violations` | gauge | The violations that each check found in its latest run that ran, labeled `check` with the check's id from [Audit Checks](GAME_SERVICE_MODULES.md#audit-checks). A check that could not run keeps its count from before. Any value above 0 is a broken economy. |
 | `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
 
 The periodic item summary log counts only committed and rejected transactions.
@@ -305,7 +310,8 @@ operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`, and
 quest actions by `accept_quest`, `abandon_quest`, `regrant_quest_items`,
 `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest`, and
 `credit_quest_kill`.
-GameService has no separate currency or economy instrument yet.
+GameService has no instrument of single currency changes; the economy audit
+judges the balances and the ledger as a whole.
 
 ### Built-in .NET Metrics
 
@@ -492,6 +498,12 @@ entries of both processes, and the trace share one id.
   correlation and operation ids, classify expected contention below warning,
   promote significant lifecycle commits, and exclude credentials, tokens, and
   command bodies.
+- The scheduled economy audit logs one line per run at `Information` with the
+  checks that ran, its time, its violations, and the checks that could not run;
+  an `Error` line for every check that found a violation, with its count, what
+  it examined, its description, and its examples by id; a `Warning` line for
+  every check that could not run and for a run that stopped early; and, while
+  `Audit:Enabled` is off, one `Information` line at start that says so.
 - The retention host logs a pass that deleted rows at `Information`, with its
   rows and time and the rows of every task, a pass that used its budget with
   rows still due at `Warning`, naming the tasks, a batch that gave up on a lock
@@ -586,9 +598,11 @@ look before it becomes critical.
 | `ItemTransactionFailures` | warning | An item transaction failed with an unexpected error in the last five minutes. |
 | `ItemTransactionTimeouts` | warning | An item transaction hit its lock or transaction timeout in the last five minutes. |
 | `RedisFailures` | warning | GameService could not reach Redis in the last five minutes. |
+| `EconomyAuditViolations` | critical | A check of the economy audit found a violation in its latest run: an item lost or in two places, an invalid stack or slot, or gold that does not match its ledger. The GameService log names the examples by id. |
+| `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, and pool rules.
+tests for the availability, tick, error-rate, pool, and economy audit rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull

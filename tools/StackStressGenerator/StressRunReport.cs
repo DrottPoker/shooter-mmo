@@ -206,7 +206,7 @@ public sealed record StressRunReport(
             && Bots.CompletedBots == bots
             && (FullStack is null || FullStack.LoggedOutBots == FullStack.AdmittedBots)
             && Gameplay.UnexpectedFailures == 0
-            && (Postgres?.ItemInvariants?.Violations ?? 0) == 0
+            && (Postgres?.ItemInvariants is not { } invariants || invariants.Hold)
             && BurstCompleted()
             && (Outage is null || Outage.UnexplainedFailures == 0);
     }

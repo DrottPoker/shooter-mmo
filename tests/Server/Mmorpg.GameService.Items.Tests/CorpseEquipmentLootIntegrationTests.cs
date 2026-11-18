@@ -23,6 +23,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         ItemScenarioWorld.AssertCommitted(result);
         Assert.Equal(scenario.BowId, await LoadEquippedItemAsync(world, scenario.LooterId, "main_hand"));
         Assert.Null((await world.LoadItemAsync(scenario.BowId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -42,6 +44,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(bowBefore.ContainerId, swordAfter.ContainerId);
         Assert.Equal(bowBefore.ContainerSlotIndex, swordAfter.ContainerSlotIndex);
         Assert.Contains(result.ItemRevisions, item => item.ItemInstanceId == sword);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -59,6 +63,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(30 + arrowsBefore.Quantity, (await world.LoadItemAsync(equippedArrows)).Quantity);
         Assert.Equal(equippedArrows, await LoadEquippedItemAsync(world, scenario.LooterId, "ammunition"));
         Assert.Equal(0, await CountItemsAsync(world, scenario.ArrowsId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -91,6 +97,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         ItemScenarioWorld.AssertCommitted(await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", equipped, 7));
         Assert.Equal(20, (await world.LoadItemAsync(equipped)).Quantity);
         Assert.Equal(0, await CountItemsAsync(world, scenario.ArrowsId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -111,6 +119,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(45, (await world.LoadItemAsync(equippedArrows)).Quantity);
         Assert.Equal(equippedArrows, await LoadEquippedItemAsync(world, scenario.LooterId, "ammunition"));
         Assert.Equal(arrowsBefore.ContainerId, (await world.LoadItemAsync(scenario.ArrowsId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -129,6 +139,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.ItemStateConflict, result.Error!.Code);
         Assert.Equal(sword, await LoadEquippedItemAsync(world, scenario.LooterId, "main_hand"));
         Assert.Equal(bowBefore.ContainerId, (await world.LoadItemAsync(scenario.BowId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -146,6 +158,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet, tooLowLevel.Error!.Code);
         Assert.NotNull((await world.LoadItemAsync(scenario.BowId)).ContainerId);
         Assert.NotNull((await world.LoadItemAsync(scenario.HelmId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -185,6 +199,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         ItemScenarioWorld.AssertCommitted(
             await GrantLiveLootIntoContainerAsync(world, session, characterId, "fixture.ore", 4, inventoryId, 2, ore));
         Assert.Equal(7, (await world.LoadItemAsync(ore)).Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static Task<ItemTransactionResult> GrantLiveLootAsync(

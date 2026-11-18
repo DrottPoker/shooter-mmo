@@ -53,7 +53,9 @@ public sealed class PasswordHashingLaneTests
         var hashes = Enumerable.Range(0, 6)
             .Select(index => lane.HashAsync("wait-" + index, cancellationToken))
             .ToArray();
-        await WaitUntilAsync(() => metrics.Capture() is { InFlight: 2, Queued: 4 });
+        // The lane counts a hash as in flight when a thread takes it, which is before the thread
+        // enters the algorithm, so the test waits for the algorithm itself to hold both.
+        await WaitUntilAsync(() => algorithm.Running == 2 && metrics.Capture() is { InFlight: 2, Queued: 4 });
         algorithm.Release();
         await Task.WhenAll(hashes);
 
@@ -107,6 +109,46 @@ public sealed class PasswordHashingLaneTests
         Assert.True((await lane.HashAsync("after", cancellationToken)).Refused);
         algorithm.Release();
         Assert.False((await running).Refused);
+    }
+
+    // A caller has its answer only once the lane's thread counts as free again: with a hash that
+    // fits no wait, a request that followed an answer at once was refused while the thread that
+    // answered still counted as busy. The lane records a hash's duration before it frees the
+    // thread, so a listener that holds that recording holds the thread there.
+    [Fact]
+    public async Task ACallerHasItsAnswerOnlyOnceTheThreadIsFree()
+    {
+        using var algorithm = new GatedAlgorithm();
+        using var metrics = new PasswordHashingMetrics();
+        using var lane = CreateLane(algorithm, metrics, 1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var recorded = new SemaphoreSlim(0);
+        using var release = new ManualResetEventSlim(false);
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (instrument.Meter.Name == PasswordHashingMetrics.MeterName && instrument.Name.Contains("hash", StringComparison.Ordinal))
+            {
+                meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((instrument, _, _, _) =>
+        {
+            if (instrument.Name.Contains("duration", StringComparison.Ordinal) && !instrument.Name.Contains("wait", StringComparison.Ordinal))
+            {
+                recorded.Release();
+                release.Wait(TimeSpan.FromSeconds(10));
+            }
+        });
+        listener.Start();
+
+        var first = lane.VerifyAsync("password", "stored", cancellationToken);
+        Assert.True(await recorded.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken), "The lane recorded no hash.");
+        await Task.Delay(50, cancellationToken);
+        Assert.False(first.IsCompleted, "The caller had its answer while the thread still counted as busy.");
+        release.Set();
+        Assert.False((await first).Refused);
+        Assert.False((await lane.VerifyAsync("password", "stored", cancellationToken)).Refused);
     }
 
     // An unknown account is verified against the algorithm's unknown-account hash, and it is
@@ -225,6 +267,8 @@ public sealed class PasswordHashingLaneTests
         public IReadOnlyList<string> Calls => [.. calls];
 
         public IReadOnlyCollection<string> Threads => [.. threads];
+
+        public int Running => Volatile.Read(ref running);
 
         public int MostAtOnce => Volatile.Read(ref mostAtOnce);
 

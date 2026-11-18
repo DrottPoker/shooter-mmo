@@ -474,7 +474,12 @@ public static class Program
         if (report.Postgres?.ItemInvariants is { } invariants)
         {
             Console.WriteLine(
-                $"Item invariants: loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
+                $"Item invariants: loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}, {invariants.Audit.Describe()}.");
+            foreach (var check in invariants.Audit.ViolatedChecks)
+            {
+                Console.WriteLine(
+                    $"Economy audit check {check.Id}: {check.Violations} violations among {check.Examined} examined; {string.Join("; ", check.Examples)}.");
+            }
         }
 
         WriteSoakSummary(report);

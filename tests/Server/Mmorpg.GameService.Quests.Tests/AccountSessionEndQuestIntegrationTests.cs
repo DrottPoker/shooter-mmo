@@ -48,5 +48,7 @@ public sealed class AccountSessionEndQuestIntegrationTests
         Assert.Equal((401, ItemTransactionErrorCodes.AccountSessionEnded), (abandon.StatusCode, abandon.Error!.Code));
         Assert.True(log.Succeeded, log.Error?.Message);
         Assert.Contains(log.Value!.ActiveQuests, quest => quest.QuestId == Wolves);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 }

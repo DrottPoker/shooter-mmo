@@ -61,6 +61,8 @@ public sealed class StackStressFixtureIntegrationTests
             """,
             new { hotspot.CorpseId });
         Assert.Equal((long)hotspot.LootStacks * hotspot.QuantityPerStack, lootQuantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A playing load bot receives the kit of its role through the same item transactions as
@@ -91,6 +93,8 @@ public sealed class StackStressFixtureIntegrationTests
         Assert.Equal(
             kit.Inventory.ItemStateRevision,
             (await world.LoadStateAsync(player.Character.Id)).Revision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -122,6 +126,8 @@ public sealed class StackStressFixtureIntegrationTests
             CancellationToken.None);
         Assert.False(second.Succeeded);
         Assert.Equal("stack_stress_fixture_not_empty", second.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static StackStressFixtureService KitService(PostgresIntegrationTestContext context)

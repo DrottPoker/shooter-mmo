@@ -342,6 +342,9 @@ at the same time.
   snapshot as the items, and every in-world currency change runs inside an item
   transaction, so it advances the item-state revision that clients refresh on.
 - A player death never reads or writes currency.
+- The [economy audit](GAME_SERVICE_MODULES.md#economy-audit) checks that every
+  balance equals the sum of its ledger and that every ledger row has its
+  reason.
 - `--dev-items-currency` credits an offline character for local testing, as
   [Development Item Commands](#development-item-commands) describes.
 
@@ -2596,6 +2599,11 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Retention:PassBudgetPercent` | `80` | The share of the interval that one pass may use, 1 to 100 |
 | `Retention:ItemHistory` | `14.00:00:00` | How long item operations with their journal, item destructions, claimed Recovery deliveries, closed corpses with their death events, and live Mob loot grants stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment, for a soak or a test |
 | `Retention:SessionHistory` | `14.00:00:00` | How long account sessions, simulation sessions, join tickets, and released SimulationAssignments stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment |
+| `Audit:Enabled` | `false` in the Development environment, `true` otherwise | Run the [economy audit](GAME_SERVICE_MODULES.md#economy-audit) at start and then on a schedule. The `audit` command runs it whatever this says |
+| `Audit:IntervalSeconds` | `3600` | How often the scheduled audit runs, 60 to 86,400 seconds |
+| `Audit:StatementTimeoutSeconds` | `60` | The statement timeout of every check; a check that hits it is reported as not run, and the next one still runs, 1 to 3,600 seconds |
+| `Audit:ExampleLimit` | `5` | How many violating rows a check reports as examples with their ids, 0 to 100 |
+| `Audit:PendingOperationSeconds` | `300` | How long an item operation may stay pending before `item_operation_pending_too_long` reports it, 0 to 86,400 seconds |
 | `Auth:SessionIdleLifetimeDays` | `14` | How long an account session lasts without activity, 1 to 365 days, as [Account Session Lifetime](#account-session-lifetime) describes |
 | `Auth:SessionMaximumLifetimeDays` | `90` | How long an account session lasts after its login at most, outside the World, from the idle lifetime to 3,650 days. A start that still sets the removed `Auth:SessionLifetimeHours` fails and names these two settings |
 | `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
@@ -2734,6 +2742,17 @@ content fail before UDP admission.
   retried operation id runs again, which every deterministic system operation
   id survives, as [Retention](GAME_SERVICE_MODULES.md#retention) describes with
   every rule of the tasks. The gold ledger is never trimmed.
+- The economy audit checks item custody, slots, stacks, definitions, the gold
+  ledger, and the retained history in one read-only snapshot: at start and
+  every `Audit:IntervalSeconds` when `Audit:Enabled` is on, which is the default
+  outside the Development environment, and once with the `audit` command. It
+  never writes. The command prints a readable report, or JSON with `--json`,
+  and exits with 0 when the economy is consistent, 1 when a check found a
+  violation, and 2 when the audit could not run, also when `migrate` would
+  still change the database. The checks and what they cannot answer are in
+  [Economy Audit](GAME_SERVICE_MODULES.md#economy-audit), how to run the
+  command in [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy), and
+  its logs and metrics in [Monitoring](MONITORING.md#gameservice).
 - Every database unit uses statement and lock limits plus `skip locked` batch
   selection where concurrent maintenance is permitted.
 - The item metrics and logs are in [Monitoring](MONITORING.md#logs).
