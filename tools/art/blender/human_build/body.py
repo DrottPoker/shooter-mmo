@@ -379,7 +379,8 @@ def build_legs(net: Net, m: Measures):
     sides.append(row[1])
     for k in range(4):
         net.quad(centres[k], sides[k], sides[k + 1], centres[k + 1], ZONE["Pelvis"], "trunk")
-    hole = [row[k] for k in range(TRUNK_COLUMNS - 1, 0, -1)] + [sides[3], sides[2], sides[1]]
+    # The hole, from its innermost vertex over the front and the outside to the back.
+    hole = [sides[2], sides[1]] + [row[k] for k in range(TRUNK_COLUMNS - 1, 0, -1)] + [sides[3]]
 
     def leg_centre(z):
         loops = [l for l in surface.section((0, 0, z), Z) if l.centre[0] > 0.03 and l.length > 0.15 * s
@@ -390,8 +391,8 @@ def build_legs(net: Net, m: Measures):
     knee = leg_centre(0.28 * m.height)
     ankle = leg_centre(0.115 * s)
     upper, lower = _unit(knee - hip), _unit(ankle - knee)
-    hole_centre = np.mean([net.points[v] for v in hole], axis=0)
-    start = net.points[hole[0]] - hole_centre
+    # Every ring of the leg starts on the leg's inner line.
+    start = -X
 
     def ring_at(origin, normal, name=None):
         loop = surface.loop(origin, normal, near=origin).oriented(normal).start_at(start, normal)

@@ -17,7 +17,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from human_build import body, hand as hands  # noqa: E402
+from human_build import body, foot as feet, hand as hands  # noqa: E402
 from human_build.net import Net  # noqa: E402
 from human_build.surface import Surface  # noqa: E402
 
@@ -60,9 +60,15 @@ def build(label, out_path, parts):
         hands.build_hand(net, hand)
     if "neck" in parts:
         body.build_neck(net, measures)
+    foot = None
     if "leg" in parts:
         _rings, joints = body.build_legs(net, measures)
         print("HUMAN_BUILD leg joints", [np.round(j, 3).tolist() for j in joints])
+        if "foot" in parts:
+            foot = feet.Foot(measures, joints[2], joints[2] - joints[1])
+            for line in foot.report():
+                print("HUMAN_BUILD", line)
+            feet.build_foot(net, foot)
     problems = net.check()
     for problem in problems:
         print("HUMAN_BUILD_FAILED", problem)
@@ -70,6 +76,8 @@ def build(label, out_path, parts):
     skins = dict(measures.skins())
     if hand is not None:
         skins.update(hand.skins())
+    if foot is not None:
+        skins.update(foot.skins())
     fine.fit(skins, rounds=10)
     whole = fine.mirrored()
     points = whole.array()
@@ -104,4 +112,4 @@ def build(label, out_path, parts):
 
 if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
-    build(arguments[0], arguments[1], set(arguments[2].split(",")) if len(arguments) > 2 else {"arm", "neck", "leg", "hand"})
+    build(arguments[0], arguments[1], set(arguments[2].split(",")) if len(arguments) > 2 else {"arm", "neck", "leg", "hand", "foot"})
