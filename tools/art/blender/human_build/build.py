@@ -58,23 +58,22 @@ def build(label, out_path, parts):
         print("HUMAN_BUILD arm joints", [np.round(j, 3).tolist() for j in joints])
     if hand is not None:
         hands.build_hand(net, hand)
-    if "neck" in parts:
-        body.build_neck(net, measures)
     head = None
     if "head" in parts and "neck" in parts:
         cage = bpy.data.objects[f"HeadCage_{label}"]
         cage_points = [tuple(cage.matrix_world @ v.co) for v in cage.data.vertices]
         cage_faces = [tuple(p.vertices) for p in cage.data.polygons]
-        eyes, radius = {}, 0.0
-        for side in ("R", "L"):
-            eye = bpy.data.objects[f"Reference_{label}_Eye_{side}"]
-            co = np.array([eye.matrix_world @ v.co for v in eye.data.vertices])
-            eyes[side] = co.mean(0)
-            radius = float((co.max(0) - co.min(0)).max() / 2)
-        head = heads.Head(measures, cage_points, cage_faces, eyes, radius)
-        print(f"HUMAN_BUILD head cage scaled {head.size:.3f}, mouth half width {head.half_mouth * 1000:.0f} mm")
-        for line in head.face.report():
+        eye = bpy.data.objects[f"Reference_{label}_Eye_R"]
+        co = np.array([eye.matrix_world @ v.co for v in eye.data.vertices])
+        # The eyeball of the reference is a ball with a bulge for the cornea in front: its radius
+        # is half its width.
+        head = heads.Head(measures, cage_points, cage_faces, (co.min(0) + co.max(0)) / 2,
+                          (co[:, 0].max() - co[:, 0].min()) / 2)
+        for line in head.report():
             print("HUMAN_BUILD", line)
+    if "neck" in parts:
+        body.build_neck(net, measures, None if head is None else head.neck_top)
+    if head is not None:
         heads.build_head(net, head)
     foot = None
     if "leg" in parts:
@@ -98,7 +97,10 @@ def build(label, out_path, parts):
         skins.update(foot.skins())
     if head is not None:
         skins.update(head.skins())
-    fine.fit(skins, rounds=10)
+    fine.fit(skins, rounds=10, reaches={} if head is None else head.reaches())
+    if head is not None:
+        # The ear with the ring of the head's side it stands on.
+        fine.smooth(fine.touching("ear"), heads.EAR_SMOOTHING)
     whole = fine.mirrored()
     points = whole.array()
     distances = np.array([(surface.nearest(p) or (None, None, 9.0))[2] for p in points])

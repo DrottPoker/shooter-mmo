@@ -15,16 +15,24 @@ ZONE = {name: index for index, name in enumerate(ZONES)}
 X, Y, Z = np.eye(3)
 
 # Rows of the trunk between the leg holes and the armpits, as shares of that height; the row at
-# PELVIS_ROW is the border between the pelvis and the torso.
-TRUNK_SHARES = (0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0)
+# PELVIS_ROW is the border between the pelvis and the torso. The rows lie twice as close over the
+# chest, from the fold under it to the armpit: rows as far apart as on the belly cut the round of
+# a breast by 9 mm.
+TRUNK_SHARES = (0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.8125, 0.875, 0.9375, 1.0)
 PELVIS_ROW = 3
 TRUNK_COLUMNS = 8          # per half; column 4 is the side
 SIDE = 4
 ARM_RING = 8
 LEG_RING = 10
-# The rings that fan from the shoulder ring to the first ring square to the arm cross the gap
-# beside the chest this far below each other, at a body height of 1.79 m.
-FAN_STEP = 0.024
+# FAN_RINGS rings fan from the shoulder ring to the first ring square to the arm, and cross the gap
+# beside the chest this far below each other, at a body height of 1.79 m. Four rings keep the
+# round of the shoulder: with three, its outline turned 30 degrees at one vertex.
+FAN_RINGS = 4
+FAN_STEP = 0.020
+# How many rows of faces each stretch of a limb has, the same on every body, so every body of the
+# cage has the same faces: from the last ring of the shoulder's fan to the elbow, from the elbow to
+# the wrist, from the top of the thigh to the knee, and from the knee to the ankle.
+UPPER_ARM_SEGMENTS, FOREARM_SEGMENTS, THIGH_SEGMENTS, SHIN_SEGMENTS = 2, 5, 5, 8
 
 
 def _unit(v):
@@ -281,7 +289,8 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
 
     rings = [hole]
     previous_centre = m.shoulder_ring.centre
-    for step, share in enumerate((1 / 3, 2 / 3, 1.0), start=1):
+    for step in range(1, FAN_RINGS + 1):
+        share = step / FAN_RINGS
         normal = turned(share)
         near = previous_centre + normal * 0.03 * s
         # Each ring of the fan passes through its own point of the gap, a step further down the
@@ -293,8 +302,7 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     # Down the upper arm to the elbow, across it, and down the forearm.
     first = previous_centre
     stations = []
-    length = np.linalg.norm(elbow - first)
-    count = max(2, int(round(length / (0.046 * s))))
+    count = UPPER_ARM_SEGMENTS
     for k in range(1, count):
         stations.append((first + (elbow - first) * (k / count), upper, None))
     bisector = _unit(upper + lower)
@@ -304,8 +312,7 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
         # Down the forearm the rings' first points turn from the side toward the body to the
         # hand's palm side, as the forearm's skin turns with the hand.
         end = -X if wrist_start is None else np.asarray(wrist_start, float)
-        length = np.linalg.norm(wrist - elbow)
-        count = max(2, int(round(length / (0.046 * s))))
+        count = FOREARM_SEGMENTS
         for k in range(1, count):
             stations.append((elbow + (wrist - elbow) * (k / count), lower, None))
             starts.append(_unit(-X + (end + X) * (k / count)))
@@ -314,7 +321,7 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     for (origin, normal, name), start in zip(stations, starts):
         ring, loop = ring_at(origin, normal, origin, start, name)
         rings.append(ring)
-    elbow_index = 4 + [name for _o, _n, name in stations].index("elbow")
+    elbow_index = 1 + FAN_RINGS + [name for _o, _n, name in stations].index("elbow")
     for index in range(len(rings) - 1):
         zone = ZONE["UpperArms"] if index < elbow_index else ZONE["Forearms"]
         net.strip(rings[index], rings[index + 1], zone, "arm")
@@ -323,26 +330,57 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     return rings, (joint, elbow, wrist)
 
 
-def build_neck(net: Net, m: Measures):
+def build_neck(net: Net, m: Measures, top=None):
     """The rows from the one over the shoulders to the middle of the neck: the collar ring, which
-    is the border between the torso and the neck, and a ring halfway up the neck."""
+    is the border between the torso and the neck, and a ring halfway from it to the ring under the
+    head, whose points are given from the back centre over the right side to the front centre.
+    The collar's columns lie evenly around the neck; the middle ring's lie halfway between them
+    and the directions of the ring under the head, which the head gives."""
     s = m.scale
     lower = net.marks["trunk_top"]
     centre_y = 0.015 * s
     notch, side, back = m.notch_z, m.notch_z + 0.052 * s, m.notch_z + 0.045 * s
+    even = [-90.0 + 180.0 * k / TRUNK_COLUMNS for k in range(TRUNK_COLUMNS + 1)]
 
-    def ring(front_z, side_z, back_z):
+    def heights(front_z, side_z, back_z):
         out = []
-        for k in range(TRUNK_COLUMNS + 1):
-            azimuth = -90.0 + 180.0 * k / TRUNK_COLUMNS
+        for azimuth in even:
             turn = math.sin(math.radians(azimuth)) ** 2
-            z = side_z + ((front_z if azimuth > 0 else back_z) - side_z) * turn
-            holds = [MIRROR] if k in (0, TRUNK_COLUMNS) else []
-            out.append(net.add(m.column_point(z, azimuth, centre_y), *holds))
+            out.append(side_z + ((front_z if azimuth > 0 else back_z) - side_z) * turn)
         return out
 
-    collar = ring(notch, side, back)
-    middle = ring(notch + 0.045 * s, side + 0.035 * s, back + 0.045 * s)
+    def ring(at, azimuths, around):
+        out = []
+        for k, (z, azimuth) in enumerate(zip(at, azimuths)):
+            holds = [MIRROR] if k in (0, TRUNK_COLUMNS) else []
+            out.append(net.add(m.column_point(z, azimuth, around), *holds))
+        return out
+
+    collar_at = heights(notch, side, back)
+    if top is None:
+        middle_at = heights(notch + 0.045 * s, side + 0.035 * s, back + 0.045 * s)
+        middle_azimuths, middle_around = even, centre_y
+    else:
+        top = np.asarray(top, float)
+        top_around = (top[:, 1].min() + top[:, 1].max()) / 2
+        towards = [math.degrees(math.atan2(p[1] - top_around, p[0])) for p in top]
+        towards[0], towards[-1] = -90.0, 90.0
+        middle_at = [(z + float(point[2])) / 2 for z, point in zip(collar_at, top)]
+        middle_azimuths = [(a + b) / 2 for a, b in zip(even, towards)]
+        middle_around = (centre_y + top_around) / 2
+    collar = ring(collar_at, even, centre_y)
+    middle = ring(middle_at, middle_azimuths, middle_around)
+    # A row halfway up the slope from the shoulder to the neck, so the slope and the collarbone
+    # keep their curve.
+    trunk = m.skins()["trunk"]
+    slope = []
+    for k, (a, b) in enumerate(zip(lower, collar)):
+        point = trunk.project((np.asarray(net.points[a], float) + np.asarray(net.points[b], float)) / 2, reach=0.15)
+        if k in (0, TRUNK_COLUMNS):
+            point[0] = 0.0
+        slope.append(net.add(point, *([MIRROR] if k in (0, TRUNK_COLUMNS) else [])))
+    net.strip(lower, slope, ZONE["Torso"], "trunk", closed=False)
+    lower = slope
     net.strip(lower, collar, ZONE["Torso"], "trunk", closed=False)
     net.strip(collar, middle, ZONE["Neck"], "trunk", closed=False)
     net.mark("collar", collar)
@@ -401,11 +439,11 @@ def build_legs(net: Net, m: Measures):
 
     rings = [hole]
     stations = [(hip, upper, "leg_top")]
-    count = max(2, int(round(np.linalg.norm(knee - hip) / (0.052 * s))))
+    count = THIGH_SEGMENTS
     for k in range(1, count):
         stations.append((hip + (knee - hip) * (k / count), upper, None))
     stations.append((knee, _unit(upper + lower), "knee"))
-    count = max(2, int(round(np.linalg.norm(ankle - knee) / (0.052 * s))))
+    count = SHIN_SEGMENTS
     for k in range(1, count):
         stations.append((knee + (ankle - knee) * (k / count), lower, None))
     stations.append((ankle, lower, "ankle"))

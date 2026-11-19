@@ -115,12 +115,13 @@ class Net:
 
     def subdivided(self):
         """The net with every face split in four: a vertex at every face's centre and every edge's
-        middle. A new vertex keeps the holds its makers share."""
+        middle. A new vertex keeps the holds its makers share. The new net names the vertex at each
+        edge's middle in edge_point and the one at each face's centre in face_point."""
         fine = Net()
         fine.planes = dict(self.planes)
         for point, holds in zip(self.points, self.holds):
             fine.add(point, *holds)
-        edge_point = {}
+        edge_point, face_point = {}, []
 
         def middle(a, b):
             key = (a, b) if a < b else (b, a)
@@ -133,11 +134,13 @@ class Net:
             count = len(face)
             shared = set.intersection(*[self.holds[v] for v in face]) - {FIXED}
             centre = fine.add(np.mean([self.points[v] for v in face], axis=0), *shared)
+            face_point.append(centre)
             mids = [middle(face[k], face[(k + 1) % count]) for k in range(count)]
             for k in range(count):
                 fine.quad(face[k], mids[k], centre, mids[k - 1], zone, skin)
         fine.marks = {name: list(vertices) for name, vertices in self.marks.items()}
         fine.edge_point = edge_point
+        fine.face_point = face_point
         return fine
 
     # ------------------------------------------------------------------ geometry
@@ -181,10 +184,13 @@ class Net:
             point = np.array([0.0, point[1], point[2]])
         return point
 
-    def fit(self, skins, rounds=12, rate=0.5, reach=0.08, report=None):
+    def fit(self, skins, rounds=12, rate=0.5, reach=0.08, reaches=None, report=None):
         """Lays every vertex onto the skin of its faces and relaxes the net along the surface: each
         round a vertex moves part of the way toward the middle of its neighbours, within the
-        surface, and is laid onto the skin again. Held vertices stay in their planes."""
+        surface, and is laid onto the skin again. Held vertices stay in their planes. A skin is
+        looked for within the reach, or within its own reach in reaches: a short one keeps the
+        vertices beside a hollow, a nostril or the slit between the lips, out of it."""
+        reaches = reaches or {}
         points = self.array()
         vertex_faces = self.vertex_faces()
         neighbours = [np.array(sorted(n)) for n in self.neighbours()]
@@ -197,7 +203,7 @@ class Net:
             best = None
             for name in own_skins[v]:
                 surface = skins[name]
-                found = surface.project(point, normal, reach)
+                found = surface.project(point, normal, reaches.get(name, reach))
                 if found is not None:
                     distance = np.linalg.norm(found - point)
                     if best is None or distance < best[0]:
@@ -235,6 +241,22 @@ class Net:
                 report(round_index, points)
         self.points = [p for p in points]
         return points
+
+    def touching(self, skin):
+        """The vertices with a face that is laid onto the skin of this name."""
+        return [v for v, faces in enumerate(self.vertex_faces()) if any(self.skins[f] == skin for f in faces)]
+
+    def smooth(self, vertices, rounds, rate=0.5):
+        """Evens out the given vertices: each round every one moves part of the way toward the
+        middle of its neighbours, whichever way that is."""
+        points = self.array()
+        neighbours = [np.array(sorted(n)) for n in self.neighbours()]
+        for _ in range(rounds):
+            moved = points.copy()
+            for v in vertices:
+                moved[v] = points[v] + rate * (points[neighbours[v]].mean(0) - points[v])
+            points = moved
+        self.points = [p for p in points]
 
     def quality(self):
         """Per face: its area, its smallest and largest corner angle in degrees, and how far its
