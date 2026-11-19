@@ -6,7 +6,9 @@ head, every vertex on the feature it belongs to, so the cage's vertices stay whe
 only the vertices that subdividing adds are laid onto the reference. The faces that close the
 cage's eyes and its underside are taken out: the eye becomes an opening with a pocket behind it for
 the eyeball, the line between the lips is parted into an upper and a lower lip with a mouth cavity
-behind them, and the ring under the head is the top of the neck."""
+behind them, and the ring under the head is the top of the neck. The cage has no nostrils, which
+are finer than its faces: the two faces under the nose over each nostril are opened into a ring on
+the nostril's edge with a pocket behind it."""
 
 import math
 
@@ -20,6 +22,9 @@ X, Y, Z = np.eye(3)
 # the mouth cavity. They are the hidden parts 7 and 8 of the body files' face attribute "part".
 SOCKET, MOUTH = "socket", "mouth"
 HIDDEN_PARTS = {SOCKET: 7, MOUTH: 8}
+# The pocket inside a nostril is laid onto no skin either, but it is seen from below: it is skin
+# like any other, an island of its own in the UV map.
+NOSTRIL = "nostril"
 
 # The bundle's head cage, by its vertex and face numbers; the right side is the one at +x once
 # the cage faces +Y.
@@ -33,12 +38,27 @@ NECK_CORNER, NECK_CORNER_DROP = 313, 0.006
 EYE_FACES = (217, 218, 219, 220, 221, 222, 223, 224)
 EYE_SLIT = (206, 207, 208, 209)
 EYE_RING = (203, 181, 182, 198, 199, 205, 200, 201, 204, 202)
-# The line between the lips from the centre to the right, its last vertex before the corner, the
-# corner, and the lower lip's faces at the line.
-LIP_LINE = (286, 183)
-LIP_END = 271
+# The line between the lips from the centre to the right, the mouth's corner where it ends, and
+# the lower lip's faces at the line. One face of the cage closes the corner, with the last vertex
+# of the line and the corner across from each other: it is parted along the line into a face of the
+# upper lip and one of the lower lip, so the line runs along edges all the way to the corner.
+LIP_LINE = (286, 183, 271)
 LIP_CORNER = 153
 LOWER_LIP_FACES = (199, 216)
+LIP_CORNER_FACE = 297
+# The two faces under the nose that the right nostril lies across: the one under the tip, and the
+# one at the base of the nose behind it. The nostril's opening is found as it is seen from below
+# and in front, along a line NOSTRIL_VIEW degrees from straight up: the skin that lies more than
+# NOSTRIL_DEEP behind the plane of the first face, at 1.79 m. Its edge is the first skin within
+# NOSTRIL_RIM outside the opening that looks toward the eye, by NOSTRIL_FACING as the cosine of the
+# angle, or the skin there that looks toward it most; it stays NOSTRIL_INSIDE inside the outline of
+# the two faces, whose edge along the nose's wing the nostril reaches. The pocket behind the
+# opening runs NOSTRIL_DEPTH along that line and narrows to the share NOSTRIL_NARROWS of the
+# opening.
+NOSTRIL_FACES = (212, 167)
+NOSTRIL_VIEW, NOSTRIL_DEEP = 40.0, 0.0025
+NOSTRIL_RIM, NOSTRIL_FACING, NOSTRIL_INSIDE = 0.0025, 0.6, 0.0015
+NOSTRIL_DEPTH, NOSTRIL_NARROWS = 0.011, 0.5
 LID_CLEARANCE = 0.0004
 # The vertices that subdividing adds to the head lie between vertices on the reference already:
 # the reference's skin is looked for this near them, at 1.79 m.
@@ -54,8 +74,14 @@ LID_TUCK = 0.32
 # The mouth cavity behind the line between the lips, at 1.79 m. Its first ring follows the lips'
 # own curve this far behind them, and parts this far above and below the line. Its other rings
 # hold the teeth: how far behind the middle of the line, their half width, and how far above and
-# below the line.
+# below the line. Toward the corner a ring parts by the shares of MOUTH_TAPER of that, one share
+# per vertex of the line, and reaches the shares of MOUTH_ACROSS of its half width. The line runs
+# back around the teeth to the corner, so every vertex of a ring lies at least MOUTH_STEP behind
+# its vertex of the ring in front of it.
 MOUTH_LIPS = (0.005, 0.0025, 0.0025)
+MOUTH_TAPER = (1.0, 0.9, 0.55)
+MOUTH_ACROSS = (0.0, 0.45, 0.85)
+MOUTH_STEP = 0.006
 MOUTH_ROWS = ((0.022, 0.027, 0.014, 0.016), (0.054, 0.026, 0.012, 0.014))
 # The right ear: its faces, which stand out from the head. Its folds are finer than the net, so
 # its vertices are laid onto the reference's ear and then evened out in this many rounds, which
@@ -107,11 +133,18 @@ class Head:
         if found is not None:
             self.points[NECK_CORNER] = found[0]
         # The cage's line between the lips lies inside the mouth: its vertices move forward to
-        # the line where the lips meet.
-        for v in LIP_LINE + (LIP_END,):
+        # the line where the lips meet. The corner lies on the skin where the cage has it.
+        for v in LIP_LINE:
             self.points[v] = self.between_lips(self.points[v])
         self.half_mouth = float(self.points[LIP_CORNER][0])
         self.neck_top = [self.points[v] for v in NECK_RING]
+        # The nostril: the outline of the cage's faces over it, its edge, and the places on the
+        # edge that the outline's corners open to.
+        self.nostril_outline = _outline([self.faces[index] for index in NOSTRIL_FACES])
+        self.nostril_into, self.nostril_rim = self.nostril_edge()
+        steps = np.linalg.norm(np.diff(np.concatenate([self.nostril_rim, self.nostril_rim[:1]]), axis=0), axis=1)
+        self._nostril_along = np.concatenate([[0.0], np.cumsum(steps)])
+        self.nostril_start = self._nostril_start()
 
     def back_line(self):
         """The cage's vertices on the middle of the back of the head, from the ring under the head
@@ -210,6 +243,133 @@ class Head:
         t = (distance - along[i]) / max(steps[i], 1e-12)
         return self.on_lid(rim[i] + t * (rim[(i + 1) % len(rim)] - rim[i]))
 
+    def nostril_edge(self, count=64, step=0.00025, half=0.012):
+        """The way into the right nostril and the edge of its opening, as points in order around
+        it, running the way the outline of the cage's faces over it does. Seen from below and in
+        front, the opening is the skin that lies well behind the plane of the first of those
+        faces. Its edge is the skin just outside the opening that looks toward the eye: the rim of
+        the nose's wing, the strip between the nostrils, and the sill, and not the wall of the
+        nostril that rises from them. The edge is evened out around the opening and keeps clear of
+        the outline, so the skin between the two has a width everywhere."""
+        s, surface = self.scale, self.m.surface
+        tilt = math.radians(NOSTRIL_VIEW)
+        into = -Y * math.sin(tilt) + Z * math.cos(tilt)
+        across, up = X, np.cross(into, X)
+        corners = self.points[list(self.faces[NOSTRIL_FACES[0]])]
+        normal = np.cross(corners[2] - corners[0], corners[3] - corners[1])
+        on_plane = corners.mean(0)
+        centre = self.points[self.nostril_outline].mean(0)
+        far = 0.03 * s
+        span = np.arange(-half * s, half * s + 1e-9, step * s)
+
+        def skin(a, b):
+            origin = centre + across * a + up * b - into * far
+            hit = surface.ray(origin, into, far + 0.03 * s)
+            plane = ((on_plane - origin) @ normal) / (into @ normal)
+            return hit, plane
+
+        is_open = np.zeros((len(span), len(span)), bool)
+        for i, a in enumerate(span):
+            for j, b in enumerate(span):
+                hit, plane = skin(a, b)
+                is_open[i, j] = hit is None or hit[2] - plane > NOSTRIL_DEEP * s
+        cells = np.argwhere(is_open)
+        if not len(cells):
+            raise RuntimeError("the reference has no nostril behind the head cage's faces over it")
+        seed = tuple(cells[int(np.argmin((span[cells] ** 2).sum(1)))])
+        patch = np.zeros_like(is_open)
+        patch[seed] = True
+        todo = [seed]
+        while todo:
+            i, j = todo.pop()
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                k = (i + di, j + dj)
+                if 0 <= k[0] < len(span) and 0 <= k[1] < len(span) and is_open[k] and not patch[k]:
+                    patch[k] = True
+                    todo.append(k)
+        if patch[0].any() or patch[-1].any() or patch[:, 0].any() or patch[:, -1].any():
+            raise RuntimeError("the nostril's opening has no edge around it as it is seen from below")
+        middle = span[np.argwhere(patch)].mean(0)
+        ways = [np.array([math.cos(angle), math.sin(angle)]) for angle in 2.0 * math.pi * np.arange(count) / count]
+        radii, depths = [], []
+        for way in ways:
+            reach = 0.0
+            while True:
+                spot = middle + way * (reach + step * s)
+                cell = np.round((spot - span[0]) / (step * s)).astype(int)
+                if not patch[cell[0], cell[1]]:
+                    break
+                reach += step * s
+            # Onward from the opening: the first skin that looks toward the eye, or the skin that
+            # looks toward it most.
+            best = None
+            for onward in np.arange(step * s, NOSTRIL_RIM * s + 1e-9, step * s):
+                spot = middle + way * (reach + onward)
+                hit, _plane = skin(spot[0], spot[1])
+                if hit is None:
+                    continue
+                facing = -float(hit[1] @ into)
+                if best is None or facing > best[0]:
+                    best = (facing, reach + onward, hit[2])
+                if facing >= NOSTRIL_FACING:
+                    break
+            if best is None:
+                raise RuntimeError("the nostril's opening has no skin beside it as it is seen from below")
+            radii.append(best[1])
+            depths.append(best[2])
+        # Evened out over the two neighbours on either side.
+        radii = sum(np.roll(radii, shift) for shift in (-2, -1, 0, 1, 2)) / 5
+        depths = sum(np.roll(depths, shift) for shift in (-2, -1, 0, 1, 2)) / 5
+        # The outline as it is seen along the way in: a patch without a hollow in its edge, so a
+        # point lies inside it when it lies on the inner side of every edge.
+        flat = (self.points[self.nostril_outline] - centre) @ np.stack([across, up], axis=1)
+        turns = np.cross(flat, np.roll(flat, -1, axis=0)).sum() >= 0.0
+        ordered = flat if turns else flat[::-1]
+        edges = np.roll(ordered, -1, axis=0) - ordered
+        edges /= np.linalg.norm(edges, axis=1)[:, None]
+        rim = []
+        for way, radius, depth in zip(ways, radii, depths):
+            while radius > 0.0:
+                away = middle + way * radius - ordered
+                if (edges[:, 0] * away[:, 1] - edges[:, 1] * away[:, 0] >= NOSTRIL_INSIDE * s).all():
+                    break
+                radius -= step * s
+            if radius <= 0.0:
+                raise RuntimeError("the nostril's opening lies outside the head cage's faces over it")
+            spot = middle + way * radius
+            rim.append(centre + across * spot[0] + up * spot[1] + into * (depth - far))
+        rim = np.array(rim)
+        # The rim runs counter-clockwise seen along the way in; the outline may run the other way.
+        return into, rim if turns else rim[::-1]
+
+    def on_nostril(self, distance):
+        """The point of the nostril's edge at a distance along it."""
+        along, rim = self._nostril_along, self.nostril_rim
+        distance = distance % along[-1]
+        i = int(np.clip(np.searchsorted(along, distance, side="right") - 1, 0, len(rim) - 1))
+        t = (distance - along[i]) / max(along[i + 1] - along[i], 1e-12)
+        return rim[i] + t * (rim[(i + 1) % len(rim)] - rim[i])
+
+    def nostril_ring(self, half=False):
+        """Points of the nostril's edge at even distances around it, one for each corner of the
+        outline of the cage's faces over it, or the points halfway between them."""
+        count = len(self.nostril_outline)
+        step = self._nostril_along[-1] / count
+        return [self.on_nostril(self.nostril_start + (k + (0.5 if half else 0.0)) * step) for k in range(count)]
+
+    def _nostril_start(self):
+        """Where on the nostril's edge the ring starts, so its points lie nearest to the corners
+        of the outline."""
+        corners = self.points[self.nostril_outline]
+        whole = self._nostril_along[-1]
+        best = None
+        for start in np.arange(0.0, whole, whole / 96):
+            ring = [self.on_nostril(start + k * whole / len(corners)) for k in range(len(corners))]
+            away = sum(float(np.sum((p - c) ** 2)) for p, c in zip(ring, corners))
+            if best is None or away < best[0]:
+                best = (away, start)
+        return best[1]
+
     def between_lips(self, point):
         """The point of the line where the lips meet in front of a point inside the mouth: seen
         from in front, the deepest point between the upper and the lower lip, or, where the lips
@@ -233,7 +393,10 @@ class Head:
         s, notch = self.scale, self.m.notch_z
         above = [round((p[2] - notch) / s * 1000) for p in self.neck_top]
         lips = self.points[LIP_LINE[0]]
+        rim = self.nostril_rim
         return [f"mouth half width {self.half_mouth * 1000:.0f} mm, lips meet at forward {lips[1]:.4f}, height {lips[2]:.4f}",
+                f"nostril {(rim[:, 0].max() - rim[:, 0].min()) * 1000:.1f} mm wide and "
+                f"{(rim[:, 1].max() - rim[:, 1].min()) * 1000:.1f} mm long, {rim[:, 0].min() * 1000:.1f} mm from the middle",
                 f"eye centre {np.round(self.eye_centre, 4).tolist()}, radius {self.eye_radius * 1000:.1f} mm, opening "
                 f"{(self.rim[:, 0].max() - self.rim[:, 0].min()) * 1000:.1f} mm wide and "
                 f"{(self.rim[:, 2].max() - self.rim[:, 2].min()) * 1000:.1f} mm high",
@@ -274,6 +437,24 @@ class Head:
         return {"head": HEAD_REACH * s, "ear": HEAD_REACH * s, "throat": THROAT_REACH * s}
 
 
+def _outline(faces):
+    """The vertices around a patch of faces that share edges, in the order the faces run."""
+    onward = {}
+    for face in faces:
+        for a, b in zip(face, face[1:] + face[:1]):
+            onward[a, b] = True
+    onward = {a: b for a, b in onward if (b, a) not in onward}
+    first = next(iter(onward))
+    loop = [first]
+    while onward[loop[-1]] != first:
+        loop.append(onward[loop[-1]])
+        if len(loop) > len(onward):
+            raise RuntimeError("the faces over the nostril do not make one patch")
+    if len(loop) != len(onward):
+        raise RuntimeError("the faces over the nostril do not make one patch")
+    return loop
+
+
 def build_head(net: Net, head: Head):
     s = head.scale
     zone = ZONE["Head"]
@@ -285,7 +466,7 @@ def build_head(net: Net, head: Head):
     # fold.
     loose = {v for index in EAR_FACES for v in head.faces[index]} | set(NECK_RING)
     # The lids' edge and the line between the lips stay exactly where they are put.
-    lines = set(EYE_RING) | set(LIP_LINE) | {LIP_END}
+    lines = set(EYE_RING) | set(LIP_LINE) | {LIP_CORNER}
     vertex = {}
     for v in head.right:
         if v in drop:
@@ -299,11 +480,20 @@ def build_head(net: Net, head: Head):
     net.seam([vertex[v] for v in head.back_line()])
     # The lower lip takes its own vertices along the line between the lips.
     lower = {v: net.add(head.points[v], FIXED, PINNED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
-    skip = set(NECK_FACES) | set(EYE_FACES)
+    skip = set(NECK_FACES) | set(EYE_FACES) | set(NOSTRIL_FACES)
     for index, corners in enumerate(head.faces):
         if index in skip or any(v not in vertex for v in corners):
             continue
-        if index in LOWER_LIP_FACES:
+        if index == LIP_CORNER_FACE:
+            # From the line's last vertex around: the lip on one side, the corner, the other lip.
+            k = corners.index(LIP_LINE[-1])
+            end, first, corner, second = corners[k:] + corners[:k]
+            if corner != LIP_CORNER:
+                raise RuntimeError("the head cage's face at the mouth's corner is not the one the build knows")
+            for beside, face in ((first, (end, first, corner)), (second, (corner, second, end))):
+                under = head.points[beside][2] < head.points[end][2]
+                net.face([lower[v] if under and v == end else vertex[v] for v in face], zone, "head")
+        elif index in LOWER_LIP_FACES:
             net.face([lower.get(v, vertex[v]) for v in corners], zone, "head")
         else:
             # The faces at the ring under the head span the hollow under the jaw like the neck's.
@@ -340,40 +530,73 @@ def build_head(net: Net, head: Head):
         net.face((under[k], under[(k + 1) % len(under)], back), zone, SOCKET)
     net.mark("eye_ring", ring)
 
-    # The mouth: the inner lips behind the line between the lips, and the cavity behind them.
-    upper = [vertex[286], vertex[183], vertex[LIP_END], lower[183], lower[286]]
-    middle, beside, last = (np.asarray(head.points[v], float) for v in (286, 183, LIP_END))
+    # The nostril: the cage's faces over it open into a ring on the nostril's edge, with the skin
+    # under the nose around it and a pocket behind it.
+    outer = [vertex[v] for v in head.nostril_outline]
+    ring = [net.add(point, FIXED, PINNED) for point in head.nostril_ring()]
+    count = len(ring)
+    if count % 2:
+        raise RuntimeError("the outline of the faces over the nostril has an odd number of vertices")
+    net.island = "head"
+    for k in range(count):
+        net.face((outer[k], outer[(k + 1) % count], ring[(k + 1) % count], ring[k]), zone, "head")
+    middle = np.mean([net.points[v] for v in ring], axis=0)
+    into = head.nostril_into
+    # The pocket's end is flat, straight across the way in, however the nostril's edge rises.
+    deep = []
+    for v in ring:
+        out = np.asarray(net.points[v], float) - middle
+        deep.append(net.add(middle + (out - into * (out @ into)) * NOSTRIL_NARROWS + into * (NOSTRIL_DEPTH * s), RIGID))
+    net.island = "nostril_R"
+    for k in range(count):
+        net.face((ring[k], ring[(k + 1) % count], deep[(k + 1) % count], deep[k]), zone, NOSTRIL)
+    # The pocket's end: faces of four around a vertex in its middle.
+    end = net.add(np.mean([net.points[v] for v in deep], axis=0), RIGID)
+    for k in range(0, count, 2):
+        net.face((end, deep[k], deep[(k + 1) % count], deep[(k + 2) % count]), zone, NOSTRIL)
+    net.mark("nostril_ring", ring)
+
+    # The mouth: the inner lips behind the line between the lips, and the cavity behind them. Each
+    # ring runs from the middle of the upper lip over the corner to the middle of the lower lip.
+    line = [np.asarray(head.points[v], float) for v in LIP_LINE]
+    corner = np.asarray(head.points[LIP_CORNER], float)
+    middle = line[0]
     depth, up, down = MOUTH_LIPS
     net.island = "mouth"
-    rows = [upper, [
-        net.add((0.0, middle[1] - depth * s, middle[2] + up * s), RIGID, MIRROR),
-        net.add((beside[0], beside[1] - depth * s, beside[2] + up * s * 0.9), RIGID),
-        net.add((last[0] * 0.92, last[1] - depth * s * 0.7, last[2]), RIGID),
-        net.add((beside[0], beside[1] - depth * s, beside[2] - down * s * 0.9), RIGID),
-        net.add((0.0, middle[1] - depth * s, middle[2] - down * s), RIGID, MIRROR),
-    ]]
+
+    def ring_of(above, across, below):
+        points = list(above) + [across] + list(reversed(below))
+        if len(rows) > 1:
+            # Behind the ring in front of it, vertex for vertex.
+            points = [(p[0], min(p[1], net.points[before][1] - MOUTH_STEP * s), p[2]) for p, before in zip(points, rows[-1])]
+        return [net.add(p, RIGID, *([MIRROR] if p[0] == 0.0 else [])) for p in points]
+
+    rows = [[vertex[v] for v in LIP_LINE] + [vertex[LIP_CORNER]] + [lower[v] for v in reversed(LIP_LINE)]]
+    rows.append(ring_of([(p[0], p[1] - depth * s, p[2] + up * s * share) for p, share in zip(line, MOUTH_TAPER)],
+                        (corner[0] * 0.94, corner[1] - depth * s * 0.7, corner[2]),
+                        [(p[0], p[1] - depth * s, p[2] - down * s * share) for p, share in zip(line, MOUTH_TAPER)]))
     for depth, half, up, down in MOUTH_ROWS:
         back_y, z = middle[1] - depth * s, middle[2]
-        rows.append([
-            net.add((0.0, back_y, z + up * s), RIGID, MIRROR),
-            net.add((half * s * 0.5, back_y, z + up * s * 0.9), RIGID),
-            net.add((half * s, back_y + 0.003 * s, z), RIGID),
-            net.add((half * s * 0.5, back_y, z - down * s * 0.9), RIGID),
-            net.add((0.0, back_y, z - down * s), RIGID, MIRROR),
-        ])
+        rows.append(ring_of([(half * s * share, back_y + 0.003 * s * share, z + up * s * taper)
+                             for share, taper in zip(MOUTH_ACROSS, MOUTH_TAPER)],
+                            (half * s, back_y + 0.003 * s, z),
+                            [(half * s * share, back_y + 0.003 * s * share, z - down * s * taper)
+                             for share, taper in zip(MOUTH_ACROSS, MOUTH_TAPER)]))
     for near, far in zip(rows[:-1], rows[1:]):
         net.strip(near, far, zone, MOUTH, closed=False)
     last = rows[-1]
-    net.face((last[0], last[1], last[3], last[4]), zone, MOUTH)
-    net.face((last[1], last[2], last[3]), zone, MOUTH)
-    net.mark("lip_upper", [vertex[286], vertex[183], vertex[LIP_END]])
-    net.mark("lip_lower", [lower[286], lower[183], vertex[LIP_END]])
-    net.mark("lip_corner", [vertex[LIP_END], vertex[LIP_CORNER]])
+    net.face((last[0], last[1], last[5], last[6]), zone, MOUTH)
+    net.face((last[1], last[2], last[4], last[5]), zone, MOUTH)
+    net.face((last[2], last[3], last[4]), zone, MOUTH)
+    net.mark("lip_upper", [vertex[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
+    net.mark("lip_lower", [lower[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
+    net.mark("lip_inner", rows[1])
 
 
 def refine_head(fine: Net, coarse: Net, head: Head):
-    """Places the vertices that subdividing put on the two feature lines: the lids' edge, and the
-    line between the lips, where the upper and the lower lip must meet point for point."""
+    """Places the vertices that subdividing put on the feature lines: the lids' edge, the nostril's
+    edge, and the line between the lips, where the upper and the lower lip must meet point for
+    point all the way to the mouth's corner."""
     def between(a, b):
         return fine.edge_point[(a, b) if a < b else (b, a)]
 
@@ -384,17 +607,23 @@ def refine_head(fine: Net, coarse: Net, head: Head):
         fine.points[vertex] = head.on_rim((stations[k] + stations[k + 1]) / 2)
         fine.holds[vertex].update((FIXED, PINNED))
     upper, lower = coarse.marks["lip_upper"], coarse.marks["lip_lower"]
+    # The ring of the inner lips behind the line runs over the corner, as the two lips together do.
+    inner = coarse.marks["lip_inner"]
+    behind = {"upper": inner[:len(upper)], "lower": inner[len(upper) - 1:][::-1]}
     for k in range(len(upper) - 1):
         point = head.between_lips(fine.points[between(upper[k], upper[k + 1])])
-        for line in (upper, lower):
+        for name, line in (("upper", upper), ("lower", lower)):
             vertex = between(line[k], line[k + 1])
             fine.points[vertex] = point
             fine.holds[vertex].update((FIXED, PINNED))
-    # One face closes the mouth's corner, from the end of the line between the lips to the corner
-    # with the upper lip above and the lower lip below: its middle lies in the fold between them.
-    end, corner = coarse.marks["lip_corner"]
-    for index, face in enumerate(coarse.faces):
-        if end in face and corner in face:
-            vertex = fine.face_point[index]
-            fine.points[vertex] = head.between_lips(fine.points[vertex])
-            fine.holds[vertex].update((FIXED, PINNED))
+            # The line's new vertex has moved into the fold, toward the middle of the inner lip's
+            # face behind it: that middle lies halfway to the ring behind the line.
+            back = (np.asarray(coarse.points[behind[name][k]], float) + np.asarray(coarse.points[behind[name][k + 1]], float)) / 2
+            for index, face in enumerate(coarse.faces):
+                if {line[k], line[k + 1], behind[name][k], behind[name][k + 1]} == set(face):
+                    fine.points[fine.face_point[index]] = (point + back) / 2
+    ring = coarse.marks["nostril_ring"]
+    for k, point in enumerate(head.nostril_ring(half=True)):
+        vertex = between(ring[k], ring[(k + 1) % len(ring)])
+        fine.points[vertex] = point
+        fine.holds[vertex].update((FIXED, PINNED))

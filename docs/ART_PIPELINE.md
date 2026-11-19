@@ -1337,13 +1337,13 @@ the middle, at 1.70 m.
 
 What is built:
 
-- **One cage for both bodies.** The coarse cage of the right half, 787 faces, is
+- **One cage for both bodies.** The coarse cage of the right half, 808 faces, is
   designed once and laid out on each body by measures of that body's own
   reference: rows of sixteen around the trunk, twice as close over the chest, an
   arm hole of eight with four rings fanning under the arm, arms of eight around,
   legs of ten, hands with a ring per finger joint, and feet whose toes are parted
   by creases. It is subdivided once, laid onto the reference, relaxed along the
-  surface, and mirrored: 6,186 faces, and 13,052 triangles with the eyeballs,
+  surface, and mirrored: 6,350 faces, and 13,380 triangles with the eyeballs,
   the teeth, and the tongue. Every border between two body parts is a ring of
   the cage, and both bodies have the same faces in the same order.
 - **The head.** The head is the bundle's own head cage, which is the coarse cage
@@ -1357,22 +1357,30 @@ What is built:
   under the head, would land on the floor of the reference's mouth, so they are
   laid along the skin instead, around the corner under the chin onto the
   throat, at the cage's own spacing. The lids' edge is the edge of the eye's
-  opening as the eye is seen from in front, the line between the lips is parted
-  into two lips with a mouth cavity behind them, and each eye has a pocket for
-  its eyeball. The ear's folds are finer than the net, so the ear is laid onto
-  the reference's ear and then evened out: it keeps its outline and its hollow.
+  opening as the eye is seen from in front, and each eye has a pocket for its
+  eyeball. The line between the lips is parted into two lips with a mouth
+  cavity behind them, and it runs along edges all the way to the mouth's
+  corner: the one face with which the cage closes the corner is parted along
+  the line into a face of each lip. The cage has no nostrils, which are finer
+  than its faces: the two faces under the nose that a nostril lies across are
+  opened into a ring of twelve vertices on the nostril's edge, found on the
+  reference as the nose is seen from below, with a pocket behind it that is an
+  island of its own in the UV map. The ear's folds are finer than the net, so
+  the ear is laid onto the reference's ear and then evened out: it keeps its
+  outline and its hollow.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
   reference's eyeball per eye, a band of teeth per jaw, and a tongue.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
   projected: the trunk's front and back, the neck opened down the nape, each arm
   and leg opened along its inner line, each hand as a back and a palm, each foot
   as a top and a sole, and the head as one island with the face in its middle,
-  opened up the back of the head, with the back of each ear as an island. No
-  island is mirrored and no two share texels, so `UVMap_Paint` is `UVMap`. The
-  body's islands lie on an image twice as wide as high at one texel density,
-  about 1,600 texels per metre at 4096 x 2048, and the head's on a square image
-  of its own, the image of `M_Face_<Label>`, at about 4,000 texels per metre at
-  2048 x 2048. The materials are flat colours until the skin is painted.
+  opened up the back of the head, with the back of each ear and the pocket of
+  each nostril as islands. No island is mirrored and no two share texels, so
+  `UVMap_Paint` is `UVMap`. The body's islands lie on an image twice as wide as
+  high at one texel density, about 1,600 texels per metre at 4096 x 2048, and
+  the head's on a square image of its own, the image of `M_Face_<Label>`, at
+  about 4,000 texels per metre at 2048 x 2048. The materials are flat colours
+  until the skin is painted.
 
 Each new file follows the layout of a body file above, at the `model` stage: the
 root `<Label>` is an empty where the armature will be, the body parts are

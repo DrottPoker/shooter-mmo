@@ -1,8 +1,9 @@
 """The logic of the human build that needs numpy but not Blender: the net's subdivision, mirror image,
 islands, seams, slivers, folds, and tucks, the islands that follow from the net's shape, the way
-along a skin that lays the head cage's line under the chin, and the cutting of faces and the layout
-of the UV map, on small nets and skins whose answers follow from the input. Without numpy this file
-is skipped; see test_numeric_logic.py and blender_source.py."""
+along a skin that lays the head cage's line under the chin, the outline of the cage's faces over a
+nostril, and the cutting of faces and the layout of the UV map, on small nets and skins whose
+answers follow from the input. Without numpy this file is skipped; see test_numeric_logic.py and
+blender_source.py."""
 
 import pathlib
 import sys
@@ -25,6 +26,7 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", numpy=True)
+head = load("human_build/head.py", "_outline")
 
 
 def strip_net():
@@ -197,6 +199,20 @@ class ReferenceTests(unittest.TestCase):
     def test_a_way_that_cannot_go_on_says_so(self):
         with self.assertRaises(RuntimeError):
             reference._along_skin(lambda point: (0.0, self.RADIUS, 0.0), (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), 0.01)
+
+
+class HeadTests(unittest.TestCase):
+    def test_the_outline_of_two_faces_runs_around_both_the_way_they_run(self):
+        # Two faces that share the edge between vertices 1 and 4:
+        #     3 4 5
+        #     0 1 2
+        loop = head._outline([(0, 1, 4, 3), (1, 2, 5, 4)])
+        start = loop.index(0)
+        self.assertEqual(loop[start:] + loop[:start], [0, 1, 2, 5, 4, 3])
+
+    def test_faces_that_only_touch_in_a_vertex_have_no_outline(self):
+        with self.assertRaises(RuntimeError):
+            head._outline([(0, 1, 4, 3), (4, 5, 8, 7)])
 
 
 class IslandTests(unittest.TestCase):
