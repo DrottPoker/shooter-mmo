@@ -533,15 +533,16 @@ def build(out_path):
     bases = {label: base for label, _sculpt, base, _eyes in made}
     polys = [tuple(p.vertices) for p in bases[HEAD_BODY].polygons]
     control = [_points(bases[label]) for label in labels]
-    faces, _rim_before = ear_patch(outlines, control, polys)
-    faces = without_tiny([polys[f] for f in faces], control)
+    patch, _edge = ear_patch(outlines, control, polys)
+    # From here on the faces by their vertices: closing a too small face's edge changes them.
+    faces = without_tiny([polys[f] for f in patch], control)
     rim = _rim(faces, range(len(faces)))
     first = control[0]
     outward = np.zeros((len(first), 3))
     for face in faces:
         corners = first[list(face)]
         outward[list(face)] += np.cross(corners - np.roll(corners, 1, axis=0), np.roll(corners, -1, axis=0) - corners).sum(0)
-    triangles, thinnest = band(outlines, [_points(bases[label])[rim] for label in labels], outward[rim])
+    triangles, thinnest = band(outlines, [points[rim] for points in control], outward[rim])
     number = {"outer": lambda k: int(k), "inner": lambda k: -1 - int(k)}
     used = sorted({v for face in faces for v in face})
     place = {v: k for k, v in enumerate(used)}
