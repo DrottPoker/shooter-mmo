@@ -1,0 +1,17 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Characters/Human_Male_Next.fbx",
+    "rootObjects": [
+        "Male"
+    ],
+    "triangleBudget": 15400,
+    "skeleton": "Humanoid",
+    "approvals": {
+        "model": {
+            "date": "2026-11-19",
+            "sourceSha256": "7a6a58df2680deb1b67c8c87b2c9763f6e9692271c0c627e296d13d9b692449e"
+        }
+    },
+    "export": null
+}
