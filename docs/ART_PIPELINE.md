@@ -1400,8 +1400,8 @@ changed file needs its `model` stage approved again.
 | --- | --- |
 | `reference.py` | Takes the two bodies with their eyeballs from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, and lays the head cage onto both heads. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
-| `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, the UV map, the body parts, the inner parts, and the reference. |
-| `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, and its checks for slivers and folds. |
+| `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, the UV map, the body parts, the inner parts, and the reference. |
+| `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
 | `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs; of the hand and its fingers; of the foot; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm and the back of each ear. |
 
 ## Animation Libraries

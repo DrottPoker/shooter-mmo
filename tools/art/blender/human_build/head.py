@@ -13,7 +13,7 @@ import math
 import numpy as np
 
 from .body import ZONE, _unit
-from .net import FIXED, MIRROR, RIGID, Net
+from .net import FIXED, MIRROR, PINNED, RIGID, Net
 
 X, Y, Z = np.eye(3)
 # The faces inside the head, which are laid onto no skin: the pocket behind the eye's opening and
@@ -278,21 +278,27 @@ def build_head(net: Net, head: Head):
     s = head.scale
     zone = ZONE["Head"]
     drop = set(NECK_INNER) | set(EYE_SLIT)
-    beside_ear = {v for index, face in enumerate(head.faces) if index not in EAR_FACES for v in face}
+    # The cage's vertices keep their places on the features; the vertices that subdividing adds are
+    # laid onto the reference. Two kinds of the cage's vertices may still move along the skin: the
+    # ear's, with the ring of the head it stands on, which are evened out with it, and the ring
+    # under the head, which lies on the plain skin of the neck and gives way where a face would
+    # fold.
+    loose = {v for index in EAR_FACES for v in head.faces[index]} | set(NECK_RING)
+    # The lids' edge and the line between the lips stay exactly where they are put.
+    lines = set(EYE_RING) | set(LIP_LINE) | {LIP_END}
     vertex = {}
     for v in head.right:
         if v in drop:
             continue
-        # The cage's vertices keep their places on the features; the vertices that subdividing
-        # adds are laid onto the reference. The ear's own vertices are evened out with it.
-        vertex[v] = net.add(head.points[v], *([FIXED] if v in beside_ear else []), *([MIRROR] if v in head.centre else []))
+        vertex[v] = net.add(head.points[v], *([] if v in loose else [FIXED]), *([PINNED] if v in lines else []),
+                            *([MIRROR] if v in head.centre else []))
 
     # The head is one island of the UV map, with the face in its middle, opened up the back of the
     # head, where the hair lies.
     net.island = "head"
     net.seam([vertex[v] for v in head.back_line()])
     # The lower lip takes its own vertices along the line between the lips.
-    lower = {v: net.add(head.points[v], FIXED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
+    lower = {v: net.add(head.points[v], FIXED, PINNED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
     skip = set(NECK_FACES) | set(EYE_FACES)
     for index, corners in enumerate(head.faces):
         if index in skip or any(v not in vertex for v in corners):
@@ -376,14 +382,14 @@ def refine_head(fine: Net, coarse: Net, head: Head):
     for k in range(len(ring)):
         vertex = between(ring[k], ring[(k + 1) % len(ring)])
         fine.points[vertex] = head.on_rim((stations[k] + stations[k + 1]) / 2)
-        fine.holds[vertex].add(FIXED)
+        fine.holds[vertex].update((FIXED, PINNED))
     upper, lower = coarse.marks["lip_upper"], coarse.marks["lip_lower"]
     for k in range(len(upper) - 1):
         point = head.between_lips(fine.points[between(upper[k], upper[k + 1])])
         for line in (upper, lower):
             vertex = between(line[k], line[k + 1])
             fine.points[vertex] = point
-            fine.holds[vertex].add(FIXED)
+            fine.holds[vertex].update((FIXED, PINNED))
     # One face closes the mouth's corner, from the end of the line between the lips to the corner
     # with the upper lip above and the lower lip below: its middle lies in the fold between them.
     end, corner = coarse.marks["lip_corner"]
@@ -391,4 +397,4 @@ def refine_head(fine: Net, coarse: Net, head: Head):
         if end in face and corner in face:
             vertex = fine.face_point[index]
             fine.points[vertex] = head.between_lips(fine.points[vertex])
-            fine.holds[vertex].add(FIXED)
+            fine.holds[vertex].update((FIXED, PINNED))

@@ -16,6 +16,9 @@ import numpy as np
 
 MIRROR = "mirror"
 FIXED = "fixed"
+# A vertex of a line that other parts are built on, such as the lids' edge on the eyeball and the
+# line where the two lips meet: it is fixed, and it also stays when the faces around it are mended.
+PINNED = "pinned"
 # A vertex of a part that has no skin to lie on, such as the inside of the mouth: it stays where it
 # was built, and so do the vertices that subdividing puts between such vertices.
 RIGID = "rigid"
@@ -146,13 +149,13 @@ class Net:
         def middle(a, b):
             key = (a, b) if a < b else (b, a)
             if key not in edge_point:
-                shared = (self.holds[a] & self.holds[b]) - {FIXED}
+                shared = (self.holds[a] & self.holds[b]) - {FIXED, PINNED}
                 edge_point[key] = fine.add((self.points[a] + self.points[b]) / 2, *shared)
             return edge_point[key]
 
         for face, zone, skin, island in zip(self.faces, self.zones, self.skins, self.islands):
             count = len(face)
-            shared = set.intersection(*[self.holds[v] for v in face]) - {FIXED}
+            shared = set.intersection(*[self.holds[v] for v in face]) - {FIXED, PINNED}
             centre = fine.add(np.mean([self.points[v] for v in face], axis=0), *shared)
             face_point.append(centre)
             mids = [middle(face[k], face[(k + 1) % count]) for k in range(count)]
@@ -316,13 +319,18 @@ class Net:
 
     def mend(self, hidden=(), sliver=8.0, fold=0.3, rounds=8, rate=0.5):
         """Evens out the vertices of the faces that are slivers or folded, a few rounds, until none
-        is left. Vertices on the mirror plane and of the hidden parts stay."""
+        is left. Pinned vertices, such as the lids' edge and the line between the lips, the
+        vertices of the hidden parts, and those on the mirror plane stay, and a vertex held in a
+        plane stays in it. A vertex that is only fixed gives way: it kept its place while the net
+        was laid onto the skin, and moves the little that unfolding a face beside it takes."""
         for _ in range(rounds):
             bad = set(self.folded(fold, hidden)) | {f for f in self.slivers(sliver) if self.skins[f] not in hidden}
             if not bad:
                 break
-            loose = sorted({v for f in bad for v in self.faces[f] if not ({RIGID, MIRROR} & self.holds[v])})
+            loose = sorted({v for f in bad for v in self.faces[f] if not ({PINNED, RIGID, MIRROR} & self.holds[v])})
             self.smooth(loose, 1, rate)
+            for v in loose:
+                self.points[v] = self._held(v, self.points[v])
 
     def touching(self, skin):
         """The vertices with a face that is laid onto the skin of this name."""

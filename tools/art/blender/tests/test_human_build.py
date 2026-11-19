@@ -19,9 +19,10 @@ except ImportError:
 sys.path.insert(0, str(BLENDER_ROOT))
 
 from human_build import islands  # noqa: E402
-from human_build.net import FIXED, MIRROR, RIGID, Net  # noqa: E402
+from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 
-assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "_smallest_corner", "LABELS", numpy=True)
+assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
+                "SLIVER_ANGLE", numpy=True)
 
 
 def strip_net():
@@ -63,7 +64,7 @@ class NetTests(unittest.TestCase):
 
     def test_a_new_vertex_keeps_the_holds_its_makers_share_but_is_not_fixed(self):
         net = strip_net()
-        net.hold([0, 3], FIXED)
+        net.hold([0, 3], FIXED, PINNED)
         fine = net.subdivided()
         self.assertEqual(fine.holds[fine.edge_point[(0, 3)]], {MIRROR})
         self.assertEqual(fine.holds[fine.edge_point[(0, 1)]], set())
@@ -120,6 +121,21 @@ class NetTests(unittest.TestCase):
         net.mend()
         np.testing.assert_allclose(net.points[0], (0, 0, 0))
         np.testing.assert_allclose(net.points[1], (1, 0, 0))
+
+    def test_mending_keeps_a_pinned_vertex_and_a_plane_hold_and_moves_a_fixed_vertex(self):
+        net = Net()
+        shelf = net.plane("shelf", (0, 0, 0.3), (0, 0, 1))
+        # A needle 1 long and 0.01 wide, a sliver whichever way it is cut.
+        net.add((0, 0, 0), FIXED, PINNED)
+        net.add((1, 0, 0.3), shelf)
+        net.add((1, 0.01, 0.3), FIXED)
+        net.add((0, 0.01, 0))
+        net.quad(0, 1, 2, 3, 0, "skin")
+        net.mend(rounds=1)
+        np.testing.assert_allclose(net.points[0], (0, 0, 0))
+        self.assertLess(net.points[1][0], 1.0)
+        self.assertAlmostEqual(net.points[1][2], 0.3)
+        self.assertLess(net.points[2][0], 1.0)
 
     def test_smoothing_moves_a_vertex_toward_the_middle_of_its_neighbours(self):
         net = Net()
@@ -213,6 +229,43 @@ class AssembleTests(unittest.TestCase):
         nets = {"Male": {"points": points, "faces": [(0, 1, 2, 3)]}, "Female": {"points": points, "faces": [(1, 2, 3, 0)]}}
         with self.assertRaises(RuntimeError):
             assemble.cut_faces(nets)
+
+    def needles(self, pinned):
+        """A needle on each side of the mirror plane, the same on both bodies: vertices 0 to 3 at
+        the right, 4 to 7 their mirror images."""
+        right = np.array([(1, 0, 0), (2, 0, 0), (2, 0.01, 0.3), (1, 0.01, 0)], float)
+        points = np.concatenate([right, right * (-1, 1, 1)])
+        faces = [(0, 1, 2, 3), (7, 6, 5, 4)]
+        twin = np.array([4, 5, 6, 7, 0, 1, 2, 3])
+        return {label: {"points": points.copy(), "faces": faces, "pinned": np.array(pinned, bool), "twin": twin}
+                for label in assemble.LABELS}
+
+    def test_mending_leaves_good_faces_alone(self):
+        square = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], float)
+        nets = {label: {"points": square.copy(), "faces": [(0, 1, 2, 3)], "pinned": np.zeros(4, bool), "twin": np.arange(4)}
+                for label in assemble.LABELS}
+        assemble.mend(nets)
+        for net in nets.values():
+            np.testing.assert_allclose(net["points"], square)
+
+    def test_mending_never_moves_a_pinned_vertex_and_says_what_it_could_not_mend(self):
+        nets = self.needles([True] * 8)
+        before = {label: net["points"].copy() for label, net in nets.items()}
+        with self.assertRaises(RuntimeError):
+            assemble.mend(nets)
+        for label, net in nets.items():
+            np.testing.assert_allclose(net["points"], before[label])
+
+    def test_mending_moves_a_vertex_with_its_mirror_image(self):
+        # Only vertex 2 is loose; its mirror image 6 is pinned by mistake and must still follow.
+        nets = self.needles([True, True, False, True, True, True, True, True])
+        try:
+            assemble.mend(nets, rounds=1)
+        except RuntimeError:
+            pass
+        for net in nets.values():
+            np.testing.assert_allclose(net["points"][6], net["points"][2] * (-1, 1, 1))
+            self.assertFalse(np.allclose(net["points"][2], (2, 0.01, 0.3)))
 
     def test_a_triangle_is_left_as_it_is(self):
         points = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0)], float)

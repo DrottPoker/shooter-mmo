@@ -18,7 +18,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from human_build import body, foot as feet, hand as hands, head as heads, islands  # noqa: E402
-from human_build.net import Net  # noqa: E402
+from human_build.net import MIRROR, PINNED, RIGID, Net  # noqa: E402
 from human_build.surface import Surface  # noqa: E402
 
 
@@ -30,6 +30,9 @@ def _object(name, net, collection, distances=None):
     zone.data.foreach_set("value", np.array(net.zones, np.int32))
     part = mesh.attributes.new("part", "INT", "FACE")
     part.data.foreach_set("value", np.array([heads.HIDDEN_PARTS.get(skin, 0) for skin in net.skins], np.int32))
+    # The vertices that stay where they are when the assembly mends a face.
+    pinned = mesh.attributes.new("pinned", "BOOLEAN", "POINT")
+    pinned.data.foreach_set("value", [bool({PINNED, RIGID, MIRROR} & holds) for holds in net.holds])
     # The islands of the UV map by name, and the seams inside them.
     names = sorted({island for island in net.islands if island is not None})
     if names:
@@ -110,9 +113,10 @@ def build(label, out_path, parts):
         fine.smooth(fine.touching("ear"), heads.EAR_SMOOTHING)
     hidden = tuple(heads.HIDDEN_PARTS)
     fine.mend(hidden)
-    left = len(fine.slivers()), len(fine.folded(hidden=hidden))
-    if any(left):
-        print(f"HUMAN_BUILD_FAILED {left[0]} faces are slivers and {left[1]} are folded whichever way they are cut")
+    for kind, faces in (("a sliver", fine.slivers()), ("folded", fine.folded(hidden=hidden))):
+        for face in faces:
+            centre = np.mean([fine.points[v] for v in fine.faces[face]], axis=0)
+            print(f"HUMAN_BUILD_FAILED the face at {np.round(centre, 4).tolist()} is {kind} whichever way it is cut")
     whole = fine.mirrored()
     if hand is not None:
         islands.part_hands(whole, hand.palmar)

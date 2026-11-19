@@ -12,7 +12,8 @@ and the reference mesh in the Reference collection.
 
 Both bodies are written in one run, because they must be the same net: every face is cut into
 triangles from the same corner on both, the corner that leaves the better triangles on the worse
-of the two.
+of the two. Where that cut would still leave a sliver on a body, the face's vertices are evened
+out on that body first, each with its mirror image.
 
 The UV map is unwrapped island by island along the seams the cage names, never projected. Every
 island is turned upright, brought to one texel density, and laid out by hand-written rules: the
@@ -34,6 +35,8 @@ from art_pipeline import bodies  # noqa: E402
 from art_pipeline.scene import EXPORT_COLLECTION  # noqa: E402
 
 LABELS = ("Male", "Female")
+# A triangle with a corner under this many degrees is a sliver, as the body checks count them.
+SLIVER_ANGLE = 5.0
 REFERENCE_COLLECTION = "Reference"
 # The islands of the head, the faces of the zone Head, lie on the image of the face material, every
 # other one on the body's.
@@ -87,8 +90,12 @@ def _net(path, label):
     values = {name: [d.value for d in mesh.attributes[name].data] for name in ("zone", "part", "island")}
     names = list(mesh["islands"])
     seams = {tuple(sorted(e.vertices)) for e in mesh.edges if e.use_seam}
+    pinned = np.array([d.value for d in mesh.attributes["pinned"].data], bool)
+    # Every vertex's mirror image, itself on the mirror plane: the net is an exact mirror image.
+    place = {tuple(np.round(p, 7)): v for v, p in enumerate(points)}
+    twin = np.array([place[tuple(np.round(p * (-1.0, 1.0, 1.0), 7))] for p in points])
     return {"points": points, "faces": faces, "zone": values["zone"], "part": values["part"],
-            "island": [names[i] for i in values["island"]], "seams": seams}
+            "island": [names[i] for i in values["island"]], "seams": seams, "pinned": pinned, "twin": twin}
 
 
 def _smallest_corner(points, a, b, c):
@@ -98,6 +105,49 @@ def _smallest_corner(points, a, b, c):
         lengths = np.linalg.norm(u) * np.linalg.norm(w)
         out = min(out, 0.0 if lengths < 1e-18 else math.degrees(math.acos(float(np.clip(u @ w / lengths, -1.0, 1.0)))))
     return out
+
+
+def _cut_score(points, a, b, c, d):
+    """How well a quad is cut from a to c: the smallest corner of its two triangles in degrees, or
+    -1 when the cut folds the face."""
+    first = np.cross(points[b] - points[a], points[c] - points[a])
+    second = np.cross(points[c] - points[a], points[d] - points[a])
+    if first @ second <= 0.0:
+        return -1.0
+    return min(_smallest_corner(points, a, b, c), _smallest_corner(points, a, c, d))
+
+
+def mend(nets, limit=SLIVER_ANGLE + 1.0, rounds=12, rate=0.5):
+    """Moves the vertices of the faces that are slivers on a body whichever way the two bodies'
+    shared cut goes: each such vertex part of the way toward the middle of its neighbours, on that
+    body, until no such face is left. A body's own build leaves no face that is a sliver cut its
+    best way, but the best way may differ between the bodies. Pinned vertices stay."""
+    faces = nets[LABELS[0]]["faces"]
+    beside = {}
+    for face in faces:
+        for a, b in zip(face, face[1:] + face[:1]):
+            beside.setdefault(a, set()).add(b)
+            beside.setdefault(b, set()).add(a)
+    for _ in range(rounds):
+        cut = cut_faces(nets)
+        moved = False
+        for net in nets.values():
+            points = net["points"]
+            loose = {v for face in cut if len(face) == 4 and _cut_score(points, *face) < limit
+                     for v in face if not net["pinned"][v]}
+            # A vertex moves with its mirror image, and both from where the round found them, so
+            # the two sides stay mirror images.
+            loose = sorted(loose | {int(net["twin"][v]) for v in loose})
+            fresh = {v: points[v] + rate * (points[sorted(beside[v])].mean(0) - points[v]) for v in loose}
+            for v, point in fresh.items():
+                points[v] = point
+            moved = moved or bool(loose)
+        if not moved:
+            break
+    left = sum(1 for face in cut_faces(nets) if len(face) == 4
+               for net in nets.values() if _cut_score(net["points"], *face) < SLIVER_ANGLE)
+    if left:
+        raise RuntimeError(f"{left} faces stay slivers on a body whichever way they are cut for both")
 
 
 def cut_faces(nets):
@@ -111,18 +161,8 @@ def cut_faces(nets):
         if len(face) != 4:
             out.append(face)
             continue
-        scores = []
-        for shift in (0, 1):
-            a, b, c, d = face[shift:] + face[:shift]
-            score = 180.0
-            for net in nets.values():
-                points = net["points"]
-                # A cut that folds the face is worse than any sliver.
-                first = np.cross(points[b] - points[a], points[c] - points[a])
-                second = np.cross(points[c] - points[a], points[d] - points[a])
-                folds = first @ second <= 0.0
-                score = min(score, -1.0 if folds else min(_smallest_corner(points, a, b, c), _smallest_corner(points, a, c, d)))
-            scores.append(score)
+        # A cut that folds the face is worse than any sliver.
+        scores = [min(_cut_score(net["points"], *(face[shift:] + face[:shift])) for net in nets.values()) for shift in (0, 1)]
         out.append(face[1:] + face[:1] if scores[1] > scores[0] else face)
     return out
 
@@ -369,6 +409,7 @@ def write(label, net, faces, work, out_path):
 def assemble(work, out_folder, suffix):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     nets = {label: _net(os.path.join(work, f"work_{label}.blend"), label) for label in LABELS}
+    mend(nets)
     faces = cut_faces(nets)
     for label in LABELS:
         name = f"Human_{label}{suffix}"
