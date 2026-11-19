@@ -1,6 +1,7 @@
 """The reference meshes of the human base bodies, taken from the Human Base Meshes bundle v1.4.1 of
 Blender Studio (CC0): the realistic male and female bodies with their eyes, turned to face +Y,
-centred on x = 0, standing on z = 0, and scaled to the heights of the game's bodies.
+centred on x = 0, standing on z = 0, scaled to the heights of the game's bodies, and with their
+arms turned out to an A-pose.
 
     blender --background --factory-startup --disable-autoexec <bundle.blend> \
         --python tools/art/blender/human_build/reference.py -- <out.blend>
@@ -28,13 +29,25 @@ from mathutils.bvhtree import BVHTree
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from human_build import body  # noqa: E402
 from human_build.head import EAR_FACES, outline  # noqa: E402
+from human_build.surface import Surface  # noqa: E402
 
 BUNDLE_SHA256 = "3c121505651140ceb4d69fd1d8923f7788ffadd81672f5be14845a5f2c75c137"
 BODIES = (("Male", "GEO-body_male_realistic", 1.79), ("Female", "GEO-body_female_realistic", 1.70))
 # The multires level of the reference surface: level 2 has about 170,000 vertices, enough for a net
 # of 7,000 faces, and keeps the files small.
 SCULPT_LEVEL = 2
+# The bundle's bodies stand with their arms hanging, the line from the shoulder joint to the wrist
+# 19 degrees from straight down. A body is bound to its skeleton best in the middle of what its arms
+# do, with the armpit open: the arms are turned out about the shoulder joints until that line is
+# ARM_ANGLE degrees from straight down. The bundle's own coarse net under the sculpt is turned, so
+# the sculpt's detail follows it. Each vertex takes a share of the turn: all of it on the arm from
+# ARM_BELOW below the armpit, none of it on the trunk ARM_ROOT inside the plane of the ring around
+# the shoulder or ARM_FLANK below the armpit, and between those the share that evens out along the
+# net, so the round of the shoulder and the skin of the armpit stretch evenly. Lengths at 1.79 m.
+ARM_ANGLE = 45.0
+ARM_ROOT, ARM_FLANK, ARM_BELOW = 0.06, 0.05, 0.01
 HEAD = "Head - Generic Topology"
 # The shape of the head cage that is the female body's head, and the body it is laid onto first.
 HEAD_SHAPE, HEAD_BODY = "Real_FEMALE", "Female"
@@ -105,6 +118,100 @@ def _evaluated(obj, level):
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph), depsgraph=depsgraph)
     mesh.transform(obj.matrix_world)
     return mesh
+
+
+def evened(count, edges, weights, fixed, values, rounds=4000, exact=1e-10):
+    """A value for every vertex of a net: the given value where it is fixed, and elsewhere the
+    value that is the weighted middle of its neighbours', each edge with its weight. edges holds
+    pairs of vertices, fixed says which vertices are fixed, and values holds their values."""
+    edges, weights = np.asarray(edges, np.int64), np.asarray(weights, float)
+    a, b = edges[:, 0], edges[:, 1]
+    fixed = np.asarray(fixed, bool)
+    out = np.where(fixed, np.asarray(values, float), 0.0)
+    free = ~fixed
+    if not free.any():
+        return out
+    total = np.bincount(a, weights, count) + np.bincount(b, weights, count)
+
+    def across(x):
+        """What the net's edges make of the free vertices' values, the fixed ones at zero."""
+        return (total * x - np.bincount(a, weights * x[b], count) - np.bincount(b, weights * x[a], count)) * free
+
+    # The fixed neighbours' part, and from there by conjugate gradients.
+    goal = (np.bincount(a, weights * out[b], count) + np.bincount(b, weights * out[a], count)) * free
+    x = np.zeros(count)
+    rest = goal.copy()
+    way = rest.copy()
+    size = float(rest @ rest)
+    start = size
+    for _ in range(rounds):
+        if size <= exact * exact * max(start, 1e-300):
+            break
+        through = across(way)
+        step = size / float(way @ through)
+        x += step * way
+        rest -= step * through
+        fresh = float(rest @ rest)
+        way = rest + (fresh / size) * way
+        size = fresh
+    else:
+        raise RuntimeError("the shares of the arm's turn do not even out along the net")
+    return out + x * free
+
+
+def arm_shares(points, edges, in_arm, gap_x, armpit_z, shoulder_top, scale):
+    """The share of the arm's turn that each vertex of a body's net takes. in_arm says which
+    vertices lie beyond the gap between the arm and the trunk, on either side of the body."""
+    points = np.asarray(points, float)
+    side, z = np.abs(points[:, 0]), points[:, 2]
+    turns = np.asarray(in_arm, bool) & (z < armpit_z - ARM_BELOW * scale)
+    stays = (side < gap_x - ARM_ROOT * scale) | (~np.asarray(in_arm, bool) & (z < armpit_z - ARM_FLANK * scale)) \
+        | (z > shoulder_top + 0.02 * scale)
+    stays &= ~turns
+    edges = np.asarray(edges, np.int64)
+    lengths = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1)
+    return evened(len(points), edges, 1.0 / np.maximum(lengths, 1e-9), turns | stays, turns.astype(float))
+
+
+def turned_out(points, shares, joint, angle):
+    """The points with the arms turned out by an angle in degrees about the line from back to
+    front through each shoulder joint, each point by its share of the angle. joint is the right
+    arm's, at +x; the left arm turns as its mirror image."""
+    points = np.asarray(points, float)
+    sign = np.where(points[:, 0] >= 0.0, 1.0, -1.0)
+    turn = -sign * np.radians(angle) * np.asarray(shares, float)
+    x, z = points[:, 0] - sign * joint[0], points[:, 2] - joint[2]
+    out = points.copy()
+    out[:, 0] = sign * joint[0] + x * np.cos(turn) + z * np.sin(turn)
+    out[:, 2] = joint[2] - x * np.sin(turn) + z * np.cos(turn)
+    return out
+
+
+def pose_arms(source, placement, sculpt, label):
+    """Turns the arms of a body of the bundle out, in the bundle's own net: the object's vertices
+    move, and its sculpt follows when it is evaluated again. sculpt is the body's sculpt as the
+    placement stands it. Gives the right arm's shoulder joint, which the turn leaves in place."""
+    if source.data.shape_keys is not None:
+        raise RuntimeError(f"{source.name} has shape keys; its vertices cannot be turned as they are")
+    m = body.Measures(Surface(_points(sculpt), _triangles(sculpt)))
+    joint, _elbow, wrist, _surface = body._arm_axis(m)
+    hangs = math.degrees(math.atan2(wrist[0] - joint[0], joint[2] - wrist[2]))
+    to_placed = placement @ source.matrix_world
+    points = np.array([tuple(to_placed @ v.co) for v in source.data.vertices])
+    edges = np.array([tuple(e.vertices) for e in source.data.edges], np.int64)
+    side, z = np.abs(points[:, 0]), points[:, 2]
+    in_arm = (side > m.gap(z)) & (z > 0.35 * m.height)
+    shares = arm_shares(points, edges, in_arm, m.gap_x, m.armpit_z, m.shoulder_top, m.scale)
+    posed = turned_out(points, shares, joint, ARM_ANGLE - hangs)
+    back = to_placed.inverted()
+    for v, point in zip(source.data.vertices, posed):
+        v.co = back @ Vector(point)
+    source.data.update()
+    part = int(((shares > 0.001) & (shares < 0.999)).sum())
+    print(f"HUMAN_BUILD_REFERENCE {label}: the arm hangs {hangs:.1f} degrees from straight down and is turned out to "
+          f"{ARM_ANGLE:.0f} about the shoulder joint at {np.round(joint, 3).tolist()}; {part} of the bundle's "
+          f"{len(points)} vertices take a part of the turn")
+    return joint
 
 
 def _points(mesh):
@@ -484,6 +591,13 @@ def build(out_path):
         sculpt = _evaluated(source, SCULPT_LEVEL)
         placement = _placement(_points(sculpt), height)
         sculpt.transform(placement)
+        # The arms are turned out in the bundle's own net, and the body is taken again.
+        joint = pose_arms(source, placement, sculpt, label)
+        bpy.data.meshes.remove(sculpt)
+        sculpt = _evaluated(source, SCULPT_LEVEL)
+        sculpt.transform(placement)
+        # The build measures the arm from the joint it was turned about.
+        sculpt["shoulder_joint"] = [float(c) for c in joint]
         base = _evaluated(source, 0)
         base.transform(placement)
         if label == "Female":

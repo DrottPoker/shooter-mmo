@@ -1335,6 +1335,22 @@ asked for, by smooth, mirrored fields before the net is laid onto it: hips 7.5 %
 wider, a waist 6.5 % narrower, and each breast 20 mm fuller and 14 mm nearer
 the middle, at 1.70 m.
 
+The bodies stand in an A-pose. The bundle's bodies stand with their arms
+hanging, the line from the shoulder joint to the wrist 19 degrees from straight
+down, which leaves the armpit a narrow gap and puts an arm that is raised over
+the head 160 degrees from the pose its skin is bound in. So `reference.py` turns
+the arms out about the shoulder joints until that line is 45 degrees from
+straight down, the middle of what the arms do. It turns the bundle's own coarse
+net under the sculpt, so the sculpt's detail follows. Each vertex takes a share
+of the turn: all of it on the arm below the armpit, none on the trunk away from
+the shoulder, and between them the share that evens out along the net, so the
+round of the shoulder and the skin of the armpit stretch evenly. Unity raises
+the arms to a T-pose itself when it makes a body's avatar, and the import of a
+clip takes the difference between two rest poses out of the motion, so neither
+needs another pose. The shape of the shoulder and the armpit in this pose is
+computed, not sculpted: it is the part of the model to look at most closely.
+The elbows keep the bundle's slight bend, and the legs their stance.
+
 What is built:
 
 - **One cage for both bodies.** The coarse cage of the right half, 823 faces, is
@@ -1422,7 +1438,8 @@ foreach ($label in "Male", "Female") {
 & $blender --background --factory-startup --disable-autoexec --python tools/art/blender/human_build/assemble.py -- $work art/Characters _Next
 ```
 
-Expected result: `reference.py` prints the height of both references, how
+Expected result: `reference.py` prints the height of both references, how far
+each body's arms hung and that they are turned out to 45 degrees, how
 near the head cage lies to the female one, a median under 1 mm, and how many
 faces of the control cage and triangles of the band set each ear into the head
 cage; `build.py` prints the measures it found, the navel and the nostril among
@@ -1435,7 +1452,7 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 
 | Script | What it does |
 | --- | --- |
-| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
+| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, shapes the female, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |

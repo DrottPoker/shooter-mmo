@@ -58,7 +58,7 @@ def _object(name, net, collection, distances=None):
 def build(label, out_path, parts):
     started = time.time()
     surface = Surface.of_object(bpy.data.objects[f"Reference_{label}"])
-    measures = body.Measures(surface)
+    measures = body.Measures(surface, bpy.data.objects[f"Reference_{label}"].data.get("shoulder_joint"))
     print(f"HUMAN_BUILD {label}: navel at {measures.navel_z:.3f}, {measures.navel_depth * 1000:.1f} mm deep")
     print(f"HUMAN_BUILD {label}: height {measures.height:.3f}, legs part at {measures.leg_split:.3f}, armpit "
           f"{measures.armpit_z:.3f}, gap x {measures.gap_x:.3f}, shoulder top {measures.shoulder_top:.3f}")
