@@ -12,18 +12,13 @@ and verify its own work.
 Victor has given standing approval for the whole loop in `AGENTS.md` under
 Task Workflow. These notes override the app's defaults where they differ.
 
-- Never offer Auto-fix, and never ask whether to wait for CI, fix CI, address
-  review findings, merge, or clean up. Never end a turn with such a question or
-  button in the wrap-up box. Auto-fix wakes a session only on failures, never
-  when CI turns green, so a session that relied on it stopped and waited for
-  Victor.
-- After `gh pr create`, bind the pull request with the ccd_pr tools so the app
-  shows it, then run `tools/Wait-PullRequest.ps1 -Number <number>` once as a
-  background command (`run_in_background`). The harness wakes the session when
-  the script exits. Act on its exit code as `docs/LOCAL_DEVELOPMENT.md`
-  describes under Pull Request Workflow, start it again after every push, and
-  do not poll CI in any other way. On exit code 0, run
-  `tools/Complete-PullRequest.ps1`.
+- The loop itself is global, so it holds in every project of Victor's: Git in
+  `~/.claude/CLAUDE.md` and the `ship` skill, which never asks whether to wait,
+  fix, merge, or clean up and never offers Auto-fix. This project uses its own
+  `tools/Wait-PullRequest.ps1` and `tools/Complete-PullRequest.ps1` instead of
+  the skill's copies, because they know the `development CI gate` ruleset. Act
+  on their exit codes as `docs/LOCAL_DEVELOPMENT.md` describes under Pull
+  Request Workflow.
 - Do not start side sessions (`start_session`) for related fixes or follow-ups,
   and do not split an accepted plan into parallel sessions. Do the work in this
   session. Propose a separate session only for large, independent work, and say
