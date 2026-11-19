@@ -20,18 +20,25 @@ from .surface import Loop
 TOES = ("Big", "Second", "Third", "Fourth", "Little")
 # The rings of the fan cross the instep this far in front of the ankle ring's front, at a body
 # height of 1.79 m; the last one stands across the foot.
-FAN_STEPS = (0.012, 0.026, 0.042)
+# Four rings: the second to last then passes through the corner under the back of the heel, which
+# three rings left to one face.
+FAN_STEPS = (0.010, 0.020, 0.031, 0.042)
 # How far behind its notch each of the six lines reaches the toes' roots, from the big toe's
 # inner side to the little toe's outer side.
 ROOT_BEHIND_NOTCH = (0.040, 0.036, 0.030, 0.028, 0.026, 0.024)
 # The outer lines' notches lie this far behind the tip of the big and the little toe.
 SIDE_NOTCH = (0.014, 0.010)
-# The outer lines lie this far inside the foot's edge.
-SIDE_INSET = 0.007
+# A crease between two toes ends this far behind the tip of the shorter of them.
+NOTCH_BEHIND_TIP = 0.005
+# The outer lines lie this far inside the foot's edge, and no more than this share of the way from
+# the edge to the nearest crease, so a narrow little toe keeps its width.
+SIDE_INSET, SIDE_SHARE = 0.007, 0.35
 BALL_BEHIND_ROOTS = 0.022
 # The creases are looked for this far behind the toes' front outline.
 CREASE_BEHIND_OUTLINE = 0.012
 BIN = 0.002
+# The skin between two toes is at least this thick, at 1.79 m.
+WEB_THICKNESS = 0.003
 
 
 class Foot:
@@ -125,7 +132,7 @@ class Foot:
         hit = self.surface.ray(self.at(u, v, -0.05), Z, 0.4)
         return None if hit is None else hit[0]
 
-    def crease(self, u, v, top=True, reach=0.004):
+    def crease(self, u, v, top=True, reach=0.0025):
         """The point of the crease between two toes near a place: the lowest point of the top, or
         the highest of the underside, within a few millimetres across."""
         best = None
@@ -137,6 +144,24 @@ class Foot:
             if best is None or depth < best[0]:
                 best = (depth, point)
         return None if best is None else best[1]
+
+    def web(self, u, v, top, under):
+        """The crease's two points between two toes, with skin between them: where the toes stand
+        apart, a ray from above and one from below pass each other in the gap, and the points
+        are set WEB_THICKNESS apart about the middle height of the toes beside the gap, so the
+        toes are joined by a thin web as toes that lie against each other are by their crease."""
+        thickness = WEB_THICKNESS * self.scale
+        if top is not None and under is not None and top[2] - under[2] >= thickness:
+            return top, under
+        beside = []
+        for du in (-0.006 * self.scale, 0.006 * self.scale):
+            above, below = self.top(u + du, v), self.under(u + du, v)
+            if above is not None and below is not None and above[2] > below[2]:
+                beside.append((above[2] + below[2]) / 2)
+        if not beside:
+            return None, None
+        middle = float(np.mean(beside))
+        return self.at(u, v, middle + thickness / 2), self.at(u, v, middle - thickness / 2)
 
     def edges(self, v):
         """The foot's inner and outer edge across at a place forward."""
@@ -196,23 +221,33 @@ def build_foot(net: Net, foot: Foot):
     across = rings[-1]
 
     # The six lines over the top and under the sole, at the notches, the middles, and the roots.
-    notch_v = [foot.tip_v[0] - SIDE_NOTCH[0] * s] + list(foot.notch_v) + [foot.tip_v[4] - SIDE_NOTCH[1] * s]
-    notch_v = [v - 0.0015 for v in notch_v]
-    root_v = [v - behind * s for v, behind in zip(notch_v, ROOT_BEHIND_NOTCH)]
+    outline_v = [foot.tip_v[0] - SIDE_NOTCH[0] * s] + list(foot.notch_v) + [foot.tip_v[4] - SIDE_NOTCH[1] * s]
+    outline_v = [v - 0.0015 for v in outline_v]
+    root_v = [v - behind * s for v, behind in zip(outline_v, ROOT_BEHIND_NOTCH)]
     # The ring behind the toes follows their roots, which lie farther back toward the little toe.
     ball_v = [v - BALL_BEHIND_ROOTS * s for v in root_v]
+    # A crease ends where the shorter of its two toes ends: beside a longer toe the front outline
+    # lies farther forward than that.
+    notch_v = list(outline_v)
+    for i in range(1, 5):
+        notch_v[i] = min(notch_v[i], min(foot.tip_v[i - 1], foot.tip_v[i]) - NOTCH_BEHIND_TIP * s)
 
     def ring_at(depths, creased):
         top, sole = [], []
         for i, v in enumerate(depths):
             if i in (0, 5):
                 inner, outer = foot.edges(v)
-                u = inner + SIDE_INSET * s if i == 0 else outer - SIDE_INSET * s
+                if i == 0:
+                    u = inner + min(SIDE_INSET * s, SIDE_SHARE * (foot.notch_u[0] - inner))
+                else:
+                    u = outer - min(SIDE_INSET * s, SIDE_SHARE * (outer - foot.notch_u[3]))
                 t, b = foot.top(u, v), foot.under(u, v)
             else:
                 u = foot.notch_u[i - 1]
                 t = foot.crease(u, v, top=True) if creased else foot.top(u, v)
                 b = foot.crease(u, v, top=False) if creased else foot.under(u, v)
+                if creased:
+                    t, b = foot.web(u, v, t, b)
             if t is None or b is None:
                 raise RuntimeError(f"the foot has no skin at line {i}, {v * 1000:.0f} mm in front of the ankle")
             top.append(net.add(t))
