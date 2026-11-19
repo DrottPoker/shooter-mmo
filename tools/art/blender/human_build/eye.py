@@ -138,6 +138,12 @@ def filled(edges):
     return out
 
 
+def outline_at(phis, edges, phi):
+    """The outline's edge at an angle around the line of sight, between the measured directions
+    phis (degrees, evenly round) and round past 360."""
+    return float(np.interp(phi % 360.0, phis, edges, period=360.0))
+
+
 def evened_edges(edges, corners):
     """The angles of the inner edge, spoke by spoke around the eye, with a spoke that lies further
     from the line of sight than both its neighbours, other than a corner, laid between them: beside
@@ -311,9 +317,17 @@ class Lids:
         profiles = []
         for phi in self.spoke_angles:
             out = self._out(phi)
-            first = max(0.0, self._outline_edge(out) - PROFILE_BEFORE)
+            # A spoke's profile starts short of the outline's edge in its direction, which the
+            # outline has for every direction, also one where rays pass between the lids.
+            guess = outline_at(phis, around, phi)
+            first = max(0.0, guess - PROFILE_BEFORE)
             thetas = np.arange(first, first + PROFILE_BEFORE + LID_MOST + 15.0, PROFILE_STEP)
             rhos = np.array([self._rho(out, t) for t in thetas])
+            if np.isnan(rhos).all():
+                # Rays pass between the lids into the corner along the whole spoke: its edge is the
+                # outline's, and its lid the ramp from the lash line to the crease.
+                profiles.append((out, thetas, rhos, guess))
+                continue
             edge_index = first_on_lid(rhos)
             profiles.append((out, thetas, rhos, self._edge(out, thetas[edge_index - 1], thetas[edge_index])))
         edges = evened_edges([p[3] for p in profiles], {0, len(self.spoke_angles) // 2})
@@ -329,7 +343,10 @@ class Lids:
             keep = thetas > at
             profile_t = np.concatenate([[at], thetas[keep]])
             profile_r = np.concatenate([[self.radius + depth], rhos[keep]])
-            fold = crease_angle(profile_t, profile_r, 0, CREASE_RISE * scale)
+            if np.isnan(profile_r[1:]).all():
+                fold = at + LID_LEAST
+            else:
+                fold = crease_angle(profile_t, profile_r, 0, CREASE_RISE * scale)
             stations_.append((at, depth, share, fold, lid_end(profile_t, profile_r)))
         # The crease runs evenly around the eye: where the brow's fold or the cheek is measured
         # nearer on one spoke than on its neighbours, the lid's rings would wave.

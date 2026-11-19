@@ -32,7 +32,7 @@ reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_
                  "BUST_ROUND", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
-           "merged", "band", "filled", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
+           "merged", "band", "filled", "outline_at", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
 
@@ -723,6 +723,13 @@ class EyeTests(unittest.TestCase):
         self.assertEqual(eye.filled([None, 20.0, 30.0, None]), [25.0, 20.0, 30.0, 25.0])
         with self.assertRaises(RuntimeError):
             eye.filled([None, None])
+
+    def test_a_spoke_between_the_measured_directions_takes_the_outline_between_them_round_past_360(self):
+        phis, edges = [0.0, 90.0, 180.0, 270.0], [10.0, 20.0, 30.0, 40.0]
+        self.assertAlmostEqual(eye.outline_at(phis, edges, 45.0), 15.0)
+        self.assertAlmostEqual(eye.outline_at(phis, edges, 315.0), 25.0)
+        self.assertAlmostEqual(eye.outline_at(phis, edges, 360.0), 10.0)
+        self.assertAlmostEqual(eye.outline_at(phis, edges, -45.0), 25.0)
 
     def test_an_edge_that_stands_out_beyond_both_neighbours_is_laid_between_them_but_not_at_a_corner(self):
         edges = [60.0, 50.0, 30.0, 25.0, 30.0, 50.0, 70.0, 77.0, 59.0, 40.0]
