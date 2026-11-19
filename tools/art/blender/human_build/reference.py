@@ -123,6 +123,33 @@ TRUNK_HALF_WIDTH = (0.235, 0.285)
 # origin stays under the body's weight.
 HIPS_FORWARD = 0.015
 HIP_HEIGHT_SHARE = 0.52
+# The male's groin, as the reviewer asked for it: smooth, without a bulge that stands out, as a
+# body for the game's underwear and clothes. The two bodies of the bundle are sculpted on one net,
+# so each vertex of his groin has its place on hers, which is smooth: within GROIN_REACH of the
+# crotch, as half its width, its height above the crotch, and its depth below it, his groin takes
+# her form, laid onto his body by the move, turn, and scale that best lay the edge of that patch
+# onto his. It takes all of it within GROIN_CORE, as half its width and its height, and fades to
+# his own form at the patch's edge, evened out along the net. GROIN_KEEP of his own form stays, a
+# hint of a male groin. Lengths at 1.79 m.
+GROIN_REACH = (0.075, 0.13, 0.03)
+GROIN_CORE = (0.035, 0.085)
+GROIN_KEEP = 0.2
+# A little more fullness on both bodies, as the reviewer asked for it: more filled out and not as
+# thin, only a little, and the male most. The female's upper arm, the thinnest part of her, grows
+# by about as much as his in width. The limbs, the round of the shoulder, the chest, and the neck
+# grow about their own middles by these shares of their width, where each is widest, fading out
+# toward the joints, so the elbows, the wrists, the knees, and the ankles keep their width. FULLER_ALONG gives where along each limb, from its upper joint at 0 to its lower one
+# at 1, the growth starts, is greatest, and ends; FULLER_REACH how far from the limb's line its skin
+# lies, at 1.79 m. The round of the shoulder grows about the shoulder joint within SHOULDER_REACH of
+# it, the chest about the trunk's middle between the waist and the armpit, and the neck about its
+# middle from the notch above the breastbone up to NECK_TOP above it.
+FULLER = {
+    "Male": {"upper_arm": 0.07, "forearm": 0.06, "shoulder": 0.05, "thigh": 0.06, "calf": 0.07, "chest": 0.04, "neck": 0.05},
+    "Female": {"upper_arm": 0.08, "forearm": 0.05, "shoulder": 0.03, "thigh": 0.04, "calf": 0.04, "chest": 0.0, "neck": 0.02},
+}
+FULLER_ALONG = {"upper_arm": (0.15, 0.55, 0.97), "forearm": (0.0, 0.3, 0.85), "thigh": (0.1, 0.4, 0.92), "calf": (0.05, 0.3, 0.8)}
+FULLER_REACH = {"upper_arm": 0.075, "forearm": 0.065, "thigh": 0.12, "calf": 0.085}
+SHOULDER_REACH, NECK_TOP = 0.09, 0.09
 
 
 def _evaluated(obj, level):
@@ -328,6 +355,133 @@ def _shape(mesh, height, nipple=None):
     mesh.vertices.foreach_set("co", shaped.ravel())
     mesh.update()
     return nipple
+
+
+def _similarity(source, target):
+    """The turn, the scale, and the move that best lay the source points onto the target points,
+    as a function of points."""
+    source, target = np.asarray(source, float), np.asarray(target, float)
+    a, b = source.mean(0), target.mean(0)
+    u, stretch, vt = np.linalg.svd((source - a).T @ (target - b))
+    flip = np.sign(np.linalg.det(vt.T @ u.T))
+    turn = vt.T @ np.diag([1.0, 1.0, flip]) @ u.T
+    size = (stretch * [1.0, 1.0, flip]).sum() / ((source - a) ** 2).sum()
+    return lambda points: (np.asarray(points, float) - a) @ turn.T * size + b
+
+
+def groin_smoothed(male, female, edges, crotch, scale, keep=GROIN_KEEP):
+    """The male body's points with his groin in the female's smooth form. male and female are
+    the points of one net, edges its edges, and crotch the lowest point of his centre line between
+    the legs."""
+    male, female = np.asarray(male, float), np.asarray(female, float)
+    x, y, z = np.abs(male[:, 0]), male[:, 1], male[:, 2] - crotch[2]
+    width, height, depth = GROIN_REACH
+    patch = (x < width * scale) & (z < height * scale) & (z > -depth * scale) & (y > crotch[1])
+    core = patch & (x < GROIN_CORE[0] * scale) & (z < GROIN_CORE[1] * scale) & (z > 0.0) & (y > crotch[1] + 0.01 * scale)
+    edges = np.asarray(edges, np.int64)
+    lengths = np.linalg.norm(male[edges[:, 0]] - male[edges[:, 1]], axis=1)
+    share = evened(len(male), edges, 1.0 / np.maximum(lengths, 1e-9), core | ~patch, core.astype(float))
+    # Her patch laid onto his by its edge: the patch's vertices that take little of her form.
+    edge = patch & (share < 0.25)
+    laid = _similarity(female[edge], male[edge])(female[patch])
+    out = male.copy()
+    out[patch] += ((1.0 - keep) * share[patch])[:, None] * (laid - male[patch])
+    # The centre line stays on the mirror plane.
+    out[np.abs(male[:, 0]) < 1e-6, 0] = 0.0
+    return out
+
+
+def _grown_about_line(points, start, end, amount, along, reach, mask):
+    """How far each point moves when the limb from start to end grows about its line: by amount
+    of its distance from the line where it is greatest along the limb, fading out at the ends of
+    along and beyond reach from the line. The points are on the right side; mask weighs each."""
+    axis = end - start
+    length = float(np.linalg.norm(axis))
+    axis = axis / length
+    t = (points - start) @ axis / length
+    radial = points - start - np.outer(t * length, axis)
+    distance = np.linalg.norm(radial, axis=1)
+    near = np.clip((1.3 * reach - distance) / (0.3 * reach), 0.0, 1.0)
+    weight = amount * _bump(t, *along) * near * near * (3.0 - 2.0 * near) * mask
+    return radial * weight[:, None]
+
+
+def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y, waist_z, armpit_z, notch_z, scale):
+    """The points of a body grown a little fuller: each limb about its line, the round of the
+    shoulder about the joint, and the chest and the neck about the trunk's middle. The arms' and
+    the legs' joints are the right side's; the left side grows as its mirror image. gap(z) is
+    where the arm parts from the trunk at a height and centre_y(z) the trunk's middle front to back."""
+    points = np.asarray(points, float)
+    side = np.where(points[:, 0] >= 0.0, 1.0, -1.0)
+    right = points * np.column_stack([side, np.ones_like(side), np.ones_like(side)])
+    x, z = right[:, 0], right[:, 2]
+    # The arms: what lies beyond the gap between the arm and the trunk.
+    arm = np.clip((x - gap(z) + 0.01 * scale) / (0.02 * scale), 0.0, 1.0)
+    # The legs: what lies off the centre line; each limb's own reach keeps the growth on it.
+    leg = np.clip(x / (0.03 * scale), 0.0, 1.0)
+    move = np.zeros_like(right)
+    for name, start, end, mask in (("upper_arm", joint, elbow, arm), ("forearm", elbow, wrist, arm),
+                                   ("thigh", hip, knee, leg), ("calf", knee, ankle, leg)):
+        if amounts[name]:
+            move += _grown_about_line(right, start, end, amounts[name], FULLER_ALONG[name], FULLER_REACH[name] * scale, mask)
+    if amounts["shoulder"]:
+        offset = right - joint
+        distance = np.linalg.norm(offset, axis=1)
+        round_ = np.clip(1.0 - (distance / (SHOULDER_REACH * scale)) ** 2, 0.0, 1.0) ** 2
+        outside = np.clip((x - gap(z) + 0.04 * scale) / (0.04 * scale), 0.0, 1.0)
+        move += offset * (amounts["shoulder"] * round_ * outside)[:, None]
+    middle = np.column_stack([np.zeros_like(x), centre_y(z), z])
+    across = right - middle
+    if amounts["chest"]:
+        trunk = 1.0 - arm
+        height = _bump(z, waist_z, waist_z + 0.75 * (armpit_z - waist_z), armpit_z)
+        move += across * (amounts["chest"] * height * trunk)[:, None] * [1.0, 1.0, 0.0]
+    if amounts["neck"]:
+        near = np.clip((0.09 * scale - np.linalg.norm(across[:, :2], axis=1)) / (0.03 * scale), 0.0, 1.0)
+        height = _bump(z, notch_z, notch_z + 0.4 * NECK_TOP * scale, notch_z + NECK_TOP * scale)
+        move += across * (amounts["neck"] * height * near)[:, None] * [1.0, 1.0, 0.0]
+    out = right + move
+    out[:, 0] *= side
+    # The centre line stays on the mirror plane.
+    out[np.abs(points[:, 0]) < 1e-6, 0] = 0.0
+    return out
+
+
+def _crotch(points, height):
+    """The lowest point of the centre line between the legs."""
+    middle = points[(np.abs(points[:, 0]) < 0.004) & (points[:, 2] > 0.4 * height) & (points[:, 2] < 0.6 * height)]
+    return middle[int(np.argmin(middle[:, 2]))]
+
+
+def _edges(mesh):
+    edges = np.empty(len(mesh.edges) * 2, np.int64)
+    mesh.edges.foreach_get("vertices", edges)
+    return edges.reshape(-1, 2)
+
+
+def _fill_out(sculpt, base, label):
+    """Grows a body's reference and its control cage a little fuller, by the measures of its
+    reference."""
+    points = _points(sculpt)
+    m = body.Measures(Surface(points, _triangles(sculpt)), sculpt.get("shoulder_joint"))
+    s = m.scale
+    joint, elbow, wrist, _surface = body._arm_axis(m)
+    hip, knee, ankle = body.leg_axis(m)
+    heights = np.arange(m.leg_split + 0.03 * s, m.notch_z + NECK_TOP * s + 0.02 * s, 0.005)
+    middles = [(z, loop.centre[1]) for z, loop in ((z, m._central(z)) for z in heights) if loop is not None]
+    zs, ys = np.array(middles).T
+
+    def centre_y(z):
+        return np.interp(z, zs, ys)
+
+    waist_z = min((m._central(z).length, z) for z in np.arange(0.58, 0.66, 0.005) * m.height if m._central(z) is not None)[1]
+    for mesh in (sculpt, base):
+        grown = fuller(_points(mesh), FULLER[label], joint, elbow, wrist, hip, knee, ankle, m.gap, centre_y, waist_z,
+                       m.armpit_z, m.notch_z, s)
+        mesh.vertices.foreach_set("co", grown.ravel())
+        mesh.update()
+    print(f"HUMAN_BUILD_REFERENCE {label}: grown fuller by "
+          + ", ".join(f"{name.replace('_', ' ')} {share * 100:.0f} %" for name, share in FULLER[label].items() if share))
 
 
 def _triangles(mesh):
@@ -650,9 +804,6 @@ def build(out_path):
         sculpt["shoulder_joint"] = [float(c) for c in joint]
         base = _evaluated(source, 0)
         base.transform(placement)
-        if label == "Female":
-            nipple = _shape(sculpt, height)
-            _shape(base, height, nipple)
         eyes = []
         for child in source.children:
             if child.type == "MESH" and ".eye." in child.name:
@@ -660,6 +811,21 @@ def build(out_path):
                 eye.transform(placement)
                 eyes.append(("L" if child.name.endswith(".L") else "R", eye))
         made.append((label, sculpt, base, eyes))
+
+    # The male's groin takes the female's smooth form, from her body as the bundle has it.
+    heights = {label: height for label, _name, height in BODIES}
+    meshes = {label: (sculpt, base) for label, sculpt, base, _eyes in made}
+    crotch = _crotch(_points(meshes["Male"][0]), heights["Male"])
+    for his, hers in zip(meshes["Male"], meshes["Female"]):
+        smoothed = groin_smoothed(_points(his), _points(hers), _edges(his), crotch, heights["Male"] / 1.79)
+        his.vertices.foreach_set("co", smoothed.ravel())
+        his.update()
+    for label, sculpt, base, _eyes in made:
+        height = heights[label]
+        if label == "Female":
+            nipple = _shape(sculpt, height)
+            _shape(base, height, nipple)
+        _fill_out(sculpt, base, label)
 
     # The head cage of the bundle, a coarse cage of quads with loops around the eyes and the mouth,
     # turned to face +Y where it lies, and laid onto every body's head.

@@ -569,6 +569,19 @@ def build_neck(net: Net, m: Measures, top=None):
     return collar, middle
 
 
+def leg_axis(m: Measures):
+    """The right leg's hip, knee, and ankle: the middles of the leg's own sections at the top of
+    the thigh, the knee, and the ankle."""
+    s = m.scale
+
+    def leg_centre(z):
+        loops = [l for l in m.surface.section((0, 0, z), Z) if l.centre[0] > 0.03 and l.length > 0.15 * s
+                 and l.points[:, 0].max() < m.gap(z)]
+        return max(loops, key=lambda l: l.length).centre
+
+    return leg_centre(m.leg_split - 0.035 * s), leg_centre(0.28 * m.height), leg_centre(0.115 * s)
+
+
 def build_legs(net: Net, m: Measures):
     """The bridge under the crotch, which leaves a leg hole of ten around, and the leg from that
     hole to the ankle: rings square to the leg, with one at the top of the thigh, one at the knee,
@@ -602,14 +615,7 @@ def build_legs(net: Net, m: Measures):
     # The hole, from its innermost vertex over the front and the outside to the back.
     hole = [sides[2], sides[1]] + [row[k] for k in range(TRUNK_COLUMNS - 1, 0, -1)] + [sides[3]]
 
-    def leg_centre(z):
-        loops = [l for l in surface.section((0, 0, z), Z) if l.centre[0] > 0.03 and l.length > 0.15 * s
-                 and l.points[:, 0].max() < m.gap(z)]
-        return max(loops, key=lambda l: l.length).centre
-
-    hip = leg_centre(m.leg_split - 0.035 * s)
-    knee = leg_centre(0.28 * m.height)
-    ankle = leg_centre(0.115 * s)
+    hip, knee, ankle = leg_axis(m)
     upper, lower = _unit(knee - hip), _unit(ankle - knee)
     # Every ring of the leg starts on the leg's inner line.
     start = -X
