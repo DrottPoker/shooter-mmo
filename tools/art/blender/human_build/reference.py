@@ -67,8 +67,11 @@ HEAD_CHIN_STEP = 0.0005
 # triangles close it: of all ways to close it, the one whose triangles are least thin, where a
 # triangle that would look into the head counts as BAND_TURNED thin ones. The two bodies' control
 # cages are one net and the head cage lies on the same places of both, so one choice of faces and
-# triangles is made for both bodies and serves both.
+# triangles is made for both bodies and serves both. A face of the control cage that is smaller
+# than EAR_LEAST on a body, in square metres, is smaller than a body's faces may be: its shortest
+# edge closes, so its two vertices become one.
 EAR_ROOM, EAR_MARGIN = 0.012, 0.006
+EAR_LEAST = 1.2e-6
 BAND_TURNED = 1000.0
 # The female figure, as the reviewer asked for it: clearly female, with wide hips, a narrow waist,
 # and a larger bust that sits close together, without exaggeration. The bundle's female is slim and
@@ -383,6 +386,31 @@ def ear_patch(outlines, bases, polys, margin=EAR_MARGIN):
     return ear, _rim(polys, ear)
 
 
+def without_tiny(faces, bodies, least=EAR_LEAST):
+    """The faces of a patch, by their vertices, without a face smaller than the least area on any
+    body: the smallest such face loses its shortest edge, whose second vertex becomes its first
+    in every face, until none is left. bodies holds each body's points."""
+    faces = [tuple(face) for face in faces]
+
+    def area(face):
+        return min(float(np.linalg.norm(np.cross(points[list(face)], np.roll(points[list(face)], -1, axis=0)).sum(0))) / 2
+                   for points in bodies)
+
+    while True:
+        smallest = min(faces, key=area)
+        if area(smallest) >= least:
+            return faces
+        keep, drop = min(zip(smallest, smallest[1:] + smallest[:1]),
+                         key=lambda edge: max(float(np.linalg.norm(points[edge[0]] - points[edge[1]])) for points in bodies))
+        merged = []
+        for face in faces:
+            corners = [keep if v == drop else v for v in face]
+            corners = [v for k, v in enumerate(corners) if v != corners[k - 1]]
+            if len(corners) >= 3:
+                merged.append(tuple(corners))
+        faces = merged
+
+
 def _thin(a, b, c):
     """How thin a triangle is: 1 for one of three equal sides, more the thinner it is."""
     sides = float(((a - b) ** 2).sum() + ((b - c) ** 2).sum() + ((c - a) ** 2).sum())
@@ -504,19 +532,22 @@ def build(out_path):
     # bodies' control cages are one net, so the same faces and triangles serve both.
     bases = {label: base for label, _sculpt, base, _eyes in made}
     polys = [tuple(p.vertices) for p in bases[HEAD_BODY].polygons]
-    faces, rim = ear_patch(outlines, [_points(bases[label]) for label in labels], polys)
-    first = _points(bases[HEAD_BODY])
+    control = [_points(bases[label]) for label in labels]
+    faces, _rim_before = ear_patch(outlines, control, polys)
+    faces = without_tiny([polys[f] for f in faces], control)
+    rim = _rim(faces, range(len(faces)))
+    first = control[0]
     outward = np.zeros((len(first), 3))
-    for f in faces:
-        corners = first[list(polys[f])]
-        outward[list(polys[f])] += np.cross(corners - np.roll(corners, 1, axis=0), np.roll(corners, -1, axis=0) - corners).sum(0)
+    for face in faces:
+        corners = first[list(face)]
+        outward[list(face)] += np.cross(corners - np.roll(corners, 1, axis=0), np.roll(corners, -1, axis=0) - corners).sum(0)
     triangles, thinnest = band(outlines, [_points(bases[label])[rim] for label in labels], outward[rim])
     number = {"outer": lambda k: int(k), "inner": lambda k: -1 - int(k)}
-    used = sorted({v for f in faces for v in polys[f]})
+    used = sorted({v for face in faces for v in face})
     place = {v: k for k, v in enumerate(used)}
     for label, base in bases.items():
         mesh = bpy.data.meshes.new(f"HeadEar_{label}")
-        mesh.from_pydata([tuple(p) for p in _points(base)[used]], [], [tuple(place[v] for v in polys[f]) for f in faces])
+        mesh.from_pydata([tuple(p) for p in _points(base)[used]], [], [tuple(place[v] for v in face) for face in faces])
         mesh.update()
         mesh["cut"] = [int(index) for index in cut_faces]
         mesh["hole"] = [int(v) for v in hole]
@@ -531,7 +562,7 @@ def build(out_path):
         mesh.from_pydata([tuple(p) for p in points], [], cage_faces)
         mesh.update()
         heads.append(mesh)
-    print(f"HUMAN_BUILD_REFERENCE ear: {len(faces)} faces of the control cage, {sum(len(polys[f]) - 2 for f in faces)} triangles, in place of "
+    print(f"HUMAN_BUILD_REFERENCE ear: {len(faces)} faces of the control cage, {sum(len(face) - 2 for face in faces)} triangles, in place of "
           f"{len(cut_faces)} faces of the head cage; the band between the hole's outline of {len(outlines[0])} vertices and the patch's edge of "
           f"{len(rim)} is closed by {len(triangles)} triangles, the thinnest {thinnest:.1f} times as thin as one of equal sides")
 

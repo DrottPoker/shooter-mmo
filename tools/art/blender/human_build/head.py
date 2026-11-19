@@ -651,13 +651,15 @@ def build_head(net: Net, head: Head):
 
 def graft_ear(fine: Net, coarse: Net, head: Head):
     """Sets the ear into the hole of the subdivided net: the control cage's faces, whose vertices
-    stay exactly where they are, and the triangles of the band around them, which reach the
-    vertices around the hole: the cage's own and the ones that subdividing put between them."""
+    keep their places while the net is laid onto the skin, and the triangles of the band around
+    them, which reach the vertices around the hole: the cage's own and the ones that subdividing
+    put between them. The ear's vertices are fixed and not pinned: where a face of the control
+    cage is twisted so far on a body that no cut leaves it unfolded, they give way."""
     hole = coarse.marks["ear_hole"]
     around = []
     for vertex, after in zip(hole, hole[1:] + hole[:1]):
         around += [vertex, fine.edge_point[(vertex, after) if vertex < after else (after, vertex)]]
-    ids = [fine.add(point, FIXED, PINNED) for point in head.ear_points]
+    ids = [fine.add(point, FIXED) for point in head.ear_points]
     fine.island = "head"
     for face in head.ear_faces:
         fine.face([ids[v] for v in face], ZONE["Head"], "ear")

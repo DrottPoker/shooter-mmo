@@ -26,8 +26,8 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
-reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "_thin", "band",
-                 "EAR_MARGIN", numpy=True)
+reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
+                 "_thin", "band", "EAR_MARGIN", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
@@ -282,6 +282,20 @@ class EarTests(unittest.TestCase):
         points, polys = self.cage()
         with self.assertRaises(RuntimeError):
             reference.ear_patch([self.square(0.02, 0.08) + (0.5, 0.0, 0.0)], [points], polys)
+
+    def test_a_face_that_is_too_small_on_a_body_loses_its_shortest_edge(self):
+        # A needle of a triangle between two faces of a square millimetre and more:
+        #     3 . 4 5        vertices 4 and 5 lie a tenth of a millimetre apart
+        #     0 . 1 2
+        points = np.array([(0, 0, 0), (2, 0, 0), (4, 0, 0), (0, 2, 0), (2, 2, 0), (2.1, 2, 0)], float) / 1000
+        faces = [(0, 1, 4, 3), (1, 5, 4), (1, 2, 5)]
+        # Every face but the needle is large enough: the needle goes, and the faces beside it
+        # take the vertex that is left of its shortest edge.
+        self.assertEqual(reference.without_tiny(faces, [points], least=1.2e-6), [(0, 1, 5, 3), (1, 2, 5)])
+        self.assertEqual(reference.without_tiny(faces, [points], least=0.05e-6), faces)
+        # On a body of half the size the last face, of two square millimetres on the first body,
+        # is too small as well.
+        self.assertEqual(reference.without_tiny(faces, [points, points / 2], least=0.7e-6), [(0, 1, 5, 3)])
 
     def test_a_triangle_of_equal_sides_is_not_thin_and_a_needle_is(self):
         a, b = np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0])

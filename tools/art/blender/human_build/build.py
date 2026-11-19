@@ -115,10 +115,10 @@ def build(label, out_path, parts):
         skins.update(head.skins())
     fine.fit(skins, rounds=10, reaches={} if head is None else head.reaches(), nearest={"armpit"})
     hidden = tuple(heads.HIDDEN_PARTS)
-    fine.mend(hidden)
     # The ear is the ear of the reference's own control cage: its folds and its twisted faces are
-    # its makers', and the checks for those leave it out.
+    # its makers', and the mending and the checks for those leave it out.
     folds = hidden + (("ear",) if head is not None else ())
+    fine.mend(folds)
     for kind, faces in (("a sliver", fine.slivers()), ("folded", fine.folded(hidden=folds))):
         for face in faces:
             centre = np.mean([fine.points[v] for v in fine.faces[face]], axis=0)
