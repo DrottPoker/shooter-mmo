@@ -191,15 +191,19 @@ class Measures:
         return self._skins
 
 
-def _half_ring(loop: Loop, columns=TRUNK_COLUMNS, side=SIDE):
+def _half_ring(loop: Loop, columns=TRUNK_COLUMNS, side=SIDE, side_y=None):
     """A trunk section's right half as points from the back centre over the side to the front
-    centre: the side column at the point farthest out, the others at even shares between."""
+    centre: the side column at the point farthest out, or where the section passes side_y from
+    the back to the front, and the others at even shares between."""
     loop = loop.oriented(Z).start_at(-Y, Z, centre=(0.0, loop.centre[1], loop.centre[2]))
     cumulative = np.concatenate([[0.0], np.cumsum(loop.lengths)])
     n = len(loop.points)
     half = loop.length / 2
     right = [i for i in range(n) if cumulative[i] <= half]
-    far = max(right, key=lambda i: loop.points[i][0])
+    if side_y is None:
+        far = max(right, key=lambda i: loop.points[i][0])
+    else:
+        far = next((i for i in right if loop.points[i][1] >= side_y), right[-1])
     side_share = cumulative[far] / loop.length
     shares = [side_share * k / side for k in range(side)] + \
              [side_share + (0.5 - side_share) * k / (columns - side) for k in range(columns - side + 1)]
@@ -218,41 +222,61 @@ def build_trunk(net: Net, m: Measures):
     top = m.armpit_z
     heights = [bottom + (m.navel_z - bottom) * row / NAVEL_ROW for row in range(NAVEL_ROW)]
     heights += [m.navel_z + share * (top - m.navel_z) for share in (0.0, *TRUNK_SHARES)]
+    # The ring around the shoulder: eight points from the armpit over the front and the top.
+    ring = m.shoulder_ring.start_at(-Z, X)
+    hole_points = ring.resample(ARM_RING)
     rows = []
     for index, z in enumerate(heights[:-1]):
-        points = _half_ring(m._central(z))
+        # Up to the navel the side column lies where the body is widest. From there it makes
+        # for the armpit, step by step, as the side seam of a shirt does: where the body is
+        # widest lies on the breast or on the back's muscle higher up, and a column there
+        # leaves the faces under the armpit sheared between it and the ring around the shoulder.
+        side_y = None
+        if index > NAVEL_ROW:
+            share = (index - NAVEL_ROW) / (len(heights) - 1 - NAVEL_ROW)
+            side_y = widest_y + share * (hole_points[0][1] - widest_y)
+        points = _half_ring(m._central(z), side_y=side_y)
+        if index == NAVEL_ROW:
+            widest_y = points[SIDE][1]
         ring = [net.add(p, *([MIRROR] if k in (0, TRUNK_COLUMNS) else [])) for k, p in enumerate(points)]
         rows.append(ring)
     net.plane("waist", (0, 0, heights[PELVIS_ROW]), Z)
     net.hold(rows[PELVIS_ROW], ("plane", "waist"))
 
-    # The ring around the shoulder: eight points from the armpit over the front and the top.
-    ring = m.shoulder_ring.start_at(-Z, X)
-    hole_points = ring.resample(ARM_RING)
     gap_plane = net.plane("shoulder", (m.gap_x, 0, 0), X)
     hole = [net.add(p, gap_plane) for p in hole_points]
     net.mark("arm_hole", hole)
 
-    def row_through(back_z, front_z, back_hole, side_hole, front_hole):
+    def laid(guess, level):
+        """A point between the hole and the centre line on the trunk's skin. A level row takes
+        the skin straight out from the body's middle at the point's own height, so the row
+        neither climbs nor dips over a breast, where the nearest skin lies above the point."""
+        if level:
+            z = guess[2]
+            middle = np.array([0.0, (m.mid_point(z, front=True)[1] + m.mid_point(z, front=False)[1]) / 2, z])
+            hit = trunk.ray(middle, guess - middle, 0.5)
+            if hit is not None:
+                return hit[0]
+        return trunk.project(guess, reach=0.15)
+
+    def row_through(back_z, front_z, back_hole, side_hole, front_hole, level=False):
         """A row at and above the armpit: from the back centre to the hole and on to the front."""
         back = m.mid_point(back_z, front=False)
         front = m.mid_point(front_z, front=True)
         ring = [net.add(back, MIRROR)]
         a = net.points[back_hole]
         for k in (1, 2):
-            guess = back + (a - back) * (k / 3)
-            ring.append(net.add(trunk.project(guess, reach=0.15)))
+            ring.append(net.add(laid(back + (a - back) * (k / 3), level)))
         ring += [back_hole, side_hole, front_hole]
         b = net.points[front_hole]
         for k in (1, 2):
-            guess = b + (front - b) * (k / 3)
-            ring.append(net.add(trunk.project(guess, reach=0.15)))
+            ring.append(net.add(laid(b + (front - b) * (k / 3), level)))
         ring.append(net.add(front, MIRROR))
         return ring
 
     # Rows a, a + 1, a + 2: at the armpit, through the middle of the hole, and over the shoulder.
     span = m.shoulder_top - m.armpit_z
-    row_a = row_through(top, top, hole[7], hole[0], hole[1])
+    row_a = row_through(top, top, hole[7], hole[0], hole[1], level=True)
     row_b = row_through(top + 0.36 * span, top + 0.36 * span, hole[6], None, hole[2])
     row_c = row_through(top + 0.74 * span, top + 0.70 * span, hole[5], hole[4], hole[3])
     rows += [row_a, row_b, row_c]

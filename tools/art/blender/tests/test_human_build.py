@@ -27,7 +27,7 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
-                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "ARM_ROOT", "ARM_BELOW", numpy=True)
+                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
@@ -236,31 +236,56 @@ class PoseTests(unittest.TestCase):
     def test_a_net_that_is_fixed_everywhere_keeps_its_values(self):
         np.testing.assert_allclose(reference.evened(2, [(0, 1)], [1.0], [True, True], [0.25, 0.5]), [0.25, 0.5])
 
+    JOINT = np.array([0.20, 0.0, 1.43])
+    ARMPIT = 1.30
+
     def shoulder(self):
-        """A line of four vertices over each shoulder of a body of 1.79 m: one on the trunk well
-        inside the plane of the shoulder ring, two over the round of the shoulder, and one on the
-        arm below the armpit. The left side is the mirror image of the right."""
-        right = np.array([(0.05, 0.0, 1.40), (0.20, 0.0, 1.40), (0.26, 0.0, 1.36), (0.30, 0.0, 1.25)])
+        """A line of four vertices over the top of each shoulder of a body of 1.79 m, whose right
+        shoulder joint lies at JOINT: one on the trunk well inside the joint, two over the joint,
+        and one on the round of the shoulder outside it. The left side is the mirror image."""
+        right = np.array([(0.05, 0.0, 1.40), (0.185, 0.0, 1.47), (0.205, 0.0, 1.47), (0.25, 0.0, 1.40)])
         points = np.concatenate([right, right * (-1.0, 1.0, 1.0)])
         edges = [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7)]
-        in_arm = np.array([False, False, False, True] * 2)
-        return points, edges, in_arm
+        return points, edges
 
-    def test_the_arm_takes_the_whole_turn_and_the_trunk_none_and_the_shoulder_what_lies_between(self):
-        points, edges, in_arm = self.shoulder()
-        shares = reference.arm_shares(points, edges, in_arm, gap_x=0.19, armpit_z=1.30, shoulder_top=1.45, scale=1.0)
+    def shares(self, points, edges, in_arm):
+        return reference.arm_shares(points, edges, in_arm, self.JOINT, self.ARMPIT, 1.0)
+
+    def test_the_round_of_the_shoulder_turns_whole_and_the_trunk_not_and_the_top_evens_out_between(self):
+        points, edges = self.shoulder()
+        shares = self.shares(points, edges, np.zeros(8, bool))
         self.assertEqual((shares[0], shares[3]), (0.0, 1.0))
         # Along one line the share grows with the way gone along it.
         steps = np.linalg.norm(np.diff(points[:4], axis=0), axis=1)
         np.testing.assert_allclose(shares[1:3], np.cumsum(steps)[:2] / steps.sum(), atol=1e-9)
         np.testing.assert_allclose(shares[4:], shares[:4], atol=1e-12)
 
-    def test_a_vertex_of_the_arm_at_the_armpit_is_not_yet_turned_whole(self):
-        points, edges, in_arm = self.shoulder()
-        points[3, 2] = points[7, 2] = 1.30 - reference.ARM_BELOW / 2
-        shares = reference.arm_shares(points, edges, in_arm, gap_x=0.19, armpit_z=1.30, shoulder_top=1.45, scale=1.0)
-        # Nothing on these lines is turned whole now, so nothing of them turns.
-        np.testing.assert_allclose(shares, 0.0, atol=1e-12)
+    def test_the_arm_turns_whole_from_a_little_below_the_armpit_and_the_side_of_the_chest_stays(self):
+        # From the side of the chest under the armpit, over the hollow, to the arm: the chest's
+        # vertex stays, the arm's first vertex below the armpit is not yet turned whole, and the
+        # next one is.
+        points = np.array([(0.15, 0.0, 1.26), (0.17, 0.0, 1.30), (0.19, 0.0, 1.285), (0.21, 0.0, 1.25)])
+        shares = self.shares(points, [(0, 1), (1, 2), (2, 3)], np.array([False, False, True, True]))
+        self.assertEqual((shares[0], shares[3]), (0.0, 1.0))
+        self.assertTrue(0.0 < shares[1] < shares[2] < 1.0)
+
+    def test_a_hip_as_wide_as_the_shoulder_joint_stays(self):
+        # Only above the armpit does what lies outside the joint belong to the shoulder.
+        points = np.array([(0.25, 0.0, 0.95), (0.25, 0.0, 1.40)])
+        shares = self.shares(points, [(0, 1)], np.zeros(2, bool))
+        np.testing.assert_allclose(shares, [0.0, 1.0])
+
+    def test_the_stretched_skin_of_the_passage_is_evened_out_and_the_trunk_and_the_arm_are_not(self):
+        # A line from the trunk over the passage to the arm, below the joint, with a spike on
+        # the vertex in the middle of the passage, and one vertex of the passage above the joint.
+        before = np.array([(0.15, 0.0, 1.20), (0.20, 0.0, 1.15), (0.25, 0.0, 1.10), (0.20, 0.0, 1.50)])
+        after = reference.turned_out(before, [0.0, 0.5, 1.0, 0.5], self.JOINT, 40.0)
+        after[1, 1] += 0.01
+        after[3, 1] += 0.01
+        edges = [(0, 1), (1, 2), (0, 3), (3, 2)]
+        out = reference.passage_evened(before, after, edges, self.JOINT, 40.0, rounds=1)
+        np.testing.assert_allclose(out[[0, 2, 3]], after[[0, 2, 3]], atol=1e-12)
+        np.testing.assert_allclose(out[1], (after[1] + (after[0] + after[2]) / 2) / 2, atol=1e-9)
 
     def test_an_arm_turns_out_about_its_shoulder_joint_and_the_left_as_its_mirror_image(self):
         joint = np.array([0.2, 0.0, 1.4])
@@ -620,6 +645,25 @@ class AssembleTests(unittest.TestCase):
         for net in nets.values():
             np.testing.assert_allclose(net["points"][6], net["points"][2] * (-1, 1, 1))
             self.assertFalse(np.allclose(net["points"][2], (2, 0.01, 0.3)))
+
+    def test_a_bent_face_is_cut_along_its_side_of_the_skin(self):
+        # A face whose corners 1 and 3 stand 3 mm above the plane of corners 0 and 2: cut from 0
+        # to 2 it has a valley along the cut, cut from 1 to 3 a ridge.
+        points = np.array([(0, 0, 0), (0.02, 0, 0.003), (0.02, 0.02, 0), (0, 0.02, 0.003)], float)
+
+        def nets(skin):
+            return {label: {"points": points, "faces": [(0, 1, 2, 3)], "skin": skin} for label in assemble.LABELS}
+
+        # The skin lies in the valley, or over the ridge.
+        self.assertEqual(assemble.cut_faces(nets(lambda point: abs(point[2]))), [(0, 1, 2, 3)])
+        self.assertEqual(assemble.cut_faces(nets(lambda point: abs(point[2] - 0.003))), [(1, 2, 3, 0)])
+        # A face of a hidden part lies on no skin, and a net that knows no skin is cut as before.
+        hidden = nets(lambda point: abs(point[2] - 0.003))
+        for net in hidden.values():
+            net["part"] = [7]
+        self.assertEqual(assemble.cut_faces(hidden), [(0, 1, 2, 3)])
+        plain = {label: {"points": points, "faces": [(0, 1, 2, 3)]} for label in assemble.LABELS}
+        self.assertEqual(assemble.cut_faces(plain), [(0, 1, 2, 3)])
 
     def test_a_triangle_is_left_as_it_is(self):
         points = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0)], float)
