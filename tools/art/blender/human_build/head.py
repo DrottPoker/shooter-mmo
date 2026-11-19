@@ -54,14 +54,17 @@ LIP_CORNER_FACE = 297
 # and in front, along a line NOSTRIL_VIEW degrees from straight up: the skin that lies more than
 # NOSTRIL_DEEP behind the plane of the first face, at 1.79 m. Its edge is the first skin within
 # NOSTRIL_RIM outside the opening that looks toward the eye, by NOSTRIL_FACING as the cosine of the
-# angle, or the skin there that looks toward it most; it stays NOSTRIL_INSIDE inside the outline of
-# the two faces, whose edge along the nose's wing the nostril reaches. The pocket behind the
-# opening runs NOSTRIL_DEPTH along that line and narrows to the share NOSTRIL_NARROWS of the
-# opening.
+# angle, or the skin there that looks toward it most: the sharp edge where the skin under the nose
+# turns into the nostril, not the round of the wing outside it. The cage has no nostril, and on
+# the nose's wing its two faces end where the nostril's edge lies: an edge of their outline that
+# comes nearer to the nostril's edge than NOSTRIL_INSIDE moves out along the skin, with its two
+# vertices, as far as it lacks. The pocket behind the opening runs NOSTRIL_DEPTH along that line,
+# nearly straight in, as a nostril does, so its wall is not seen from in front: it narrows to the
+# share NOSTRIL_NARROWS of the opening.
 NOSTRIL_FACES = (212, 167)
 NOSTRIL_VIEW, NOSTRIL_DEEP = 40.0, 0.0025
-NOSTRIL_RIM, NOSTRIL_FACING, NOSTRIL_INSIDE = 0.0025, 0.6, 0.0015
-NOSTRIL_DEPTH, NOSTRIL_NARROWS = 0.011, 0.5
+NOSTRIL_RIM, NOSTRIL_FACING, NOSTRIL_INSIDE = 0.0025, 0.3, 0.0008
+NOSTRIL_DEPTH, NOSTRIL_NARROWS = 0.010, 0.8
 LID_CLEARANCE = 0.0004
 # The vertices that subdividing adds to the head lie between vertices on the reference already:
 # the reference's skin is looked for this near them, at 1.79 m.
@@ -151,7 +154,10 @@ class Head:
         # The nostril: the outline of the cage's faces over it, its edge, and the places on the
         # edge that the outline's corners open to.
         self.nostril_outline = outline([self.faces[index] for index in NOSTRIL_FACES])
-        self.nostril_into, self.nostril_rim = self.nostril_edge()
+        self.nostril_into, self.nostril_rim, self.nostril_moved = self.nostril_edge()
+        self.nostril_room = max([float(np.linalg.norm(point - self.points[v])) for v, point in self.nostril_moved.items()], default=0.0)
+        for v, point in self.nostril_moved.items():
+            self.points[v] = point
         steps = np.linalg.norm(np.diff(np.concatenate([self.nostril_rim, self.nostril_rim[:1]]), axis=0), axis=1)
         self._nostril_along = np.concatenate([[0.0], np.cumsum(steps)])
         self.nostril_start = self._nostril_start()
@@ -255,12 +261,13 @@ class Head:
 
     def nostril_edge(self, count=64, step=0.00025, half=0.012):
         """The way into the right nostril and the edge of its opening, as points in order around
-        it, running the way the outline of the cage's faces over it does. Seen from below and in
-        front, the opening is the skin that lies well behind the plane of the first of those
-        faces. Its edge is the skin just outside the opening that looks toward the eye: the rim of
-        the nose's wing, the strip between the nostrils, and the sill, and not the wall of the
-        nostril that rises from them. The edge is evened out around the opening and keeps clear of
-        the outline, so the skin between the two has a width everywhere."""
+        it, running the way the outline of the cage's faces over it does, and the new places of
+        the outline's vertices that make room for it. Seen from below and in front, the opening is
+        the skin that lies well behind the plane of the first of those faces. Its edge is the skin
+        just outside the opening that looks toward the eye: the rim of the nose's wing, the strip
+        between the nostrils, and the sill, and not the wall of the nostril that rises from them.
+        The edge is evened out around the opening, and the outline keeps clear of it, so the skin
+        between the two has a width everywhere."""
         s, surface = self.scale, self.m.surface
         tilt = math.radians(NOSTRIL_VIEW)
         into = -Y * math.sin(tilt) + Z * math.cos(tilt)
@@ -335,8 +342,19 @@ class Head:
         flat = (self.points[self.nostril_outline] - centre) @ np.stack([across, up], axis=1)
         turns = np.cross(flat, np.roll(flat, -1, axis=0)).sum() >= 0.0
         ordered = flat if turns else flat[::-1]
+        # An edge of the outline that comes too near to the nostril's edge moves out.
+        start = ordered
+        ordered = with_room(ordered, [middle + way * radius for way, radius in zip(ways, radii)], NOSTRIL_INSIDE * s)
         edges = np.roll(ordered, -1, axis=0) - ordered
         edges /= np.linalg.norm(edges, axis=1)[:, None]
+        moved = {}
+        vertices = self.nostril_outline if turns else self.nostril_outline[::-1]
+        for v, before, after in zip(vertices, start, ordered):
+            if np.linalg.norm(after - before) > 1e-6:
+                hit, _plane = skin(after[0], after[1])
+                if hit is None:
+                    raise RuntimeError("the head has no skin where the outline around the nostril makes room for it")
+                moved[v] = hit[0]
         rim = []
         for way, radius, depth in zip(ways, radii, depths):
             while radius > 0.0:
@@ -350,7 +368,7 @@ class Head:
             rim.append(centre + across * spot[0] + up * spot[1] + into * (depth - far))
         rim = np.array(rim)
         # The rim runs counter-clockwise seen along the way in; the outline may run the other way.
-        return into, rim if turns else rim[::-1]
+        return into, (rim if turns else rim[::-1]), moved
 
     def on_nostril(self, distance):
         """The point of the nostril's edge at a distance along it."""
@@ -366,6 +384,14 @@ class Head:
         count = len(self.nostril_outline)
         step = self._nostril_along[-1] / count
         return [self.on_nostril(self.nostril_start + (k + (0.5 if half else 0.0)) * step) for k in range(count)]
+
+    def nostril_end(self, point):
+        """The point of the end of the nostril's pocket behind a point of the nostril's edge. The
+        end is flat, straight across the way in, however the edge rises."""
+        into = self.nostril_into
+        middle = np.mean(self.nostril_ring(), axis=0)
+        out = np.asarray(point, float) - middle
+        return middle + (out - into * (out @ into)) * NOSTRIL_NARROWS + into * (NOSTRIL_DEPTH * self.scale)
 
     def _nostril_start(self):
         """Where on the nostril's edge the ring starts, so its points lie nearest to the corners
@@ -406,7 +432,8 @@ class Head:
         rim = self.nostril_rim
         return [f"mouth half width {self.half_mouth * 1000:.0f} mm, lips meet at forward {lips[1]:.4f}, height {lips[2]:.4f}",
                 f"nostril {(rim[:, 0].max() - rim[:, 0].min()) * 1000:.1f} mm wide and "
-                f"{(rim[:, 1].max() - rim[:, 1].min()) * 1000:.1f} mm long, {rim[:, 0].min() * 1000:.1f} mm from the middle",
+                f"{(rim[:, 1].max() - rim[:, 1].min()) * 1000:.1f} mm long, {rim[:, 0].min() * 1000:.1f} mm from the middle; "
+                f"{len(self.nostril_moved)} vertices of the cage around it made room, by up to {self.nostril_room * 1000:.1f} mm",
                 f"eye centre {np.round(self.eye_centre, 4).tolist()}, radius {self.eye_radius * 1000:.1f} mm, opening "
                 f"{(self.rim[:, 0].max() - self.rim[:, 0].min()) * 1000:.1f} mm wide and "
                 f"{(self.rim[:, 2].max() - self.rim[:, 2].min()) * 1000:.1f} mm high",
@@ -445,6 +472,28 @@ class Head:
         """How near each of the head's skins is looked for."""
         s = self.scale
         return {"head": HEAD_REACH * s, "ear": HEAD_REACH * s, "throat": THROAT_REACH * s}
+
+
+def with_room(corners, inside, margin, rounds=8):
+    """The corners of an outline in a plane, counter-clockwise, with room for the points inside
+    it: an edge that comes nearer to a point than the margin moves out, with its two corners, as
+    far as it lacks. A corner that two edges move goes with both."""
+    corners, inside = np.array(corners, float), np.asarray(inside, float)
+    for _ in range(rounds):
+        edges = np.roll(corners, -1, axis=0) - corners
+        edges /= np.linalg.norm(edges, axis=1)[:, None]
+        shift = np.zeros_like(corners)
+        for k in range(len(corners)):
+            away = inside - corners[k]
+            lacks = margin - float((edges[k, 0] * away[:, 1] - edges[k, 1] * away[:, 0]).min())
+            if lacks > 1e-6:
+                out = np.array([edges[k, 1], -edges[k, 0]]) * lacks
+                shift[k] += out
+                shift[(k + 1) % len(corners)] += out
+        if not shift.any():
+            break
+        corners += shift
+    return corners
 
 
 def outline(faces):
@@ -552,13 +601,7 @@ def build_head(net: Net, head: Head):
     net.island = "head"
     for k in range(count):
         net.face((outer[k], outer[(k + 1) % count], ring[(k + 1) % count], ring[k]), zone, "head")
-    middle = np.mean([net.points[v] for v in ring], axis=0)
-    into = head.nostril_into
-    # The pocket's end is flat, straight across the way in, however the nostril's edge rises.
-    deep = []
-    for v in ring:
-        out = np.asarray(net.points[v], float) - middle
-        deep.append(net.add(middle + (out - into * (out @ into)) * NOSTRIL_NARROWS + into * (NOSTRIL_DEPTH * s), RIGID))
+    deep = [net.add(head.nostril_end(net.points[v]), RIGID) for v in ring]
     net.island = "nostril_R"
     for k in range(count):
         net.face((ring[k], ring[(k + 1) % count], deep[(k + 1) % count], deep[k]), zone, NOSTRIL)
@@ -567,6 +610,7 @@ def build_head(net: Net, head: Head):
     for k in range(0, count, 2):
         net.face((end, deep[k], deep[(k + 1) % count], deep[(k + 2) % count]), zone, NOSTRIL)
     net.mark("nostril_ring", ring)
+    net.mark("nostril_deep", deep)
 
     # The mouth: the inner lips behind the line between the lips, and the cavity behind them. Each
     # ring runs from the middle of the upper lip over the corner to the middle of the lower lip.
@@ -651,8 +695,16 @@ def refine_head(fine: Net, coarse: Net, head: Head):
             for index, face in enumerate(coarse.faces):
                 if {line[k], line[k + 1], behind[name][k], behind[name][k + 1]} == set(face):
                     fine.points[fine.face_point[index]] = (point + back) / 2
-    ring = coarse.marks["nostril_ring"]
+    # The nostril's edge and the end of its pocket are as round between the cage's vertices as at
+    # them, and so is the pocket's wall between the two.
+    ring, deep = coarse.marks["nostril_ring"], coarse.marks["nostril_deep"]
     for k, point in enumerate(head.nostril_ring(half=True)):
-        vertex = between(ring[k], ring[(k + 1) % len(ring)])
+        after = (k + 1) % len(ring)
+        vertex = between(ring[k], ring[after])
         fine.points[vertex] = point
         fine.holds[vertex].update((FIXED, PINNED))
+        end = head.nostril_end(point)
+        fine.points[between(deep[k], deep[after])] = end
+        for index, face in enumerate(coarse.faces):
+            if {ring[k], ring[after], deep[k], deep[after]} == set(face):
+                fine.points[fine.face_point[index]] = (np.asarray(point, float) + end) / 2

@@ -7,19 +7,33 @@ import math
 
 import numpy as np
 
-from .net import MIRROR, Net
+from .net import FIXED, MIRROR, PINNED, Net
 from .surface import Loop, Surface
 
 ZONES = ("Head", "Neck", "Torso", "Pelvis", "UpperArms", "Forearms", "Hands", "Thighs", "Shins", "Feet")
 ZONE = {name: index for index, name in enumerate(ZONES)}
 X, Y, Z = np.eye(3)
 
-# Rows of the trunk between the leg holes and the armpits, as shares of that height; the row at
-# PELVIS_ROW is the border between the pelvis and the torso. The rows lie twice as close over the
-# chest, from the fold under it to the armpit: rows as far apart as on the belly cut the round of
-# a breast by 9 mm.
-TRUNK_SHARES = (0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.8125, 0.875, 0.9375, 1.0)
+# Rows of the trunk between the leg holes and the armpits. The row at NAVEL_ROW passes through the
+# navel, so the centre line has a vertex there; the rows below it lie evenly between the leg holes
+# and the navel, and the row at PELVIS_ROW is the border between the pelvis and the torso. The
+# rows above the navel lie at TRUNK_SHARES of the height from the navel to the armpits, twice as
+# close over the chest, from the fold under it to the armpit: rows as far apart as on the belly
+# cut the round of a breast by 9 mm.
+NAVEL_ROW = 4
+TRUNK_SHARES = (0.25, 0.5, 0.625, 0.75, 0.875, 1.0)
 PELVIS_ROW = 3
+# The navel is looked for between these shares of the body's height: where the belly's centre line
+# lies deepest behind the skin NAVEL_BESIDE to its side. It is a dent smaller than the faces of the
+# subdivided net, so the faces at its vertex make room for a pocket: a ring on the dent's edge,
+# NAVEL_RIM across and up from its middle, a ring at NAVEL_INNER of that, and the vertex in its
+# depth. Lengths at 1.79 m.
+NAVEL_BETWEEN, NAVEL_BESIDE = (0.56, 0.65), 0.025
+NAVEL_RIM, NAVEL_INNER = (0.012, 0.013), 0.5
+# The valley between the breasts is flat at its bottom and rises steeply, in less than the width of
+# one face: between these rows of the trunk the faces at the centre line are parted by a line of
+# vertices halfway to the next column.
+CHEST_LINE = (8, 11)
 TRUNK_COLUMNS = 8          # per half; column 4 is the side
 SIDE = 4
 ARM_RING = 8
@@ -87,6 +101,11 @@ class Measures:
         heights = np.arange(self.armpit_z + 0.08 * s, self.armpit_z + 0.26 * s, 0.004)
         fronts = [self.mid_point(z, front=True)[1] for z in heights]
         self.notch_z = float(heights[int(np.argmin(fronts))])
+        # The navel: where the belly's centre line lies deepest behind the skin beside it.
+        heights = np.arange(NAVEL_BETWEEN[0] * self.height, NAVEL_BETWEEN[1] * self.height, 0.002)
+        dents = [self.front(NAVEL_BESIDE * s, z)[1] - self.front(0.0, z)[1] for z in heights]
+        self.navel_z = float(heights[int(np.argmax(dents))])
+        self.navel_depth = float(max(dents))
 
     def _loops(self, z):
         return self.surface.section((0, 0, z), Z)
@@ -113,6 +132,13 @@ class Measures:
         around the shoulder."""
         z = np.asarray(z, float)
         return np.where(z >= self.armpit_z - 0.004, self.gap_x, np.interp(z, self.gap_heights, self.gap_values))
+
+    def front(self, x, z):
+        """The point of the body's front at a height, this far to the right of the centre line."""
+        hit = self.surface.ray((max(x, 1e-4), 1.0, z), -Y, 2.0)
+        if hit is None:
+            raise ValueError(f"the body has no front at x = {x}, z = {z}")
+        return hit[0]
 
     def mid_point(self, z, front):
         """The point of the body's centre line at a height, at the front or at the back."""
@@ -177,7 +203,8 @@ def build_trunk(net: Net, m: Measures):
     trunk = m.skins()["trunk"]
     bottom = m.leg_split + 0.035 * s
     top = m.armpit_z
-    heights = [bottom + share * (top - bottom) for share in TRUNK_SHARES]
+    heights = [bottom + (m.navel_z - bottom) * row / NAVEL_ROW for row in range(NAVEL_ROW)]
+    heights += [m.navel_z + share * (top - m.navel_z) for share in (0.0, *TRUNK_SHARES)]
     rows = []
     for index, z in enumerate(heights[:-1]):
         points = _half_ring(m._central(z))
@@ -233,7 +260,93 @@ def build_trunk(net: Net, m: Measures):
             net.quad(*corners, zone, "trunk")
     net.mark("trunk_bottom", rows[0])
     net.mark("trunk_top", rows[-1])
+    net.mark("front_centre", [row[-1] for row in rows])
+    net.mark("front_beside", [row[-2] for row in rows])
     return rows
+
+
+def refine_trunk(fine: Net, coarse: Net, m: Measures):
+    """Gives the subdivided trunk what is finer than its faces: the navel, as a pocket at the
+    vertex of the centre line that lies in it, and a line of vertices beside the centre line over
+    the chest, for the valley between the breasts."""
+    s = m.scale
+    centre, beside = coarse.marks["front_centre"], coarse.marks["front_beside"]
+    by_corners = {frozenset(face): index for index, face in enumerate(fine.faces)}
+
+    def between(a, b):
+        return fine.edge_point[(a, b) if a < b else (b, a)]
+
+    def column(half_row):
+        """The subdivided net's vertex of the centre line and the one beside it, by half rows of
+        the cage: an even half row is a row of the cage, an odd one lies between two."""
+        row, odd = divmod(half_row, 2)
+        if not odd:
+            return centre[row], between(centre[row], beside[row])
+        corners = {centre[row], beside[row], centre[row + 1], beside[row + 1]}
+        face = next(index for index, face in enumerate(coarse.faces) if set(face) == corners)
+        return between(centre[row], centre[row + 1]), fine.face_point[face]
+
+    def put(like, pieces, turned):
+        """Faces in the place of the face like: the first takes its place, the others follow."""
+        fine.island = fine.islands[like]
+        for index, piece in enumerate(pieces):
+            piece = tuple(reversed(piece)) if turned else tuple(piece)
+            if index == 0:
+                fine.faces[like] = piece
+            else:
+                fine.face(piece, fine.zones[like], fine.skins[like])
+
+    # The line beside the centre line over the chest: each face at the centre line is parted in
+    # two, and a triangle begins and ends the line.
+    first, last = 2 * CHEST_LINE[0], 2 * CHEST_LINE[1]
+    line = {}
+    for half_row in range(first, last + 1):
+        on, off = column(half_row)
+        line[half_row] = fine.add((np.asarray(fine.points[on], float) + np.asarray(fine.points[off], float)) / 2)
+    for half_row in range(first - 1, last + 1):
+        (c0, m0), (c1, m1) = column(half_row), column(half_row + 1)
+        like = by_corners[frozenset((c0, m0, m1, c1))]
+        face = fine.faces[like]
+        turned = face[(face.index(c0) + 1) % 4] != m0
+        n0, n1 = line.get(half_row), line.get(half_row + 1)
+        if n0 is None:
+            put(like, [(c0, m0, m1, n1), (c0, n1, c1)], turned)
+        elif n1 is None:
+            put(like, [(n0, m0, m1, c1), (c0, n0, c1)], turned)
+        else:
+            put(like, [(c0, n0, n1, c1), (n0, m0, m1, n1)], turned)
+
+    # The navel: the two faces at its vertex become rings of faces around it.
+    half_row = 2 * NAVEL_ROW
+    (below, below_right), (navel, right), (above, above_right) = (column(half_row + step) for step in (-1, 0, 1))
+    around = [below, below_right, right, above_right, above]
+    spokes = [math.radians(angle) for angle in (-90.0, -45.0, 0.0, 45.0, 90.0)]
+
+    def ring(share):
+        out = []
+        for index, spoke in enumerate(spokes):
+            on_centre = index in (0, len(spokes) - 1)
+            x = 0.0 if on_centre else NAVEL_RIM[0] * s * share * math.cos(spoke)
+            point = m.front(x, m.navel_z + NAVEL_RIM[1] * s * share * math.sin(spoke))
+            if on_centre:
+                point[0] = 0.0
+            out.append(fine.add(point, FIXED, PINNED, *([MIRROR] if on_centre else [])))
+        return out
+
+    rim, inner = ring(1.0), ring(NAVEL_INNER)
+    depth = m.front(0.0, m.navel_z)
+    depth[0] = 0.0
+    fine.points[navel] = depth
+    fine.holds[navel].update((FIXED, PINNED))
+    for like, spans in ((by_corners[frozenset((below, below_right, right, navel))], (0, 1)),
+                        (by_corners[frozenset((navel, right, above_right, above))], (2, 3))):
+        face = fine.faces[like]
+        turned = face[(face.index(right) + 1) % 4] != (navel if spans[0] == 0 else above_right)
+        pieces = []
+        for k in spans:
+            pieces += [(around[k], around[k + 1], rim[k + 1], rim[k]), (rim[k], rim[k + 1], inner[k + 1], inner[k]),
+                       (inner[k], inner[k + 1], navel)]
+        put(like, pieces, turned)
 
 
 def _arm_axis(m: Measures):

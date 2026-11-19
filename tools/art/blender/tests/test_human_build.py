@@ -28,7 +28,9 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "_thin", "band",
                  "EAR_MARGIN", numpy=True)
-head = load("human_build/head.py", "outline")
+head = load("human_build/head.py", "outline", "with_room", numpy=True)
+body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
+            PINNED=PINNED)
 
 
 def strip_net():
@@ -312,6 +314,66 @@ class EarTests(unittest.TestCase):
             reference.band([outer[::-1]], [inner], outward)
 
 
+class TrunkTests(unittest.TestCase):
+    """The navel and the line over the chest, on the front of a trunk as a flat cage that looks
+    along +Y: rows 6 cm apart of two faces 4 cm wide beside the mirror plane."""
+    ROWS = 13
+
+    class Flat:
+        """A body whose front is the plane y = 0, with its navel on the cage's row for it."""
+        scale = 1.0
+        navel_z = 0.06 * 4
+
+        @staticmethod
+        def front(x, z):
+            return np.array([x, 0.0, z])
+
+    def refined(self):
+        net = Net()
+        rows = [[net.add((0.08 - 0.04 * column, 0.0, 0.06 * row), *([MIRROR] if column == 2 else [])) for column in range(3)]
+                for row in range(self.ROWS)]
+        net.island = "front"
+        for lower, upper in zip(rows, rows[1:]):
+            for k in range(2):
+                net.quad(lower[k], lower[k + 1], upper[k + 1], upper[k], 2, "trunk")
+        net.mark("front_centre", [row[-1] for row in rows])
+        net.mark("front_beside", [row[-2] for row in rows])
+        fine = net.subdivided()
+        before = (len(fine.faces), fine.open_vertices())
+        body.refine_trunk(fine, net, self.Flat)
+        return fine, before
+
+    def test_the_navel_and_the_chest_line_part_faces_without_a_gap(self):
+        self.assertEqual((body.NAVEL_ROW, body.CHEST_LINE), (4, (8, 11)))
+        fine, (faces_before, open_before) = self.refined()
+        # The line parts eight faces at the centre line, from half a row below its first row to
+        # half a row above its last, and the navel's two faces become twelve.
+        self.assertEqual(len(fine.faces), faces_before + 8 + 10)
+        self.assertEqual(sorted(len(face) for face in fine.faces).count(3), 2 + 4)
+        self.assertEqual(fine.check(), [])
+        # The edge around the front is the one it had: no face has come loose from its neighbour.
+        self.assertEqual(fine.open_vertices() - open_before, {v for v in fine.open_vertices() if fine.points[v][0] == 0.0} - open_before)
+        points, area = fine.array(), 0.0
+        for face in fine.faces:
+            p = points[list(face)]
+            normal = np.cross(p, np.roll(p, -1, axis=0)).sum(0)
+            self.assertGreater(normal[1], 0.0)
+            area += normal[1] / 2
+        self.assertAlmostEqual(area, 0.08 * 0.06 * (self.ROWS - 1))
+        self.assertEqual(set(fine.islands), {"front"})
+        self.assertEqual(set(fine.skins), {"trunk"})
+
+    def test_the_vertices_of_the_navel_stay_where_they_are_put_and_on_the_mirror_plane(self):
+        fine, _before = self.refined()
+        pinned = [v for v, holds in enumerate(fine.holds) if PINNED in holds]
+        # The vertex in the navel's depth, and five on its edge and five halfway to it.
+        self.assertEqual(len(pinned), 11)
+        for v in pinned:
+            self.assertIn(FIXED, fine.holds[v])
+            self.assertEqual(MIRROR in fine.holds[v], fine.points[v][0] == 0.0)
+            self.assertLess(np.linalg.norm(fine.points[v] - (0.0, 0.0, self.Flat.navel_z)), 0.0131)
+
+
 class HeadTests(unittest.TestCase):
     def test_the_outline_of_two_faces_runs_around_both_the_way_they_run(self):
         # Two faces that share the edge between vertices 1 and 4:
@@ -324,6 +386,24 @@ class HeadTests(unittest.TestCase):
     def test_faces_that_only_touch_in_a_vertex_have_no_outline(self):
         with self.assertRaises(RuntimeError):
             head.outline([(0, 1, 4, 3), (4, 5, 8, 7)])
+
+    def test_an_outline_makes_room_for_a_point_that_lies_too_near_to_one_of_its_edges(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        # The point lies half a unit inside the right edge, which owes it a whole unit.
+        moved = head.with_room(square, [(3.5, 2.0), (2.0, 2.0)], 1.0)
+        np.testing.assert_allclose(moved, [(0.0, 0.0), (4.5, 0.0), (4.5, 4.0), (0.0, 4.0)])
+
+    def test_an_outline_with_room_enough_stays_as_it_is(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        np.testing.assert_allclose(head.with_room(square, [(2.0, 2.0), (1.0, 3.0)], 1.0), square)
+
+    def test_a_corner_moves_with_both_of_its_edges(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        # The point lies half a unit inside the right edge and the upper edge.
+        moved = head.with_room(square, [(3.5, 3.5)], 1.0)
+        np.testing.assert_allclose(moved[2], (4.5, 4.5))
+        for corner in moved:
+            self.assertGreaterEqual(4.5 + 1e-9, max(corner))
 
 
 class IslandTests(unittest.TestCase):
