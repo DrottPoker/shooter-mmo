@@ -1,7 +1,8 @@
 """The logic of the human build that needs numpy but not Blender: the net's subdivision, mirror image,
-islands, seams, slivers, and folds, the islands that follow from the net's shape, and the cutting of
-faces and the layout of the UV map, on small nets whose answers follow from the input. Without
-numpy this file is skipped; see test_numeric_logic.py and blender_source.py."""
+islands, seams, slivers, folds, and tucks, the islands that follow from the net's shape, the way
+along a skin that lays the head cage's line under the chin, and the cutting of faces and the layout
+of the UV map, on small nets and skins whose answers follow from the input. Without numpy this file
+is skipped; see test_numeric_logic.py and blender_source.py."""
 
 import pathlib
 import sys
@@ -23,6 +24,7 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
+reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", numpy=True)
 
 
 def strip_net():
@@ -149,6 +151,52 @@ class NetTests(unittest.TestCase):
 
     def test_touching_names_the_vertices_of_a_skin(self):
         self.assertEqual(strip_net().touching("arm"), [1, 2, 4, 5])
+
+    def test_a_net_tucked_into_itself_is_found_and_an_open_fold_or_a_ridge_is_not(self):
+        def fold(across, height, skin="skin"):
+            """Two faces that look up and share the edge from vertex 1 to vertex 4, which lies on
+            the ground; their outer edges lie this far across and this high."""
+            net = Net()
+            for y in (0, 1):
+                for x, z in ((-across, height), (0, 0), (across, height)):
+                    net.add((x, y, z))
+            net.quad(0, 1, 4, 3, 0, "skin")
+            net.quad(1, 2, 5, 4, 0, skin)
+            return net
+
+        # Walls that rise steeply from the shared edge look toward each other.
+        self.assertEqual(fold(0.2, 1.0).tucked(), [(1, 4)])
+        # A fold as open as a right angle is a crease of the body.
+        self.assertEqual(fold(1.0, 1.0).tucked(), [])
+        # The same walls falling away from the edge are a ridge.
+        self.assertEqual(fold(0.2, -1.0).tucked(), [])
+        self.assertEqual(fold(0.2, 1.0, skin="mouth").tucked(hidden=("mouth",)), [])
+
+
+class ReferenceTests(unittest.TestCase):
+    RADIUS = 0.05
+
+    def round_skin(self, point):
+        """The nearest point of a tube around the x axis, a little off the mirror plane."""
+        across = np.array([0.0, point[1], point[2]])
+        return np.array([0.001, 0.0, 0.0]) + across / np.linalg.norm(across) * self.RADIUS
+
+    def test_the_way_along_a_round_skin_is_as_long_as_asked_and_stays_on_the_mirror_plane(self):
+        # A quarter of the way around: from the front of the tube to straight under it.
+        point, heading = reference._along_skin(self.round_skin, (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0),
+                                               self.RADIUS * np.pi / 2)
+        np.testing.assert_allclose(point, (0.0, 0.0, -self.RADIUS), atol=2e-5)
+        np.testing.assert_allclose(heading, (0.0, -1.0, 0.0), atol=0.02)
+
+    def test_the_way_goes_on_from_where_the_last_one_ended(self):
+        eighth = self.RADIUS * np.pi / 4
+        point, heading = reference._along_skin(self.round_skin, (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), eighth)
+        point, heading = reference._along_skin(self.round_skin, point, heading, eighth)
+        np.testing.assert_allclose(point, (0.0, 0.0, -self.RADIUS), atol=2e-5)
+
+    def test_a_way_that_cannot_go_on_says_so(self):
+        with self.assertRaises(RuntimeError):
+            reference._along_skin(lambda point: (0.0, self.RADIUS, 0.0), (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), 0.01)
 
 
 class IslandTests(unittest.TestCase):

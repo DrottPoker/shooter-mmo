@@ -1351,11 +1351,16 @@ What is built:
   a place on her skin is the same feature on his: every vertex of the head cage
   gets on him the place it has on her, on skin that is seen from outside, and
   the loops around the eyes, the mouth, the nose, and the ears lie on the same
-  features of both. The lids' edge is the edge of the eye's opening as the eye
-  is seen from in front, the line between the lips is parted into two lips with
-  a mouth cavity behind them, and each eye has a pocket for its eyeball. The
-  ear's folds are finer than the net, so the ear is laid onto the reference's
-  ear and then evened out: it keeps its outline and its hollow.
+  features of both. The cage is a head alone, with a short neck of its own that
+  rises behind the chin where the body's throat begins further forward: the
+  last two vertices of its centre line under the chin, one of them on the ring
+  under the head, would land on the floor of the reference's mouth, so they are
+  laid along the skin instead, around the corner under the chin onto the
+  throat, at the cage's own spacing. The lids' edge is the edge of the eye's
+  opening as the eye is seen from in front, the line between the lips is parted
+  into two lips with a mouth cavity behind them, and each eye has a pocket for
+  its eyeball. The ear's folds are finer than the net, so the ear is laid onto
+  the reference's ear and then evened out: it keeps its outline and its hollow.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
   reference's eyeball per eye, a band of teeth per jaw, and a tongue.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
@@ -1391,8 +1396,9 @@ foreach ($label in "Male", "Female") {
 Expected result: `reference.py` prints the height of both references and how
 near the head cage lies to the female one, a median under 1 mm; `build.py`
 prints the measures it found and no line that starts with `HUMAN_BUILD_FAILED`,
-which names a face that is wound the wrong way, a sliver, or a fold; and
-`assemble.py` prints the triangles of each body and how much of each image its
+which names a face that is wound the wrong way, a sliver, a fold, or an edge at
+which the net is tucked into itself, as it is where a vertex has landed on skin
+inside the reference's head; and `assemble.py` prints the triangles of each body and how much of each image its
 islands fill, and writes both files. The same input gives the same bodies. A
 changed file needs its `model` stage approved again.
 
@@ -1401,7 +1407,7 @@ changed file needs its `model` stage approved again.
 | `reference.py` | Takes the two bodies with their eyeballs from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, and lays the head cage onto both heads. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, the UV map, the body parts, the inner parts, and the reference. |
-| `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
+| `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
 | `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs; of the hand and its fingers; of the foot; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm and the back of each ear. |
 
 ## Animation Libraries

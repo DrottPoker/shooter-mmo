@@ -408,6 +408,8 @@ def write(label, net, faces, work, out_path):
 
 def assemble(work, out_folder, suffix):
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    # Blender reads a relative path from the folder of its own file, and an unsaved file has none.
+    work, out_folder = os.path.abspath(work), os.path.abspath(out_folder)
     nets = {label: _net(os.path.join(work, f"work_{label}.blend"), label) for label in LABELS}
     mend(nets)
     faces = cut_faces(nets)

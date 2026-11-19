@@ -40,6 +40,15 @@ HEAD_FIT_ABOVE, HEAD_FIT_ROUNDS, HEAD_FIT_REACH = 0.2, 40, 0.02
 # or tilted this many degrees in one of eight directions, without meeting skin again within the
 # reach. Such skin is looked for within HEAD_SKIN_NEAR of the vertex.
 HEAD_SEEN_TILT, HEAD_SEEN_REACH, HEAD_SKIN_NEAR = 50.0, 0.08, 0.02
+# The cage is a head alone: behind the chin its centre line rises into its own short neck, where
+# the body's throat begins further forward and lower. The last vertices of that line lie inside
+# the body there, nearest to the floor of its mouth, with no skin seen from outside within reach.
+# They are laid along the skin of the mirror plane instead, at the cage's own spacing: the first
+# two vertices of the line lie under the chin and give the way, and the others follow them around
+# the corner onto the throat, the last of them on the ring under the head. The way is walked in
+# steps of HEAD_CHIN_STEP, which the reference's skin is smooth enough for.
+HEAD_CHIN_LINE = (298, 314, 316, 300)
+HEAD_CHIN_STEP = 0.0005
 # The female figure, as the reviewer asked for it: clearly female, with wide hips, a narrow waist,
 # and a larger bust that sits close together, without exaggeration. The bundle's female is slim and
 # athletic, so her reference is shaped by smooth, mirrored fields before the net is laid onto it:
@@ -162,6 +171,29 @@ def _shares(point, corners):
     return np.array([1.0 - solved[0] - solved[1], solved[0], solved[1]])
 
 
+def _along_skin(nearest, start, heading, length, step=HEAD_CHIN_STEP):
+    """The point of the skin a length onward from a point of it, along the skin in the mirror plane
+    x = 0, and the way the skin runs there. nearest(point) is the nearest point of the skin."""
+    point, heading = np.array(start, float), np.array(heading, float)
+    point[0] = heading[0] = 0.0
+    heading /= np.linalg.norm(heading)
+    left = float(length)
+    for _ in range(int(length / step) * 8 + 16):
+        # The skin's points are single precision: a shorter rest than this is no step.
+        if left <= 1e-6:
+            break
+        onward = np.array(nearest(point + heading * min(step, left)), float)
+        onward[0] = 0.0
+        gone = float(np.linalg.norm(onward - point))
+        if gone < 1e-7:
+            raise RuntimeError(f"the way along the skin of the mirror plane ends at {np.round(point, 4).tolist()}")
+        # A full step says which way the skin runs; the short last one says it too coarsely.
+        if gone > step / 4:
+            heading = (onward - point) / gone
+        point, left = onward, left - gone
+    return point, heading
+
+
 def lay_head_cage(cage, bodies, first):
     """The head cage's vertices on every body's head: {label: points}. bodies maps a label to the
     points of that body's reference and shares the triangles of the one net; first is the label
@@ -206,9 +238,8 @@ def lay_head_cage(cage, bodies, first):
         start = np.array(location) + normal * 2e-4
         return any(tree.ray_cast(Vector(start), Vector(way), HEAD_SEEN_REACH)[0] is None for way in ways)
 
-    out = {label: np.zeros_like(placed) for label in bodies}
-    away, inside = [], 0
-    for v, p in enumerate(placed):
+    landed, away, inside = [], [], 0
+    for p in placed:
         location, normal, index, distance = tree.find_nearest(Vector(p))
         if not seen(location, normal):
             near = sorted(tree.find_nearest_range(Vector(p), HEAD_SKIN_NEAR), key=lambda found: found[3])
@@ -217,9 +248,21 @@ def lay_head_cage(cage, bodies, first):
                     location, normal, index, distance = found
                     inside += 1
                     break
-        corners = head[index]
-        shares = _shares(np.array(location), points[corners])
+        landed.append((np.array(location), index))
         away.append(distance)
+    # The centre line under the chin, onward along the skin from its last vertex under the chin.
+    under, last = (landed[v][0] * (0.0, 1.0, 1.0) for v in HEAD_CHIN_LINE[:2])
+    at, heading, walked = last, last - under, []
+    for before, vertex in zip(HEAD_CHIN_LINE[1:], HEAD_CHIN_LINE[2:]):
+        at, heading = _along_skin(lambda point: tree.find_nearest(Vector(point))[0], at, heading,
+                                  np.linalg.norm(placed[vertex] - placed[before]))
+        location, _normal, index, _distance = tree.find_nearest(Vector(at))
+        walked.append(f"{vertex} {np.linalg.norm(np.array(location) - landed[vertex][0]) * 1000:.0f} mm")
+        landed[vertex] = (np.array(location), index)
+    out = {label: np.zeros_like(placed) for label in bodies}
+    for v, (location, index) in enumerate(landed):
+        corners = head[index]
+        shares = _shares(location, points[corners])
         for label, body in bodies.items():
             out[label][v] = shares @ body["points"][corners]
     for laid in out.values():
@@ -227,7 +270,8 @@ def lay_head_cage(cage, bodies, first):
     away = np.array(away)[fitted]
     print(f"HUMAN_BUILD_REFERENCE head cage on {first}: median {np.median(away) * 1000:.2f} mm from the reference, "
           f"90 % {np.percentile(away, 90) * 1000:.2f} mm, max {away.max() * 1000:.2f} mm; {inside} vertices lay nearest to "
-          f"skin inside the head and took the nearest skin seen from outside")
+          f"skin inside the head and took the nearest skin seen from outside; the centre line under the chin was laid "
+          f"along the skin, which moved vertex {' and vertex '.join(walked)}")
     return out
 
 

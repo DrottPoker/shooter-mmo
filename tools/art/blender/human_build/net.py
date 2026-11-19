@@ -317,6 +317,34 @@ class Net:
                     found.append(index)
         return found
 
+    def tucked(self, limit=-0.75, hidden=()):
+        """The edges at which the net is tucked into itself, as pairs of vertices: the two faces
+        of the edge look toward each other, and the ways they look agree less than the limit, as
+        the cosine of the angle between them. Faces laid onto the hidden skins are left out. The
+        sharpest folds that a body has, between its fingers and between its toes, agree by about
+        -0.65; a ridge, however sharp, is no fold."""
+        points = self.array()
+        ways, centres = [], []
+        for face in self.faces:
+            p = points[list(face)]
+            way = np.cross(p, np.roll(p, -1, axis=0)).sum(0)
+            ways.append(way / max(np.linalg.norm(way), 1e-18))
+            centres.append(p.mean(0))
+        beside = {}
+        for index, face in enumerate(self.faces):
+            if self.skins[index] in hidden:
+                continue
+            for a, b in zip(face, face[1:] + face[:1]):
+                beside.setdefault((a, b) if a < b else (b, a), []).append(index)
+        found = []
+        for edge, pair in sorted(beside.items()):
+            if len(pair) == 2:
+                i, j = pair
+                toward = (centres[j] - centres[i]) @ (ways[i] - ways[j]) > 0.0
+                if toward and ways[i] @ ways[j] < limit:
+                    found.append(edge)
+        return found
+
     def mend(self, hidden=(), sliver=8.0, fold=0.3, rounds=8, rate=0.5):
         """Evens out the vertices of the faces that are slivers or folded, a few rounds, until none
         is left. Pinned vertices, such as the lids' edge and the line between the lips, the
