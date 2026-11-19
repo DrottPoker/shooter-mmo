@@ -112,15 +112,16 @@ def build(label, out_path, parts):
     if head is not None:
         # The ear with the ring of the head's side it stands on.
         fine.smooth(fine.touching("ear"), heads.EAR_SMOOTHING)
-    fine.mend()
-    left = len(fine.slivers())
-    if left:
-        print(f"HUMAN_BUILD_FAILED {left} faces are slivers whichever way they are cut")
+    hidden = tuple(heads.HIDDEN_PARTS)
+    fine.mend(hidden)
+    left = len(fine.slivers()), len(fine.folded(hidden=hidden))
+    if any(left):
+        print(f"HUMAN_BUILD_FAILED {left[0]} faces are slivers and {left[1]} are folded whichever way they are cut")
     whole = fine.mirrored()
     if hand is not None:
         islands.part_hands(whole, hand.palmar)
     if head is not None:
-        islands.ear_rims(whole)
+        islands.part_ears(whole)
     points = whole.array()
     distances = np.array([(surface.nearest(p) or (None, None, 9.0))[2] for p in points])
     collection = bpy.data.collections.get("Build") or bpy.data.collections.new("Build")

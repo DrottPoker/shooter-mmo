@@ -295,16 +295,34 @@ class Net:
                 found.append(index)
         return found
 
-    def mend(self, limit=8.0, rounds=6, rate=0.5):
-        """Evens out the vertices of the faces that are slivers, a few rounds, until none is left.
-        Vertices that are fixed stay."""
+    def folded(self, limit=0.3, hidden=()):
+        """The four-sided faces that fold whichever way they are cut: the two triangles of the
+        better cut look ways that agree less than the limit, as the cosine of the angle between
+        them. Faces laid onto the hidden skins are left out."""
+        points = self.array()
+
+        def agreement(a, b, c, d):
+            first = np.cross(points[b] - points[a], points[c] - points[a])
+            second = np.cross(points[c] - points[a], points[d] - points[a])
+            lengths = np.linalg.norm(first) * np.linalg.norm(second)
+            return -1.0 if lengths < 1e-24 else float(first @ second / lengths)
+
+        found = []
+        for index, face in enumerate(self.faces):
+            if len(face) == 4 and self.skins[index] not in hidden:
+                if max(agreement(*face), agreement(*(face[1:] + face[:1]))) < limit:
+                    found.append(index)
+        return found
+
+    def mend(self, hidden=(), sliver=8.0, fold=0.3, rounds=8, rate=0.5):
+        """Evens out the vertices of the faces that are slivers or folded, a few rounds, until none
+        is left. Vertices on the mirror plane and of the hidden parts stay."""
         for _ in range(rounds):
-            bad = self.slivers(limit)
+            bad = set(self.folded(fold, hidden)) | {f for f in self.slivers(sliver) if self.skins[f] not in hidden}
             if not bad:
                 break
-            loose = sorted({v for f in bad for v in self.faces[f] if not ({FIXED, RIGID, MIRROR} & self.holds[v])})
+            loose = sorted({v for f in bad for v in self.faces[f] if not ({RIGID, MIRROR} & self.holds[v])})
             self.smooth(loose, 1, rate)
-        return len(self.slivers(limit))
 
     def touching(self, skin):
         """The vertices with a face that is laid onto the skin of this name."""

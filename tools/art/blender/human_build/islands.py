@@ -1,11 +1,11 @@
 """The islands of the UV map that follow from the built net's shape instead of its cage: the hand's
-back and palm, and the seam around the rim of each ear.
+back and palm, and the back of each ear.
 
 A hand opens like a glove. Its faces are parted by which way they look, toward the palm's side or
 away from it, so the seam runs along the sides of the hand and of every finger and around the tips.
 An ear stands out from the head, so its front and its back would lie on top of each other in the
-map: the edges between a face that looks out from the head and one that looks back at it are seams,
-and each side of the ear stays joined to the head it grows from."""
+map: the faces of the ear that look back at the head are an island of their own, and its front
+stays part of the head's island."""
 
 import numpy as np
 
@@ -67,14 +67,29 @@ def part_hands(net: Net, palmar):
             net.islands[f] = f"{HAND}_{'palm' if palm[f] else 'back'}_{side}"
 
 
-def ear_rims(net: Net, ear_skin="ear"):
-    """Makes the edges around each ear's rim seams: those between a face of the ear that looks out
-    from the head and one that looks back at it."""
+def part_ears(net: Net, ear_skin="ear"):
+    """Gives the back of each ear an island of its own: the faces of the ear that look back at the
+    head. A face that its neighbours outvote takes their side."""
     normals = _normals(net)
     points = net.array()
     ears = [f for f, skin in enumerate(net.skins) if skin == ear_skin]
-    for a, b, edge in _edge_faces(net, ears):
-        side = 1.0 if points[list(net.faces[a])][:, 0].mean() > 0 else -1.0
-        outward = _unit(np.asarray(EAR_OUTWARD) * (side, 1.0, 1.0))
-        if (normals[a] @ outward > 0.0) != (normals[b] @ outward > 0.0):
-            net.seam(list(edge))
+    for side, sign in (("R", 1.0), ("L", -1.0)):
+        faces = [f for f in ears if sign * points[list(net.faces[f])][:, 0].mean() > 0]
+        outward = _unit(np.asarray(EAR_OUTWARD) * (sign, 1.0, 1.0))
+        back = {f: bool(normals[f] @ outward < 0.0) for f in faces}
+        pairs = _edge_faces(net, faces)
+        for _ in range(4):
+            votes = {f: 0 for f in faces}
+            for a, b, _edge in pairs:
+                votes[a] += 1 if back[b] else -1
+                votes[b] += 1 if back[a] else -1
+            changed = False
+            for f in faces:
+                if back[f] and votes[f] <= -2 or not back[f] and votes[f] >= 2:
+                    back[f] = not back[f]
+                    changed = True
+            if not changed:
+                break
+        for f in faces:
+            if back[f]:
+                net.islands[f] = f"ear_back_{side}"
