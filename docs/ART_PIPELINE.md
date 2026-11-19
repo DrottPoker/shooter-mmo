@@ -182,6 +182,7 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template's new UVs, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
 | `tools/art/Set-TextureDyes.ps1` | Makes a garment texture dyeable: its dye mask and the natural color of each channel, with its image divided so that it looks undyed as it was painted. |
 | `tools/art/Sync-HumanBase.ps1`, `tools/art/blender/human_base`, `tools/art/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
+| `tools/art/blender/human_build` | The scripts that build the next human base bodies from their reference, vertex by vertex; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). Their work files go to `artifacts/human-build`. |
 | `tools/art/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
 | `tools/art/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid in the target pose that every visible body in the game shows, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
 | `tools/art/blender/art_pipeline_cli.py` | Blender entry point for the scripts. |
@@ -1314,6 +1315,95 @@ A face or an eye color is another image of a body's face or eye material; see
    exactly what every body's catalog has, passes, and character creation offers
    the new face.
 
+### Rebuild The Human Base Characters
+
+The human base bodies are being built again from scratch, with the method of the
+[Modeling Rules](#modeling-rules). The new bodies are built by the scripts in
+`tools/art/blender/human_build`, which place every vertex and face on purpose,
+and are written as assets of their own, `art/Characters/Human_Male_Next` and
+`art/Characters/Human_Female_Next`, for review beside the bodies the game uses.
+They are committed when the reviewer has approved their `model` stage. Their
+rig, and the move of everything that is fitted to a body, the clips, the garment
+cage, the garments, the textures, and the paint layers, come after that, and
+then the new bodies take the names `Human_Male` and `Human_Female`.
+
+The reference is the bundle the bodies have always come from, the realistic
+male and female of Blender Studio's Human Base Meshes v1.4.1 (CC0), kept outside
+Git in `artifacts/art-reference/human-base-meshes-v1.4.1` of the main checkout;
+`reference.py` names its SHA-256. The female reference is shaped as the reviewer
+asked for, by smooth, mirrored fields before the net is laid onto it: hips 7.5 %
+wider, a waist 6.5 % narrower, and each breast 20 mm fuller and 14 mm nearer
+the middle, at 1.70 m.
+
+What is built:
+
+- **One cage for both bodies.** The coarse cage of the right half, 787 faces, is
+  designed once and laid out on each body by measures of that body's own
+  reference: rows of sixteen around the trunk, twice as close over the chest, an
+  arm hole of eight with four rings fanning under the arm, arms of eight around,
+  legs of ten, hands with a ring per finger joint, and feet whose toes are parted
+  by creases. It is subdivided once, laid onto the reference, relaxed along the
+  surface, and mirrored: 6,186 faces, and 13,052 triangles with the eyeballs,
+  the teeth, and the tongue. Every border between two body parts is a ring of
+  the cage, and both bodies have the same faces in the same order.
+- **The head.** The head is the bundle's own head cage, which is the coarse cage
+  of the female body's head. The bundle's two bodies are sculpted on one net, so
+  a place on her skin is the same feature on his: every vertex of the head cage
+  gets on him the place it has on her, on skin that is seen from outside, and
+  the loops around the eyes, the mouth, the nose, and the ears lie on the same
+  features of both. The lids' edge is the edge of the eye's opening as the eye
+  is seen from in front, the line between the lips is parted into two lips with
+  a mouth cavity behind them, and each eye has a pocket for its eyeball. The
+  ear's folds are finer than the net, so the ear is laid onto the reference's
+  ear and then evened out: it keeps its outline and its hollow.
+- **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
+  reference's eyeball per eye, a band of teeth per jaw, and a tongue.
+- **The UV map.** Unwrapped island by island along seams the cage names, never
+  projected: the trunk's front and back, the neck opened down the nape, each arm
+  and leg opened along its inner line, each hand as a back and a palm, each foot
+  as a top and a sole, and the head as one island with the face in its middle,
+  opened up the back of the head, with the back of each ear as an island. No
+  island is mirrored and no two share texels, so `UVMap_Paint` is `UVMap`. The
+  body's islands lie on an image twice as wide as high at one texel density,
+  about 1,600 texels per metre at 4096 x 2048, and the head's on a square image
+  of its own, the image of `M_Face_<Label>`, at about 4,000 texels per metre at
+  2048 x 2048. The materials are flat colours until the skin is painted.
+
+Each new file follows the layout of a body file above, at the `model` stage: the
+root `<Label>` is an empty where the armature will be, the body parts are
+written from the source body as the sync writes them, the faces inside the head
+carry the hidden parts 7 and 8 of the face attribute `part`, and the reference
+mesh lies in the `Reference` collection, which renders leave out.
+
+To build the bodies again, with Blender on `BLENDER_PATH`:
+
+```powershell
+$blender = $env:BLENDER_PATH
+$work = "artifacts/human-build"
+$bundle = "<main checkout>/artifacts/art-reference/human-base-meshes-v1.4.1/human-base-meshes-bundle-v1.4.1/human_base_meshes_bundle.blend"
+& $blender --background --factory-startup --disable-autoexec $bundle --python tools/art/blender/human_build/reference.py -- "$work/reference.blend"
+foreach ($label in "Male", "Female") {
+    & $blender --background --factory-startup --disable-autoexec "$work/reference.blend" --python tools/art/blender/human_build/build.py -- $label "$work/work_$label.blend"
+}
+& $blender --background --factory-startup --disable-autoexec --python tools/art/blender/human_build/assemble.py -- $work art/Characters _Next
+```
+
+Expected result: `reference.py` prints the height of both references and how
+near the head cage lies to the female one, a median under 1 mm; `build.py`
+prints the measures it found and no line that starts with `HUMAN_BUILD_FAILED`,
+which names a face that is wound the wrong way, a sliver, or a fold; and
+`assemble.py` prints the triangles of each body and how much of each image its
+islands fill, and writes both files. The same input gives the same bodies. A
+changed file needs its `model` stage approved again.
+
+| Script | What it does |
+| --- | --- |
+| `reference.py` | Takes the two bodies with their eyeballs from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, and lays the head cage onto both heads. |
+| `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
+| `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, the UV map, the body parts, the inner parts, and the reference. |
+| `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, and its checks for slivers and folds. |
+| `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs; of the hand and its fingers; of the foot; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm and the back of each ear. |
+
 ## Animation Libraries
 
 Clips live in animation libraries: art assets of kind `animations` below
@@ -2296,6 +2386,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
+| `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
 | `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the three files that need it are skipped and the run says `skipped=3`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the

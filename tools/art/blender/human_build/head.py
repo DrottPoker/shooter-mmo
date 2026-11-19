@@ -69,15 +69,19 @@ TONGUE_BEHIND_LIPS, TONGUE_BELOW_LIPS, TONGUE_LENGTH, TONGUE_HALF_WIDTH, TONGUE_
 
 
 class Head:
-    def __init__(self, m, cage_points, cage_faces, eye_centre, eye_radius):
+    def __init__(self, m, cage_points, cage_faces, eye):
         self.m = m
         s = m.scale
         self.scale = s
         self.faces = [tuple(f) for f in cage_faces]
         self.points = np.asarray(cage_points, float).copy()
-        # The eyeball is the reference's own, so the lids of the reference lie on it.
-        self.eye_centre = np.asarray(eye_centre, float)
-        self.eye_radius = float(eye_radius)
+        # The eyeball is a ball of the size and at the place of the reference's own, which has a
+        # bulge for the cornea in front, so the lids of the reference lie on it: its radius is
+        # half its width.
+        self.eye = eye
+        low, high = eye.points.min(0), eye.points.max(0)
+        self.eye_centre = (low + high) / 2
+        self.eye_radius = float(high[0] - low[0]) / 2
         self.right = [i for i in range(len(self.points)) if self.points[i, 0] >= 0.0]
         self.centre = {i for i in range(len(self.points)) if self.points[i, 0] == 0.0}
         # The ring around the eye takes the lids' edge of the reference, as the eye is seen from in
@@ -136,9 +140,9 @@ class Head:
     def lid_edge(self, count=96, step=0.00025):
         """The edge of the eye's opening as the eye is seen from straight in front, as points in
         order around it: from the corner beside the nose over the upper lid to the outer corner and
-        back under the lower lid. A ray from in front that reaches the eyeball before any skin lies
-        in the opening; the edge is the skin just outside the outermost such ray in each direction,
-        or the eyeball's own outline where the opening reaches it."""
+        back under the lower lid. A ray from in front that reaches the reference's eyeball before
+        any skin lies in the opening; the edge is the skin just outside the outermost such ray in
+        each direction, or the eyeball's own outline where the opening reaches it."""
         surface, centre, radius = self.m.surface, self.eye_centre, self.eye_radius
         far = 0.05
         span = np.arange(-radius, radius + 1e-9, step)
@@ -146,13 +150,17 @@ class Head:
         def skin(a, b):
             return surface.ray(centre + X * a + Z * b + Y * far, -Y, far + radius)
 
+        def ball(a, b):
+            hit = self.eye.ray(centre + X * a + Z * b + Y * far, -Y, far + radius)
+            return None if hit is None else hit[2]
+
         is_open = np.zeros((len(span), len(span)), bool)
         for i, a in enumerate(span):
             for j, b in enumerate(span):
-                within = radius * radius - a * a - b * b
-                if within > 0.0:
+                reach = ball(a, b)
+                if reach is not None:
                     hit = skin(a, b)
-                    is_open[i, j] = hit is None or hit[2] > far - math.sqrt(within) + 0.0002
+                    is_open[i, j] = hit is None or hit[2] > reach
         # The opening is the open patch nearest the middle.
         cells = np.argwhere(is_open)
         seed = tuple(cells[int(np.argmin(((span[cells] ** 2).sum(1))))])
@@ -179,9 +187,9 @@ class Head:
                     break
                 reach += step
             spot = middle + way * (reach + step)
-            within = radius * radius - spot @ spot
-            hit = skin(spot[0], spot[1]) if within > 0.0 else None
-            if hit is not None and hit[2] < far - math.sqrt(within) + 0.0002:
+            hit = skin(spot[0], spot[1])
+            behind = ball(spot[0], spot[1])
+            if hit is not None and behind is not None and hit[2] <= behind:
                 rim.append(hit[0])
             else:
                 spot = middle + way * reach

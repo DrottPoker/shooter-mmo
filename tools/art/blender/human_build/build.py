@@ -74,12 +74,8 @@ def build(label, out_path, parts):
         cage = bpy.data.objects[f"HeadCage_{label}"]
         cage_points = [tuple(cage.matrix_world @ v.co) for v in cage.data.vertices]
         cage_faces = [tuple(p.vertices) for p in cage.data.polygons]
-        eye = bpy.data.objects[f"Reference_{label}_Eye_R"]
-        co = np.array([eye.matrix_world @ v.co for v in eye.data.vertices])
-        # The eyeball of the reference is a ball with a bulge for the cornea in front: its radius
-        # is half its width.
-        head = heads.Head(measures, cage_points, cage_faces, (co.min(0) + co.max(0)) / 2,
-                          (co[:, 0].max() - co[:, 0].min()) / 2)
+        eye = Surface.of_object(bpy.data.objects[f"Reference_{label}_Eye_R"])
+        head = heads.Head(measures, cage_points, cage_faces, eye)
         for line in head.report():
             print("HUMAN_BUILD", line)
     if "neck" in parts:
