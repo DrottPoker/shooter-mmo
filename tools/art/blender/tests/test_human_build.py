@@ -28,7 +28,8 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
                  "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", "_similarity",
-                 "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", numpy=True)
+                 "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
+                 "BUST_ROUND", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
@@ -300,6 +301,42 @@ class ShapeTests(unittest.TestCase):
         self.assertEqual(out[2, 0], 0.0)
         self.assertGreater(out[2, 1], points[2, 1])
         np.testing.assert_allclose(out[3], points[3], atol=1e-12)
+
+    def chest(self):
+        """The front of a female chest of 1.70 m as a grid 5 mm apart at y = 0.1, x from -20 to
+        20 cm and z from 1.20 to 1.35 m, above the bands of the hips and the waist, with a breast
+        6 cm high on each side, its tip at x 9 cm and z 1.22 m; and a row of the back at y -0.1."""
+        xs = np.round(np.arange(-0.2, 0.2001, 0.005), 6)
+        zs = np.round(np.arange(1.2, 1.3501, 0.005), 6)
+        front = np.array([(x, 0.1, z) for z in zs for x in xs])
+        for side in (1.0, -1.0):
+            front[:, 1] += 0.06 * np.exp(-((front[:, 0] - side * 0.09) ** 2 + (front[:, 2] - 1.22) ** 2) / 0.04 ** 2)
+        back = np.array([(x, -0.1, 1.25) for x in xs])
+        return np.concatenate([front, back]), len(front)
+
+    def test_a_breast_swells_whole_and_round_and_the_back_stays(self):
+        points, count = self.chest()
+        out, nipple = reference.shape_female(points, 1.70)
+        np.testing.assert_allclose(nipple, (0.09, 0.16, 1.22), atol=1e-9)
+        tip = int(np.argmin(np.linalg.norm(points - nipple, axis=1)))
+        beside = int(np.argmin(np.linalg.norm(points[:count] - (0.07, 0.0, 1.22), axis=1) + 10 * np.abs(points[:count, 1] - 0.14)))
+        # The tip and the skin 2 cm beside it move forward alike: the swell is flat over the
+        # middle, and the round swell adds a little more.
+        for index in (tip, beside):
+            forward = out[index, 1] - points[index, 1]
+            self.assertGreaterEqual(forward, reference.BUST_FORWARD - 1e-9)
+            self.assertLessEqual(forward, reference.BUST_FORWARD + reference.BUST_ROUND + 1e-9)
+        np.testing.assert_array_equal(out[count:], points[count:])
+
+    def test_the_bust_is_its_own_mirror_image_and_never_crosses_the_middle(self):
+        points, count = self.chest()
+        out, _nipple = reference.shape_female(points, 1.70)
+        place = {tuple(np.round(p, 6)): k for k, p in enumerate(points)}
+        twin = np.array([place[tuple(np.round(p * (-1.0, 1.0, 1.0), 6))] for p in points])
+        np.testing.assert_allclose(out[twin], out * (-1.0, 1.0, 1.0), atol=1e-12)
+        middle = points[:, 0] == 0.0
+        np.testing.assert_array_equal(out[middle, 0], 0.0)
+        self.assertTrue((out[points[:, 0] > 0.0, 0] > 0.0).all())
 
     def test_a_body_with_nothing_to_grow_stays(self):
         points, joints = self.body()
