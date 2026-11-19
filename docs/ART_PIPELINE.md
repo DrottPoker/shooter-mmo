@@ -1330,10 +1330,26 @@ then the new bodies take the names `Human_Male` and `Human_Female`.
 The reference is the bundle the bodies have always come from, the realistic
 male and female of Blender Studio's Human Base Meshes v1.4.1 (CC0), kept outside
 Git in `artifacts/art-reference/human-base-meshes-v1.4.1` of the main checkout;
-`reference.py` names its SHA-256. The female reference is shaped as the reviewer
-asked for, by smooth, mirrored fields before the net is laid onto it: hips 7.5 %
-wider, a waist 6.5 % narrower, and each breast 20 mm fuller and 14 mm nearer
-the middle, at 1.70 m.
+`reference.py` names its SHA-256. Both references are shaped as the reviewer
+asked for, by smooth, mirrored fields before the net is laid onto it:
+
+- **The female figure.** Hips 7.5 % wider, a waist 6.5 % narrower, and each
+  breast 20 mm fuller and 14 mm nearer the middle, at 1.70 m.
+- **The male's groin is smooth.** The bundle's male has a bulge in the groin that
+  stands out in the game. The two bodies of the bundle are sculpted on one net,
+  so his groin takes the female's smooth form there, laid onto his body by the
+  move, turn, and scale that lay the edge of that patch onto his, fading to his
+  own form at the patch's edge. A fifth of his own form stays, a hint of a male
+  groin: the front of the centre line now rises evenly from the crotch, where
+  it stood out 4 mm beyond the belly above it.
+- **Both bodies a little fuller.** The bundle's bodies are slim and read as thin
+  in the game. Each limb, the round of the shoulder, the chest, and the neck grow
+  about their own middles by a share of their width where each is widest,
+  fading out toward the joints, so the elbows, the wrists, the knees, the
+  ankles, the hands, the feet, and the head keep their size: the male's upper
+  arm, forearm, thigh, and calf by 6 to 7 %, his shoulders and neck by 5 % and
+  his chest by 4 %; the female's upper arm by 8 %, the rest of her by 2 to 5 %,
+  her chest not at all. `FULLER` in `reference.py` holds the shares.
 
 The bodies stand in an A-pose. The bundle's bodies stand with their arms
 hanging, the line from the shoulder joint to the wrist 19 degrees from straight
@@ -1459,7 +1475,8 @@ foreach ($label in "Male", "Female") {
 ```
 
 Expected result: `reference.py` prints the height of both references, how far
-each body's arms hung and that they are turned out to 45 degrees, how
+each body's arms hung and that they are turned out to 45 degrees, how much
+each part of each body grew, how
 near the head cage lies to the female one, a median under 1 mm, and how many
 faces of the control cage and triangles of the band set each ear into the head
 cage; `build.py` prints the measures it found, the navel and the nostril among
@@ -1472,7 +1489,7 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 
 | Script | What it does |
 | --- | --- |
-| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, shapes the female, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
+| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, smooths the male's groin, shapes the female, grows both a little fuller, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, and a bent quad cut along its side of the reference's skin, so a fold shows as a hollow and not as a ridge; the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |

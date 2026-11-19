@@ -27,7 +27,8 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
-                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", numpy=True)
+                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", "_similarity",
+                 "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
@@ -218,6 +219,92 @@ class ReferenceTests(unittest.TestCase):
     def test_a_way_that_cannot_go_on_says_so(self):
         with self.assertRaises(RuntimeError):
             reference._along_skin(lambda point: (0.0, self.RADIUS, 0.0), (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), 0.01)
+
+
+class ShapeTests(unittest.TestCase):
+    """The male's smooth groin and the bodies grown a little fuller, on small nets."""
+
+    def test_a_turn_a_scale_and_a_move_are_found_again(self):
+        source = np.array([(0, 0, 0), (1, 0, 0), (0, 2, 0), (0, 0, 3), (1, 1, 1)], float)
+        angle = 0.4
+        turn = np.array([[np.cos(angle), -np.sin(angle), 0.0], [np.sin(angle), np.cos(angle), 0.0], [0.0, 0.0, 1.0]])
+        target = source @ turn.T * 1.3 + (0.2, -0.1, 0.5)
+        np.testing.assert_allclose(reference._similarity(source, target)(source), target, atol=1e-9)
+
+    def groin(self):
+        """The front of a body as a grid 5 mm apart in the plane y = 0.1, x from -10 to 10 cm and
+        z from 0.75 to 1.0 m, with the crotch at z 0.8: the male's with a bulge 3 cm forward in
+        the groin, the female's flat."""
+        xs = np.round(np.arange(-0.1, 0.1001, 0.005), 6)
+        zs = np.round(np.arange(0.75, 1.0001, 0.005), 6)
+        female = np.array([(x, 0.1, z) for z in zs for x in xs])
+        bulge = 0.03 * np.exp(-((female[:, 0] / 0.02) ** 2 + ((female[:, 2] - 0.84) / 0.03) ** 2))
+        male = female + np.column_stack([np.zeros_like(bulge), bulge, np.zeros_like(bulge)])
+        n = len(xs)
+        edges = [(r * n + c, r * n + c + 1) for r in range(len(zs)) for c in range(n - 1)]
+        edges += [(r * n + c, (r + 1) * n + c) for r in range(len(zs) - 1) for c in range(n)]
+        return male, female, edges, bulge
+
+    def test_the_male_groin_keeps_only_a_hint_of_its_bulge(self):
+        male, female, edges, bulge = self.groin()
+        out = reference.groin_smoothed(male, female, edges, np.array([0.0, 0.05, 0.8]), 1.0)
+        top = int(np.argmax(bulge))
+        self.assertAlmostEqual(out[top, 1] - 0.1, reference.GROIN_KEEP * bulge[top], delta=0.001)
+        # Outside the groin nothing moves, and the centre line stays on the mirror plane.
+        outside = (np.abs(male[:, 0]) > 0.075) | (male[:, 2] > 0.93) | (male[:, 2] < 0.77)
+        np.testing.assert_array_equal(out[outside], male[outside])
+        np.testing.assert_array_equal(out[male[:, 0] == 0.0, 0], 0.0)
+        # The groin's front rises from the crotch without a bulge: no row stands further forward
+        # than the row above it.
+        middle = out[male[:, 0] == 0.0]
+        order = np.argsort(middle[:, 2])
+        rows = middle[order][(middle[order][:, 2] > 0.8) & (middle[order][:, 2] < 0.93)]
+        self.assertLess(rows[:, 1].max() - 0.1, 0.25 * bulge.max())
+
+    def test_a_limb_grows_about_its_line_most_in_its_middle_and_not_at_its_joints(self):
+        start, end = np.array([0.0, 0.0, 1.0]), np.array([0.0, 0.0, 0.0])
+        # Points 5 cm from the line at its upper joint, its middle, and its lower joint, and one
+        # 20 cm from it, beyond its reach.
+        points = np.array([(0.05, 0.0, 1.0), (0.05, 0.0, 0.5), (0.0, 0.05, 0.0), (0.2, 0.0, 0.5)])
+        move = reference._grown_about_line(points, start, end, 0.1, (0.0, 0.5, 1.0), 0.1, np.ones(4))
+        np.testing.assert_allclose(move, [(0, 0, 0), (0.005, 0, 0), (0, 0, 0), (0, 0, 0)], atol=1e-12)
+        # A masked point stays.
+        masked = reference._grown_about_line(points, start, end, 0.1, (0.0, 0.5, 1.0), 0.1, np.zeros(4))
+        np.testing.assert_allclose(masked, 0.0)
+
+    def body(self):
+        """A right upper arm's point and its mirror image, a point of the chest's centre line, a
+        point of the head, and the joints and measures of a body of 1.79 m."""
+        points = np.array([(0.3, 0.05, 1.325), (-0.3, 0.05, 1.325), (0.0, 0.12, 1.24), (0.05, 0.05, 1.7)])
+        joints = [np.array(p, float) for p in ((0.2, 0, 1.43), (0.4, 0, 1.22), (0.6, 0, 1.05),
+                                                (0.1, 0, 0.77), (0.12, 0, 0.5), (0.15, 0, 0.11))]
+        return points, joints
+
+    def grown(self, points, joints, amounts):
+        return reference.fuller(points, amounts, *joints, lambda z: np.full_like(np.asarray(z, float), 0.19),
+                                lambda z: np.zeros_like(np.asarray(z, float)), 1.1, 1.29, 1.45, 1.0)
+
+    def test_a_body_grows_as_its_mirror_image_and_keeps_its_middle_and_its_head(self):
+        points, joints = self.body()
+        out = self.grown(points, joints, reference.FULLER["Male"])
+        np.testing.assert_allclose(out[1], out[0] * (-1.0, 1.0, 1.0), atol=1e-12)
+        # The arm's point lies further from the arm's line, the chest stands further forward on
+        # the mirror plane, and the head is as it was.
+        line = (joints[1] - joints[0]) / np.linalg.norm(joints[1] - joints[0])
+
+        def off_line(point):
+            offset = point - joints[0]
+            return np.linalg.norm(offset - (offset @ line) * line)
+
+        self.assertGreater(off_line(out[0]), off_line(points[0]) * 1.03)
+        self.assertEqual(out[2, 0], 0.0)
+        self.assertGreater(out[2, 1], points[2, 1])
+        np.testing.assert_allclose(out[3], points[3], atol=1e-12)
+
+    def test_a_body_with_nothing_to_grow_stays(self):
+        points, joints = self.body()
+        nothing = {name: 0.0 for name in reference.FULLER["Male"]}
+        np.testing.assert_allclose(self.grown(points, joints, nothing), points, atol=1e-12)
 
 
 class PoseTests(unittest.TestCase):
