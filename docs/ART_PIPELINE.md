@@ -1341,22 +1341,42 @@ down, which leaves the armpit a narrow gap and puts an arm that is raised over
 the head 160 degrees from the pose its skin is bound in. So `reference.py` turns
 the arms out about the shoulder joints until that line is 45 degrees from
 straight down, the middle of what the arms do. It turns the bundle's own coarse
-net under the sculpt, so the sculpt's detail follows. Each vertex takes a share
-of the turn: all of it on the arm below the armpit, none on the trunk away from
-the shoulder, and between them the share that evens out along the net, so the
-round of the shoulder and the skin of the armpit stretch evenly. Unity raises
-the arms to a T-pose itself when it makes a body's avatar, and the import of a
-clip takes the difference between two rest poses out of the motion, so neither
-needs another pose. The shape of the shoulder and the armpit in this pose is
-computed, not sculpted: it is the part of the model to look at most closely.
-The elbows keep the bundle's slight bend, and the legs their stance.
+net under the sculpt, so the sculpt's detail follows. Unity raises the arms to
+a T-pose itself when it makes a body's avatar, and the import of a clip takes
+the difference between two rest poses out of the motion, so neither needs
+another pose. The elbows keep the bundle's slight bend, and the legs their
+stance.
+
+Each vertex takes a share of the turn, and where the shares lie decides whether
+the body looks like one that holds its arms out or like one whose skin was
+pulled:
+
+- **The round of the shoulder turns whole.** It is round about the joint, so
+  turning it about the joint keeps its shape, where a part of the turn shears
+  it flat until the line from the neck slopes straight into the arm.
+- **The trunk stays.** The side of the chest from 2.5 cm below the armpit, and
+  the chest and the back inside the joint, 6.5 cm inside it at the armpit's
+  height and 2 cm over the top of the shoulder, take none of the turn. When
+  more of the trunk takes part, its side is drawn out to the arm like a web and
+  the armpit lies far out on the arm.
+- **The passage between them evens out.** A band over the top of the shoulder,
+  the folds of the chest's and the back's muscles, and the hollow of the armpit
+  take the share that evens out along the net. Their skin below the joint is
+  stretched to several times its width, with the sculpt's folds of a hanging
+  arm standing in it as creases, so it is smoothed, most in the middle.
+
+The shape of the armpit in this pose is computed, not sculpted: it is the part
+of the model to look at most closely, from in front, behind, and below, beside
+the bundle's own pose.
 
 What is built:
 
 - **One cage for both bodies.** The coarse cage of the right half, 823 faces, is
   designed once and laid out on each body by measures of that body's own
   reference: rows of sixteen around the trunk, one of them through the navel
-  and twice as close over the chest, an arm hole of eight with four rings
+  and twice as close over the chest, with the side column at the body's widest
+  point up to the navel and making for the armpit above it, as the side seam of
+  a shirt does, an arm hole of eight with four rings
   fanning under the arm, arms of eight around, legs of ten, hands with a ring
   per finger joint, and feet with rings around the corner of the heel and five
   toes of their own, each built like a finger with two rings. It is subdivided
@@ -1454,7 +1474,7 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 | --- | --- |
 | `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, shapes the female, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
-| `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, the UV map, the body parts, the inner parts, and the reference. |
+| `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, and a bent quad cut along its side of the reference's skin, so a fold shows as a hollow and not as a ridge; the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
 | `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
 
