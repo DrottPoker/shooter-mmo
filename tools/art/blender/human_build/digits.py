@@ -45,6 +45,33 @@ class Digit:
         return float(shares[int(np.argmax(girths))])
 
 
+def distance_to_path(points, path):
+    """How far each point lies from a line of points."""
+    best = np.full(len(points), np.inf)
+    for a, b in zip(path[:-1], path[1:]):
+        ab = b - a
+        t = np.clip(((points - a) @ ab) / max(ab @ ab, 1e-18), 0.0, 1.0)
+        best = np.minimum(best, np.linalg.norm(points - (a + t[:, None] * ab), axis=1))
+    return best
+
+
+def own_skins(surface: Surface, digits, names, scale, reach):
+    """For each digit the skin around its own line: the triangles that lie nearest to it of all the
+    digits, within the reach of its line at 1.79 m, and no farther in than its web. A net laid onto
+    such a skin never lands on the digit beside it."""
+    triangles = surface.triangles
+    centres = surface.points[triangles].mean(1)
+    distances = np.array([distance_to_path(centres, d.path) for d in digits])
+    nearest = distances.argmin(0)
+    out = {}
+    for index, (name, digit) in enumerate(zip(names, digits)):
+        inward = digit.direction(1.0, window=0.2)
+        beyond = (centres - digit.path[-1]) @ inward > -0.008 * scale
+        keep = (nearest == index) & (distances[index] < reach * scale) & beyond
+        out[name] = type(surface)(surface.points, triangles[keep])
+    return out
+
+
 def farthest(surface: Surface, near, direction, radius):
     """The point of the surface farthest along a direction within a radius of the line through a point."""
     direction = _unit(direction)
@@ -56,9 +83,13 @@ def farthest(surface: Surface, near, direction, radius):
     return points[pool[int(np.argmax(along[pool]))]]
 
 
-def march(surface: Surface, tip, direction, step=0.003, reach=0.14, dome=0.012, jump=1.4):
+def march(surface: Surface, tip, direction, step=0.003, reach=0.14, dome=0.012, jump=1.4, least=0.0, straight=False):
     """Follows a digit from its tip inward: sections square to it, each a step further in, until
-    the section takes in a neighbour or the palm, so its girth jumps."""
+    the section takes in a neighbour or the palm, so its girth jumps. With least, it also ends
+    where a section is shorter than that share of the longest before it: the plane then cuts a
+    scrap of skin beside the digit, such as the fold at a toe's nail, and not the digit. A straight
+    march keeps its first direction, for a short digit that lies along it, such as a toe; else the
+    sections turn with the digit."""
     direction = _unit(direction)
     tip = np.asarray(tip, float)
     centres, girths = [], []
@@ -69,12 +100,12 @@ def march(surface: Surface, tip, direction, step=0.003, reach=0.14, dome=0.012, 
         loop = surface.loop(origin, direction, near=origin)
         if loop is None or np.linalg.norm(loop.centre - origin) > 0.012:
             break
-        if travelled > dome and loop.length > jump * widest:
+        if travelled > dome and (loop.length > jump * widest or loop.length < least * widest):
             break
         centres.append(loop.centre)
         girths.append(loop.length)
         widest = max(widest, loop.length)
-        if len(centres) >= 5:
+        if len(centres) >= 5 and not straight:
             direction = _unit(0.5 * direction + 0.5 * _unit(centres[-5] - centres[-1]))
         origin = centres[-1] - direction * step
         travelled += step

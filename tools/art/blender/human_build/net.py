@@ -317,12 +317,13 @@ class Net:
                     found.append(index)
         return found
 
-    def tucked(self, limit=-0.75, hidden=()):
+    def tucked(self, limit=-0.75, hidden=(), apart=()):
         """The edges at which the net is tucked into itself, as pairs of vertices: the two faces
         of the edge look toward each other, and the ways they look agree less than the limit, as
         the cosine of the angle between them. Faces laid onto the hidden skins are left out. The
-        sharpest folds that a body has, between its fingers and between its toes, agree by about
-        -0.65; a ridge, however sharp, is no fold."""
+        sharpest folds within a part of a body agree by about -0.65; a ridge, however sharp, is no
+        fold. apart names the skins of parts that lie against each other, such as two toes: the
+        edge through their web, between a face of the one and a face of the other, is no tuck."""
         points = self.array()
         ways, centres = [], []
         for face in self.faces:
@@ -340,6 +341,8 @@ class Net:
         for edge, pair in sorted(beside.items()):
             if len(pair) == 2:
                 i, j = pair
+                if self.skins[i] != self.skins[j] and self.skins[i] in apart and self.skins[j] in apart:
+                    continue
                 toward = (centres[j] - centres[i]) @ (ways[i] - ways[j]) > 0.0
                 if toward and ways[i] @ ways[j] < limit:
                     found.append(edge)

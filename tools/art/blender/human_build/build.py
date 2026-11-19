@@ -118,12 +118,16 @@ def build(label, out_path, parts):
             centre = np.mean([fine.points[v] for v in fine.faces[face]], axis=0)
             print(f"HUMAN_BUILD_FAILED the face at {np.round(centre, 4).tolist()} is {kind} whichever way it is cut")
     whole = fine.mirrored()
-    for a, b in whole.tucked(hidden=hidden):
+    # Two fingers or two toes lie against each other: the edge through their web is no tuck.
+    apart = tuple(name for name in skins if name.startswith(("digit_", "toe_")))
+    for a, b in whole.tucked(hidden=hidden, apart=apart):
         middle = (np.asarray(whole.points[a], float) + np.asarray(whole.points[b], float)) / 2
         print(f"HUMAN_BUILD_FAILED the net is tucked into itself at {np.round(middle, 4).tolist()}: the faces on both "
               f"sides of an edge look toward each other")
     if hand is not None:
         islands.part_hands(whole, hand.palmar)
+    if foot is not None:
+        islands.part_toes(whole)
     if head is not None:
         islands.part_ears(whole)
     points = whole.array()
