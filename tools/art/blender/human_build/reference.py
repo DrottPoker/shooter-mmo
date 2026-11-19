@@ -42,12 +42,28 @@ SCULPT_LEVEL = 2
 # 19 degrees from straight down. A body is bound to its skeleton best in the middle of what its arms
 # do, with the armpit open: the arms are turned out about the shoulder joints until that line is
 # ARM_ANGLE degrees from straight down. The bundle's own coarse net under the sculpt is turned, so
-# the sculpt's detail follows it. Each vertex takes a share of the turn: all of it on the arm from
-# ARM_BELOW below the armpit, none of it on the trunk ARM_ROOT inside the plane of the ring around
-# the shoulder or ARM_FLANK below the armpit, and between those the share that evens out along the
-# net, so the round of the shoulder and the skin of the armpit stretch evenly. Lengths at 1.79 m.
+# the sculpt's detail follows it. Each vertex takes a share of the turn, and where the shares lie
+# decides whether the body looks like one that holds its arms out or like one whose skin was
+# pulled:
+# - The round of the shoulder turns whole. It is round about the joint, so turning it about the
+#   joint keeps its shape, where a part of the turn would shear it flat: every vertex further out
+#   than ARM_CAP outside the joint, above the armpit, takes the whole turn, and so does the arm
+#   from ARM_BELOW below the armpit.
+# - The trunk stays. The side of the chest under the armpit, from ARM_FLANK below it, and the
+#   chest and the back inside the joint take none of the turn: ARM_ROOT inside it at the height
+#   of the armpit, where the folds of the chest's and the back's muscles run out to the arm, and
+#   ARM_TOP inside it at the joint's own height and above, over the top of the shoulder. With
+#   more of the trunk taking part, its side is drawn out to the arm like a web and the armpit
+#   lies far out on the arm.
+# - Between those the share evens out along the net: a band over the top of the shoulder, the
+#   two folds, and the hollow of the armpit between them.
+# The skin of that passage below the joint is stretched to several times its width, and the
+# sculpt's own folds of a hanging arm stand in it as creases and spikes: it is evened out,
+# ARM_EVEN_ROUNDS rounds, most in the middle of the passage. Lengths at 1.79 m.
 ARM_ANGLE = 45.0
-ARM_ROOT, ARM_FLANK, ARM_BELOW = 0.06, 0.05, 0.01
+ARM_CAP, ARM_BELOW = 0.01, 0.03
+ARM_FLANK, ARM_ROOT, ARM_TOP = 0.025, 0.065, 0.02
+ARM_EVEN_ROUNDS = 60
 HEAD = "Head - Generic Topology"
 # The shape of the head cage that is the female body's head, and the body it is laid onto first.
 HEAD_SHAPE, HEAD_BODY = "Real_FEMALE", "Female"
@@ -159,18 +175,45 @@ def evened(count, edges, weights, fixed, values, rounds=4000, exact=1e-10):
     return out + x * free
 
 
-def arm_shares(points, edges, in_arm, gap_x, armpit_z, shoulder_top, scale):
+def arm_shares(points, edges, in_arm, joint, armpit_z, scale):
     """The share of the arm's turn that each vertex of a body's net takes. in_arm says which
-    vertices lie beyond the gap between the arm and the trunk, on either side of the body."""
-    points = np.asarray(points, float)
+    vertices lie beyond the gap between the arm and the trunk, on either side of the body, and
+    joint is the right arm's shoulder joint."""
+    points, in_arm = np.asarray(points, float), np.asarray(in_arm, bool)
     side, z = np.abs(points[:, 0]), points[:, 2]
-    turns = np.asarray(in_arm, bool) & (z < armpit_z - ARM_BELOW * scale)
-    stays = (side < gap_x - ARM_ROOT * scale) | (~np.asarray(in_arm, bool) & (z < armpit_z - ARM_FLANK * scale)) \
-        | (z > shoulder_top + 0.02 * scale)
+    turns = (in_arm & (z < armpit_z - ARM_BELOW * scale)) | ((side > joint[0] + ARM_CAP * scale) & (z > armpit_z))
+    rise = np.clip((z - armpit_z) / (joint[2] - armpit_z), 0.0, 1.0)
+    inside = (ARM_ROOT + (ARM_TOP - ARM_ROOT) * rise) * scale
+    stays = (side < joint[0] - inside) | (~in_arm & (z < armpit_z - ARM_FLANK * scale))
     stays &= ~turns
     edges = np.asarray(edges, np.int64)
     lengths = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1)
     return evened(len(points), edges, 1.0 / np.maximum(lengths, 1e-9), turns | stays, turns.astype(float))
+
+
+def passage_evened(before, after, edges, joint, angle, rounds=ARM_EVEN_ROUNDS):
+    """A body's points after its arms were turned out, with the stretched skin below the joint
+    evened out. before and after hold the same vertices; how far each turned about its shoulder
+    joint says where it lies in the passage from the trunk to the arm, and a vertex in the
+    middle of the passage moves furthest toward the middle of its neighbours."""
+    before, after = np.asarray(before, float), np.array(after, float)
+    edges = np.asarray(edges, np.int64)
+    a, b = edges[:, 0], edges[:, 1]
+    sign = np.where(before[:, 0] >= 0.0, 1.0, -1.0)
+
+    def bearing(points):
+        return np.arctan2(points[:, 2] - joint[2], sign * points[:, 0] - joint[0])
+
+    turn = np.angle(np.exp(1j * (bearing(after) - bearing(before))))
+    share = np.clip(turn / math.radians(angle), 0.0, 1.0)
+    weight = np.where(before[:, 2] < joint[2], 4.0 * share * (1.0 - share), 0.0)
+    count = np.maximum(np.bincount(a, minlength=len(after)) + np.bincount(b, minlength=len(after)), 1)
+    for _ in range(rounds):
+        total = np.zeros_like(after)
+        np.add.at(total, a, after[b])
+        np.add.at(total, b, after[a])
+        after += (0.5 * weight)[:, None] * (total / count[:, None] - after)
+    return after
 
 
 def turned_out(points, shares, joint, angle):
@@ -190,7 +233,8 @@ def turned_out(points, shares, joint, angle):
 def pose_arms(source, placement, sculpt, label):
     """Turns the arms of a body of the bundle out, in the bundle's own net: the object's vertices
     move, and its sculpt follows when it is evaluated again. sculpt is the body's sculpt as the
-    placement stands it. Gives the right arm's shoulder joint, which the turn leaves in place."""
+    placement stands it. Gives the right arm's shoulder joint, which the turn leaves in place,
+    and the angle of the turn in degrees."""
     if source.data.shape_keys is not None:
         raise RuntimeError(f"{source.name} has shape keys; its vertices cannot be turned as they are")
     m = body.Measures(Surface(_points(sculpt), _triangles(sculpt)))
@@ -201,7 +245,7 @@ def pose_arms(source, placement, sculpt, label):
     edges = np.array([tuple(e.vertices) for e in source.data.edges], np.int64)
     side, z = np.abs(points[:, 0]), points[:, 2]
     in_arm = (side > m.gap(z)) & (z > 0.35 * m.height)
-    shares = arm_shares(points, edges, in_arm, m.gap_x, m.armpit_z, m.shoulder_top, m.scale)
+    shares = arm_shares(points, edges, in_arm, joint, m.armpit_z, m.scale)
     posed = turned_out(points, shares, joint, ARM_ANGLE - hangs)
     back = to_placed.inverted()
     for v, point in zip(source.data.vertices, posed):
@@ -211,7 +255,7 @@ def pose_arms(source, placement, sculpt, label):
     print(f"HUMAN_BUILD_REFERENCE {label}: the arm hangs {hangs:.1f} degrees from straight down and is turned out to "
           f"{ARM_ANGLE:.0f} about the shoulder joint at {np.round(joint, 3).tolist()}; {part} of the bundle's "
           f"{len(points)} vertices take a part of the turn")
-    return joint
+    return joint, ARM_ANGLE - hangs
 
 
 def _points(mesh):
@@ -592,10 +636,16 @@ def build(out_path):
         placement = _placement(_points(sculpt), height)
         sculpt.transform(placement)
         # The arms are turned out in the bundle's own net, and the body is taken again.
-        joint = pose_arms(source, placement, sculpt, label)
+        joint, angle = pose_arms(source, placement, sculpt, label)
+        hanging = _points(sculpt)
         bpy.data.meshes.remove(sculpt)
         sculpt = _evaluated(source, SCULPT_LEVEL)
         sculpt.transform(placement)
+        # The stretched skin of the passage from the trunk to the arm is evened out.
+        edges = np.empty(len(sculpt.edges) * 2, np.int64)
+        sculpt.edges.foreach_get("vertices", edges)
+        sculpt.vertices.foreach_set("co", passage_evened(hanging, _points(sculpt), edges.reshape(-1, 2), joint, angle).ravel())
+        sculpt.update()
         # The build measures the arm from the joint it was turned about.
         sculpt["shoulder_joint"] = [float(c) for c in joint]
         base = _evaluated(source, 0)

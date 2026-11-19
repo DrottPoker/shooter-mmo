@@ -27,6 +27,8 @@ import sys
 import bmesh
 import bpy
 import numpy as np
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +39,12 @@ from art_pipeline.scene import EXPORT_COLLECTION  # noqa: E402
 LABELS = ("Male", "Female")
 # A triangle with a corner under this many degrees is a sliver, as the body checks count them.
 SLIVER_ANGLE = 5.0
+# A face of four corners that is bent shows a ridge along one of its two cuts and a valley along
+# the other, and only one of them is the reference's skin: over a fold, such as the armpit's, the
+# wrong cut stands out as a ridge where the skin has a hollow. Where both cuts leave every corner
+# over CUT_GOOD degrees on both bodies, the cut is the one whose middle lies nearer to the
+# reference's skin, when the two differ by more than CUT_NEARER a body, in metres.
+CUT_GOOD, CUT_NEARER = 15.0, 0.0005
 REFERENCE_COLLECTION = "Reference"
 # The islands of the head, the faces of the zone Head, lie on the image of the face material, every
 # other one on the body's.
@@ -83,7 +91,11 @@ def _load(path, names):
 
 
 def _net(path, label):
-    obj = _load(path, [f"Net_{label}"])[f"Net_{label}"]
+    loaded = _load(path, [f"Net_{label}", f"Reference_{label}"])
+    obj = loaded[f"Net_{label}"]
+    # How far a point lies from the reference's skin, for the choice of a bent face's cut.
+    reference = loaded[f"Reference_{label}"].data
+    tree = BVHTree.FromPolygons([tuple(v.co) for v in reference.vertices], [tuple(p.vertices) for p in reference.polygons])
     mesh = obj.data
     points = np.array([tuple(v.co) for v in mesh.vertices])
     faces = [tuple(p.vertices) for p in mesh.polygons]
@@ -95,7 +107,8 @@ def _net(path, label):
     place = {tuple(np.round(p, 7)): v for v, p in enumerate(points)}
     twin = np.array([place[tuple(np.round(p * (-1.0, 1.0, 1.0), 7))] for p in points])
     return {"points": points, "faces": faces, "zone": values["zone"], "part": values["part"],
-            "island": [names[i] for i in values["island"]], "seams": seams, "pinned": pinned, "twin": twin}
+            "island": [names[i] for i in values["island"]], "seams": seams, "pinned": pinned, "twin": twin,
+            "skin": lambda point: tree.find_nearest(Vector(point))[3]}
 
 
 def _smallest_corner(points, a, b, c):
@@ -152,7 +165,9 @@ def mend(nets, limit=SLIVER_ANGLE + 1.0, rounds=12, rate=0.5):
 
 def cut_faces(nets):
     """Every face starting at the corner from which it is best cut into triangles on both bodies:
-    Blender cuts a quad from its first corner to its third."""
+    Blender cuts a quad from its first corner to its third. A net may know its body's skin, as
+    how far a point lies from it: a bent face on the skin is then cut along its side of the
+    skin, where both cuts leave good triangles."""
     first = nets[LABELS[0]]["faces"]
     if any(net["faces"] != first for net in nets.values()):
         raise RuntimeError("the bodies differ in topology")
@@ -163,7 +178,14 @@ def cut_faces(nets):
             continue
         # A cut that folds the face is worse than any sliver.
         scores = [min(_cut_score(net["points"], *(face[shift:] + face[:shift])) for net in nets.values()) for shift in (0, 1)]
-        out.append(face[1:] + face[:1] if scores[1] > scores[0] else face)
+        turn = scores[1] > scores[0]
+        on_skin = all("skin" in net and not net.get("part", [0] * len(first))[len(out)] for net in nets.values())
+        if min(scores) >= CUT_GOOD and on_skin:
+            off = [sum(net["skin"]((net["points"][face[shift]] + net["points"][face[shift + 2]]) / 2) for net in nets.values())
+                   for shift in (0, 1)]
+            if abs(off[0] - off[1]) > CUT_NEARER * len(nets):
+                turn = off[1] < off[0]
+        out.append(face[1:] + face[:1] if turn else face)
     return out
 
 
