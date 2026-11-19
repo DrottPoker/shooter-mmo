@@ -21,11 +21,12 @@ from .surface import Loop
 TOES = ("Big", "Second", "Third", "Fourth", "Little")
 # The island the toes' faces carry until the build tool parts them into top and sole.
 TOE_ISLAND = "toes_R"
-# The rings of the fan cross the instep this far in front of the ankle ring's front, at a body
-# height of 1.79 m; the last one stands across the foot.
-# Four rings: the second to last then passes through the corner under the back of the heel, which
-# three rings left to one face.
-FAN_STEPS = (0.010, 0.020, 0.031, 0.042)
+# The rings of the fan: each has turned this share of the way from the ankle ring to a ring across
+# the foot, and crosses the instep this far in front of the ankle ring's front, at a body height of
+# 1.79 m. A quarter of the way the ring meets the back of the heel at half its height and half of
+# the way it lies under the heel, so two rings between them go around the heel's corner, which is
+# round and would else be one face.
+FAN_RINGS = ((0.25, 0.010), (0.34, 0.0135), (0.43, 0.017), (0.50, 0.020), (0.75, 0.031), (1.0, 0.042))
 # The ring behind the toes lies this far behind their webs, and its vertices on the foot's two
 # sides at least this far inside the foot's edge, at 1.79 m. One more ring of twelve lies halfway
 # from it to the ring across the foot, each vertex at its share of the foot's width there.
@@ -223,12 +224,12 @@ def build_foot(net: Net, foot: Foot):
     angle = np.arccos(float(np.clip(foot.shin @ forward, -1.0, 1.0)))
     turn_axis = _unit(np.cross(foot.shin, forward))
     rings = [ankle_ring]
-    for step, ahead in enumerate(FAN_STEPS, start=1):
-        a = angle * step / len(FAN_STEPS)
+    for share, ahead in FAN_RINGS:
+        a = angle * share
         normal = (foot.shin * np.cos(a) + np.cross(turn_axis, foot.shin) * np.sin(a)
                   + turn_axis * (turn_axis @ foot.shin) * (1 - np.cos(a)))
         through = foot.top(0.0, front + ahead * s)
-        near = through - Z * 0.03 * s - forward * 0.02 * s * (len(FAN_STEPS) - step)
+        near = through - Z * 0.03 * s - forward * 0.08 * s * (1.0 - share)
         loop = body.loop(through, normal, near=near)
         rings.append(net.add_ring(_ring_of_ten(loop, normal, lateral)))
     # The foot opens into a top, with its sides, and a sole: along its inner and its outer line.
