@@ -8,7 +8,10 @@ cage's eyes and its underside are taken out: the eye becomes an opening with a p
 the eyeball, the line between the lips is parted into an upper and a lower lip with a mouth cavity
 behind them, and the ring under the head is the top of the neck. The cage has no nostrils, which
 are finer than its faces: the two faces under the nose over each nostril are opened into a ring on
-the nostril's edge with a pocket behind it."""
+the nostril's edge with a pocket behind it. The cage's ear is a box that leaves the cage with the
+faces around it: the reference tool has taken the ear of the body's own control cage, which is
+built for an ear's folds, with the skin around it, and it is set into the hole of the subdivided
+net with a band of triangles on plain skin."""
 
 import math
 
@@ -83,11 +86,10 @@ MOUTH_TAPER = (1.0, 0.9, 0.55)
 MOUTH_ACROSS = (0.0, 0.45, 0.85)
 MOUTH_STEP = 0.006
 MOUTH_ROWS = ((0.022, 0.027, 0.014, 0.016), (0.054, 0.026, 0.012, 0.014))
-# The right ear: its faces, which stand out from the head. Its folds are finer than the net, so
-# its vertices are laid onto the reference's ear and then evened out in this many rounds, which
-# leaves the ear's outline and its hollow and takes out the crumples.
+# The right ear: the cage's faces of it, which stand out from the head as a box on a ring of the
+# cage's vertices. They leave the cage with the faces that touch that ring, which the reference
+# tool names, for the ear of the body's own control cage and the skin around it.
 EAR_FACES = (265, 266, 267, 271, 272, 273, 274, 275, 276, 298, 299, 303, 304, 305, 306, 307)
-EAR_SMOOTHING = 3
 # The teeth and the tongue behind the lips, at 1.79 m.
 TEETH_BEHIND_LIPS, TEETH_HALF_WIDTH, TEETH_DEPTH, TEETH_THICKNESS = 0.008, 0.024, 0.040, 0.005
 UPPER_TEETH_HEIGHT, LOWER_TEETH_HEIGHT = 0.009, 0.008
@@ -95,8 +97,16 @@ TONGUE_BEHIND_LIPS, TONGUE_BELOW_LIPS, TONGUE_LENGTH, TONGUE_HALF_WIDTH, TONGUE_
 
 
 class Head:
-    def __init__(self, m, cage_points, cage_faces, eye):
+    def __init__(self, m, cage_points, cage_faces, eye, ear):
+        """ear is the ear the reference tool took from the control cage, with the skin around it:
+        its points, its faces by those points, the cage's faces that leave the cage for it, the
+        cage's vertices around that hole, in order, the points of the patch's edge in order, and
+        the triangles of the band between the two: each three of a vertex of the hole's outline
+        in the subdivided net, by its place there, the cage's own at the even places and the
+        middles of its edges at the odd ones, or, below zero, a point of the patch's edge as -1
+        minus its place in that edge."""
         self.m = m
+        self.ear_points, self.ear_faces, self.ear_cut, self.ear_hole, self.ear_rim, self.ear_band = ear
         s = m.scale
         self.scale = s
         self.faces = [tuple(f) for f in cage_faces]
@@ -140,7 +150,7 @@ class Head:
         self.neck_top = [self.points[v] for v in NECK_RING]
         # The nostril: the outline of the cage's faces over it, its edge, and the places on the
         # edge that the outline's corners open to.
-        self.nostril_outline = _outline([self.faces[index] for index in NOSTRIL_FACES])
+        self.nostril_outline = outline([self.faces[index] for index in NOSTRIL_FACES])
         self.nostril_into, self.nostril_rim = self.nostril_edge()
         steps = np.linalg.norm(np.diff(np.concatenate([self.nostril_rim, self.nostril_rim[:1]]), axis=0), axis=1)
         self._nostril_along = np.concatenate([[0.0], np.cumsum(steps)])
@@ -425,8 +435,8 @@ class Head:
         return out
 
     def skins(self):
-        """The head's skin: the reference above the base of the neck. The ear's faces and the
-        faces under the jaw are laid onto the same skin under names of their own."""
+        """The head's skin: the reference above the base of the neck. The faces under the jaw are
+        laid onto the same skin under a name of their own, and the ear's faces have theirs."""
         m = self.m
         skin = m.surface.part(lambda c: (c[:, 2] > m.notch_z + 0.02 * m.scale) & (c[:, 0] > -0.03))
         return {"head": skin, "ear": skin, "throat": skin}
@@ -437,7 +447,7 @@ class Head:
         return {"head": HEAD_REACH * s, "ear": HEAD_REACH * s, "throat": THROAT_REACH * s}
 
 
-def _outline(faces):
+def outline(faces):
     """The vertices around a patch of faces that share edges, in the order the faces run."""
     onward = {}
     for face in faces:
@@ -449,9 +459,9 @@ def _outline(faces):
     while onward[loop[-1]] != first:
         loop.append(onward[loop[-1]])
         if len(loop) > len(onward):
-            raise RuntimeError("the faces over the nostril do not make one patch")
+            raise RuntimeError("the faces do not make one patch with one edge around it")
     if len(loop) != len(onward):
-        raise RuntimeError("the faces over the nostril do not make one patch")
+        raise RuntimeError("the faces do not make one patch with one edge around it")
     return loop
 
 
@@ -460,11 +470,12 @@ def build_head(net: Net, head: Head):
     zone = ZONE["Head"]
     drop = set(NECK_INNER) | set(EYE_SLIT)
     # The cage's vertices keep their places on the features; the vertices that subdividing adds are
-    # laid onto the reference. Two kinds of the cage's vertices may still move along the skin: the
-    # ear's, with the ring of the head it stands on, which are evened out with it, and the ring
-    # under the head, which lies on the plain skin of the neck and gives way where a face would
-    # fold.
-    loose = {v for index in EAR_FACES for v in head.faces[index]} | set(NECK_RING)
+    # laid onto the reference. The ring under the head may still move along the skin: it lies on
+    # the plain skin of the neck and gives way where a face would fold. The vertices that only the
+    # faces use which leave the cage for the ear are left out with them.
+    loose = set(NECK_RING)
+    around = {v for index, corners in enumerate(head.faces) if index not in head.ear_cut for v in corners}
+    drop |= {v for index in head.ear_cut for v in head.faces[index]} - around
     # The lids' edge and the line between the lips stay exactly where they are put.
     lines = set(EYE_RING) | set(LIP_LINE) | {LIP_CORNER}
     vertex = {}
@@ -480,7 +491,8 @@ def build_head(net: Net, head: Head):
     net.seam([vertex[v] for v in head.back_line()])
     # The lower lip takes its own vertices along the line between the lips.
     lower = {v: net.add(head.points[v], FIXED, PINNED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
-    skip = set(NECK_FACES) | set(EYE_FACES) | set(NOSTRIL_FACES)
+    skip = set(NECK_FACES) | set(EYE_FACES) | set(NOSTRIL_FACES) | set(head.ear_cut)
+    net.mark("ear_hole", [vertex[v] for v in head.ear_hole])
     for index, corners in enumerate(head.faces):
         if index in skip or any(v not in vertex for v in corners):
             continue
@@ -498,7 +510,7 @@ def build_head(net: Net, head: Head):
         else:
             # The faces at the ring under the head span the hollow under the jaw like the neck's.
             under = bool(set(corners) & set(NECK_RING))
-            net.face([vertex[v] for v in corners], zone, "ear" if index in EAR_FACES else "throat" if under else "head")
+            net.face([vertex[v] for v in corners], zone, "throat" if under else "head")
 
     # The neck's top ring is the opening under the head.
     neck_top = [vertex[v] for v in NECK_RING]
@@ -591,6 +603,23 @@ def build_head(net: Net, head: Head):
     net.mark("lip_upper", [vertex[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
     net.mark("lip_lower", [lower[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
     net.mark("lip_inner", rows[1])
+
+
+def graft_ear(fine: Net, coarse: Net, head: Head):
+    """Sets the ear into the hole of the subdivided net: the control cage's faces, whose vertices
+    stay exactly where they are, and the triangles of the band around them, which reach the
+    vertices around the hole: the cage's own and the ones that subdividing put between them."""
+    hole = coarse.marks["ear_hole"]
+    around = []
+    for vertex, after in zip(hole, hole[1:] + hole[:1]):
+        around += [vertex, fine.edge_point[(vertex, after) if vertex < after else (after, vertex)]]
+    ids = [fine.add(point, FIXED, PINNED) for point in head.ear_points]
+    fine.island = "head"
+    for face in head.ear_faces:
+        fine.face([ids[v] for v in face], ZONE["Head"], "ear")
+    rim = [ids[v] for v in head.ear_rim]
+    for triple in zip(head.ear_band[0::3], head.ear_band[1::3], head.ear_band[2::3]):
+        fine.face([around[k] if k >= 0 else rim[-1 - k] for k in triple], ZONE["Head"], "head")
 
 
 def refine_head(fine: Net, coarse: Net, head: Head):
