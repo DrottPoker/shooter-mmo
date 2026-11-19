@@ -1323,7 +1323,11 @@ The human base bodies are being built again from scratch, with the method of the
 and are written as assets of their own, `art/Characters/Human_Male_Next` and
 `art/Characters/Human_Female_Next`, beside the bodies the game uses. The
 reviewer approved their `model` stage on 2026-11-19, and they are committed in
-review: their `rig` stage waits, so they have no export. Their rig, and the move
+review: their `rig` stage waits, so they have no export. Their eyes were then
+built again for lids that close, as the next step's blinking needs, which the
+reviewer allowed; see the lids below. The new eyes need the `model` stage
+approved again, and until then the committed bodies are the ones approved
+before them. Their rig, and the move
 of everything that is fitted to a body, the clips, the garment cage, the
 garments, the textures, and the paint layers, come next, and then the new bodies
 take the names `Human_Male` and `Human_Female`.
@@ -1392,7 +1396,7 @@ the bundle's own pose.
 
 What is built:
 
-- **One cage for both bodies.** The coarse cage of the right half, 823 faces, is
+- **One cage for both bodies.** The coarse cage of the right half, 793 faces, is
   designed once and laid out on each body by measures of that body's own
   reference: rows of sixteen around the trunk, one of them through the navel
   and twice as close over the chest, with the side column at the body's widest
@@ -1401,8 +1405,8 @@ What is built:
   fanning under the arm, arms of eight around, legs of ten, hands with a ring
   per finger joint, and feet with rings around the corner of the heel and five
   toes of their own, each built like a finger with two rings. It is subdivided
-  once, laid onto the reference, relaxed along the surface, and mirrored: 7,112
-  faces, and 14,780 triangles with the eyeballs, the teeth, and the tongue.
+  once, laid onto the reference, relaxed along the surface, and mirrored: 7,292
+  faces, and 15,084 triangles with the eyeballs, the teeth, and the tongue.
   Every border between two body parts is a ring of the cage, and both bodies
   have the same faces in the same order.
 - **What is finer than the faces.** The subdivided net gets two things that its
@@ -1422,9 +1426,9 @@ What is built:
   last two vertices of its centre line under the chin, one of them on the ring
   under the head, would land on the floor of the reference's mouth, so they are
   laid along the skin instead, around the corner under the chin onto the
-  throat, at the cage's own spacing. The lids' edge is the edge of the eye's
-  opening as the eye is seen from in front, and each eye has a pocket for its
-  eyeball. The line between the lips is parted into two lips with a mouth
+  throat, at the cage's own spacing. The cage's eyes are too coarse for lids
+  that close, so they are built on their own; see the next point. The line
+  between the lips is parted into two lips with a mouth
   cavity behind them, and it runs along edges all the way to the mouth's
   corner: the one face with which the cage closes the corner is parted along
   the line into a face of each lip. The cage has no nostrils, which are finer
@@ -1435,6 +1439,35 @@ What is built:
   it moves out along the skin instead of cutting the nostril. The pocket behind
   the ring runs nearly straight in, as a nostril does, so its wall is not seen
   from in front, and it is an island of its own in the UV map.
+- **The lids.** The head cage closes each eye with a ring at the edge of its
+  opening and one band of faces out to the crease and the cheek, which
+  subdividing makes two rings: lids without the thickness of their margin,
+  which leave a slit when they close. The band leaves the cage, and `eye.py`
+  builds the lids in its place on the subdivided net, ring by ring, on 24
+  spokes, half planes through the eyeball's centre that hold the line of
+  sight, twelve steps of even length along each lid from one corner to the
+  other. The opening's outline is measured first in 96 directions around the
+  line of sight, as the spokes see it: its corners are where it reaches
+  furthest around the eyeball, beside the nose and on the outer side, where it
+  lies further round than the eye seen from in front shows. On each spoke the
+  reference's lid is the skin that rays from outside toward the eyeball's
+  centre meet first, and the rings lie on it: the inner edge on the eyeball,
+  0.4 mm off its surface; the lash line 1.5 degrees further out, where the
+  reference's margin turns into the front of the lid, so the margin between
+  the two has the reference's thickness, about 1 mm, thinning out over the
+  two spokes beside each corner, where the lids meet; two rings evenly on the
+  lid; the crease, where the lid has risen 1.2 mm above the lash line and at
+  least 8 degrees further out, below the fold of the brow over the upper lid
+  and where the lower lid meets the cheek, with the lid's width to it evened
+  out with the neighbouring spokes', so the rings on the lid do not wave; and a
+  ring between the crease and
+  the ring around the hole, laid onto the skin with the rest of the net. That
+  ring has two vertices fewer on each lid than the spokes and takes them in
+  with a triangle beside each corner, where the lids move least. A spoke whose
+  inner edge stands out beyond both its neighbours, where the lids part around
+  the eyeball's side in a corner, is laid between them. A pocket behind the
+  inner edge holds the eyeball, hidden under the lids. Closed by a turn about
+  the eyeball's centre, the lids meet margin to margin and leave no slit.
 - **The ears.** The head cage's ear is a box of sixteen faces, too coarse for an
   ear's folds. The ear is taken from the body's own control cage instead, the
   coarse net under the bundle's sculpt, which is built for the folds and has
@@ -1445,7 +1478,8 @@ What is built:
   thin on both bodies. A face of the control cage that is smaller than a body's
   faces may be loses its shortest edge, and one that is twisted too far to be
   cut into two triangles is evened out when the bodies are assembled. The ear
-  and its band are the only part of the net with faces of three corners.
+  and its band, the band around each eye's lids, and each eye's pocket are the
+  parts of the net with faces of three corners.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
   reference's eyeball per eye, a band of teeth per jaw, and a tongue.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
@@ -1484,8 +1518,9 @@ each body's arms hung and that they are turned out to 45 degrees, how much
 each part of each body grew, how
 near the head cage lies to the female one, a median under 1 mm, and how many
 faces of the control cage and triangles of the band set each ear into the head
-cage; `build.py` prints the measures it found, the navel and the nostril among
-them, and no line that starts with `HUMAN_BUILD_FAILED`, which names a face
+cage; `build.py` prints the measures it found, the navel, the nostril, and the
+lids at the eye's corners and in the middle of each lid among them, and no line
+that starts with `HUMAN_BUILD_FAILED`, which names a face
 that is wound the wrong way, a sliver, a fold, or an edge at which the net is
 tucked into itself, as it is where a vertex has landed on skin inside the
 reference's head; and `assemble.py` prints the triangles of each body and how
@@ -1498,7 +1533,7 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, and a bent quad cut along its side of the reference's skin, so a fold shows as a hollow and not as a ridge; the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
-| `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
+| `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `eye.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the lids of the eyes, measured on the reference spoke by spoke; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
 
 ## Animation Libraries
 
