@@ -38,9 +38,9 @@ TRUNK_COLUMNS = 8          # per half; column 4 is the side
 SIDE = 4
 ARM_RING = 8
 LEG_RING = 10
-# FAN_RINGS rings fan from the shoulder ring to the first ring square to the arm, and cross the gap
-# beside the chest this far below each other, at a body height of 1.79 m. Four rings keep the
-# round of the shoulder: with three, its outline turned 30 degrees at one vertex.
+# FAN_RINGS rings fan from the shoulder ring to the first ring square to the arm, and pass under
+# the armpit this far below each other, at a body height of 1.79 m. Four rings keep the round of
+# the shoulder: with three, its outline turned 30 degrees at one vertex.
 FAN_RINGS = 4
 FAN_STEP = 0.020
 FAN_FIRST = 0.040
@@ -418,10 +418,9 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     hole = net.marks["arm_hole"]
     upper = _unit(elbow - joint)
     lower = _unit(wrist - elbow)
-    # The fan turns about a line through the gap just below the armpit, from the plane of the
-    # shoulder ring to the plane square to the upper arm.
-    # The first ring crosses the gap FAN_FIRST below the armpit: nearer, its faces under the arm
-    # are slivers 3 mm wide.
+    # The fan turns about a line just below the armpit, from the plane of the shoulder ring to
+    # the plane square to the upper arm. The first ring passes FAN_FIRST below the armpit: nearer,
+    # its faces under the arm are slivers 3 mm wide.
     pivot = np.array([m.gap_x + 0.003 * s, 0.0, m.armpit_z - FAN_FIRST * s])
     angle = math.acos(float(np.clip(X @ upper, -1.0, 1.0)))
     turn_axis = _unit(np.cross(X, upper))
@@ -442,8 +441,9 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
         share = step / FAN_RINGS
         normal = turned(share)
         near = previous_centre + normal * 0.03 * s
-        # Each ring of the fan passes through its own point of the gap, a step further down the
-        # inside of the arm, so the hollow of the armpit keeps skin to stretch when the arm rises.
+        # Each ring of the fan passes through its own point under the armpit, a step further
+        # down, so it meets the inside of the arm a step further out and the hollow of the armpit
+        # keeps skin to stretch when the arm rises.
         through = pivot - Z * (FAN_STEP * (step - 1) * s)
         ring, loop = ring_at(through, normal, near, -Z if share < 1 else -X)
         rings.append(ring)
@@ -476,7 +476,7 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     net.seam([ring[0] for ring in rings])
     for index in range(len(rings) - 1):
         zone = ZONE["UpperArms"] if index < elbow_index else ZONE["Forearms"]
-        # The first two rows lie in the narrow gap under the arm.
+        # The first two rows lie under the arm, at the armpit.
         net.strip(rings[index], rings[index + 1], zone, "armpit" if index < 2 else "arm")
     net.mark("elbow", rings[elbow_index])
     net.mark("arm_end", rings[-1])
