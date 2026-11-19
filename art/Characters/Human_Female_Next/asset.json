@@ -1,0 +1,17 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Characters/Human_Female_Next.fbx",
+    "rootObjects": [
+        "Female"
+    ],
+    "triangleBudget": 15400,
+    "skeleton": "Humanoid",
+    "approvals": {
+        "model": {
+            "date": "2026-11-19",
+            "sourceSha256": "cc43b1de26c4a08898b03faae8cbff8ede5e70778c382123f4ae651090bc7bfc"
+        }
+    },
+    "export": null
+}
