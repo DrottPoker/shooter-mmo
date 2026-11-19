@@ -27,7 +27,7 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
-                 "_thin", "band", "EAR_MARGIN", numpy=True)
+                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "ARM_ROOT", "ARM_BELOW", numpy=True)
 head = load("human_build/head.py", "outline", "with_room", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
@@ -218,6 +218,59 @@ class ReferenceTests(unittest.TestCase):
     def test_a_way_that_cannot_go_on_says_so(self):
         with self.assertRaises(RuntimeError):
             reference._along_skin(lambda point: (0.0, self.RADIUS, 0.0), (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), 0.01)
+
+
+class PoseTests(unittest.TestCase):
+    """The turn of the arms: the shares of it along a net, and the turn itself."""
+
+    def test_values_even_out_between_the_fixed_ends_of_a_line(self):
+        edges = [(0, 1), (1, 2), (2, 3), (3, 4)]
+        fixed = [True, False, False, False, True]
+        out = reference.evened(5, edges, [1.0] * 4, fixed, [0.0, 9.0, 9.0, 9.0, 1.0])
+        np.testing.assert_allclose(out, [0.0, 0.25, 0.5, 0.75, 1.0], atol=1e-9)
+
+    def test_a_vertex_lies_nearer_to_the_value_of_the_neighbour_its_edge_weighs_more_for(self):
+        out = reference.evened(3, [(0, 1), (1, 2)], [1.0, 3.0], [True, False, True], [0.0, 0.0, 1.0])
+        np.testing.assert_allclose(out, [0.0, 0.75, 1.0], atol=1e-9)
+
+    def test_a_net_that_is_fixed_everywhere_keeps_its_values(self):
+        np.testing.assert_allclose(reference.evened(2, [(0, 1)], [1.0], [True, True], [0.25, 0.5]), [0.25, 0.5])
+
+    def shoulder(self):
+        """A line of four vertices over each shoulder of a body of 1.79 m: one on the trunk well
+        inside the plane of the shoulder ring, two over the round of the shoulder, and one on the
+        arm below the armpit. The left side is the mirror image of the right."""
+        right = np.array([(0.05, 0.0, 1.40), (0.20, 0.0, 1.40), (0.26, 0.0, 1.36), (0.30, 0.0, 1.25)])
+        points = np.concatenate([right, right * (-1.0, 1.0, 1.0)])
+        edges = [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7)]
+        in_arm = np.array([False, False, False, True] * 2)
+        return points, edges, in_arm
+
+    def test_the_arm_takes_the_whole_turn_and_the_trunk_none_and_the_shoulder_what_lies_between(self):
+        points, edges, in_arm = self.shoulder()
+        shares = reference.arm_shares(points, edges, in_arm, gap_x=0.19, armpit_z=1.30, shoulder_top=1.45, scale=1.0)
+        self.assertEqual((shares[0], shares[3]), (0.0, 1.0))
+        # Along one line the share grows with the way gone along it.
+        steps = np.linalg.norm(np.diff(points[:4], axis=0), axis=1)
+        np.testing.assert_allclose(shares[1:3], np.cumsum(steps)[:2] / steps.sum(), atol=1e-9)
+        np.testing.assert_allclose(shares[4:], shares[:4], atol=1e-12)
+
+    def test_a_vertex_of_the_arm_at_the_armpit_is_not_yet_turned_whole(self):
+        points, edges, in_arm = self.shoulder()
+        points[3, 2] = points[7, 2] = 1.30 - reference.ARM_BELOW / 2
+        shares = reference.arm_shares(points, edges, in_arm, gap_x=0.19, armpit_z=1.30, shoulder_top=1.45, scale=1.0)
+        # Nothing on these lines is turned whole now, so nothing of them turns.
+        np.testing.assert_allclose(shares, 0.0, atol=1e-12)
+
+    def test_an_arm_turns_out_about_its_shoulder_joint_and_the_left_as_its_mirror_image(self):
+        joint = np.array([0.2, 0.0, 1.4])
+        # A point of each arm 30 cm straight below its joint, and a point of the trunk.
+        points = np.array([(0.2, 0.01, 1.1), (-0.2, 0.01, 1.1), (0.0, 0.1, 1.0)])
+        out = reference.turned_out(points, [1.0, 1.0, 0.0], joint, 90.0)
+        np.testing.assert_allclose(out, [(0.5, 0.01, 1.4), (-0.5, 0.01, 1.4), (0.0, 0.1, 1.0)], atol=1e-12)
+        half = reference.turned_out(points, [0.5, 0.5, 0.0], joint, 90.0)
+        np.testing.assert_allclose(half[0], (0.2 + 0.3 * np.sqrt(0.5), 0.01, 1.4 - 0.3 * np.sqrt(0.5)), atol=1e-12)
+        np.testing.assert_allclose(half[1], half[0] * (-1.0, 1.0, 1.0), atol=1e-12)
 
 
 class EarTests(unittest.TestCase):

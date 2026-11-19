@@ -1,6 +1,7 @@
 """The reference meshes of the human base bodies, taken from the Human Base Meshes bundle v1.4.1 of
 Blender Studio (CC0): the realistic male and female bodies with their eyes, turned to face +Y,
-centred on x = 0, standing on z = 0, and scaled to the heights of the game's bodies.
+centred on x = 0, standing on z = 0, scaled to the heights of the game's bodies, and with their
+arms turned out to an A-pose.
 
     blender --background --factory-startup --disable-autoexec <bundle.blend> \
         --python tools/art/blender/human_build/reference.py -- <out.blend>
@@ -40,11 +41,11 @@ SCULPT_LEVEL = 2
 # The bundle's bodies stand with their arms hanging, the line from the shoulder joint to the wrist
 # 19 degrees from straight down. A body is bound to its skeleton best in the middle of what its arms
 # do, with the armpit open: the arms are turned out about the shoulder joints until that line is
-# ARM_ANGLE degrees from straight down. The bundle's own coarse net under the sculpt is turned, so the sculpt's detail
-# follows it. Each vertex takes a share of the turn: all of it on the arm from ARM_BELOW below the
-# armpit, none of it on the trunk ARM_ROOT inside the plane of the ring around the shoulder or
-# ARM_FLANK below the armpit, and between those the share that evens out along the net, so the
-# round of the shoulder and the skin of the armpit stretch evenly. Lengths at 1.79 m.
+# ARM_ANGLE degrees from straight down. The bundle's own coarse net under the sculpt is turned, so
+# the sculpt's detail follows it. Each vertex takes a share of the turn: all of it on the arm from
+# ARM_BELOW below the armpit, none of it on the trunk ARM_ROOT inside the plane of the ring around
+# the shoulder or ARM_FLANK below the armpit, and between those the share that evens out along the
+# net, so the round of the shoulder and the skin of the armpit stretch evenly. Lengths at 1.79 m.
 ARM_ANGLE = 45.0
 ARM_ROOT, ARM_FLANK, ARM_BELOW = 0.06, 0.05, 0.01
 HEAD = "Head - Generic Topology"
