@@ -16,6 +16,7 @@ cage takes on him the place it has on her, and the loops around the eyes, the mo
 the ear lie on the same features of both."""
 
 import math
+import os
 import sys
 
 import bpy
@@ -296,6 +297,7 @@ def build(out_path):
         reference.objects.link(bpy.data.objects.new(mesh.name, mesh))
         print(f"HUMAN_BUILD_REFERENCE {mesh.name}: {len(mesh.vertices)} vertices, {len(mesh.polygons)} faces")
     bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_path, compress=True, relative_remap=False)
     print(f"HUMAN_BUILD_SAVED {out_path}")
 

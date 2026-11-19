@@ -162,6 +162,7 @@ def build(label, out_path, parts):
         if smallest[index] < 35:
             print(f"HUMAN_BUILD   sharp face at {np.round(centres[index], 3).tolist()}: corners {smallest[index]:.0f}..{largest[index]:.0f}, "
                   f"area {area[index] * 1e6:.0f} mm2, zone {whole.zones[index]}")
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_path, compress=True, relative_remap=False)
     print(f"HUMAN_BUILD_SAVED {out_path}")
 
