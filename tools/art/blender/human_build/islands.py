@@ -7,7 +7,8 @@ The toes are parted the same way into the foot's top and its sole, whose seam th
 as the toes' webs.
 An ear stands out from the head, so its front and its back would lie on top of each other in the
 map: the faces of the ear that look back at the head are an island of their own, and its front
-stays part of the head's island."""
+stays part of the head's island. The back is one piece: the few faces inside the ear's folds that
+look back as well stay with the front."""
 
 import numpy as np
 
@@ -89,7 +90,8 @@ def part_toes(net: Net):
 
 def part_ears(net: Net, ear_skin="ear"):
     """Gives the back of each ear an island of its own: the faces of the ear that look back at the
-    head. A face that its neighbours outvote takes their side."""
+    head. A face that its neighbours outvote takes their side, and of the pieces that then look
+    back the largest is the ear's back."""
     normals = _normals(net)
     points = net.array()
     ears = [f for f, skin in enumerate(net.skins) if skin == ear_skin]
@@ -110,6 +112,20 @@ def part_ears(net: Net, ear_skin="ear"):
                     changed = True
             if not changed:
                 break
-        for f in faces:
-            if back[f]:
-                net.islands[f] = f"ear_back_{side}"
+        beside = {f: [] for f in faces if back[f]}
+        for a, b, _edge in pairs:
+            if back[a] and back[b]:
+                beside[a].append(b)
+                beside[b].append(a)
+        pieces, left = [], set(beside)
+        while left:
+            piece, todo = set(), [min(left)]
+            while todo:
+                f = todo.pop()
+                if f in left:
+                    left.discard(f)
+                    piece.add(f)
+                    todo.extend(beside[f])
+            pieces.append(piece)
+        for f in max(pieces, key=lambda piece: (len(piece), -min(piece)), default=()):
+            net.islands[f] = f"ear_back_{side}"

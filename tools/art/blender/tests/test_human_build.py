@@ -479,6 +479,19 @@ class IslandTests(unittest.TestCase):
         islands.part_ears(net)
         self.assertEqual(net.islands, ["head", "ear_back_R", "head"])
 
+    def test_the_back_of_an_ear_is_one_piece(self):
+        net = Net()
+        # A right ear with a back of two faces side by side, and, apart from them, one face
+        # inside a fold that looks back as well.
+        for point in [(1, 0, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1), (1, 1, 1), (1, 2, 1), (1, 5, 0), (1, 6, 0), (1, 6, 1), (1, 5, 1)]:
+            net.add(point)
+        net.island = "head"
+        net.quad(3, 4, 1, 0, 0, "ear")
+        net.quad(4, 5, 2, 1, 0, "ear")
+        net.quad(9, 8, 7, 6, 0, "ear")
+        islands.part_ears(net)
+        self.assertEqual(net.islands, ["ear_back_R", "ear_back_R", "head"])
+
 
 class AssembleTests(unittest.TestCase):
     def test_boxes_are_laid_out_without_overlap_inside_the_image(self):
