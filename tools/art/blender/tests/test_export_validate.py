@@ -106,7 +106,7 @@ class ColorTests(unittest.TestCase):
 
     def test_the_recorded_glows_and_colors_of_every_asset_are_hex_srgb(self):
         for name, manifest in manifests().items():
-            for material in manifest.get("export", {}).get("materials", []):
+            for material in (manifest.get("export") or {}).get("materials", []):
                 for key in ("baseColor", "emission"):
                     if key in material:
                         with self.subTest(asset=name, material=material["name"], key=key):
@@ -170,7 +170,7 @@ class NameRuleTests(unittest.TestCase):
 
     def test_every_recorded_material_of_every_asset_is_a_valid_material_name(self):
         for name, manifest in manifests().items():
-            for material in manifest.get("export", {}).get("materials", []):
+            for material in (manifest.get("export") or {}).get("materials", []):
                 with self.subTest(asset=name, material=material["name"]):
                     self.assertIsNotNone(validate.MATERIAL_PATTERN.match(material["name"]))
 
