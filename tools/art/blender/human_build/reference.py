@@ -103,19 +103,26 @@ EAR_ROOM, EAR_MARGIN = 0.012, 0.006
 EAR_LEAST = 1.2e-6
 BAND_TURNED = 1000.0
 # The female figure, as the reviewer asked for it: clearly female, with wide hips, a narrow waist,
-# and a larger bust that sits close together, without exaggeration. The bundle's female is slim and
-# athletic, so her reference is shaped by smooth, mirrored fields before the net is laid onto it:
-# the hips widen and the waist narrows by these shares, in bands at these shares of her height,
-# and each breast swells forward by BUST_FORWARD and moves BUST_INWARD toward the middle, in a
-# field that reaches BUST_REACH across the front of the chest about a point BUST_LOWER below and
-# BUST_INSIDE inside the breast's tip. A swell keeps the fold under the breast as soft as the
-# bundle's, where growing the breast about its root would deepen it. The field fades in between
-# the two depths of BUST_FRONT behind the tip, so the back keeps its shape. Lengths are in metres
-# on a body of 1.70 m. The head, the arms, and the legs below the knee keep the bundle's shape.
+# and a larger bust that sits close together, without exaggeration, and later a bust a little
+# larger and rounder, attractive. The bundle's female is slim and athletic, so her reference is
+# shaped by smooth, mirrored fields before the net is laid onto it: the hips widen and the waist
+# narrows by these shares, in bands at these shares of her height, and each breast swells forward
+# by BUST_FORWARD and moves BUST_INWARD toward the middle, in a field that reaches BUST_REACH
+# across the front of the chest about a point BUST_LOWER below and BUST_INSIDE inside the
+# breast's tip. The swell is flat over the field's middle and falls over its outer share
+# BUST_EDGE, so the breast moves forward whole and its sides and its lower half fill out, where a
+# swell that falls from the tip makes the breast pointed. The breast also swells by BUST_ROUND
+# about a point BUST_DEPTH behind its tip, out in every direction, which rounds its lower half and
+# its sides; toward the middle it moves no closer than it lies, so the two never meet. A swell
+# keeps the fold under the breast as soft as the bundle's, where growing the breast about its root
+# would deepen it. The field fades in between the two depths of BUST_FRONT behind the tip, so the
+# back keeps its shape. Lengths are in metres on a body of 1.70 m. The head, the arms, and the legs
+# below the knee keep the bundle's shape.
 HIPS_WIDER, HIPS_AT, HIPS_BAND = 0.075, 0.515, (0.36, 0.61)
 WAIST_NARROWER, WAIST_AT, WAIST_BAND = 0.065, 0.628, (0.565, 0.70)
-BUST_FORWARD, BUST_INWARD, BUST_REACH = 0.020, 0.014, 0.105
-BUST_LOWER, BUST_INSIDE = 0.010, 0.008
+BUST_FORWARD, BUST_INWARD, BUST_REACH = 0.022, 0.014, 0.105
+BUST_LOWER, BUST_INSIDE, BUST_EDGE = 0.002, 0.008, 0.7
+BUST_ROUND, BUST_DEPTH = 0.005, 0.045
 BUST_FRONT = (0.11, 0.05)
 BUST_BETWEEN = (0.70, 0.775)
 TRUNK_HALF_WIDTH = (0.235, 0.285)
@@ -314,6 +321,12 @@ def _bump(value, low, peak, high):
     return t * t * (3.0 - 2.0 * t)
 
 
+def _rise(value, low, high):
+    """A smooth rise from 0 at low to 1 at high, and 1 beyond."""
+    t = np.clip((np.asarray(value, float) - low) / (high - low), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
 def _nipple(points, height):
     """The right breast's frontmost point."""
     low, high = BUST_BETWEEN
@@ -337,15 +350,22 @@ def shape_female(points, height, nipple=None):
     out[:, 1] *= 1.0 - 0.5 * WAIST_NARROWER * waist
     nipple = _nipple(points, height) if nipple is None else nipple
     far, near = BUST_FRONT
-    facing = np.clip((far * s - (nipple[1] - points[:, 1])) / ((far - near) * s), 0.0, 1.0)
-    facing = facing * facing * (3.0 - 2.0 * facing)
+    facing = _rise(points[:, 1], nipple[1] - far * s, nipple[1] - near * s)
     for side in (1.0, -1.0):
         middle_x = side * (nipple[0] - BUST_INSIDE * s)
         middle_z = nipple[2] - BUST_LOWER * s
-        across = np.hypot(points[:, 0] - middle_x, points[:, 2] - middle_z)
-        weight = np.clip(1.0 - (across / (BUST_REACH * s)) ** 2, 0.0, 1.0) ** 2 * facing
+        across = np.hypot(points[:, 0] - middle_x, points[:, 2] - middle_z) / (BUST_REACH * s)
+        # Flat over the middle of the field and falling over its outer share.
+        weight = _rise(1.0 - across, 0.0, BUST_EDGE) * facing
         out[:, 1] += BUST_FORWARD * s * weight
         out[:, 0] -= side * BUST_INWARD * s * weight
+        # Out in every direction from a point behind the tip, but no closer to the middle.
+        centre = np.array([middle_x, nipple[1] - BUST_DEPTH * s, middle_z])
+        away = points - centre
+        away /= np.maximum(np.linalg.norm(away, axis=1), 1e-12)[:, None]
+        inward = side * away[:, 0] < 0.0
+        away[inward, 0] *= np.clip(np.abs(points[inward, 0]) / (0.05 * s), 0.0, 1.0)
+        out += BUST_ROUND * s * weight[:, None] * away
     return out, nipple
 
 

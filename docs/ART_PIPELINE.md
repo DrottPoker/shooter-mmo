@@ -1333,8 +1333,12 @@ Git in `artifacts/art-reference/human-base-meshes-v1.4.1` of the main checkout;
 `reference.py` names its SHA-256. Both references are shaped as the reviewer
 asked for, by smooth, mirrored fields before the net is laid onto it:
 
-- **The female figure.** Hips 7.5 % wider, a waist 6.5 % narrower, and each
-  breast 20 mm fuller and 14 mm nearer the middle, at 1.70 m.
+- **The female figure.** Hips 7.5 % wider, a waist 6.5 % narrower, and a bust
+  that sits close together, a little larger and round: each breast swells
+  forward 22 mm, flat over its middle so it moves forward whole, swells 5 mm
+  out in every direction from a point inside it, which rounds its lower half
+  and its sides, and lies 14 mm nearer the middle, at 1.70 m. The bust measures
+  95 cm around against 76 cm under the breasts.
 - **The male's groin is smooth.** The bundle's male has a bulge in the groin that
   stands out in the game. The two bodies of the bundle are sculpted on one net,
   so his groin takes the female's smooth form there, laid onto his body by the
