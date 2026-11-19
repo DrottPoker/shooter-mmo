@@ -27,15 +27,8 @@ KNUCKLES_BEFORE_WEB = 0.022
 MID_PALM = 0.46
 # The thumb's root: the four corners of its section at the web, moved this far into the palm.
 THUMB_ROOT = 0.018
-
-
-def _distance_to_path(points, path):
-    best = np.full(len(points), np.inf)
-    for a, b in zip(path[:-1], path[1:]):
-        ab = b - a
-        t = np.clip(((points - a) @ ab) / max(ab @ ab, 1e-18), 0.0, 1.0)
-        best = np.minimum(best, np.linalg.norm(points - (a + t[:, None] * ab), axis=1))
-    return best
+# A digit's own skin lies within this of its line, at 1.79 m.
+DIGIT_SKIN = 0.018
 
 
 class Hand:
@@ -85,17 +78,9 @@ class Hand:
 
     def skins(self):
         """The whole hand for the palm, and for each digit the skin around its own line."""
-        triangles = self.surface.triangles
-        centres = self.surface.points[triangles].mean(1)
-        all_digits = self.fingers + [self.thumb]
-        distances = np.array([_distance_to_path(centres, d.path) for d in all_digits])
-        nearest = distances.argmin(0)
         out = {"palm": self.surface}
-        for index, (name, digit) in enumerate(zip(FINGERS + ("Thumb",), all_digits)):
-            inward = digit.direction(1.0, window=0.2)
-            beyond = (centres - digit.path[-1]) @ inward > -0.008 * self.scale
-            keep = (nearest == index) & (distances[index] < 0.018 * self.scale) & beyond
-            out[f"digit_{name}"] = type(self.surface)(self.surface.points, triangles[keep])
+        out.update(digits.own_skins(self.surface, self.fingers + [self.thumb],
+                                    [f"digit_{name}" for name in FINGERS + ("Thumb",)], self.scale, DIGIT_SKIN))
         return out
 
 

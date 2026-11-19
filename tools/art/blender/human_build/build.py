@@ -59,6 +59,7 @@ def build(label, out_path, parts):
     started = time.time()
     surface = Surface.of_object(bpy.data.objects[f"Reference_{label}"])
     measures = body.Measures(surface)
+    print(f"HUMAN_BUILD {label}: navel at {measures.navel_z:.3f}, {measures.navel_depth * 1000:.1f} mm deep")
     print(f"HUMAN_BUILD {label}: height {measures.height:.3f}, legs part at {measures.leg_split:.3f}, armpit "
           f"{measures.armpit_z:.3f}, gap x {measures.gap_x:.3f}, shoulder top {measures.shoulder_top:.3f}")
     net = Net()
@@ -78,7 +79,10 @@ def build(label, out_path, parts):
         cage_points = [tuple(cage.matrix_world @ v.co) for v in cage.data.vertices]
         cage_faces = [tuple(p.vertices) for p in cage.data.polygons]
         eye = Surface.of_object(bpy.data.objects[f"Reference_{label}_Eye_R"])
-        head = heads.Head(measures, cage_points, cage_faces, eye)
+        graft = bpy.data.objects[f"HeadEar_{label}"]
+        ear = ([np.array(graft.matrix_world @ v.co) for v in graft.data.vertices], [tuple(p.vertices) for p in graft.data.polygons],
+               set(graft.data["cut"]), list(graft.data["hole"]), list(graft.data["rim"]), list(graft.data["band"]))
+        head = heads.Head(measures, cage_points, cage_faces, eye, ear)
         for line in head.report():
             print("HUMAN_BUILD", line)
     if "neck" in parts:
@@ -98,8 +102,10 @@ def build(label, out_path, parts):
     for problem in problems:
         print("HUMAN_BUILD_FAILED", problem)
     fine = net.subdivided()
+    body.refine_trunk(fine, net, measures)
     if head is not None:
         heads.refine_head(fine, net, head)
+        heads.graft_ear(fine, net, head)
     skins = dict(measures.skins())
     if hand is not None:
         skins.update(hand.skins())
@@ -108,22 +114,26 @@ def build(label, out_path, parts):
     if head is not None:
         skins.update(head.skins())
     fine.fit(skins, rounds=10, reaches={} if head is None else head.reaches(), nearest={"armpit"})
-    if head is not None:
-        # The ear with the ring of the head's side it stands on.
-        fine.smooth(fine.touching("ear"), heads.EAR_SMOOTHING)
     hidden = tuple(heads.HIDDEN_PARTS)
-    fine.mend(hidden)
-    for kind, faces in (("a sliver", fine.slivers()), ("folded", fine.folded(hidden=hidden))):
+    # The ear is the ear of the reference's own control cage: its folds and its twisted faces are
+    # its makers', and the mending and the checks for those leave it out.
+    folds = hidden + (("ear",) if head is not None else ())
+    fine.mend(folds)
+    for kind, faces in (("a sliver", fine.slivers()), ("folded", fine.folded(hidden=folds))):
         for face in faces:
             centre = np.mean([fine.points[v] for v in fine.faces[face]], axis=0)
             print(f"HUMAN_BUILD_FAILED the face at {np.round(centre, 4).tolist()} is {kind} whichever way it is cut")
     whole = fine.mirrored()
-    for a, b in whole.tucked(hidden=hidden):
+    # Two fingers or two toes lie against each other: the edge through their web is no tuck.
+    apart = tuple(name for name in skins if name.startswith(("digit_", "toe_")))
+    for a, b in whole.tucked(hidden=folds, apart=apart):
         middle = (np.asarray(whole.points[a], float) + np.asarray(whole.points[b], float)) / 2
         print(f"HUMAN_BUILD_FAILED the net is tucked into itself at {np.round(middle, 4).tolist()}: the faces on both "
               f"sides of an edge look toward each other")
     if hand is not None:
         islands.part_hands(whole, hand.palmar)
+    if foot is not None:
+        islands.part_toes(whole)
     if head is not None:
         islands.part_ears(whole)
     points = whole.array()
@@ -133,7 +143,7 @@ def build(label, out_path, parts):
         bpy.context.scene.collection.children.link(collection)
     _object(f"Cage_{label}", net, collection)
     _object(f"Net_{label}", whole, collection, distances)
-    triangles = 2 * len(whole.faces)
+    triangles = sum(len(face) - 2 for face in whole.faces)
     if head is not None:
         for name, part_points, part_faces, uvs in head.inner_parts():
             mesh = bpy.data.meshes.new(f"{label}_{name}")
@@ -155,7 +165,7 @@ def build(label, out_path, parts):
     print(f"HUMAN_BUILD {label}: cage {len(net.faces)} faces, net {len(whole.points)} vertices, {len(whole.faces)} faces, "
           f"{triangles} triangles, distance median {np.median(distances) * 1000:.2f} mm, 95 % {np.percentile(distances, 95) * 1000:.2f} mm, "
           f"max {distances.max() * 1000:.2f} mm, {time.time() - started:.0f} s")
-    area, smallest, largest, fold, centres = whole.quality()
+    area, smallest, largest, fold, centres, numbers = whole.quality()
     edges = whole.edges()
     lengths = np.array([np.linalg.norm(points[a] - points[b]) for a, b in edges])
     print(f"HUMAN_BUILD {label}: edges median {np.median(lengths) * 1000:.1f} mm, 5 % {np.percentile(lengths, 5) * 1000:.1f} mm, "
@@ -165,11 +175,11 @@ def build(label, out_path, parts):
     for index in worst:
         if fold[index] < 0.7 or smallest[index] < 35:
             print(f"HUMAN_BUILD   face at {np.round(centres[index], 3).tolist()}: fold {fold[index]:.2f}, corners "
-                  f"{smallest[index]:.0f}..{largest[index]:.0f} degrees, area {area[index] * 1e6:.0f} mm2, zone {whole.zones[index]}")
+                  f"{smallest[index]:.0f}..{largest[index]:.0f} degrees, area {area[index] * 1e6:.0f} mm2, zone {whole.zones[numbers[index]]}")
     for index in np.argsort(smallest)[:6]:
         if smallest[index] < 35:
             print(f"HUMAN_BUILD   sharp face at {np.round(centres[index], 3).tolist()}: corners {smallest[index]:.0f}..{largest[index]:.0f}, "
-                  f"area {area[index] * 1e6:.0f} mm2, zone {whole.zones[index]}")
+                  f"area {area[index] * 1e6:.0f} mm2, zone {whole.zones[numbers[index]]}")
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_path, compress=True, relative_remap=False)
     print(f"HUMAN_BUILD_SAVED {out_path}")

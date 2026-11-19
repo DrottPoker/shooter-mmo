@@ -191,13 +191,20 @@ class Net:
         return out
 
     def normals(self, points=None):
+        """The way each vertex looks: the sum of its faces' normals, each as long as twice the
+        face's area."""
         points = self.array() if points is None else points
-        faces = np.array(self.faces)
-        p = points[faces]
-        face_normals = np.cross(p[:, 2] - p[:, 0], p[:, 3] - p[:, 1])
         out = np.zeros_like(points)
+        quads = np.array([face for face in self.faces if len(face) == 4], int).reshape(-1, 4)
+        p = points[quads]
+        face_normals = np.cross(p[:, 2] - p[:, 0], p[:, 3] - p[:, 1])
         for k in range(4):
-            np.add.at(out, faces[:, k], face_normals)
+            np.add.at(out, quads[:, k], face_normals)
+        # A stitched part of the net, such as the ear, has faces of three corners too.
+        for face in self.faces:
+            if len(face) != 4:
+                p = points[list(face)]
+                out[list(face)] += np.cross(p, np.roll(p, -1, axis=0)).sum(0)
         return out / np.maximum(np.linalg.norm(out, axis=1), 1e-18)[:, None]
 
     def _held(self, v, point):
@@ -317,12 +324,13 @@ class Net:
                     found.append(index)
         return found
 
-    def tucked(self, limit=-0.75, hidden=()):
+    def tucked(self, limit=-0.75, hidden=(), apart=()):
         """The edges at which the net is tucked into itself, as pairs of vertices: the two faces
         of the edge look toward each other, and the ways they look agree less than the limit, as
         the cosine of the angle between them. Faces laid onto the hidden skins are left out. The
-        sharpest folds that a body has, between its fingers and between its toes, agree by about
-        -0.65; a ridge, however sharp, is no fold."""
+        sharpest folds within a part of a body agree by about -0.65; a ridge, however sharp, is no
+        fold. apart names the skins of parts that lie against each other, such as two toes: the
+        edge through their web, between a face of the one and a face of the other, is no tuck."""
         points = self.array()
         ways, centres = [], []
         for face in self.faces:
@@ -340,6 +348,8 @@ class Net:
         for edge, pair in sorted(beside.items()):
             if len(pair) == 2:
                 i, j = pair
+                if self.skins[i] != self.skins[j] and self.skins[i] in apart and self.skins[j] in apart:
+                    continue
                 toward = (centres[j] - centres[i]) @ (ways[i] - ways[j]) > 0.0
                 if toward and ways[i] @ ways[j] < limit:
                     found.append(edge)
@@ -377,11 +387,12 @@ class Net:
         self.points = [p for p in points]
 
     def quality(self):
-        """Per face: its area, its smallest and largest corner angle in degrees, and how far its
-        two halves are folded against each other (the cosine of the angle between the normals of
-        its two triangles, 1 for a flat face)."""
+        """Per face of four corners: its area, its smallest and largest corner angle in degrees,
+        how far its two halves are folded against each other (the cosine of the angle between the
+        normals of its two triangles, 1 for a flat face), its middle, and its number."""
         points = self.array()
-        faces = np.array(self.faces)
+        numbers = np.array([index for index, face in enumerate(self.faces) if len(face) == 4])
+        faces = np.array([self.faces[index] for index in numbers])
         p = points[faces]
         angles = []
         for k in range(4):
@@ -393,7 +404,7 @@ class Net:
         n2 = np.cross(p[:, 2] - p[:, 0], p[:, 3] - p[:, 0])
         area = (np.linalg.norm(n1, axis=1) + np.linalg.norm(n2, axis=1)) / 2
         fold = (n1 * n2).sum(1) / np.maximum(np.linalg.norm(n1, axis=1) * np.linalg.norm(n2, axis=1), 1e-18)
-        return area, angles.min(0), angles.max(0), fold, p.mean(1)
+        return area, angles.min(0), angles.max(0), fold, p.mean(1), numbers
 
     def mirrored(self, tolerance=1e-7):
         """The whole net: this half and its mirror image across x = 0, sharing the vertices held on

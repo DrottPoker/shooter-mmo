@@ -1,8 +1,9 @@
 """The logic of the human build that needs numpy but not Blender: the net's subdivision, mirror image,
 islands, seams, slivers, folds, and tucks, the islands that follow from the net's shape, the way
 along a skin that lays the head cage's line under the chin, the outline of the cage's faces over a
-nostril, and the cutting of faces and the layout of the UV map, on small nets and skins whose
-answers follow from the input. Without numpy this file is skipped; see test_numeric_logic.py and
+nostril, the ear's patch of the control cage and the band of triangles that sets it into the head
+cage, and the cutting of faces and the layout of the UV map, on small nets and skins whose answers
+follow from the input. Without numpy this file is skipped; see test_numeric_logic.py and
 blender_source.py."""
 
 import pathlib
@@ -25,8 +26,11 @@ from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
 
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
-reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", numpy=True)
-head = load("human_build/head.py", "_outline")
+reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
+                 "_thin", "band", "EAR_MARGIN", numpy=True)
+head = load("human_build/head.py", "outline", "with_room", numpy=True)
+body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
+            PINNED=PINNED)
 
 
 def strip_net():
@@ -173,6 +177,21 @@ class NetTests(unittest.TestCase):
         # The same walls falling away from the edge are a ridge.
         self.assertEqual(fold(0.2, -1.0).tucked(), [])
         self.assertEqual(fold(0.2, 1.0, skin="mouth").tucked(hidden=("mouth",)), [])
+        # Two toes lie against each other: the edge through their web is no tuck, and a fold
+        # within one toe still is.
+        self.assertEqual(fold(0.2, 1.0, skin="toe").tucked(apart=("skin", "toe")), [])
+        self.assertEqual(fold(0.2, 1.0).tucked(apart=("skin", "toe")), [(1, 4)])
+
+    def test_a_vertex_looks_the_way_of_its_faces_of_any_number_of_corners(self):
+        net = Net()
+        for point in [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0), (1.5, 2, 0)]:
+            net.add(point)
+        net.quad(0, 1, 2, 3, 0, "skin")
+        net.face((1, 4, 2), 0, "skin")
+        net.face((4, 5, 6, 2), 0, "skin")
+        np.testing.assert_allclose(net.normals(), np.tile([0.0, 0.0, 1.0], (7, 1)), atol=1e-12)
+        # The measures of a face's corners are those of the faces of four corners, by number.
+        self.assertEqual(net.quality()[-1].tolist(), [0, 2])
 
 
 class ReferenceTests(unittest.TestCase):
@@ -201,18 +220,204 @@ class ReferenceTests(unittest.TestCase):
             reference._along_skin(lambda point: (0.0, self.RADIUS, 0.0), (0.0, self.RADIUS, 0.0), (0.0, 0.0, -1.0), 0.01)
 
 
+class EarTests(unittest.TestCase):
+    """The ear's patch of a control cage and the band around it, on a flat cage of square faces that
+    looks along +X: eleven by eleven vertices a centimetre apart, with face 10 * row + column."""
+
+    def cage(self, outermost=(5, 5)):
+        points = np.array([(1.0, 0.01 * column, 0.01 * row) for row in range(11) for column in range(11)])
+        # The ear stands out from the head: the flood starts at the cage's outermost vertex.
+        points[11 * outermost[0] + outermost[1], 0] += 0.01
+        polys = [(11 * row + column, 11 * row + column + 1, 11 * row + column + 12, 11 * row + column + 11)
+                 for row in range(10) for column in range(10)]
+        return points, polys
+
+    @staticmethod
+    def square(low, high, top=None):
+        """The corners of a square in the plane of the cage and the middles of its sides, counter-
+        clockwise seen from +X."""
+        top = high if top is None else top
+        corners = np.array([(1.0, low, low), (1.0, high, low), (1.0, high, top), (1.0, low, top)])
+        return np.array([p for a, b in zip(corners, np.roll(corners, -1, axis=0)) for p in (a, (a + b) / 2)])
+
+    def test_a_point_is_as_far_from_a_closed_line_as_from_its_nearest_side(self):
+        line = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+        far = reference._to_line([(1, 1, 0), (1, 0.5, 0), (3, 3, 0), (0, 1, 1)], line)
+        np.testing.assert_allclose(far, [1.0, 0.5, np.sqrt(2.0), 1.0])
+
+    def test_the_edge_of_a_patch_runs_around_it_the_way_its_faces_run(self):
+        polys = [(0, 1, 4, 3), (1, 2, 5, 4), (9, 9, 9)]
+        rim = reference._rim(polys, [0, 1])
+        self.assertEqual(rim, [0, 1, 2, 5, 4, 3])
+
+    def test_a_patch_that_only_hangs_together_in_a_vertex_has_no_edge(self):
+        with self.assertRaises(RuntimeError):
+            reference._rim([(0, 1, 4, 3), (4, 5, 8, 7)], [0, 1])
+
+    def test_the_patch_is_the_faces_that_keep_clear_of_the_outline(self):
+        points, polys = self.cage()
+        # A face whose corner lies a centimetre inside the outline keeps the margin of 6 mm; the
+        # faces beside it reach the outline itself.
+        faces, rim = reference.ear_patch([self.square(0.02, 0.08)], [points], polys)
+        self.assertEqual(faces, [10 * row + column for row in range(3, 7) for column in range(3, 7)])
+        self.assertEqual(len(rim), 16)
+        self.assertEqual(set(rim), {v for f in faces for v in polys[f]} - {11 * row + column for row in (4, 5, 6) for column in (4, 5, 6)})
+
+    def test_a_face_must_keep_clear_on_every_body(self):
+        points, polys = self.cage()
+        # On the second body the outline's upper side lies half a centimetre lower: the upper row
+        # of the first body's faces comes within the margin of it.
+        faces, _rim = reference.ear_patch([self.square(0.02, 0.08), self.square(0.02, 0.08, top=0.075)], [points, points], polys)
+        self.assertEqual(faces, [10 * row + column for row in range(3, 6) for column in range(3, 7)])
+
+    def test_a_face_that_hangs_on_the_patch_by_one_edge_is_left_out(self):
+        points, polys = self.cage()
+        # The outline reaches two rows higher, but of the row above the square only one face is
+        # there: it would stick out of the patch's edge.
+        kept = [poly for f, poly in enumerate(polys) if f // 10 != 7 or f == 75]
+        faces, _rim = reference.ear_patch([self.square(0.02, 0.08, top=0.10)], [points], kept)
+        self.assertEqual([kept[f] for f in faces], [polys[10 * row + column] for row in range(3, 7) for column in range(3, 7)])
+
+    def test_an_outline_that_does_not_close_the_ear_off_is_refused(self):
+        points, polys = self.cage()
+        with self.assertRaises(RuntimeError):
+            reference.ear_patch([self.square(0.02, 0.08) + (0.5, 0.0, 0.0)], [points], polys)
+
+    def test_a_face_that_is_too_small_on_a_body_loses_its_shortest_edge(self):
+        # A needle of a triangle between two faces of a square millimetre and more:
+        #     3 . 4 5        vertices 4 and 5 lie a tenth of a millimetre apart
+        #     0 . 1 2
+        points = np.array([(0, 0, 0), (2, 0, 0), (4, 0, 0), (0, 2, 0), (2, 2, 0), (2.1, 2, 0)], float) / 1000
+        faces = [(0, 1, 4, 3), (1, 5, 4), (1, 2, 5)]
+        # Every face but the needle is large enough: the needle goes, and the faces beside it
+        # take the vertex that is left of its shortest edge.
+        self.assertEqual(reference.without_tiny(faces, [points], least=1.2e-6), [(0, 1, 5, 3), (1, 2, 5)])
+        self.assertEqual(reference.without_tiny(faces, [points], least=0.05e-6), faces)
+        # On a body of half the size the last face, of two square millimetres on the first body,
+        # is too small as well.
+        self.assertEqual(reference.without_tiny(faces, [points, points / 2], least=0.7e-6), [(0, 1, 5, 3)])
+
+    def test_a_triangle_of_equal_sides_is_not_thin_and_a_needle_is(self):
+        a, b = np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0])
+        self.assertAlmostEqual(reference._thin(a, b, np.array([0.5, np.sqrt(0.75), 0.0])), 1.0)
+        self.assertGreater(reference._thin(a, b, np.array([0.5, 0.01, 0.0])), 40.0)
+
+    def test_the_band_between_two_lines_is_closed_by_triangles_that_look_out(self):
+        outer, inner = self.square(0.0, 0.04), self.square(0.01, 0.03)[::2]
+        outward = np.tile([1.0, 0.0, 0.0], (len(inner), 1))
+        triangles, thinnest = reference.band([outer], [inner], outward)
+        # One triangle for each side of each line, and together they cover the band exactly.
+        self.assertEqual(len(triangles), len(outer) + len(inner))
+        lines = {"outer": outer, "inner": inner}
+        area = 0.0
+        for triangle in triangles:
+            a, b, c = (lines[name][place] for name, place in triangle)
+            normal = np.cross(b - a, c - a)
+            self.assertGreater(normal[0], 0.0)
+            area += normal[0] / 2
+        self.assertAlmostEqual(area, 0.04 ** 2 - 0.02 ** 2)
+        sides = {(triangle[0], triangle[1]) for triangle in triangles}
+        self.assertEqual(len({side for side in sides if side[0][0] == side[1][0] == "outer"}), len(outer))
+        self.assertEqual(len({side for side in sides if side[0][0] == side[1][0] == "inner"}), len(inner))
+        self.assertLess(thinnest, 3.0)
+
+    def test_a_band_whose_lines_run_against_each_other_is_refused(self):
+        outer, inner = self.square(0.0, 0.04), self.square(0.01, 0.03)[::2]
+        outward = np.tile([1.0, 0.0, 0.0], (len(inner), 1))
+        with self.assertRaises(RuntimeError):
+            reference.band([outer[::-1]], [inner], outward)
+
+
+class TrunkTests(unittest.TestCase):
+    """The navel and the line over the chest, on the front of a trunk as a flat cage that looks
+    along +Y: rows 6 cm apart of two faces 4 cm wide beside the mirror plane."""
+    ROWS = 13
+
+    class Flat:
+        """A body whose front is the plane y = 0, with its navel on the cage's row for it."""
+        scale = 1.0
+        navel_z = 0.06 * 4
+
+        @staticmethod
+        def front(x, z):
+            return np.array([x, 0.0, z])
+
+    def refined(self):
+        net = Net()
+        rows = [[net.add((0.08 - 0.04 * column, 0.0, 0.06 * row), *([MIRROR] if column == 2 else [])) for column in range(3)]
+                for row in range(self.ROWS)]
+        net.island = "front"
+        for lower, upper in zip(rows, rows[1:]):
+            for k in range(2):
+                net.quad(lower[k], lower[k + 1], upper[k + 1], upper[k], 2, "trunk")
+        net.mark("front_centre", [row[-1] for row in rows])
+        net.mark("front_beside", [row[-2] for row in rows])
+        fine = net.subdivided()
+        before = (len(fine.faces), fine.open_vertices())
+        body.refine_trunk(fine, net, self.Flat)
+        return fine, before
+
+    def test_the_navel_and_the_chest_line_part_faces_without_a_gap(self):
+        self.assertEqual((body.NAVEL_ROW, body.CHEST_LINE), (4, (8, 11)))
+        fine, (faces_before, open_before) = self.refined()
+        # The line parts eight faces at the centre line, from half a row below its first row to
+        # half a row above its last, and the navel's two faces become twelve.
+        self.assertEqual(len(fine.faces), faces_before + 8 + 10)
+        self.assertEqual(sorted(len(face) for face in fine.faces).count(3), 2 + 4)
+        self.assertEqual(fine.check(), [])
+        # The edge around the front is the one it had: no face has come loose from its neighbour.
+        self.assertEqual(fine.open_vertices() - open_before, {v for v in fine.open_vertices() if fine.points[v][0] == 0.0} - open_before)
+        points, area = fine.array(), 0.0
+        for face in fine.faces:
+            p = points[list(face)]
+            normal = np.cross(p, np.roll(p, -1, axis=0)).sum(0)
+            self.assertGreater(normal[1], 0.0)
+            area += normal[1] / 2
+        self.assertAlmostEqual(area, 0.08 * 0.06 * (self.ROWS - 1))
+        self.assertEqual(set(fine.islands), {"front"})
+        self.assertEqual(set(fine.skins), {"trunk"})
+
+    def test_the_vertices_of_the_navel_stay_where_they_are_put_and_on_the_mirror_plane(self):
+        fine, _before = self.refined()
+        pinned = [v for v, holds in enumerate(fine.holds) if PINNED in holds]
+        # The vertex in the navel's depth, and five on its edge and five halfway to it.
+        self.assertEqual(len(pinned), 11)
+        for v in pinned:
+            self.assertIn(FIXED, fine.holds[v])
+            self.assertEqual(MIRROR in fine.holds[v], fine.points[v][0] == 0.0)
+            self.assertLess(np.linalg.norm(fine.points[v] - (0.0, 0.0, self.Flat.navel_z)), 0.0131)
+
+
 class HeadTests(unittest.TestCase):
     def test_the_outline_of_two_faces_runs_around_both_the_way_they_run(self):
         # Two faces that share the edge between vertices 1 and 4:
         #     3 4 5
         #     0 1 2
-        loop = head._outline([(0, 1, 4, 3), (1, 2, 5, 4)])
+        loop = head.outline([(0, 1, 4, 3), (1, 2, 5, 4)])
         start = loop.index(0)
         self.assertEqual(loop[start:] + loop[:start], [0, 1, 2, 5, 4, 3])
 
     def test_faces_that_only_touch_in_a_vertex_have_no_outline(self):
         with self.assertRaises(RuntimeError):
-            head._outline([(0, 1, 4, 3), (4, 5, 8, 7)])
+            head.outline([(0, 1, 4, 3), (4, 5, 8, 7)])
+
+    def test_an_outline_makes_room_for_a_point_that_lies_too_near_to_one_of_its_edges(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        # The point lies half a unit inside the right edge, which owes it a whole unit.
+        moved = head.with_room(square, [(3.5, 2.0), (2.0, 2.0)], 1.0)
+        np.testing.assert_allclose(moved, [(0.0, 0.0), (4.5, 0.0), (4.5, 4.0), (0.0, 4.0)])
+
+    def test_an_outline_with_room_enough_stays_as_it_is(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        np.testing.assert_allclose(head.with_room(square, [(2.0, 2.0), (1.0, 3.0)], 1.0), square)
+
+    def test_a_corner_moves_with_both_of_its_edges(self):
+        square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+        # The point lies half a unit inside the right edge and the upper edge.
+        moved = head.with_room(square, [(3.5, 3.5)], 1.0)
+        np.testing.assert_allclose(moved[2], (4.5, 4.5))
+        for corner in moved:
+            self.assertGreaterEqual(4.5 + 1e-9, max(corner))
 
 
 class IslandTests(unittest.TestCase):
@@ -243,6 +448,25 @@ class IslandTests(unittest.TestCase):
         self.assertEqual(net.islands[7], "hand_palm_L")
         self.assertEqual({name.rsplit("_", 1)[0] for name in net.islands}, {"hand_back", "hand_palm"})
 
+    def test_the_toes_part_into_the_top_and_the_sole_of_the_foot(self):
+        # A toe on each side as a tube of four faces along +Y that stands on one edge: two of
+        # its faces look up and two down.
+        net = Net()
+        ring = [(1.5, 0.0), (1.0, 0.5), (0.5, 0.0), (1.0, -0.5)]
+        for sign in (1.0, -1.0):
+            for y in (0.0, 1.0):
+                for x, z in ring:
+                    net.add((sign * x, y, z))
+        net.island = "toes_R"
+        for k in range(4):
+            net.quad(k, k + 4, (k + 1) % 4 + 4, (k + 1) % 4, 6, "toe")
+        net.island = "toes_L"
+        for k in range(4):
+            net.quad((k + 1) % 4 + 8, (k + 1) % 4 + 12, k + 12, k + 8, 6, "toe")
+        islands.part_toes(net)
+        self.assertEqual(net.islands[:4], ["foot_top_R", "foot_top_R", "foot_sole_R", "foot_sole_R"])
+        self.assertEqual(net.islands[4:], ["foot_top_L", "foot_top_L", "foot_sole_L", "foot_sole_L"])
+
     def test_the_back_of_an_ear_is_an_island_of_its_own(self):
         net = Net()
         # Two faces of a right ear: one looks out from the head, along +X, one back at it.
@@ -254,6 +478,19 @@ class IslandTests(unittest.TestCase):
         net.quad(0, 1, 2, 3, 0, "head")
         islands.part_ears(net)
         self.assertEqual(net.islands, ["head", "ear_back_R", "head"])
+
+    def test_the_back_of_an_ear_is_one_piece(self):
+        net = Net()
+        # A right ear with a back of two faces side by side, and, apart from them, one face
+        # inside a fold that looks back as well.
+        for point in [(1, 0, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1), (1, 1, 1), (1, 2, 1), (1, 5, 0), (1, 6, 0), (1, 6, 1), (1, 5, 1)]:
+            net.add(point)
+        net.island = "head"
+        net.quad(3, 4, 1, 0, 0, "ear")
+        net.quad(4, 5, 2, 1, 0, "ear")
+        net.quad(9, 8, 7, 6, 0, "ear")
+        islands.part_ears(net)
+        self.assertEqual(net.islands, ["ear_back_R", "ear_back_R", "head"])
 
 
 class AssembleTests(unittest.TestCase):

@@ -1337,15 +1337,24 @@ the middle, at 1.70 m.
 
 What is built:
 
-- **One cage for both bodies.** The coarse cage of the right half, 808 faces, is
+- **One cage for both bodies.** The coarse cage of the right half, 823 faces, is
   designed once and laid out on each body by measures of that body's own
-  reference: rows of sixteen around the trunk, twice as close over the chest, an
-  arm hole of eight with four rings fanning under the arm, arms of eight around,
-  legs of ten, hands with a ring per finger joint, and feet whose toes are parted
-  by creases. It is subdivided once, laid onto the reference, relaxed along the
-  surface, and mirrored: 6,350 faces, and 13,380 triangles with the eyeballs,
-  the teeth, and the tongue. Every border between two body parts is a ring of
-  the cage, and both bodies have the same faces in the same order.
+  reference: rows of sixteen around the trunk, one of them through the navel
+  and twice as close over the chest, an arm hole of eight with four rings
+  fanning under the arm, arms of eight around, legs of ten, hands with a ring
+  per finger joint, and feet with rings around the corner of the heel and five
+  toes of their own, each built like a finger with two rings. It is subdivided
+  once, laid onto the reference, relaxed along the surface, and mirrored: 7,112
+  faces, and 14,780 triangles with the eyeballs, the teeth, and the tongue.
+  Every border between two body parts is a ring of the cage, and both bodies
+  have the same faces in the same order.
+- **What is finer than the faces.** The subdivided net gets two things that its
+  faces are too coarse for. The navel, a dent of about 7 mm that is found on the
+  reference, is a pocket at the vertex of the centre line that lies in it: a
+  ring on the dent's edge, a ring halfway down, and the vertex in its depth.
+  Over the chest a line of vertices beside the centre line parts the faces at
+  the centre line in two, for the flat bottom of the valley between the
+  breasts, which else is a V of two faces.
 - **The head.** The head is the bundle's own head cage, which is the coarse cage
   of the female body's head. The bundle's two bodies are sculpted on one net, so
   a place on her skin is the same feature on his: every vertex of the head cage
@@ -1363,11 +1372,23 @@ What is built:
   corner: the one face with which the cage closes the corner is parted along
   the line into a face of each lip. The cage has no nostrils, which are finer
   than its faces: the two faces under the nose that a nostril lies across are
-  opened into a ring of twelve vertices on the nostril's edge, found on the
-  reference as the nose is seen from below, with a pocket behind it that is an
-  island of its own in the UV map. The ear's folds are finer than the net, so
-  the ear is laid onto the reference's ear and then evened out: it keeps its
-  outline and its hollow.
+  opened into a ring of twelve vertices on the sharp edge of the nostril's
+  opening, found on the reference as the nose is seen from below. Where an edge
+  of those two faces lies nearer to that ring than 0.8 mm, on the nose's wing,
+  it moves out along the skin instead of cutting the nostril. The pocket behind
+  the ring runs nearly straight in, as a nostril does, so its wall is not seen
+  from in front, and it is an island of its own in the UV map.
+- **The ears.** The head cage's ear is a box of sixteen faces, too coarse for an
+  ear's folds. The ear is taken from the body's own control cage instead, the
+  coarse net under the bundle's sculpt, which is built for the folds and has
+  even rings of faces on the skin around the ear: 250 of its faces take the
+  place of the box and of the 17 faces of the head cage around it, with their
+  vertices where the bundle has them. A band of 53 triangles on plain skin joins
+  the two: of all ways to close the band, the one whose triangles are least
+  thin on both bodies. A face of the control cage that is smaller than a body's
+  faces may be loses its shortest edge, and one that is twisted too far to be
+  cut into two triangles is evened out when the bodies are assembled. The ear
+  and its band are the only part of the net with faces of three corners.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
   reference's eyeball per eye, a band of teeth per jaw, and a tongue.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
@@ -1401,22 +1422,24 @@ foreach ($label in "Male", "Female") {
 & $blender --background --factory-startup --disable-autoexec --python tools/art/blender/human_build/assemble.py -- $work art/Characters _Next
 ```
 
-Expected result: `reference.py` prints the height of both references and how
-near the head cage lies to the female one, a median under 1 mm; `build.py`
-prints the measures it found and no line that starts with `HUMAN_BUILD_FAILED`,
-which names a face that is wound the wrong way, a sliver, a fold, or an edge at
-which the net is tucked into itself, as it is where a vertex has landed on skin
-inside the reference's head; and `assemble.py` prints the triangles of each body and how much of each image its
-islands fill, and writes both files. The same input gives the same bodies. A
-changed file needs its `model` stage approved again.
+Expected result: `reference.py` prints the height of both references, how
+near the head cage lies to the female one, a median under 1 mm, and how many
+faces of the control cage and triangles of the band set each ear into the head
+cage; `build.py` prints the measures it found, the navel and the nostril among
+them, and no line that starts with `HUMAN_BUILD_FAILED`, which names a face
+that is wound the wrong way, a sliver, a fold, or an edge at which the net is
+tucked into itself, as it is where a vertex has landed on skin inside the
+reference's head; and `assemble.py` prints the triangles of each body and how
+much of each image its islands fill, and writes both files. The same input
+gives the same bodies. A changed file needs its `model` stage approved again.
 
 | Script | What it does |
 | --- | --- |
-| `reference.py` | Takes the two bodies with their eyeballs from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, and lays the head cage onto both heads. |
+| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, shapes the female, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
-| `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs; of the hand and its fingers; of the foot; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm and the back of each ear. |
+| `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
 
 ## Animation Libraries
 

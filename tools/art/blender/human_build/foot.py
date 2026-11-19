@@ -6,39 +6,47 @@ and one on its outer line, with four over the top and four under the sole, so th
 into a top and a sole. Two triangles at the sides of the middle of the foot, which does not bend,
 take the ring to twelve for the five toes.
 
-The toes lie against each other, so they are no tubes of their own: six lines run forward over the
-top and six under the sole, the inner four of each in the creases between the toes, and the rings
-of twelve cross them behind the toes, at the toes' roots, at their middles, and at the notches
-where their tips part. Each toe ends in four triangles to its tip, which subdividing rounds."""
+The toes are digits of their own, as the fingers are: each is traced from its tip inward to where
+it joins the toe beside it or the foot. The ring at the toes' webs is a ladder of six vertices over
+the top and six under the sole, so two toes share the edge through their web, and each toe has two
+rings of four of its own and ends in four triangles to its tip, which subdividing rounds."""
 
 import numpy as np
 
+from . import digits
 from .body import ZONE, Z, _unit
 from .net import Net
 from .surface import Loop
 
 TOES = ("Big", "Second", "Third", "Fourth", "Little")
-# The rings of the fan cross the instep this far in front of the ankle ring's front, at a body
-# height of 1.79 m; the last one stands across the foot.
-# Four rings: the second to last then passes through the corner under the back of the heel, which
-# three rings left to one face.
-FAN_STEPS = (0.010, 0.020, 0.031, 0.042)
-# How far behind its notch each of the six lines reaches the toes' roots, from the big toe's
-# inner side to the little toe's outer side.
-ROOT_BEHIND_NOTCH = (0.040, 0.036, 0.030, 0.028, 0.026, 0.024)
-# The outer lines' notches lie this far behind the tip of the big and the little toe.
-SIDE_NOTCH = (0.014, 0.010)
-# A crease between two toes ends this far behind the tip of the shorter of them.
-NOTCH_BEHIND_TIP = 0.005
-# The outer lines lie this far inside the foot's edge, and no more than this share of the way from
-# the edge to the nearest crease, so a narrow little toe keeps its width.
-SIDE_INSET, SIDE_SHARE = 0.007, 0.35
-BALL_BEHIND_ROOTS = 0.022
+# The island the toes' faces carry until the build tool parts them into top and sole.
+TOE_ISLAND = "toes_R"
+# The rings of the fan: each has turned this share of the way from the ankle ring to a ring across
+# the foot, and crosses the instep this far in front of the ankle ring's front, at a body height of
+# 1.79 m. A quarter of the way the ring meets the back of the heel at half its height and half of
+# the way it lies under the heel, so two rings between them go around the heel's corner, which is
+# round and would else be one face.
+FAN_RINGS = ((0.25, 0.010), (0.34, 0.0135), (0.43, 0.017), (0.50, 0.020), (0.75, 0.031), (1.0, 0.042))
+# The ring behind the toes lies this far behind their webs, and its vertices on the foot's two
+# sides at least this far inside the foot's edge, at 1.79 m. One more ring of twelve lies halfway
+# from it to the ring across the foot, each vertex at its share of the foot's width there.
+BALL_BEHIND_WEBS = 0.020
+SIDE_INSET = 0.006
 # The creases are looked for this far behind the toes' front outline.
 CREASE_BEHIND_OUTLINE = 0.012
 BIN = 0.002
-# The skin between two toes is at least this thick, at 1.79 m.
-WEB_THICKNESS = 0.003
+# The skin of the web between two toes is at least this thick, and it is looked for up to this
+# far behind the place where the toes' rings at their webs end, at 1.79 m.
+WEB_THICKNESS, WEB_BEHIND = 0.003, 0.025
+# A toe is traced from its tip in sections straight across the foot, which a toe lies along, and
+# where a section is TOE_JOINED times as long as the longest before it, and the trace has left it
+# where a section is shorter than the share TOE_LEFT of that; both are looked for from TOE_DOME
+# behind the tip on, at 1.79 m. Its rings lie at these shares of its free length, from the
+# tip (0) to the web (1): the ring at the web, and its own two.
+TOE_STEP, TOE_DOME, TOE_JOINED, TOE_LEFT = 0.002, 0.006, 1.35, 0.5
+TOE_WEB_RING, TOE_RINGS = 0.97, (0.56, 0.20)
+# A toe's own skin lies within this of its line, at 1.79 m.
+TOE_SKIN = 0.021
 
 
 class Foot:
@@ -109,6 +117,12 @@ class Foot:
             u = float((inner + outer) / 2 if at_edge else peak)
             self.tip_u.append(u)
             self.tip_v.append(self.reach(u))
+        # Each toe from its tip to its web.
+        self.toes = [digits.march(self.surface, self.tip(index), self.forward, step=TOE_STEP * s, reach=0.08 * s,
+                                  dome=TOE_DOME * s, jump=TOE_JOINED, least=TOE_LEFT, straight=True) for index in range(5)]
+        for name, toe in zip(TOES, self.toes):
+            if toe.length < 0.006 * s:
+                raise RuntimeError(f"the {name} toe is free for {toe.length * 1000:.0f} mm only")
 
     def reach(self, u):
         """How far forward the toes reach at a place across the foot."""
@@ -118,10 +132,17 @@ class Foot:
     def report(self):
         return [f"foot forward {np.round(self.forward, 3).tolist()}; toe tips across {np.round(np.array(self.tip_u) * 1000).astype(int).tolist()} mm, "
                 f"forward {np.round(np.array(self.tip_v) * 1000).astype(int).tolist()} mm; notches across "
-                f"{np.round(np.array(self.notch_u) * 1000).astype(int).tolist()} mm, forward {np.round(np.array(self.notch_v) * 1000).astype(int).tolist()} mm"]
+                f"{np.round(np.array(self.notch_u) * 1000).astype(int).tolist()} mm, forward {np.round(np.array(self.notch_v) * 1000).astype(int).tolist()} mm",
+                "toes free for " + ", ".join(f"{toe.length * 1000:.0f}" for toe in self.toes) + " mm, around at the web "
+                + ", ".join(f"{toe.girths[-1] * 1000:.0f}" for toe in self.toes) + " mm"]
 
     def at(self, u, v, z=0.0):
         return self.ankle + self.lateral * u + self.forward * v + Z * (z - self.ankle[2])
+
+    def across_forward(self, point):
+        """How far across the foot and how far forward a point lies."""
+        rel = np.asarray(point, float) - self.ankle
+        return float(rel @ self.lateral), float(rel @ self.forward)
 
     def top(self, u, v):
         """The point on top of the foot at a place across and forward, or None beside the foot."""
@@ -132,36 +153,18 @@ class Foot:
         hit = self.surface.ray(self.at(u, v, -0.05), Z, 0.4)
         return None if hit is None else hit[0]
 
-    def crease(self, u, v, top=True, reach=0.0025):
-        """The point of the crease between two toes near a place: the lowest point of the top, or
-        the highest of the underside, within a few millimetres across."""
-        best = None
-        for du in np.linspace(-reach, reach, 9):
-            point = self.top(u + du, v) if top else self.under(u + du, v)
-            if point is None:
-                continue
-            depth = point[2] if top else -point[2]
-            if best is None or depth < best[0]:
-                best = (depth, point)
-        return None if best is None else best[1]
-
-    def web(self, u, v, top, under):
-        """The crease's two points between two toes, with skin between them: where the toes stand
-        apart, a ray from above and one from below pass each other in the gap, and the points
-        are set WEB_THICKNESS apart about the middle height of the toes beside the gap, so the
-        toes are joined by a thin web as toes that lie against each other are by their crease."""
-        thickness = WEB_THICKNESS * self.scale
-        if top is not None and under is not None and top[2] - under[2] >= thickness:
-            return top, under
-        beside = []
-        for du in (-0.006 * self.scale, 0.006 * self.scale):
-            above, below = self.top(u + du, v), self.under(u + du, v)
-            if above is not None and below is not None and above[2] > below[2]:
-                beside.append((above[2] + below[2]) / 2)
-        if not beside:
-            return None, None
-        middle = float(np.mean(beside))
-        return self.at(u, v, middle + thickness / 2), self.at(u, v, middle - thickness / 2)
+    def web(self, over, under):
+        """The skin of the web between two toes, over it and under it, at a place between the
+        toes' corners over and under them. Where the toes still stand apart there, a ray from above
+        and one from below pass between them: the web is the first place behind it where both meet
+        skin with the web's thickness between."""
+        s = self.scale
+        u, v = self.across_forward((np.asarray(over, float) + np.asarray(under, float)) / 2)
+        for behind in np.arange(0.0, WEB_BEHIND * s + 1e-9, 0.001 * s):
+            above, below = self.top(u, v - behind), self.under(u, v - behind)
+            if above is not None and below is not None and above[2] - below[2] >= WEB_THICKNESS * s:
+                return above, below
+        raise RuntimeError(f"the foot has no web between its toes {u * 1000:.0f} mm across, {v * 1000:.0f} mm in front of the ankle")
 
     def edges(self, v):
         """The foot's inner and outer edge across at a place forward."""
@@ -174,7 +177,10 @@ class Foot:
         return self.points[np.where(near)[0][int(np.argmax(self.v[near]))]]
 
     def skins(self):
-        return {"foot": self.surface}
+        """The whole foot, and for each toe the skin around its own line."""
+        out = {"foot": self.surface}
+        out.update(digits.own_skins(self.surface, self.toes, [f"toe_{name}" for name in TOES], self.scale, TOE_SKIN))
+        return out
 
 
 def _from_inner_line(loop: Loop, normal, lateral):
@@ -195,6 +201,16 @@ def _ring_of_ten(loop: Loop, normal, lateral):
     return loop.resample(10, shares)
 
 
+def _toe_ring(foot: Foot, toe, share):
+    """A toe's section straight across the foot at a share of its length, as four points: the
+    corner under the toe on the foot's inner side first, then the corner over it on that side, and
+    on around the outer side."""
+    origin, normal = toe.point(share), foot.forward
+    loop = foot.surface.loop(origin, normal, near=origin).oriented(normal)
+    start = -foot.lateral - Z
+    return loop.start_at(start - (start @ normal) * normal, normal).resample(4)
+
+
 def build_foot(net: Net, foot: Foot):
     s = foot.scale
     zone = ZONE["Feet"]
@@ -208,12 +224,12 @@ def build_foot(net: Net, foot: Foot):
     angle = np.arccos(float(np.clip(foot.shin @ forward, -1.0, 1.0)))
     turn_axis = _unit(np.cross(foot.shin, forward))
     rings = [ankle_ring]
-    for step, ahead in enumerate(FAN_STEPS, start=1):
-        a = angle * step / len(FAN_STEPS)
+    for share, ahead in FAN_RINGS:
+        a = angle * share
         normal = (foot.shin * np.cos(a) + np.cross(turn_axis, foot.shin) * np.sin(a)
                   + turn_axis * (turn_axis @ foot.shin) * (1 - np.cos(a)))
         through = foot.top(0.0, front + ahead * s)
-        near = through - Z * 0.03 * s - forward * 0.02 * s * (len(FAN_STEPS) - step)
+        near = through - Z * 0.03 * s - forward * 0.08 * s * (1.0 - share)
         loop = body.loop(through, normal, near=near)
         rings.append(net.add_ring(_ring_of_ten(loop, normal, lateral)))
     # The foot opens into a top, with its sides, and a sole: along its inner and its outer line.
@@ -222,66 +238,81 @@ def build_foot(net: Net, foot: Foot):
         net.strip(lower, upper, zone, "foot", islands=[top] * 5 + [sole] * 5)
     across = rings[-1]
 
-    # The six lines over the top and under the sole, at the notches, the middles, and the roots.
-    outline_v = [foot.tip_v[0] - SIDE_NOTCH[0] * s] + list(foot.notch_v) + [foot.tip_v[4] - SIDE_NOTCH[1] * s]
-    outline_v = [v - 0.0015 for v in outline_v]
-    root_v = [v - behind * s for v, behind in zip(outline_v, ROOT_BEHIND_NOTCH)]
-    # The ring behind the toes follows their roots, which lie farther back toward the little toe.
-    ball_v = [v - BALL_BEHIND_ROOTS * s for v in root_v]
-    # A crease ends where the shorter of its two toes ends: beside a longer toe the front outline
-    # lies farther forward than that.
-    notch_v = list(outline_v)
-    for i in range(1, 5):
-        notch_v[i] = min(notch_v[i], min(foot.tip_v[i - 1], foot.tip_v[i]) - NOTCH_BEHIND_TIP * s)
+    # The toes' rings, and the ladder at their webs: the big toe's inner corners, the little toe's
+    # outer ones, and between two toes the skin of their web, over the top and under the sole.
+    toe_rings = [[_toe_ring(foot, toe, share) for share in (TOE_WEB_RING,) + TOE_RINGS] for toe in foot.toes]
+    over, under = [toe_rings[0][0][1]], [toe_rings[0][0][0]]
+    for inner, outer in zip(toe_rings[:-1], toe_rings[1:]):
+        above, below = foot.web((inner[0][2] + outer[0][1]) / 2, (inner[0][3] + outer[0][0]) / 2)
+        over.append(above)
+        under.append(below)
+    over.append(toe_rings[4][0][2])
+    under.append(toe_rings[4][0][3])
 
-    def ring_at(depths, creased):
-        top, sole = [], []
-        for i, v in enumerate(depths):
-            if i in (0, 5):
-                inner, outer = foot.edges(v)
-                if i == 0:
-                    u = inner + min(SIDE_INSET * s, SIDE_SHARE * (foot.notch_u[0] - inner))
-                else:
-                    u = outer - min(SIDE_INSET * s, SIDE_SHARE * (outer - foot.notch_u[3]))
-                t, b = foot.top(u, v), foot.under(u, v)
-            else:
-                u = foot.notch_u[i - 1]
-                t = foot.crease(u, v, top=True) if creased else foot.top(u, v)
-                b = foot.crease(u, v, top=False) if creased else foot.under(u, v)
-                if creased:
-                    t, b = foot.web(u, v, t, b)
-            if t is None or b is None:
-                raise RuntimeError(f"the foot has no skin at line {i}, {v * 1000:.0f} mm in front of the ankle")
-            top.append(net.add(t))
-            sole.append(net.add(b))
-        return top + sole[::-1]
-
-    ball = ring_at(ball_v, creased=False)
-    roots = ring_at(root_v, creased=True)
-    middles = ring_at([(a + b) / 2 for a, b in zip(notch_v, root_v)], creased=True)
-    notches = ring_at(notch_v, creased=True)
+    # The ring behind the toes, a step behind each vertex of the ladder.
+    ball_over, ball_under = [], []
+    for index, (a, b) in enumerate(zip(over, under)):
+        row = []
+        for point, ray in ((a, foot.top), (b, foot.under)):
+            u, v = foot.across_forward(point)
+            v -= BALL_BEHIND_WEBS * s
+            inner, outer = foot.edges(v)
+            u = float(np.clip(u, inner + SIDE_INSET * s, outer - SIDE_INSET * s))
+            found = ray(u, v)
+            if found is None:
+                raise RuntimeError(f"the foot has no skin behind the toes at line {index}, {v * 1000:.0f} mm in front of the ankle")
+            row.append(found)
+        ball_over.append(row[0])
+        ball_under.append(row[1])
+    # The ring across the middle of the foot, halfway from the ring of ten to the ring behind the
+    # toes: every vertex at the share of the foot's width that its vertex behind the toes has.
+    back = float(np.mean([foot.across_forward(net.points[v])[1] for v in across]))
+    middle_over, middle_under = [], []
+    for index, (a, b) in enumerate(zip(ball_over, ball_under)):
+        row = []
+        for point, ray in ((a, foot.top), (b, foot.under)):
+            u, v = foot.across_forward(point)
+            inner, outer = foot.edges(v)
+            share = (u - inner) / (outer - inner)
+            v = (v + back) / 2
+            inner, outer = foot.edges(v)
+            found = ray(inner + share * (outer - inner), v)
+            if found is None:
+                raise RuntimeError(f"the foot has no skin across its middle at line {index}, {v * 1000:.0f} mm in front of the ankle")
+            row.append(found)
+        middle_over.append(row[0])
+        middle_under.append(row[1])
+    middle = net.add_ring(middle_over) + net.add_ring(middle_under)[::-1]
+    ball = net.add_ring(ball_over) + net.add_ring(ball_under)[::-1]
+    over, under = net.add_ring(over), net.add_ring(under)
+    webs = over + under[::-1]
 
     # From the ring of ten across the foot to the ring of twelve, with a triangle at each side.
     net.island = top
     for i in range(5):
-        net.quad(across[i], across[i + 1], ball[i + 1], ball[i], zone, "foot")
-    net.face((across[5], ball[6], ball[5]), zone, "foot")
+        net.quad(across[i], across[i + 1], middle[i + 1], middle[i], zone, "foot")
+    net.face((across[5], middle[6], middle[5]), zone, "foot")
     net.island = sole
     for i in range(5, 10):
-        net.quad(across[i], across[(i + 1) % 10], ball[i + 2], ball[i + 1], zone, "foot")
+        net.quad(across[i], across[(i + 1) % 10], middle[i + 2], middle[i + 1], zone, "foot")
     net.island = top
-    net.face((across[0], ball[0], ball[11]), zone, "foot")
+    net.face((across[0], middle[0], middle[11]), zone, "foot")
     # Of the rings of twelve, the faces at the foot's two edges belong to the top.
     twelve = [top] * 6 + [sole] * 5 + [top]
-    net.strip(ball, roots, zone, "foot", islands=twelve)
-    net.strip(roots, middles, zone, "foot", islands=twelve)
-    net.strip(middles, notches, zone, "foot", islands=twelve)
+    net.strip(middle, ball, zone, "foot", islands=twelve)
+    net.strip(ball, webs, zone, "foot", islands=twelve)
 
-    # Each toe ends in four triangles to its tip.
-    for index, name in enumerate(TOES):
-        ring = [notches[11 - index], notches[index], notches[index + 1], notches[10 - index]]
-        tip = net.add(foot.tip(index))
+    # Each toe from the ladder to its last ring, closed by four triangles to its tip. The build
+    # tool parts the toes' faces into the foot's top and its sole by the way they look.
+    net.island = TOE_ISLAND
+    for index, (name, toe) in enumerate(zip(TOES, foot.toes)):
+        skin = f"toe_{name}"
+        previous = [under[index], over[index], over[index + 1], under[index + 1]]
+        for points in toe_rings[index][1:]:
+            ring = net.add_ring(points)
+            net.strip(previous, ring, zone, skin)
+            previous = ring
+        tip = net.add(toe.tip)
         for k in range(4):
-            net.island = sole if k == 3 else top
-            net.face((ring[k], ring[(k + 1) % 4], tip), zone, "foot")
+            net.face((previous[k], previous[(k + 1) % 4], tip), zone, skin)
         net.mark(f"{name}_toe_tip", [tip])

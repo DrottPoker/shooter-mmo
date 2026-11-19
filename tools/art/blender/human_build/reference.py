@@ -6,8 +6,9 @@ centred on x = 0, standing on z = 0, and scaled to the heights of the game's bod
         --python tools/art/blender/human_build/reference.py -- <out.blend>
 
 The bundle is read as data only. The output holds, per body, Reference_<Label> (the sculpt at
-SCULPT_LEVEL), ReferenceBase_<Label> (its control cage, for its edge flow), the eyeballs, and
-HeadCage_<Label>: the bundle's head cage laid onto that body's head.
+SCULPT_LEVEL), ReferenceBase_<Label> (its control cage, for its edge flow), the eyeballs,
+HeadCage_<Label>: the bundle's head cage laid onto that body's head, and HeadEar_<Label>: the right
+ear of that body's control cage with the skin around it, and how it is set into the head cage.
 
 The head cage is the bundle's coarse cage of the female body's head, so a move, a turn, and one
 scale lay it onto her reference. The two bodies of the bundle are sculpted on one net, so a point
@@ -23,6 +24,11 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from human_build.head import EAR_FACES, outline  # noqa: E402
 
 BUNDLE_SHA256 = "3c121505651140ceb4d69fd1d8923f7788ffadd81672f5be14845a5f2c75c137"
 BODIES = (("Male", "GEO-body_male_realistic", 1.79), ("Female", "GEO-body_female_realistic", 1.70))
@@ -49,6 +55,24 @@ HEAD_SEEN_TILT, HEAD_SEEN_REACH, HEAD_SKIN_NEAR = 50.0, 0.08, 0.02
 # steps of HEAD_CHIN_STEP, which the reference's skin is smooth enough for.
 HEAD_CHIN_LINE = (298, 314, 316, 300)
 HEAD_CHIN_STEP = 0.0005
+# The head cage's ear is a box of sixteen faces, far too coarse for an ear's folds, and the faces
+# around the ring it stands on are narrow and twisted where the ear meets the head. The body's own
+# control cage has an ear that is built for the folds, with even rings of faces on the skin around
+# it. So the box and the faces that touch its ring leave the head cage. Under the ear's lobe the
+# cage's next vertices lie nearer to the ear than the skin around it needs: where a vertex of that
+# hole's outline lies within EAR_ROOM of the ring, the faces that touch it leave the cage too. The
+# control cage's faces inside the outline take their place: every face that keeps EAR_MARGIN clear
+# of the outline as the subdivided cage has it, with a vertex in the middle of each of its edges.
+# The band between that outline and the edge of the control cage's patch lies on plain skin, and
+# triangles close it: of all ways to close it, the one whose triangles are least thin, where a
+# triangle that would look into the head counts as BAND_TURNED thin ones. The two bodies' control
+# cages are one net and the head cage lies on the same places of both, so one choice of faces and
+# triangles is made for both bodies and serves both. A face of the control cage that is smaller
+# than EAR_LEAST on a body, in square metres, is smaller than a body's faces may be: its shortest
+# edge closes, so its two vertices become one.
+EAR_ROOM, EAR_MARGIN = 0.012, 0.006
+EAR_LEAST = 1.2e-6
+BAND_TURNED = 1000.0
 # The female figure, as the reviewer asked for it: clearly female, with wide hips, a narrow waist,
 # and a larger bust that sits close together, without exaggeration. The bundle's female is slim and
 # athletic, so her reference is shaped by smooth, mirrored fields before the net is laid onto it:
@@ -259,12 +283,15 @@ def lay_head_cage(cage, bodies, first):
         location, _normal, index, _distance = tree.find_nearest(Vector(at))
         walked.append(f"{vertex} {np.linalg.norm(np.array(location) - landed[vertex][0]) * 1000:.0f} mm")
         landed[vertex] = (np.array(location), index)
+    def on_bodies(location, index):
+        corners = head[index]
+        shares = _shares(np.asarray(location, float), points[corners])
+        return {label: shares @ body["points"][corners] for label, body in bodies.items()}
+
     out = {label: np.zeros_like(placed) for label in bodies}
     for v, (location, index) in enumerate(landed):
-        corners = head[index]
-        shares = _shares(location, points[corners])
-        for label, body in bodies.items():
-            out[label][v] = shares @ body["points"][corners]
+        for label, point in on_bodies(location, index).items():
+            out[label][v] = point
     for laid in out.values():
         laid[np.abs(cage[:, 0] - (cage[:, 0].min() + cage[:, 0].max()) / 2) < 1e-4, 0] = 0.0
     away = np.array(away)[fitted]
@@ -273,6 +300,181 @@ def lay_head_cage(cage, bodies, first):
           f"skin inside the head and took the nearest skin seen from outside; the centre line under the chin was laid "
           f"along the skin, which moved vertex {' and vertex '.join(walked)}")
     return out
+
+
+def _to_line(points, line):
+    """How far each point lies from a closed line of points."""
+    points, line = np.asarray(points, float), np.asarray(line, float)
+    best = np.full(len(points), np.inf)
+    for a, b in zip(line, np.roll(line, -1, axis=0)):
+        along = b - a
+        share = np.clip((points - a) @ along / max(float(along @ along), 1e-12), 0.0, 1.0)
+        best = np.minimum(best, np.linalg.norm(points - (a + share[:, None] * along), axis=1))
+    return best
+
+
+def _rim(polys, faces):
+    """The edge of a patch of faces as one line of vertices, running the way the faces do."""
+    directed = {(a, b) for f in faces for a, b in zip(polys[f], polys[f][1:] + polys[f][:1])}
+    onward = {}
+    for a, b in directed:
+        if (b, a) not in directed:
+            if a in onward:
+                raise RuntimeError("the ear's patch of the control cage has an edge that meets itself")
+            onward[a] = b
+    first = min(onward)
+    line = [first]
+    while onward[line[-1]] != first and len(line) <= len(onward):
+        line.append(onward[line[-1]])
+    if len(line) != len(onward):
+        raise RuntimeError("the ear's patch of the control cage has more than one edge around it")
+    return line
+
+
+def ear_patch(outlines, bases, polys, margin=EAR_MARGIN):
+    """The control cage's faces that take the place of the head cage's ear and the faces around
+    it. outlines holds, for each body, the points of the outline of the hole they leave, and
+    bases that body's control cage. Gives the faces and the vertices of their edge in order."""
+    outlines = [np.asarray(outline, float) for outline in outlines]
+    points = bases[0]
+    # The faces are looked for beside the outline, a little further out than it reaches.
+    low, high = outlines[0].min(0) - 0.02, outlines[0].max(0) + 0.02
+    beside = (points[:, 0] > 0) & (points[:, 1] > low[1]) & (points[:, 1] < high[1]) & (points[:, 2] > low[2]) & (points[:, 2] < high[2])
+    edge = set()
+    by_edge = {}
+    for f, p in enumerate(polys):
+        if not all(beside[v] for v in p):
+            edge.update(v for v in p if beside[v])
+            continue
+        for a, b in zip(p, p[1:] + p[:1]):
+            by_edge.setdefault((a, b) if a < b else (b, a), []).append(f)
+
+    def clear(f):
+        """Whether a face keeps the margin to the outline on every body: its corners, the middles
+        of its edges, and its own middle."""
+        for outline, base in zip(outlines, bases):
+            corners = base[list(polys[f])]
+            samples = np.concatenate([corners, (corners + np.roll(corners, -1, axis=0)) / 2, corners.mean(0)[None]])
+            if _to_line(samples, outline).min() <= margin:
+                return False
+        return True
+
+    # From the face at the ear's outermost point, as far as faces keep clear of the outline.
+    out_most = int(np.where(beside)[0][np.argmax(points[beside, 0])])
+    seed = next(f for faces in by_edge.values() for f in faces if out_most in polys[f])
+    ear, todo, known = {seed}, [seed], {seed: True}
+    while todo:
+        p = polys[todo.pop()]
+        if edge & set(p):
+            raise RuntimeError(f"the outline around the ear does not close the ear off from the head: the control cage's faces "
+                               f"inside it reach {np.round(points[list(p)].mean(0), 4).tolist()}")
+        for a, b in zip(p, p[1:] + p[:1]):
+            for g in by_edge[(a, b) if a < b else (b, a)]:
+                if g not in known:
+                    known[g] = clear(g)
+                    if known[g]:
+                        ear.add(g)
+                        todo.append(g)
+    # A face that hangs on the others by one edge alone would stick out of the patch's edge.
+    while True:
+        directed = {(a, b) for f in ear for a, b in zip(polys[f], polys[f][1:] + polys[f][:1])}
+        loose = {f for f in ear if sum((b, a) in directed for a, b in zip(polys[f], polys[f][1:] + polys[f][:1])) < 2}
+        if not loose:
+            break
+        ear -= loose
+    ear = sorted(ear)
+    return ear, _rim(polys, ear)
+
+
+def without_tiny(faces, bodies, least=EAR_LEAST):
+    """The faces of a patch, by their vertices, without a face smaller than the least area on any
+    body: the smallest such face loses its shortest edge, whose second vertex becomes its first
+    in every face, until none is left. bodies holds each body's points."""
+    faces = [tuple(face) for face in faces]
+
+    def area(face):
+        return min(float(np.linalg.norm(np.cross(points[list(face)], np.roll(points[list(face)], -1, axis=0)).sum(0))) / 2
+                   for points in bodies)
+
+    while True:
+        smallest = min(faces, key=area)
+        if area(smallest) >= least:
+            return faces
+        keep, drop = min(zip(smallest, smallest[1:] + smallest[:1]),
+                         key=lambda edge: max(float(np.linalg.norm(points[edge[0]] - points[edge[1]])) for points in bodies))
+        merged = []
+        for face in faces:
+            corners = [keep if v == drop else v for v in face]
+            corners = [v for k, v in enumerate(corners) if v != corners[k - 1]]
+            if len(corners) >= 3:
+                merged.append(tuple(corners))
+        faces = merged
+
+
+def _thin(a, b, c):
+    """How thin a triangle is: 1 for one of three equal sides, more the thinner it is."""
+    sides = float(((a - b) ** 2).sum() + ((b - c) ** 2).sum() + ((c - a) ** 2).sum())
+    return sides / max(2.0 * math.sqrt(3.0) * float(np.linalg.norm(np.cross(b - a, c - a))), 1e-12)
+
+
+def band(outers, inners, outward):
+    """The triangles that close the band between two lines of points that run the same way round,
+    the outer and the inner one, as triples of ("outer" or "inner", place in that line), each
+    counter-clockwise seen from outside. outers and inners hold each body's points of the two
+    lines, and outward the way the skin looks at each of the first body's inner points. Gives the
+    triangles and how thin the thinnest of them is on any body."""
+    n, m = len(outers[0]), len(inners[0])
+    # What it costs to step on along the outer line, with the triangle of outer i, outer i + 1 and
+    # inner j, and along the inner line, with the triangle of inner j + 1, inner j and outer i.
+    step_outer, step_inner = np.zeros((n, m)), np.zeros((n, m))
+    worst_outer, worst_inner = np.zeros((n, m)), np.zeros((n, m))
+    for i in range(n):
+        for j in range(m):
+            for k, (outer, inner) in enumerate(zip(outers, inners)):
+                a, b, c = outer[i], outer[(i + 1) % n], inner[j]
+                d, e, f = inner[(j + 1) % m], inner[j], outer[i]
+                thin = (_thin(a, b, c), _thin(d, e, f))
+                if k == 0:
+                    if np.cross(b - a, c - a) @ outward[j] <= 0:
+                        step_outer[i, j] += BAND_TURNED
+                    if np.cross(e - d, f - d) @ (outward[j] + outward[(j + 1) % m]) <= 0:
+                        step_inner[i, j] += BAND_TURNED
+                step_outer[i, j] += thin[0]
+                step_inner[i, j] += thin[1]
+                worst_outer[i, j] = max(worst_outer[i, j], thin[0])
+                worst_inner[i, j] = max(worst_inner[i, j], thin[1])
+    best = None
+    for start in range(m):
+        cost = np.full((n + 1, m + 1), np.inf)
+        along_outer = np.zeros((n + 1, m + 1), bool)
+        cost[0, 0] = 0.0
+        for i in range(n + 1):
+            for j in range(m + 1):
+                at = (start + j) % m
+                if i < n and cost[i, j] + step_outer[i, at] < cost[i + 1, j]:
+                    cost[i + 1, j] = cost[i, j] + step_outer[i, at]
+                    along_outer[i + 1, j] = True
+                if j < m and cost[i, j] + step_inner[i % n, at] < cost[i, j + 1]:
+                    cost[i, j + 1] = cost[i, j] + step_inner[i % n, at]
+                    along_outer[i, j + 1] = False
+        if best is None or cost[n, m] < best[0]:
+            best = (float(cost[n, m]), start, along_outer)
+    total, start, along_outer = best
+    if total >= BAND_TURNED:
+        raise RuntimeError("the band around the ear cannot be closed without a triangle that looks into the head")
+    i, j, out, thinnest = n, m, [], 0.0
+    while i or j:
+        if along_outer[i, j]:
+            i -= 1
+            at = (start + j) % m
+            out.append((("outer", i), ("outer", (i + 1) % n), ("inner", at)))
+            thinnest = max(thinnest, worst_outer[i, at])
+        else:
+            j -= 1
+            at = (start + j) % m
+            out.append((("inner", (at + 1) % m), ("inner", at), ("outer", i % n)))
+            thinnest = max(thinnest, worst_inner[i % n, at])
+    return out[::-1], float(thinnest)
 
 
 def build(out_path):
@@ -304,11 +506,66 @@ def build(out_path):
     cage = np.array([tuple(turn @ (head.matrix_world @ blocks[HEAD_SHAPE].data[i].co))
                      for i in range(len(head.data.vertices))])
     bodies = {label: {"points": _points(sculpt), "triangles": _triangles(sculpt)} for label, sculpt, _b, _e in made}
-    for label, points in lay_head_cage(cage, bodies, HEAD_BODY).items():
+    cage_faces = [tuple(p.vertices) for p in head.data.polygons]
+    laid = lay_head_cage(cage, bodies, HEAD_BODY)
+    # The head cage's ear and the faces that touch the ring it stands on leave the cage, and with
+    # them the faces at the vertices of that hole's outline that lie too near the ring.
+    ring = outline([cage_faces[index] for index in EAR_FACES])
+    cut_faces = set(EAR_FACES) | {index for index, face in enumerate(cage_faces) if set(ring) & set(face)}
+    hole = outline([cage_faces[index] for index in sorted(cut_faces)])
+    near = _to_line(laid[HEAD_BODY][hole], laid[HEAD_BODY][ring])
+    tight = {v for v, away in zip(hole, near) if away < EAR_ROOM}
+    cut_faces = sorted(cut_faces | {index for index, face in enumerate(cage_faces) if tight & set(face)})
+    hole = outline([cage_faces[index] for index in cut_faces])
+    # The outline of the hole as the subdivided cage has it: the cage's vertices around the hole
+    # and, between each two of them, the middle of their edge on the skin.
+    labels = [HEAD_BODY] + [label for label in bodies if label != HEAD_BODY]
+    outlines = []
+    for label in labels:
+        points, triangles = bodies[label]["points"], bodies[label]["triangles"]
+        skin = triangles[points[triangles][:, :, 2].min(1) > 0.84 * points[:, 2].max()]
+        tree = BVHTree.FromPolygons([tuple(p) for p in points], [tuple(int(v) for v in t) for t in skin])
+        corners = laid[label][hole]
+        middles = [np.array(tree.find_nearest(Vector((a + b) / 2))[0]) for a, b in zip(corners, np.roll(corners, -1, axis=0))]
+        outlines.append(np.array([p for pair in zip(corners, middles) for p in pair]))
+    # The control cage's faces inside it, and the triangles of the band between the two. The two
+    # bodies' control cages are one net, so the same faces and triangles serve both.
+    bases = {label: base for label, _sculpt, base, _eyes in made}
+    polys = [tuple(p.vertices) for p in bases[HEAD_BODY].polygons]
+    control = [_points(bases[label]) for label in labels]
+    patch, _edge = ear_patch(outlines, control, polys)
+    # From here on the faces by their vertices: closing a too small face's edge changes them.
+    faces = without_tiny([polys[f] for f in patch], control)
+    rim = _rim(faces, range(len(faces)))
+    first = control[0]
+    outward = np.zeros((len(first), 3))
+    for face in faces:
+        corners = first[list(face)]
+        outward[list(face)] += np.cross(corners - np.roll(corners, 1, axis=0), np.roll(corners, -1, axis=0) - corners).sum(0)
+    triangles, thinnest = band(outlines, [points[rim] for points in control], outward[rim])
+    number = {"outer": lambda k: int(k), "inner": lambda k: -1 - int(k)}
+    used = sorted({v for face in faces for v in face})
+    place = {v: k for k, v in enumerate(used)}
+    for label, base in bases.items():
+        mesh = bpy.data.meshes.new(f"HeadEar_{label}")
+        mesh.from_pydata([tuple(p) for p in _points(base)[used]], [], [tuple(place[v] for v in face) for face in faces])
+        mesh.update()
+        mesh["cut"] = [int(index) for index in cut_faces]
+        mesh["hole"] = [int(v) for v in hole]
+        mesh["rim"] = [place[v] for v in rim]
+        # Each triangle of the band as three numbers: a vertex of the hole's outline by its place
+        # there, the cage's own at the even places and the middles of its edges at the odd ones,
+        # or, below zero, a vertex of the patch's edge as -1 minus its place in that edge.
+        mesh["band"] = [number[name](k) for triple in triangles for name, k in triple]
+        heads.append(mesh)
+    for label, points in laid.items():
         mesh = bpy.data.meshes.new(f"HeadCage_{label}")
-        mesh.from_pydata([tuple(p) for p in points], [], [tuple(p.vertices) for p in head.data.polygons])
+        mesh.from_pydata([tuple(p) for p in points], [], cage_faces)
         mesh.update()
         heads.append(mesh)
+    print(f"HUMAN_BUILD_REFERENCE ear: {len(faces)} faces of the control cage, {sum(len(face) - 2 for face in faces)} triangles, in place of "
+          f"{len(cut_faces)} faces of the head cage; the band between the hole's outline of {len(outlines[0])} vertices and the patch's edge of "
+          f"{len(rim)} is closed by {len(triangles)} triangles, the thinnest {thinnest:.1f} times as thin as one of equal sides")
 
     # A fresh file with only the reference meshes.
     keep = {id(mesh) for _label, sculpt, base, eyes in made for mesh in (sculpt, base, *[e for _s, e in eyes])}
