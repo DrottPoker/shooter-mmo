@@ -30,7 +30,9 @@ reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_
                  "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
                  "BUST_ROUND", numpy=True)
-head = load("human_build/head.py", "outline", "with_room", numpy=True)
+head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
+eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
+           "merged", "band", "filled", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
 body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
             PINNED=PINNED)
 
@@ -620,6 +622,124 @@ class HeadTests(unittest.TestCase):
         np.testing.assert_allclose(moved[2], (4.5, 4.5))
         for corner in moved:
             self.assertGreaterEqual(4.5 + 1e-9, max(corner))
+
+    def test_the_eye_leaves_the_cage_with_its_band_and_the_hole_runs_from_the_corner_over_the_top(self):
+        # A flat cage that looks along +Y: a ring of four around a closed eye (face 0), the band of
+        # four faces around it, and the ring of four outside, the eye's corner beside the nose at -X.
+        #     6 . . . 7         ring 4..7 outside, ring 0..3 around the eye
+        #     . 3 . 2 .
+        #     . 0 . 1 .
+        #     4 . . . 5
+        points = [(-1, 0, -1), (1, 0, -1), (1, 0, 1), (-1, 0, 1), (-2, 0, -2), (2, 0, -2), (-2, 0, 2), (2, 0, 2)]
+        faces = [(0, 1, 2, 3), (4, 5, 1, 0), (5, 7, 2, 1), (7, 6, 3, 2), (6, 4, 0, 3), (9, 10, 11)]
+        band, hole = head.eye_hole(faces, points, np.array([-2.0, 0.0, -1.0]), eye_faces=(0,), ring=(0, 1, 2, 3))
+        self.assertEqual(sorted(band), [1, 2, 3, 4])
+        # The vertex nearest the corner first, then up the side toward the top.
+        self.assertEqual(hole[0], 4)
+        self.assertEqual(hole[1], 6)
+        self.assertEqual(sorted(hole), [4, 5, 6, 7])
+
+
+class EyeTests(unittest.TestCase):
+    """The eye's lids: the stations of a spoke on its profile, the corners, the band from the
+    spokes to the ring around the hole, and the spokes along the outline of the opening."""
+
+    def test_a_spokes_lid_begins_at_its_first_sample_beyond_the_opening(self):
+        nan = float("nan")
+        self.assertEqual(eye.first_on_lid([nan, nan, 13.0, 13.5]), 2)
+        with self.assertRaises(RuntimeError):
+            eye.first_on_lid([13.0, 13.5])
+        with self.assertRaises(RuntimeError):
+            eye.first_on_lid([nan, nan])
+
+    def test_the_crease_is_where_the_lid_has_risen_interpolated_but_not_nearer_than_the_least(self):
+        thetas = np.arange(0.0, 31.0, 1.0)
+        # Flat for ten degrees, then rising a tenth per degree: the rise of 1.2 is reached at 22.
+        rhos = np.where(thetas <= 10.0, 14.0, 14.0 + (thetas - 10.0) * 0.1)
+        self.assertAlmostEqual(eye.crease_angle(thetas, rhos, 0, 1.2), 22.0, places=4)
+        # A lid that rises at once has its crease at the least distance from the lash line.
+        steep = 14.0 + thetas * 0.5
+        self.assertAlmostEqual(eye.crease_angle(thetas, steep, 0, 1.2), eye.LID_LEAST)
+        # A lid that never rises enough ends at the most distance.
+        flat = np.full_like(thetas, 14.0)
+        self.assertAlmostEqual(eye.crease_angle(thetas, flat, 0, 1.2, most=20.0), 20.0)
+
+    def test_the_lid_ends_where_rays_no_longer_meet_it_and_gaps_before_it_are_passed(self):
+        nan = float("nan")
+        thetas = np.arange(0.0, 15.0, 1.0)
+        rhos = np.array([14.0, nan, nan, 14.1, 14.2, 14.3, nan, nan, nan, nan, nan, nan, nan, nan, nan])
+        # The gaps beside the lash line are passed; the lid ends where it was last seen.
+        self.assertAlmostEqual(eye.crease_angle(thetas, rhos, 0, 1.2), 5.0)
+        with self.assertRaises(RuntimeError):
+            eye.crease_angle(thetas[:3], np.array([14.0, nan, nan]), 0, 1.2)
+
+    def test_a_lid_ends_before_the_first_gap_that_follows_it(self):
+        nan = float("nan")
+        thetas = np.arange(0.0, 6.0, 1.0)
+        # The gap beside the lash line is passed; the one after the lid ends it.
+        self.assertEqual(eye.lid_end(thetas, [14.0, nan, 14.1, 14.2, nan, nan]), 3.0)
+        self.assertEqual(eye.lid_end(thetas, [14.0, 14.1, 14.2, 14.3, 14.4, 14.5]), 5.0)
+
+    def test_the_widths_of_the_lid_are_evened_out_around_the_eye_and_keep_their_sum(self):
+        evened = eye.evened_widths([10.0, 10.0, 30.0, 10.0, 10.0, 10.0], rounds=1)
+        np.testing.assert_allclose(evened, [10.0, 15.0, 20.0, 15.0, 10.0, 10.0])
+        # Round the end of the list as well.
+        np.testing.assert_allclose(eye.evened_widths([30.0, 10.0, 10.0, 10.0], rounds=1), [20.0, 15.0, 10.0, 15.0])
+
+    def test_the_rings_on_the_lid_lie_evenly_between_the_lash_line_and_the_crease(self):
+        np.testing.assert_allclose(eye.lid_rings(10.0, 19.0, rings=2), [13.0, 16.0])
+
+    def test_the_margin_thins_out_toward_the_corners_only(self):
+        shares = [eye.corner_share(k, steps=12, corner=2) for k in range(24)]
+        self.assertEqual(shares[0], 0.0)
+        self.assertEqual(shares[12], 0.0)
+        self.assertEqual(shares[1], 0.5)
+        self.assertEqual(shares[23], 0.5)
+        self.assertEqual(shares[11], 0.5)
+        self.assertEqual(shares[13], 0.5)
+        self.assertTrue(all(share == 1.0 for k, share in enumerate(shares) if k not in (0, 1, 11, 12, 13, 23)))
+
+    def test_the_spokes_beyond_the_ring_share_its_vertices_next_to_the_corners(self):
+        self.assertEqual(eye.merged(11, 9), [1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9])
+        self.assertEqual(eye.merged(9, 9), list(range(1, 10)))
+        with self.assertRaises(ValueError):
+            eye.merged(8, 9)
+
+    def test_the_band_takes_every_vertex_of_both_rings_with_four_triangles_beside_the_corners(self):
+        faces = eye.band(11, 9)
+        self.assertEqual(len(faces), 24)
+        triangles = [spokes for spokes, ring in faces if len(ring) == 1]
+        self.assertEqual(triangles, [(1, 2), (10, 11), (13, 14), (22, 23)])
+        self.assertEqual({j for _spokes, ring in faces for j in ring}, set(range(20)))
+        # Each spoke's edge to the next is one face's, all the way round, and the corners meet.
+        self.assertEqual([spokes for spokes, _ring in faces], [(k, (k + 1) % 24) for k in range(24)])
+        self.assertIn(((0, 1), (1, 0)), faces)
+        self.assertIn(((11, 12), (10, 9)), faces)
+        self.assertIn(((12, 13), (11, 10)), faces)
+
+    def test_a_direction_without_an_edge_takes_the_mean_of_its_measured_neighbours(self):
+        self.assertEqual(eye.filled([30.0, None, 50.0, 40.0]), [30.0, 40.0, 50.0, 40.0])
+        # Round the end of the list and over two directions without one.
+        self.assertEqual(eye.filled([None, 20.0, 30.0, None]), [25.0, 20.0, 30.0, 25.0])
+        with self.assertRaises(RuntimeError):
+            eye.filled([None, None])
+
+    def test_an_edge_that_stands_out_beyond_both_neighbours_is_laid_between_them_but_not_at_a_corner(self):
+        edges = [60.0, 50.0, 30.0, 25.0, 30.0, 50.0, 70.0, 77.0, 59.0, 40.0]
+        evened = eye.evened_edges(edges, {0, 6})
+        self.assertEqual(evened[7], (70.0 + 59.0) / 2)
+        self.assertEqual(evened[6], 70.0)
+        self.assertEqual(evened[0], 60.0)
+        self.assertEqual([e for k, e in enumerate(evened) if k != 7], [e for k, e in enumerate(edges) if k != 7])
+
+    def test_the_spokes_divide_each_lid_of_a_round_opening_into_even_steps(self):
+        phis = np.arange(96) * 3.75
+        points = np.array([(np.cos(np.radians(p)), np.sin(np.radians(p)), 0.0) for p in phis])
+        spokes = eye.stations(phis, points, inner=48, outer=0, steps=12)
+        self.assertEqual(len(spokes), 24)
+        # From the inner corner at 180 degrees over the top to the outer corner at 0 and on round.
+        expected = [(180.0 - 15.0 * k) % 360.0 for k in range(24)]
+        np.testing.assert_allclose(spokes, expected, atol=1e-9)
 
 
 class IslandTests(unittest.TestCase):

@@ -106,6 +106,9 @@ def build(label, out_path, parts):
     if head is not None:
         heads.refine_head(fine, net, head)
         heads.graft_ear(fine, net, head)
+        heads.graft_eye(fine, net, head)
+        for problem in fine.check():
+            print("HUMAN_BUILD_FAILED", problem)
     skins = dict(measures.skins())
     if hand is not None:
         skins.update(hand.skins())

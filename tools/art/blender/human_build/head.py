@@ -4,9 +4,10 @@ The head is the head cage of the Human Base Meshes bundle, a coarse cage of quad
 the eyes, the mouth, the nose, and the ear. The reference tool has laid it onto the body's own
 head, every vertex on the feature it belongs to, so the cage's vertices stay where they are and
 only the vertices that subdividing adds are laid onto the reference. The faces that close the
-cage's eyes and its underside are taken out: the eye becomes an opening with a pocket behind it for
-the eyeball, the line between the lips is parted into an upper and a lower lip with a mouth cavity
-behind them, and the ring under the head is the top of the neck. The cage has no nostrils, which
+cage's eyes and its underside are taken out: each eye leaves the cage with the band of faces around
+it, and its lids are built in their place on the subdivided net (eye.py), the line between the lips
+is parted into an upper and a lower lip with a mouth cavity behind them, and the ring under the
+head is the top of the neck. The cage has no nostrils, which
 are finer than its faces: the two faces under the nose over each nostril are opened into a ring on
 the nostril's edge with a pocket behind it. The cage's ear is a box that leaves the cage with the
 faces around it: the reference tool has taken the ear of the body's own control cage, which is
@@ -17,13 +18,15 @@ import math
 
 import numpy as np
 
+from . import eye as eyes
 from .body import ZONE, _unit
+from .eye import SOCKET
 from .net import FIXED, MIRROR, PINNED, RIGID, Net
 
 X, Y, Z = np.eye(3)
 # The faces inside the head, which are laid onto no skin: the pocket behind the eye's opening and
 # the mouth cavity. They are the hidden parts 7 and 8 of the body files' face attribute "part".
-SOCKET, MOUTH = "socket", "mouth"
+MOUTH = "mouth"
 HIDDEN_PARTS = {SOCKET: 7, MOUTH: 8}
 # The pocket inside a nostril is laid onto no skin either, but it is seen from below: it is skin
 # like any other, an island of its own in the UV map.
@@ -38,6 +41,8 @@ NECK_RING = (297, 256, 313, 232, 311, 265, 270, 269, 300)
 NECK_CORNER, NECK_CORNER_DROP = 313, 0.006
 # The right eye: the faces that close it, the vertices of its closed slit, and the ring around
 # it from the corner beside the nose over the upper lid to the outer corner and back underneath.
+# These faces and the band of faces around the ring leave the cage: the lids are built in their
+# place on the subdivided net (eye.py).
 EYE_FACES = (217, 218, 219, 220, 221, 222, 223, 224)
 EYE_SLIT = (206, 207, 208, 209)
 EYE_RING = (203, 181, 182, 198, 199, 205, 200, 201, 204, 202)
@@ -65,7 +70,6 @@ NOSTRIL_FACES = (212, 167)
 NOSTRIL_VIEW, NOSTRIL_DEEP = 40.0, 0.0025
 NOSTRIL_RIM, NOSTRIL_FACING, NOSTRIL_INSIDE = 0.0025, 0.3, 0.0008
 NOSTRIL_DEPTH, NOSTRIL_NARROWS = 0.010, 0.8
-LID_CLEARANCE = 0.0004
 # The vertices that subdividing adds to the head lie between vertices on the reference already:
 # the reference's skin is looked for this near them, at 1.79 m.
 HEAD_REACH = 0.005
@@ -75,8 +79,6 @@ THROAT_REACH = 0.02
 # The line between the lips is looked for this far above and below a vertex of the cage's own
 # line, which lies inside the mouth, and lies at most this far behind the lips, at 1.79 m.
 LIP_SEARCH, LIP_DEPTH = 0.007, 0.002
-# The lid's inner edge continues this far around the eyeball, in radians.
-LID_TUCK = 0.32
 # The mouth cavity behind the line between the lips, at 1.79 m. Its first ring follows the lips'
 # own curve this far behind them, and parts this far above and below the line. Its other rings
 # hold the teeth: how far behind the middle of the line, their half width, and how far above and
@@ -123,19 +125,11 @@ class Head:
         self.eye_radius = float(high[0] - low[0]) / 2
         self.right = [i for i in range(len(self.points)) if self.points[i, 0] >= 0.0]
         self.centre = {i for i in range(len(self.points)) if self.points[i, 0] == 0.0}
-        # The ring around the eye takes the lids' edge of the reference, as the eye is seen from in
-        # front: the corner beside the nose, four points over the upper lid, the outer corner, and
-        # four points under the lower lid.
+        # The edge of the reference's opening as the eye is seen from in front; the lids look along
+        # its middle.
         self.rim = self.lid_edge()
-        steps = np.linalg.norm(np.diff(np.concatenate([self.rim, self.rim[:1]]), axis=0), axis=1)
-        self._rim_steps = steps
-        self._rim_along = np.concatenate([[0.0], np.cumsum(steps)])
-        outer = int(np.argmax(self.rim[:, 0]))
-        upper, whole = self._rim_along[outer], self._rim_along[-1]
-        self.rim_stations = [upper * k / 5 for k in range(6)] + [upper + (whole - upper) * k / 5 for k in range(1, 5)]
-        self.rim_length = float(whole)
-        for v, distance in zip(EYE_RING, self.rim_stations):
-            self.points[v] = self.on_rim(distance)
+        forward = _unit(self.rim.mean(0) - self.eye_centre)
+        self.lids = eyes.Lids(m.surface, self.eye_centre, self.eye_radius, forward, s)
         # One face of the cage has two of its sides on the ring under the head, and the corner
         # between them lies 6 mm from the next vertex of the ring: the corner moves to the middle
         # between its neighbours on the ring and a little below their line, so the ring's vertices
@@ -180,11 +174,10 @@ class Head:
             line.append(onward[0])
         return line
 
-    def on_lid(self, point):
-        """A point of the lids' edge, kept clear of the eyeball."""
-        offset = np.asarray(point, float) - self.eye_centre
-        reach = max(np.linalg.norm(offset), self.eye_radius + LID_CLEARANCE)
-        return self.eye_centre + _unit(offset) * reach
+    def eye_hole(self):
+        """The cage's band around the eye and the vertices around the hole it leaves, from the
+        corner beside the nose over the upper lid, as the lids' spokes run."""
+        return eye_hole(self.faces, self.points, self.lids.crease[0])
 
     def lid_edge(self, count=96, step=0.00025):
         """The edge of the eye's opening as the eye is seen from straight in front, as points in
@@ -250,14 +243,6 @@ class Head:
         if rim[1:outer, 2].mean() < rim[outer + 1:, 2].mean():
             rim = np.concatenate([rim[:1], rim[:0:-1]])
         return rim
-
-    def on_rim(self, distance):
-        """The point of the lids' edge at a distance along it, kept clear of the eyeball."""
-        along, steps, rim = self._rim_along, self._rim_steps, self.rim
-        distance = distance % along[-1]
-        i = int(np.clip(np.searchsorted(along, distance, side="right") - 1, 0, len(rim) - 1))
-        t = (distance - along[i]) / max(steps[i], 1e-12)
-        return self.on_lid(rim[i] + t * (rim[(i + 1) % len(rim)] - rim[i]))
 
     def nostril_edge(self, count=64, step=0.00025, half=0.012):
         """The way into the right nostril and the edge of its opening, as points in order around
@@ -437,6 +422,7 @@ class Head:
                 f"eye centre {np.round(self.eye_centre, 4).tolist()}, radius {self.eye_radius * 1000:.1f} mm, opening "
                 f"{(self.rim[:, 0].max() - self.rim[:, 0].min()) * 1000:.1f} mm wide and "
                 f"{(self.rim[:, 2].max() - self.rim[:, 2].min()) * 1000:.1f} mm high",
+                *self.lids.report(),
                 f"neck top ring {above} mm above the notch, from the back to the front, at a height of 1.79 m"]
 
     def inner_parts(self):
@@ -514,10 +500,27 @@ def outline(faces):
     return loop
 
 
+def eye_hole(faces, points, corner, eye_faces=EYE_FACES, ring=EYE_RING):
+    """The faces of the band around the eye's ring, which leave the cage with the faces that close
+    the eye, and the cage's vertices around the hole they leave, in order: from the one nearest the
+    corner beside the nose, which is a point, over the upper lid first."""
+    band = [index for index, corners in enumerate(faces) if index not in eye_faces and set(corners) & set(ring)]
+    hole = outline([faces[index] for index in list(eye_faces) + band])
+    points = np.asarray(points, float)
+    first = min(range(len(hole)), key=lambda k: float(np.linalg.norm(points[hole[k]] - corner)))
+    hole = hole[first:] + hole[:first]
+    if points[hole[-1]][2] > points[hole[1]][2]:
+        hole = hole[:1] + hole[:0:-1]
+    return band, hole
+
+
 def build_head(net: Net, head: Head):
     s = head.scale
     zone = ZONE["Head"]
-    drop = set(NECK_INNER) | set(EYE_SLIT)
+    # The band around the eye leaves the cage with the faces that close the eye, and so do the
+    # vertices of the eye's ring and slit, which only they use.
+    band, hole = head.eye_hole()
+    drop = set(NECK_INNER) | set(EYE_SLIT) | set(EYE_RING)
     # The cage's vertices keep their places on the features; the vertices that subdividing adds are
     # laid onto the reference. The ring under the head may still move along the skin: it lies on
     # the plain skin of the neck and gives way where a face would fold. The vertices that only the
@@ -525,8 +528,8 @@ def build_head(net: Net, head: Head):
     loose = set(NECK_RING)
     around = {v for index, corners in enumerate(head.faces) if index not in head.ear_cut for v in corners}
     drop |= {v for index in head.ear_cut for v in head.faces[index]} - around
-    # The lids' edge and the line between the lips stay exactly where they are put.
-    lines = set(EYE_RING) | set(LIP_LINE) | {LIP_CORNER}
+    # The line between the lips stays exactly where it is put.
+    lines = set(LIP_LINE) | {LIP_CORNER}
     vertex = {}
     for v in head.right:
         if v in drop:
@@ -540,8 +543,9 @@ def build_head(net: Net, head: Head):
     net.seam([vertex[v] for v in head.back_line()])
     # The lower lip takes its own vertices along the line between the lips.
     lower = {v: net.add(head.points[v], FIXED, PINNED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
-    skip = set(NECK_FACES) | set(EYE_FACES) | set(NOSTRIL_FACES) | set(head.ear_cut)
+    skip = set(NECK_FACES) | set(EYE_FACES) | set(band) | set(NOSTRIL_FACES) | set(head.ear_cut)
     net.mark("ear_hole", [vertex[v] for v in head.ear_hole])
+    net.mark("eye_hole", [vertex[v] for v in hole])
     for index, corners in enumerate(head.faces):
         if index in skip or any(v not in vertex for v in corners):
             continue
@@ -567,29 +571,6 @@ def build_head(net: Net, head: Head):
     net.seam([net.marks["neck_end"][0], neck_top[0]])
     net.strip(net.marks["neck_end"], neck_top, ZONE["Neck"], "throat", closed=False)
     net.mark("neck_top", neck_top)
-
-    # The eye: the lids' inner edge a little under the lid on the eyeball, and a pocket behind it.
-    centre = head.eye_centre
-    ring = [vertex[v] for v in EYE_RING]
-    middle = np.mean([net.points[v] for v in ring], axis=0)
-    forward = _unit(middle - centre)
-    under = []
-    for v in ring:
-        # Each point of the lid's edge continues around the eyeball, away from the line of sight,
-        # so the pocket stays hidden under the lid also at the corners.
-        direction = _unit(np.asarray(net.points[v], float) - centre)
-        polar = math.acos(float(np.clip(direction @ forward, -1.0, 1.0))) + LID_TUCK
-        radial = _unit(direction - (direction @ forward) * forward)
-        tucked = forward * math.cos(polar) + radial * math.sin(polar)
-        under.append(net.add(centre + tucked * (head.eye_radius + LID_CLEARANCE), RIGID))
-    # Seen from in front the ring runs clockwise for the right eye, so the pocket's faces look
-    # into the opening.
-    net.island = "socket_R"
-    net.strip(ring, under, zone, SOCKET)
-    back = net.add(centre - forward * (head.eye_radius + 0.003 * s), RIGID)
-    for k in range(len(under)):
-        net.face((under[k], under[(k + 1) % len(under)], back), zone, SOCKET)
-    net.mark("eye_ring", ring)
 
     # The nostril: the cage's faces over it open into a ring on the nostril's edge, with the skin
     # under the nose around it and a pocket behind it.
@@ -668,19 +649,18 @@ def graft_ear(fine: Net, coarse: Net, head: Head):
         fine.face([around[k] if k >= 0 else rim[-1 - k] for k in triple], ZONE["Head"], "head")
 
 
+def graft_eye(fine: Net, coarse: Net, head: Head):
+    """Builds the lids into the hole the cage's band around the eye left; see eye.py."""
+    eyes.graft(fine, coarse, head.lids)
+
+
 def refine_head(fine: Net, coarse: Net, head: Head):
-    """Places the vertices that subdividing put on the feature lines: the lids' edge, the nostril's
-    edge, and the line between the lips, where the upper and the lower lip must meet point for
-    point all the way to the mouth's corner."""
+    """Places the vertices that subdividing put on the feature lines: the nostril's edge, and the
+    line between the lips, where the upper and the lower lip must meet point for point all the way
+    to the mouth's corner."""
     def between(a, b):
         return fine.edge_point[(a, b) if a < b else (b, a)]
 
-    ring = coarse.marks["eye_ring"]
-    stations = head.rim_stations + [head.rim_length]
-    for k in range(len(ring)):
-        vertex = between(ring[k], ring[(k + 1) % len(ring)])
-        fine.points[vertex] = head.on_rim((stations[k] + stations[k + 1]) / 2)
-        fine.holds[vertex].update((FIXED, PINNED))
     upper, lower = coarse.marks["lip_upper"], coarse.marks["lip_lower"]
     # The ring of the inner lips behind the line runs over the corner, as the two lips together do.
     inner = coarse.marks["lip_inner"]
