@@ -29,6 +29,7 @@ LEG_RING = 10
 # round of the shoulder: with three, its outline turned 30 degrees at one vertex.
 FAN_RINGS = 4
 FAN_STEP = 0.020
+FAN_FIRST = 0.040
 # How many rows of faces each stretch of a limb has, the same on every body, so every body of the
 # cage has the same faces: from the last ring of the shoulder's fan to the elbow, from the elbow to
 # the wrist, from the top of the thigh to the knee, and from the knee to the ankle.
@@ -146,6 +147,8 @@ class Measures:
                 "leg": surface.part(lambda c: (c[:, 0] > 0.002) & (c[:, 0] < self.gap(c[:, 2]) + margin)
                                     & (c[:, 2] < self.leg_split + 0.06 * self.scale)),
             }
+            # The rows under the arm are laid onto the arm's skin by its nearest point.
+            self._skins["armpit"] = self._skins["arm"]
         return self._skins
 
 
@@ -226,6 +229,7 @@ def build_trunk(net: Net, m: Measures):
                 continue
             if lower is row_b and k in (SIDE - 1, SIDE):
                 continue
+            net.island = "back" if k < SIDE else "front"
             net.quad(*corners, zone, "trunk")
     net.mark("trunk_bottom", rows[0])
     net.mark("trunk_top", rows[-1])
@@ -273,7 +277,9 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
     lower = _unit(wrist - elbow)
     # The fan turns about a line through the gap just below the armpit, from the plane of the
     # shoulder ring to the plane square to the upper arm.
-    pivot = np.array([m.gap_x + 0.003 * s, 0.0, m.armpit_z - 0.022 * s])
+    # The first ring crosses the gap FAN_FIRST below the armpit: nearer, its faces under the arm
+    # are slivers 3 mm wide.
+    pivot = np.array([m.gap_x + 0.003 * s, 0.0, m.armpit_z - FAN_FIRST * s])
     angle = math.acos(float(np.clip(X @ upper, -1.0, 1.0)))
     turn_axis = _unit(np.cross(X, upper))
 
@@ -322,9 +328,13 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
         ring, loop = ring_at(origin, normal, origin, start, name)
         rings.append(ring)
     elbow_index = 1 + FAN_RINGS + [name for _o, _n, name in stations].index("elbow")
+    # The arm is one island of the UV map, opened along its inner line.
+    net.island = "arm_R"
+    net.seam([ring[0] for ring in rings])
     for index in range(len(rings) - 1):
         zone = ZONE["UpperArms"] if index < elbow_index else ZONE["Forearms"]
-        net.strip(rings[index], rings[index + 1], zone, "arm")
+        # The first two rows lie in the narrow gap under the arm.
+        net.strip(rings[index], rings[index + 1], zone, "armpit" if index < 2 else "arm")
     net.mark("elbow", rings[elbow_index])
     net.mark("arm_end", rings[-1])
     return rings, (joint, elbow, wrist)
@@ -379,9 +389,13 @@ def build_neck(net: Net, m: Measures, top=None):
         if k in (0, TRUNK_COLUMNS):
             point[0] = 0.0
         slope.append(net.add(point, *([MIRROR] if k in (0, TRUNK_COLUMNS) else [])))
-    net.strip(lower, slope, ZONE["Torso"], "trunk", closed=False)
+    sides = ["back"] * SIDE + ["front"] * (TRUNK_COLUMNS - SIDE)
+    net.strip(lower, slope, ZONE["Torso"], "trunk", closed=False, islands=sides)
     lower = slope
-    net.strip(lower, collar, ZONE["Torso"], "trunk", closed=False)
+    net.strip(lower, collar, ZONE["Torso"], "trunk", closed=False, islands=sides)
+    # The neck is one island, opened down the nape.
+    net.island = "neck"
+    net.seam([collar[0], middle[0]])
     net.strip(collar, middle, ZONE["Neck"], "trunk", closed=False)
     net.mark("collar", collar)
     net.mark("neck_end", middle)
@@ -416,6 +430,7 @@ def build_legs(net: Net, m: Measures):
     centres.append(row[0])
     sides.append(row[1])
     for k in range(4):
+        net.island = "front" if k < 2 else "back"
         net.quad(centres[k], sides[k], sides[k + 1], centres[k + 1], ZONE["Pelvis"], "trunk")
     # The hole, from its innermost vertex over the front and the outside to the back.
     hole = [sides[2], sides[1]] + [row[k] for k in range(TRUNK_COLUMNS - 1, 0, -1)] + [sides[3]]
@@ -451,8 +466,13 @@ def build_legs(net: Net, m: Measures):
         rings.append(ring_at(origin, normal, name))
     names = [name for _o, _n, name in stations]
     knee_index = 1 + names.index("knee")
+    # The row under the trunk belongs to the trunk's front and back; the leg below it is one island
+    # of the UV map, opened along its inner line.
+    net.seam([ring[0] for ring in rings[1:]])
     for index in range(len(rings) - 1):
         zone = ZONE["Pelvis"] if index == 0 else ZONE["Thighs"] if index < knee_index else ZONE["Shins"]
-        net.strip(rings[index], rings[index + 1], zone, "leg")
+        net.island = "leg_R"
+        net.strip(rings[index], rings[index + 1], zone, "leg",
+                  islands=["front"] * 5 + ["back"] * 5 if index == 0 else None)
     net.mark("leg_end", rings[-1])
     return rings, (hip, knee, ankle)

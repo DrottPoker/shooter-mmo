@@ -16,6 +16,10 @@ from .body import ZONE, _unit
 from .net import FIXED, MIRROR, RIGID, Net
 
 X, Y, Z = np.eye(3)
+# The faces inside the head, which are laid onto no skin: the pocket behind the eye's opening and
+# the mouth cavity. They are the hidden parts 7 and 8 of the body files' face attribute "part".
+SOCKET, MOUTH = "socket", "mouth"
+HIDDEN_PARTS = {SOCKET: 7, MOUTH: 8}
 
 # The bundle's head cage, by its vertex and face numbers; the right side is the one at +x once
 # the cage faces +Y.
@@ -104,6 +108,24 @@ class Head:
             self.points[v] = self.between_lips(self.points[v])
         self.half_mouth = float(self.points[LIP_CORNER][0])
         self.neck_top = [self.points[v] for v in NECK_RING]
+
+    def back_line(self):
+        """The cage's vertices on the middle of the back of the head, from the ring under the head
+        up to the crown."""
+        beside = {v: set() for v in self.centre}
+        for face in self.faces:
+            for a, b in zip(face, face[1:] + face[:1]):
+                if a in self.centre and b in self.centre:
+                    beside[a].add(b)
+                    beside[b].add(a)
+        crown = max(self.centre, key=lambda v: self.points[v][2])
+        line = [NECK_RING[0]]
+        while line[-1] != crown:
+            onward = [v for v in beside[line[-1]] if v not in line and v not in NECK_INNER]
+            if len(onward) != 1:
+                raise RuntimeError(f"the middle line of the head's back divides at vertex {line[-1]}")
+            line.append(onward[0])
+        return line
 
     def on_lid(self, point):
         """A point of the lids' edge, kept clear of the eyeball."""
@@ -257,6 +279,10 @@ def build_head(net: Net, head: Head):
         # adds are laid onto the reference. The ear's own vertices are evened out with it.
         vertex[v] = net.add(head.points[v], *([FIXED] if v in beside_ear else []), *([MIRROR] if v in head.centre else []))
 
+    # The head is one island of the UV map, with the face in its middle, opened up the back of the
+    # head, where the hair lies.
+    net.island = "head"
+    net.seam([vertex[v] for v in head.back_line()])
     # The lower lip takes its own vertices along the line between the lips.
     lower = {v: net.add(head.points[v], FIXED, *([MIRROR] if v in head.centre else [])) for v in LIP_LINE}
     skip = set(NECK_FACES) | set(EYE_FACES)
@@ -272,6 +298,8 @@ def build_head(net: Net, head: Head):
 
     # The neck's top ring is the opening under the head.
     neck_top = [vertex[v] for v in NECK_RING]
+    net.island = "neck"
+    net.seam([net.marks["neck_end"][0], neck_top[0]])
     net.strip(net.marks["neck_end"], neck_top, ZONE["Neck"], "throat", closed=False)
     net.mark("neck_top", neck_top)
 
@@ -291,16 +319,18 @@ def build_head(net: Net, head: Head):
         under.append(net.add(centre + tucked * (head.eye_radius + LID_CLEARANCE), RIGID))
     # Seen from in front the ring runs clockwise for the right eye, so the pocket's faces look
     # into the opening.
-    net.strip(ring, under, zone, None)
+    net.island = "socket_R"
+    net.strip(ring, under, zone, SOCKET)
     back = net.add(centre - forward * (head.eye_radius + 0.003 * s), RIGID)
     for k in range(len(under)):
-        net.face((under[k], under[(k + 1) % len(under)], back), zone, None)
+        net.face((under[k], under[(k + 1) % len(under)], back), zone, SOCKET)
     net.mark("eye_ring", ring)
 
     # The mouth: the inner lips behind the line between the lips, and the cavity behind them.
     upper = [vertex[286], vertex[183], vertex[LIP_END], lower[183], lower[286]]
     middle, beside, last = (np.asarray(head.points[v], float) for v in (286, 183, LIP_END))
     depth, up, down = MOUTH_LIPS
+    net.island = "mouth"
     rows = [upper, [
         net.add((0.0, middle[1] - depth * s, middle[2] + up * s), RIGID, MIRROR),
         net.add((beside[0], beside[1] - depth * s, beside[2] + up * s * 0.9), RIGID),
@@ -318,10 +348,10 @@ def build_head(net: Net, head: Head):
             net.add((0.0, back_y, z - down * s), RIGID, MIRROR),
         ])
     for near, far in zip(rows[:-1], rows[1:]):
-        net.strip(near, far, zone, None, closed=False)
+        net.strip(near, far, zone, MOUTH, closed=False)
     last = rows[-1]
-    net.face((last[0], last[1], last[3], last[4]), zone, None)
-    net.face((last[1], last[2], last[3]), zone, None)
+    net.face((last[0], last[1], last[3], last[4]), zone, MOUTH)
+    net.face((last[1], last[2], last[3]), zone, MOUTH)
     net.mark("lip_upper", [vertex[286], vertex[183], vertex[LIP_END]])
     net.mark("lip_lower", [lower[286], lower[183], vertex[LIP_END]])
     net.mark("lip_corner", [vertex[LIP_END], vertex[LIP_CORNER]])

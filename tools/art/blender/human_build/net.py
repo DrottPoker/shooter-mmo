@@ -3,7 +3,14 @@ with the centre line, its subdivision, its fitting onto a reference surface, and
 
 Every face carries its body zone and the name of the skin it is laid onto, a part of the reference
 surface, so a finger's faces land on that finger only. A vertex may be held: on the mirror plane
-x = 0, on a plane that a border between two body parts lies in, or where it is."""
+x = 0, on a plane that a border between two body parts lies in, or where it is.
+
+Every face also carries the name of its island of the UV map, the one that is current when the face
+is made, and the net keeps the edges that are seams inside an island, such as the line down the
+inside of an arm. An island whose name ends in _R lies on the right half; its mirror image's name
+ends in _L. The other islands lie across the middle and stay whole."""
+
+import math
 
 import numpy as np
 
@@ -25,6 +32,10 @@ class Net:
         self.faces = []
         self.zones = []
         self.skins = []
+        # The UV island of every face, the island that new faces get, and the seams inside islands.
+        self.islands = []
+        self.island = None
+        self.seams = set()
         # Per vertex: a set of holds, each MIRROR, FIXED, or ("plane", name); and the planes by name.
         self.holds = []
         self.planes = {}
@@ -63,15 +74,24 @@ class Net:
         self.faces.append(corners)
         self.zones.append(zone)
         self.skins.append(skin)
+        self.islands.append(self.island)
 
-    def strip(self, lower, upper, zone, skin, closed=True, flip=False):
+    def seam(self, vertices):
+        """Makes the edges along a line of vertices seams of the UV map."""
+        for a, b in zip(vertices[:-1], vertices[1:]):
+            self.seams.add((a, b) if a < b else (b, a))
+
+    def strip(self, lower, upper, zone, skin, closed=True, flip=False, islands=None):
         """Faces between two rows of as many vertices; lower runs counter-clockwise seen from the
-        side the upper row is on, so the faces look outward."""
+        side the upper row is on, so the faces look outward. islands names the UV island of each
+        face in turn, where they differ along the strip."""
         if len(lower) != len(upper):
             raise ValueError(f"rows of {len(lower)} and {len(upper)} vertices")
         count = len(lower)
         for i in range(count if closed else count - 1):
             j = (i + 1) % count
+            if islands is not None:
+                self.island = islands[i]
             if flip:
                 self.quad(lower[j], lower[i], upper[i], upper[j], zone, skin)
             else:
@@ -130,14 +150,17 @@ class Net:
                 edge_point[key] = fine.add((self.points[a] + self.points[b]) / 2, *shared)
             return edge_point[key]
 
-        for face, zone, skin in zip(self.faces, self.zones, self.skins):
+        for face, zone, skin, island in zip(self.faces, self.zones, self.skins, self.islands):
             count = len(face)
             shared = set.intersection(*[self.holds[v] for v in face]) - {FIXED}
             centre = fine.add(np.mean([self.points[v] for v in face], axis=0), *shared)
             face_point.append(centre)
             mids = [middle(face[k], face[(k + 1) % count]) for k in range(count)]
+            fine.island = island
             for k in range(count):
                 fine.quad(face[k], mids[k], centre, mids[k - 1], zone, skin)
+        for a, b in self.seams:
+            fine.seam([a, edge_point[(a, b)], b])
         fine.marks = {name: list(vertices) for name, vertices in self.marks.items()}
         fine.edge_point = edge_point
         fine.face_point = face_point
@@ -184,12 +207,14 @@ class Net:
             point = np.array([0.0, point[1], point[2]])
         return point
 
-    def fit(self, skins, rounds=12, rate=0.5, reach=0.08, reaches=None, report=None):
+    def fit(self, skins, rounds=12, rate=0.5, reach=0.08, reaches=None, nearest=(), report=None):
         """Lays every vertex onto the skin of its faces and relaxes the net along the surface: each
         round a vertex moves part of the way toward the middle of its neighbours, within the
         surface, and is laid onto the skin again. Held vertices stay in their planes. A skin is
         looked for within the reach, or within its own reach in reaches: a short one keeps the
-        vertices beside a hollow, a nostril or the slit between the lips, out of it."""
+        vertices beside a hollow, a nostril or the slit between the lips, out of it. The skins
+        named in nearest take a vertex at their nearest point instead of along the vertex's normal:
+        in a narrow gap, such as under the arm, the normal points along the gap to its end."""
         reaches = reaches or {}
         points = self.array()
         vertex_faces = self.vertex_faces()
@@ -203,7 +228,11 @@ class Net:
             best = None
             for name in own_skins[v]:
                 surface = skins[name]
-                found = surface.project(point, normal, reaches.get(name, reach))
+                if name in nearest:
+                    near = surface.nearest(point, reaches.get(name, reach))
+                    found = None if near is None else near[0]
+                else:
+                    found = surface.project(point, normal, reaches.get(name, reach))
                 if found is not None:
                     distance = np.linalg.norm(found - point)
                     if best is None or distance < best[0]:
@@ -241,6 +270,41 @@ class Net:
                 report(round_index, points)
         self.points = [p for p in points]
         return points
+
+    def slivers(self, limit=5.0):
+        """The faces that stay slivers whichever way they are cut into triangles: with a corner
+        under the limit, in degrees, in a triangle of the better of the cuts from two neighbouring
+        corners."""
+        points = self.array()
+
+        def smallest(a, b, c):
+            out = 180.0
+            for p, q, r in ((a, b, c), (b, c, a), (c, a, b)):
+                u, w = points[q] - points[p], points[r] - points[p]
+                lengths = np.linalg.norm(u) * np.linalg.norm(w)
+                out = min(out, 0.0 if lengths < 1e-18 else math.degrees(math.acos(float(np.clip(u @ w / lengths, -1.0, 1.0)))))
+            return out
+
+        found = []
+        for index, face in enumerate(self.faces):
+            best = 0.0
+            for shift in (0, 1):
+                turned = tuple(face[shift:]) + tuple(face[:shift])
+                best = max(best, min(smallest(turned[0], turned[k], turned[k + 1]) for k in range(1, len(turned) - 1)))
+            if best < limit:
+                found.append(index)
+        return found
+
+    def mend(self, limit=8.0, rounds=6, rate=0.5):
+        """Evens out the vertices of the faces that are slivers, a few rounds, until none is left.
+        Vertices that are fixed stay."""
+        for _ in range(rounds):
+            bad = self.slivers(limit)
+            if not bad:
+                break
+            loose = sorted({v for f in bad for v in self.faces[f] if not ({FIXED, RIGID, MIRROR} & self.holds[v])})
+            self.smooth(loose, 1, rate)
+        return len(self.slivers(limit))
 
     def touching(self, skin):
         """The vertices with a face that is laid onto the skin of this name."""
@@ -294,10 +358,15 @@ class Net:
                 if abs(point[0]) <= tolerance:
                     raise ValueError(f"vertex {v} lies on the mirror plane but is not held on it")
                 twin[v] = whole.add((-point[0], point[1], point[2]), *holds)
-        for face, zone, skin in zip(self.faces, self.zones, self.skins):
+        for face, zone, skin, island in zip(self.faces, self.zones, self.skins, self.islands):
+            whole.island = island
             whole.face(face, zone, skin)
-        for face, zone, skin in zip(self.faces, self.zones, self.skins):
+        for face, zone, skin, island in zip(self.faces, self.zones, self.skins, self.islands):
+            whole.island = island[:-2] + "_L" if island is not None and island.endswith("_R") else island
             whole.face([twin[v] for v in reversed(face)], zone, skin)
+        for a, b in self.seams:
+            whole.seam([a, b])
+            whole.seam([twin[a], twin[b]])
         whole.marks = {name: list(vertices) for name, vertices in self.marks.items()}
         whole.twin = twin
         return whole

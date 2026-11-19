@@ -17,7 +17,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from human_build import body, foot as feet, hand as hands, head as heads  # noqa: E402
+from human_build import body, foot as feet, hand as hands, head as heads, islands  # noqa: E402
 from human_build.net import Net  # noqa: E402
 from human_build.surface import Surface  # noqa: E402
 
@@ -28,6 +28,17 @@ def _object(name, net, collection, distances=None):
     mesh.update()
     zone = mesh.attributes.new("zone", "INT", "FACE")
     zone.data.foreach_set("value", np.array(net.zones, np.int32))
+    part = mesh.attributes.new("part", "INT", "FACE")
+    part.data.foreach_set("value", np.array([heads.HIDDEN_PARTS.get(skin, 0) for skin in net.skins], np.int32))
+    # The islands of the UV map by name, and the seams inside them.
+    names = sorted({island for island in net.islands if island is not None})
+    if names:
+        island = mesh.attributes.new("island", "INT", "FACE")
+        island.data.foreach_set("value", np.array([names.index(i) if i is not None else -1 for i in net.islands], np.int32))
+        mesh["islands"] = names
+        for edge in mesh.edges:
+            a, b = edge.vertices
+            edge.use_seam = ((a, b) if a < b else (b, a)) in net.seams
     if distances is not None:
         layer = mesh.attributes.new("distance", "FLOAT", "POINT")
         layer.data.foreach_set("value", np.asarray(distances, np.float32))
@@ -97,11 +108,19 @@ def build(label, out_path, parts):
         skins.update(foot.skins())
     if head is not None:
         skins.update(head.skins())
-    fine.fit(skins, rounds=10, reaches={} if head is None else head.reaches())
+    fine.fit(skins, rounds=10, reaches={} if head is None else head.reaches(), nearest={"armpit"})
     if head is not None:
         # The ear with the ring of the head's side it stands on.
         fine.smooth(fine.touching("ear"), heads.EAR_SMOOTHING)
+    fine.mend()
+    left = len(fine.slivers())
+    if left:
+        print(f"HUMAN_BUILD_FAILED {left} faces are slivers whichever way they are cut")
     whole = fine.mirrored()
+    if hand is not None:
+        islands.part_hands(whole, hand.palmar)
+    if head is not None:
+        islands.ear_rims(whole)
     points = whole.array()
     distances = np.array([(surface.nearest(p) or (None, None, 9.0))[2] for p in points])
     collection = bpy.data.collections.get("Build") or bpy.data.collections.new("Build")

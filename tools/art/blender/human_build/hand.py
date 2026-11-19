@@ -125,6 +125,8 @@ def build_hand(net: Net, hand: Hand):
     s = hand.scale
     zone = ZONE["Hands"]
     wrist_ring = net.marks["arm_end"]
+    # The hand opens like a glove: the build tool parts its faces into a back and a palm.
+    net.island = "hand_R"
     axis, radial, palmar = hand.axis, hand.radial, hand.palmar
 
     # Every finger's rings from its web to its tip.

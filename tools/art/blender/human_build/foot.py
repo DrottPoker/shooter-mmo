@@ -216,8 +216,10 @@ def build_foot(net: Net, foot: Foot):
         near = through - Z * 0.03 * s - forward * 0.02 * s * (len(FAN_STEPS) - step)
         loop = body.loop(through, normal, near=near)
         rings.append(net.add_ring(_ring_of_ten(loop, normal, lateral)))
+    # The foot opens into a top, with its sides, and a sole: along its inner and its outer line.
+    top, sole = "foot_top_R", "foot_sole_R"
     for lower, upper in zip(rings[:-1], rings[1:]):
-        net.strip(lower, upper, zone, "foot")
+        net.strip(lower, upper, zone, "foot", islands=[top] * 5 + [sole] * 5)
     across = rings[-1]
 
     # The six lines over the top and under the sole, at the notches, the middles, and the roots.
@@ -260,20 +262,26 @@ def build_foot(net: Net, foot: Foot):
     notches = ring_at(notch_v, creased=True)
 
     # From the ring of ten across the foot to the ring of twelve, with a triangle at each side.
+    net.island = top
     for i in range(5):
         net.quad(across[i], across[i + 1], ball[i + 1], ball[i], zone, "foot")
     net.face((across[5], ball[6], ball[5]), zone, "foot")
+    net.island = sole
     for i in range(5, 10):
         net.quad(across[i], across[(i + 1) % 10], ball[i + 2], ball[i + 1], zone, "foot")
+    net.island = top
     net.face((across[0], ball[0], ball[11]), zone, "foot")
-    net.strip(ball, roots, zone, "foot")
-    net.strip(roots, middles, zone, "foot")
-    net.strip(middles, notches, zone, "foot")
+    # Of the rings of twelve, the faces at the foot's two edges belong to the top.
+    twelve = [top] * 6 + [sole] * 5 + [top]
+    net.strip(ball, roots, zone, "foot", islands=twelve)
+    net.strip(roots, middles, zone, "foot", islands=twelve)
+    net.strip(middles, notches, zone, "foot", islands=twelve)
 
     # Each toe ends in four triangles to its tip.
     for index, name in enumerate(TOES):
         ring = [notches[11 - index], notches[index], notches[index + 1], notches[10 - index]]
         tip = net.add(foot.tip(index))
         for k in range(4):
+            net.island = sole if k == 3 else top
             net.face((ring[k], ring[(k + 1) % 4], tip), zone, "foot")
         net.mark(f"{name}_toe_tip", [tip])
