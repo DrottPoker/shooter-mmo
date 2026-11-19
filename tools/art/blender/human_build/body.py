@@ -48,6 +48,11 @@ FAN_FIRST = 0.040
 # cage has the same faces: from the last ring of the shoulder's fan to the elbow, from the elbow to
 # the wrist, from the top of the thigh to the knee, and from the knee to the ankle.
 UPPER_ARM_SEGMENTS, FOREARM_SEGMENTS, THIGH_SEGMENTS, SHIN_SEGMENTS = 2, 5, 5, 8
+# The arm is measured along the line from the shoulder joint to the tip of its longest finger,
+# however it is held. The wrist is its slimmest section between WRIST_BETWEEN as shares of that
+# line, where the forearm ends and the hand begins, and the arm's first section of its own, clear
+# of the armpit, lies at ARM_CLEAR.
+WRIST_BETWEEN, ARM_CLEAR = (0.62, 0.84), 0.24
 
 
 def _unit(v):
@@ -69,8 +74,11 @@ def _bisect(low, high, test, steps=14):
 class Measures:
     """What the cage needs to know about a reference body, found from its own surface."""
 
-    def __init__(self, surface: Surface):
+    def __init__(self, surface: Surface, joint=None):
+        """joint is the right arm's shoulder joint, where the reference names it: a reference
+        whose arms were turned out knows the point they were turned about."""
         self.surface = surface
+        self.joint = None if joint is None else np.asarray(joint, float)
         self._skins = None
         points = surface.points
         self.height = float(points[:, 2].max())
@@ -85,12 +93,15 @@ class Measures:
         below = self.armpit_z - 0.004
         self.gap_x = (self._central(below).points[:, 0].max() + self._arm(below).points[:, 0].min()) / 2
         self.gap_heights = np.linspace(self.leg_split + 0.06 * s, below, 24)
-        gaps = []
+        gaps, beside = [], []
         for z in self.gap_heights:
             trunk, arm = self._central(z), self._arm(z)
             gaps.append((trunk.points[:, 0].max() + arm.points[:, 0].min()) / 2 if arm is not None
                         else trunk.points[:, 0].max() + 0.05)
+            beside.append(arm is not None)
         self.gap_values = np.array(gaps)
+        # Whether the arm hangs beside the hips, so the hand lies beside the thigh.
+        self.arm_hangs = beside[0]
         # The ring around the shoulder: the section in the plane of the gap between arm and chest.
         loops = surface.section((self.gap_x, 0, 0), X)
         target = np.array([self.gap_x, 0.0, self.armpit_z + 0.09 * s])
@@ -170,8 +181,10 @@ class Measures:
             self._skins = {
                 "trunk": surface.part(lambda c: (c[:, 0] > -0.03) & (c[:, 0] < self.gap(c[:, 2]) + margin)),
                 "arm": surface.part(lambda c: (c[:, 0] > self.gap(c[:, 2]) - margin) & (c[:, 2] > 0.35 * self.height)),
-                "leg": surface.part(lambda c: (c[:, 0] > 0.002) & (c[:, 0] < self.gap(c[:, 2]) + margin)
-                                    & (c[:, 2] < self.leg_split + 0.06 * self.scale)),
+                # A hand that hangs beside the thigh is no part of the leg; where the arms are held
+                # out nothing lies beside the legs, whose feet may stand wider than the hips.
+                "leg": surface.part(lambda c: (c[:, 0] > 0.002) & (c[:, 2] < self.leg_split + 0.06 * self.scale)
+                                    & ((c[:, 0] < self.gap(c[:, 2]) + margin) | (not self.arm_hangs))),
             }
             # The rows under the arm are laid onto the arm's skin by its nearest point.
             self._skins["armpit"] = self._skins["arm"]
@@ -350,20 +363,37 @@ def refine_trunk(fine: Net, coarse: Net, m: Measures):
 
 
 def _arm_axis(m: Measures):
-    """The shoulder joint, the elbow, and the wrist of the right arm, from the arm's own sections."""
+    """The shoulder joint, the elbow, and the wrist of the right arm, from the arm's own sections,
+    however the arm is held."""
     s = m.scale
     surface = m.surface
-    # The wrist: the slimmest horizontal section above the hand.
+    arm = m.skins()["arm"]
+    # The joint lies inside the round of the shoulder, level with the middle of the ring around
+    # it, on a body whose arms hang; a reference whose arms were turned out names it.
+    ring = m.shoulder_ring
+    joint = m.joint
+    if joint is None:
+        joint = np.array([m.gap_x + 0.035 * s, ring.centre[1], m.armpit_z + 0.75 * (m.shoulder_top - m.armpit_z)])
+    # The arm's line: from the joint to the tip of the longest finger.
+    points = arm.points[np.unique(arm.triangles)]
+    tip = points[int(np.argmax(np.linalg.norm(points - joint, axis=1)))]
+    reach = float(np.linalg.norm(tip - joint))
+    along = (tip - joint) / reach
+
+    def section(share):
+        origin = joint + along * (share * reach)
+        return arm.loop(origin, along, near=origin)
+
+    # The wrist: the arm's slimmest section before the hand.
     best = None
-    for z in np.arange(0.86 * s, 1.02 * s, 0.005):
-        loop = m._arm(z)
+    for share in np.arange(WRIST_BETWEEN[0], WRIST_BETWEEN[1], 0.005):
+        loop = section(share)
         if loop is not None and loop.length > 0.12 * s and (best is None or loop.length < best[0]):
             best = (loop.length, loop.centre)
+    if best is None:
+        raise RuntimeError("the arm has no section of its own where its wrist should be")
     wrist = best[1]
-    top = m._arm(m.armpit_z - 0.02 * s).centre
-    # The joint lies inside the round of the shoulder, level with the middle of the ring around it.
-    ring = m.shoulder_ring
-    joint = np.array([m.gap_x + 0.035 * s, ring.centre[1], m.armpit_z + 0.75 * (m.shoulder_top - m.armpit_z)])
+    top = section(ARM_CLEAR).centre
     # The elbow: where the line of section centres bends most away from the straight arm.
     direction = _unit(wrist - top)
     worst = None
