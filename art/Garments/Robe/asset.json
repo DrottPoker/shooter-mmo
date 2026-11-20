@@ -13,7 +13,7 @@
             { "line": "SleeveLong", "keep": "head" }
         ],
         "hang": [
-            { "line": "SkirtWaist", "side": "all", "chains": "skirt", "flare": 0.08, "to": "SkirtHem" }
+            { "line": "SkirtWaist", "side": "all", "chains": "skirt", "flare": 0.04, "to": "SkirtHem" }
         ],
         "ease": 0,
         "hem": 0.003

@@ -14,7 +14,8 @@ from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
 cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError)
-hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", ArtPipelineError=scene.ArtPipelineError)
+hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", "_gap", "LEAVE", "EDGE_GAP", "MARGINS", "ROOT_BLEND",
+            ArtPipelineError=scene.ArtPipelineError)
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
                "collection_name", "version_name", "material_name", "image_name", "file_sha256", "recipe_text",
                "recipe_regions", "export_paths", "read_wearing", "read_manifests", cage=cage, hang=hang,
@@ -282,6 +283,33 @@ class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):
         for name, manifest in self.manifests.items():
             with self.subTest(garment=name):
                 self.assertLessEqual(manifest["dyes"], texture.MAX_DYES)
+
+
+class LeaveTests(unittest.TestCase):
+    MARGIN = 0.03
+
+    def test_cloth_leaves_the_body_from_its_edge_s_gap_up_to_the_margin(self):
+        self.assertEqual(hang._gap(0.0, self.MARGIN), hang.EDGE_GAP)
+        self.assertAlmostEqual(hang._gap(0.02, self.MARGIN), hang.EDGE_GAP + 0.02 * hang.LEAVE)
+        self.assertEqual(hang._gap(1.0, self.MARGIN), self.MARGIN)
+
+    def test_a_skirt_from_the_waist_leaves_the_body_evenly_down_to_its_chains(self):
+        over = 0.13
+        self.assertEqual(hang._gap(0.0, self.MARGIN, over), hang.EDGE_GAP)
+        self.assertAlmostEqual(hang._gap(over / 2.0, self.MARGIN, over), (hang.EDGE_GAP + self.MARGIN) / 2.0)
+        self.assertAlmostEqual(hang._gap(over, self.MARGIN, over), self.MARGIN)
+        self.assertEqual(hang._gap(over * 2.0, self.MARGIN, over), self.MARGIN)
+        # It stands off the body less than cloth that leaves it at once, all the way down to there.
+        for depth in (0.02, 0.05, 0.1):
+            self.assertLess(hang._gap(depth, self.MARGIN, over), hang._gap(depth, self.MARGIN))
+
+    def test_a_skirt_from_just_above_its_chains_leaves_the_body_no_faster_than_other_cloth(self):
+        for depth in (0.0, 0.01, 0.03):
+            self.assertEqual(hang._gap(depth, self.MARGIN, 0.01), hang._gap(depth, self.MARGIN))
+
+    def test_the_skirt_keeps_room_for_the_thighs_and_blends_into_its_chains_close_to_their_roots(self):
+        self.assertGreaterEqual(hang.MARGINS["skirt"], 0.03)
+        self.assertTrue(0.0 < hang.ROOT_BLEND < 0.1)
 
 
 class HemTests(unittest.TestCase):

@@ -422,11 +422,26 @@ above the part's line; with a width, the part fans out to that width by the
 first joint of its chains. Both are shares of how far the shoulder joints lie
 from the middle, so they fit every body.
 
+A skirt whose edge lies above where its chains hang from, such as one from the
+waist, leaves the body evenly over that height: it keeps the edge's gap of 4 mm
+at the waist and its margin of 30 mm only at the hip joints, where the thighs
+need the room. Cloth that stood off the belly and the hips a few centimeters
+below a fitted waist would puff out there like a bell and make a dress of a
+robe on any body, so a robe falls in a straight line from the waist to the
+widest of the hips and the thighs and straight down from there, wider only by
+its flare.
+
 A loose part takes the weights of its chains, two neighbouring chains blended
 across, and blends into the weights of the edge it hangs from over its first
-ring, or down to where its chains hang from when its edge lies above them, such
-as a skirt from the waist, which moves with the hips there. Loose parts have no
-band and cover nothing, since they swing off what they hang over. The motion and
+ring. A skirt from above where its chains hang from takes the weights of the
+skin under it down to there instead, of the belly, the hips, and the top of the
+thighs, and the chains' weights only over the last 30 mm above their roots: it
+moves with the body there, so a thigh that rises carries the cloth in front of
+the hip along, and a chain bone, which turns about its root, does not swing the
+cloth above its root inward. Loose parts have no band and cover nothing where
+they swing, since they swing off what they hang over; the top of a skirt above
+where its chains hang from does not swing and covers the skin under it like the
+rest of the garment. The motion and
 pair checks follow them with their chains laid as the game lays them, so they
 report a leg that comes through a skirt, and their swing is reviewed in
 [the Wardrobe](ART_PIPELINE.md#the-wardrobe).
@@ -495,11 +510,14 @@ a garment fits, the pipeline computes:
   through the garment already at rest shows in every pose, so that breaks a rule
   instead of being reported; the cage keeps the skin inside it, so a template on
   it has none.
-- **Loose parts cover nothing.** A robe's skirt or a cloak's back swings off
-  what it hangs over at rest, and a face hidden under it would show as a hole,
-  so the skin and the inner garments under loose parts stay drawn, and the line
-  a loose part hangs from counts as an open edge of the cloth that lies on the
-  cage.
+- **Loose parts cover nothing where they swing.** A robe's skirt or a cloak's
+  back swings off what it hangs over at rest, and a face hidden under it would
+  show as a hole, so the skin and the inner garments under the swinging faces
+  of loose parts stay drawn, and the line where the swinging begins counts as
+  an open edge of the cloth that does not swing. The faces of a loose part
+  above where its chains hang from, such as a skirt from the waist down to the
+  hip joints, move with the skin under them and cover it like the cloth that
+  lies on the cage.
 - **A garment may cover nothing at all.** A template whose manifest says
   `"covers": false` keeps an empty cover mask: it lies on top of the body and
   the garments under it and hides none of them, so it can swing open or be
@@ -864,8 +882,8 @@ checks of garments show the cloth as every visible body in the game shows it.
 Cases captured from the client keep the two within 0.01 mm of each other in CI;
 see [Cloth Parity](ART_PIPELINE.md#cloth-parity). The Blender checks of `Robe`
 and `Cloak` in the target pose meet every rule: the legs come through the robe
-only at the hip crease in `Death`, by up to 30 mm, and through the cloak
-nowhere.
+only at the hip crease in the fall of `Death`, by up to 56 mm, and through the
+cloak nowhere.
 
 ### Measuring The Cloth
 

@@ -3116,7 +3116,7 @@ following the layers of
    drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a
    garment triangle when a garment of a higher layer covers the body face under
-   it. Loose parts, such as a robe's skirt, cover nothing, and the cloak covers
+   it. Loose parts, such as a robe's skirt, cover nothing where they swing, and the cloak covers
    nothing at all, so what lies under them stays drawn when they swing.
 3. A pulled-in body vertex moves inward along its normal by its distance, the
    largest any drawn garment asks for.
