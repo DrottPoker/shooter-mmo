@@ -30,7 +30,8 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
                  "_thin", "band", "EAR_MARGIN", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
-                 "BUST_ROUND", "SHOULDER_REACH", "armpit_opened", "armpit_room", "wall_shares", "narrowing", "ARMPIT_REACH",
+                 "BUST_ROUND", "SHOULDER_REACH", "waist_shares", "waist_filled", "WAIST_DEPTH", "armpit_opened", "armpit_room",
+                 "wall_shares", "narrowing", "ARMPIT_REACH",
                  "ARMPIT_BEYOND", "ARMPIT_ROOM", evened=evened, numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
@@ -359,6 +360,40 @@ class ShapeTests(unittest.TestCase):
         np.testing.assert_allclose(out[2:, 2], 0.0, atol=1e-12)
         self.assertGreaterEqual(out[3, 0], 0.0)
         np.testing.assert_allclose(out[4], 0.0, atol=1e-12)
+
+    # A trunk's half width from above the legs to the foot of the chest's side, 5 cm apart: wide
+    # hips, a waist at index 3, and a side that swells out fast above it.
+    TRUNK_HEIGHTS = np.array([0.85, 0.90, 0.95, 1.00, 1.05, 1.10, 1.15, 1.20])
+    TRUNK = np.array([0.195, 0.175, 0.165, 0.156, 0.158, 0.170, 0.181, 0.182])
+
+    def test_a_filled_waist_is_wider_and_the_side_runs_straight_from_it_to_the_foot_of_the_chest(self):
+        shares = reference.waist_shares(self.TRUNK_HEIGHTS, self.TRUNK, 3, 0.08)
+        grown = self.TRUNK * (1.0 + shares)
+        wide = 0.156 * 1.08
+        self.assertAlmostEqual(grown[3], wide)
+        # Above the waist the side lies on the line to the outline's top, which stays.
+        line = wide + (0.182 - wide) * (self.TRUNK_HEIGHTS[3:] - 1.00) / 0.20
+        np.testing.assert_allclose(grown[3:], np.maximum(line, self.TRUNK[3:]), atol=1e-12)
+        self.assertEqual(shares[-1], 0.0)
+        # Below it the side is as wide as the waist, down to where the hips are wider of their own.
+        np.testing.assert_allclose(grown[:3], [0.195, 0.175, wide], atol=1e-12)
+        self.assertEqual(reference.narrowing(grown[3:]), 0.0)
+
+    def test_a_trunk_that_is_wide_enough_does_not_grow(self):
+        # Hips wider than the waist, and a side that runs straight from the waist up.
+        straight = np.array([0.195, 0.19, 0.185, 0.18, 0.1805, 0.181, 0.1815, 0.182])
+        np.testing.assert_allclose(reference.waist_shares(self.TRUNK_HEIGHTS, straight, 3, 0.0), 0.0, atol=1e-12)
+
+    def test_a_trunk_grows_whole_in_width_and_less_in_depth_and_the_arms_stay(self):
+        heights, shares = np.array([1.0, 1.1, 1.2]), np.array([0.0, 0.1, 0.0])
+        # The side and the front of the trunk at the waist, an arm beside it, and the trunk above.
+        points = np.array([(0.15, 0.02, 1.1), (-0.15, 0.02, 1.1), (0.0, 0.12, 1.1), (0.45, 0.0, 1.1), (0.15, 0.0, 1.25)])
+        out = reference.waist_filled(points, heights, shares, lambda z: np.full_like(z, 0.25),
+                                     lambda z: np.full_like(z, 0.02), 1.0)
+        np.testing.assert_allclose(out[0], (0.165, 0.02, 1.1), atol=1e-12)
+        np.testing.assert_allclose(out[1], out[0] * (-1.0, 1.0, 1.0), atol=1e-12)
+        np.testing.assert_allclose(out[2], (0.0, 0.12 + 0.1 * 0.1 * reference.WAIST_DEPTH, 1.1), atol=1e-12)
+        np.testing.assert_allclose(out[3:], points[3:], atol=1e-12)
 
     def test_a_body_with_nothing_to_grow_stays(self):
         points, joints = self.body()

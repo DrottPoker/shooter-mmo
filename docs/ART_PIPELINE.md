@@ -1404,6 +1404,19 @@ asked for, by smooth, mirrored fields before the net is laid onto it:
   calf by 9 %, her chest by 3 %, and her neck by 2 %. The male grows by 8 to
   10 % in his limbs, 15 % in the round of his shoulder, 4 % in his chest, and
   5 % in his neck. `FULLER` in `reference.py` holds the shares.
+- **The male's waist filled.** His waist narrowed to four fifths of the width
+  of his hips and of his chest, and his side swelled out again fast below the
+  armpit, so the muscle of his back stood out there as a bulge over a thin
+  waist. `reference.py` measures the outline of his trunk and fills it. The
+  waist grows 8 % wider, from 31.0 to 33.5 cm. Above it the side is filled
+  out to the straight line from the wider waist up to the foot of the chest's
+  side, where the opened armpit's own straight line begins, so one even line
+  runs from his waist to his armpit. Below the waist the side is filled
+  straight down, to where his hips are that wide of their own. Each height
+  grows about the trunk's middle by the share that its outline needs, in
+  width, and by 0.4 of that share from front to back, so his belly does not
+  stand out with it. `WAIST` holds the share; the female's is nothing, and her
+  waist is as it was.
 
 The bodies stand in an A-pose. The bundle's bodies stand with their arms
 hanging, the line from the shoulder joint to the wrist 19 degrees from straight
@@ -1608,7 +1621,8 @@ foreach ($label in "Male", "Female") {
 
 Expected result: `reference.py` prints the height of both references, how far
 each body's arms hung and that they are turned out to 45 degrees, how much
-each part of each body grew, how far each armpit is moved, how far out the
+each part of each body grew, how wide the male's waist becomes and between
+which heights his trunk is filled, how far each armpit is moved, how far out the
 side of the chest lies below it, by how much that side narrows on its way up,
 and how much room the opening leaves the body, how
 near the head cage lies to the female one, a median under 1 mm, and how many
