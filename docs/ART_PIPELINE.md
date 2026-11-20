@@ -1361,9 +1361,11 @@ The human base bodies are being built again from scratch, with the method of the
 `tools/art/blender/human_build`, which place every vertex and face on purpose,
 and are written as assets of their own, `art/Characters/Human_Male_Next` and
 `art/Characters/Human_Female_Next`, beside the bodies the game uses. The
-reviewer approved their `model` stage on 2026-11-19, and again on 2026-11-20
-after their eyes were built again for lids that close, as the blinking of the
-next step needs; see the lids below. They are committed in review on the
+reviewer approved their `model` stage on 2026-11-19, again on 2026-11-20 after
+their eyes were built again for lids that close, as the blinking of the next
+step needs, and once more that day after their armpits were opened, both had
+grown fuller, and the male's waist was filled; see the lids, the armpit, and
+the fuller bodies below. They are committed in review on the
 `Humanoid_Next` skeleton, which has eyelids: their `rig` stage waits for the
 reviewer, so they have no export; see
 [Rig The Rebuilt Bodies](#rig-the-rebuilt-bodies). The move of everything that
