@@ -391,9 +391,8 @@ function Read-ArtSkeleton([string]$Name) {
 function Get-ArtSocket([string]$Socket) {
     # The skeleton and bone of a socket that its bone names, such as main_hand on Socket_MainHand of
     # the Humanoid skeleton, or $null when no skeleton definition has it. Where several skeletons
-    # have the socket, such as Humanoid and the rebuilt bodies' Humanoid_Next until they replace it,
-    # it is the first by the ordinal order of the file names, as Unity's SocketBones lists them; a
-    # culture's order puts Humanoid_Next.json first on Linux and Humanoid.json first on Windows.
+    # have the socket, it is the first by the ordinal order of the file names, as Unity's
+    # SocketBones lists them; a culture's order differs between Linux and Windows.
     $names = [string[]]@(Get-ChildItem -LiteralPath $script:ArtSkeletonFolder -Filter "*.json" -File | ForEach-Object { $_.Name })
     [Array]::Sort($names, [StringComparer]::Ordinal)
     foreach ($name in $names) {

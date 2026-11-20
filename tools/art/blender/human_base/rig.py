@@ -1,7 +1,6 @@
 """The rig of a base character: an armature with the shared skeleton of its bodies, Humanoid
-(art/Skeletons/Humanoid.json) or, for the rebuilt bodies, Humanoid_Next, with its joints placed
-from the character's own geometry, and every body part, eyeball, tooth row and the tongue bound to
-it. The character's file is the source: rig places the joints again and solves the weights, weights
+(art/Skeletons/Humanoid.json), with its joints placed from the character's own geometry, and every
+body part, eyeball, tooth row and the tongue bound to it. The character's file is the source: rig places the joints again and solves the weights, weights
 only solves the weights from the joints the file has, and sync only writes the body parts from the
 source body (art_pipeline.bodies). Each of them writes the weights into the source body and its
 parts. A rebuilt body's file has no armature before its first rig: its root is an empty with the

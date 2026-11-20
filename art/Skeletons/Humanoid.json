@@ -11,6 +11,10 @@
         {"name": "Jaw", "parent": "Head", "human": "Jaw", "deform": true},
         {"name": "Eye_L", "parent": "Head", "human": "LeftEye", "deform": true},
         {"name": "Eye_R", "parent": "Head", "human": "RightEye", "deform": true},
+        {"name": "EyelidUpper_L", "parent": "Head", "deform": true},
+        {"name": "EyelidLower_L", "parent": "Head", "deform": true},
+        {"name": "EyelidUpper_R", "parent": "Head", "deform": true},
+        {"name": "EyelidLower_R", "parent": "Head", "deform": true},
         {"name": "Shoulder_L", "parent": "UpperChest", "human": "LeftShoulder", "deform": true},
         {"name": "UpperArm_L", "parent": "Shoulder_L", "human": "LeftUpperArm", "deform": true},
         {"name": "LowerArm_L", "parent": "UpperArm_L", "human": "LeftLowerArm", "deform": true},
@@ -120,6 +124,14 @@
         {"name": "Hood1", "parent": "Head", "deform": true, "chain": "hood"},
         {"name": "Hood2", "parent": "Hood1", "deform": true, "chain": "hood"}
     ],
+    "eyelids": {
+        "upperClosedDegrees": -46.0,
+        "lowerClosedDegrees": 11.0,
+        "eyes": [
+            {"eye": "Eye_L", "upper": "EyelidUpper_L", "lower": "EyelidLower_L"},
+            {"eye": "Eye_R", "upper": "EyelidUpper_R", "lower": "EyelidLower_R"}
+        ]
+    },
     "cloth": {
         "capsules": [
             {"bone": "Hips", "end": "Spine", "role": "trunk"},
