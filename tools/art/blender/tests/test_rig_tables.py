@@ -20,7 +20,9 @@ bodies_of = load("art_pipeline/bodies.py", "body_name")
 cage = load("art_pipeline/cage.py", "DIGITS")
 poses = load("art_pipeline/poses.py", "POSES", "PLANT_FEET", "FINGERS", "_fist", "rest")
 rig = load("human_base/rig.py", "ZONE_BONES", "RULE_BONES", "HINGES", "DIGITS", "SEGMENTS", "SPINE_SHARES", "SPINE_INSETS",
-           "HIP_BOUNDARY", "SKIRT_CHAINS", "SKIRT_BONES", "CLOAK_CHAINS", "CLOAK_BONES", "HOOD_STEPS", "SIDES",
+           "HIP_BOUNDARY", "HIP_BOUNDARY_REBUILT", "HIP_REGION", "HIP_REGION_REBUILT", "HIP_ABOVE_CROTCH",
+           "HIP_ABOVE_CROTCH_REBUILT", "HIP_EVENING_REBUILT", "CROTCH_RADIUS", "CROTCH_MIDDLE_REBUILT", "SKIRT_CHAINS",
+           "SKIRT_BONES", "CLOAK_CHAINS", "CLOAK_BONES", "HOOD_STEPS", "SIDES",
            "MAX_INFLUENCES", "MIN_WEIGHT", "FINGER_LAYERS", "THUMB_LAYERS", "RING_SIZE", bodies=bodies)
 animate = load("human_base/animate.py", "Gait", "WALK", "JOG", "CLIPS", "WALK_SPEED", "JOG_SPEED", "IDLE_FRAMES", "FPS",
                "RELAXED_FINGERS", "RELAXED_THUMB", "SEGMENTS", "SIDES", "_ease", "_lift", "_hermite", "_soft_min",
@@ -142,6 +144,29 @@ class RigTableTests(unittest.TestCase):
     def test_the_hip_boundary_goes_round_the_thigh_in_quarter_turns(self):
         self.assertEqual([angle for angle, _below, _blend in rig.HIP_BOUNDARY], [0, 90, 180, 270])
         self.assertTrue(all(blend > 0 for _angle, _below, blend in rig.HIP_BOUNDARY))
+
+    def test_the_rebuilt_bodies_hip_boundary_goes_once_round_the_thigh_from_the_front(self):
+        angles = [angle for angle, _below, _blend in rig.HIP_BOUNDARY_REBUILT]
+        self.assertEqual(angles[0], 0)
+        self.assertEqual(angles, sorted(set(angles)))
+        self.assertLess(angles[-1], 360)
+        self.assertTrue(all(blend > 0 for _angle, _below, blend in rig.HIP_BOUNDARY_REBUILT))
+
+    def test_the_rebuilt_bodies_hip_joint_lies_higher_and_its_shaping_reaches_as_far_down_the_thigh(self):
+        raised = rig.HIP_ABOVE_CROTCH_REBUILT - rig.HIP_ABOVE_CROTCH
+        self.assertGreater(raised, 0.0)
+        # The reach is measured from the joint, so it grows by what the joint was raised.
+        self.assertGreaterEqual(rig.HIP_REGION_REBUILT, rig.HIP_REGION + raised)
+        times, distance = rig.HIP_EVENING_REBUILT
+        self.assertGreater(times, 0)
+        self.assertGreater(distance, raised)
+
+    def test_the_rebuilt_bodies_thighs_reach_their_share_beyond_the_middle_of_the_crotch(self):
+        half_width, height = rig.CROTCH_MIDDLE_REBUILT
+        self.assertTrue(0.0 < half_width < rig.CROTCH_RADIUS)
+        self.assertGreater(height, 0.0)
+        # The middle line climbs the front to the hip joints, which lie above what counts as the underside.
+        self.assertLess(height, rig.HIP_ABOVE_CROTCH_REBUILT)
 
     def test_a_vertex_has_at_most_as_many_influences_as_every_rule_allows(self):
         self.assertEqual(rig.MAX_INFLUENCES, skinned.MAX_INFLUENCES)
