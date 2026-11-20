@@ -390,9 +390,14 @@ function Read-ArtSkeleton([string]$Name) {
 
 function Get-ArtSocket([string]$Socket) {
     # The skeleton and bone of a socket that its bone names, such as main_hand on Socket_MainHand of
-    # the Humanoid skeleton, or $null when no skeleton definition has it.
-    foreach ($file in @(Get-ChildItem -LiteralPath $script:ArtSkeletonFolder -Filter "*.json" -File | Sort-Object Name)) {
-        $json = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
+    # the Humanoid skeleton, or $null when no skeleton definition has it. Where several skeletons
+    # have the socket, such as Humanoid and the rebuilt bodies' Humanoid_Next until they replace it,
+    # it is the first by the ordinal order of the file names, as Unity's SocketBones lists them; a
+    # culture's order puts Humanoid_Next.json first on Linux and Humanoid.json first on Windows.
+    $names = [string[]]@(Get-ChildItem -LiteralPath $script:ArtSkeletonFolder -Filter "*.json" -File | ForEach-Object { $_.Name })
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    foreach ($name in $names) {
+        $json = Get-Content -Raw -LiteralPath (Join-Path $script:ArtSkeletonFolder $name) | ConvertFrom-Json
         foreach ($bone in @($json.bones)) {
             if ($null -ne $bone.socket -and [string]$bone.socket -ceq $Socket -and -not $bone.deform) {
                 return [pscustomobject]@{ Skeleton = [string]$json.name; Bone = [string]$bone.name }
