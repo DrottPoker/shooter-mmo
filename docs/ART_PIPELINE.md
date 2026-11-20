@@ -2376,7 +2376,18 @@ body of any topology gets one, in the steps that
    bone with its length, blended by the reference's weights.
 2. Every vertex is drawn to the skin of its region: to the nearest skin within
    2 mm, otherwise along the cage's normal to whichever side meets the skin
-   first, within 80 mm and at most 10 mm farther than the nearest skin.
+   first, within 80 mm and at most 10 mm farther than the nearest skin. The
+   border between a limb and the trunk then moves into the fold where the
+   limb's skin meets the trunk's, the edges between a face of the limb and a
+   face of the trunk, wherever it would span a hollow: a vertex of the border
+   lies on the limb and its neighbors in the trunk lie on the trunk, and where
+   the limb stands off the trunk, as an arm does at the armpit, the edges
+   between them pass through the air and the faces would hang there like a web.
+   The vertex moves toward the nearest point of the fold by the share of 10 mm
+   that the middle of such an edge lies outside the skin, so the net runs along
+   the arm on one side of the armpit and along the chest on the other. Over a
+   shoulder or a hip, where the skin does not fold, the border stays where the
+   rig carried it.
 3. A ball whose radius is the figure scale rolls over the skin of the region
    along normals smoothed 25 times: a vertex where the ball does not fit is
    lifted until it does, by at most 0.6 of the radius. The waist and the small of
@@ -2388,23 +2399,59 @@ body of any topology gets one, in the steps that
    toward a ring by the fourth power of the sine of its angle to the ring's axis,
    which is up for the trunk and the bone a vertex follows most for the neck and
    the limbs. The tension fades in over three edges from the open ends.
-5. Eight Taubin steps fair the cage, and no vertex and no face centre stays
-   closer to the skin than 1 mm. A ray goes in from every skin vertex of the
-   net's body parts, and of the hands and feet next to the wrist and ankle
-   rings, along the skin's normal, up to 20 mm, and where it meets a face from
-   outside, or the skin lies closer to a face than 1 mm, the face moves out along
-   its normal, all its corners alike, until the skin lies 1 mm inside it.
+5. Eight Taubin steps fair the cage. A vertex that was moved more than 1 mm
+   into a fold stays where it is, and the fairing fades in over three edges from
+   it, since rounding the net off would lift it out of the fold again. No vertex
+   and no face centre stays closer to the skin than 1 mm, nor does the middle
+   or a quarter point of an edge of an open end, such as an ankle ring: skin
+   that came out past such an
+   edge would come out through the faces the second net hangs from it. A ray
+   goes in from every skin vertex of the net's body parts, and of the hands and
+   feet next to the wrist and ankle rings, along the skin's normal, up to 20 mm,
+   and where it meets a face from outside before it leaves the body again, or
+   the skin lies closer to a face than 1 mm, the face moves out along its
+   normal, all its corners alike, until the skin lies 1 mm inside it. Through a
+   thin part, such as an ear, the ray leaves the body first, and the face it
+   then meets lies beyond the part, not in it. In each of the four passes all
+   moves are found first and a vertex takes the largest one asked of it, so the
+   result does not depend on the order of the vertices.
+
+Two rules hold through all five steps:
+
+- A vertex of the neck or the trunk keeps to the side of the body's middle
+  plane that it has in the reference, and one in the plane stays in it. A
+  vertex beside the plane is drawn to the skin of its own half, and neither the
+  ball nor the tension moves a vertex toward the plane: the part of its
+  direction that points there is left out, and the vertex moves by what is left
+  of it. The two halves of a body face each other in the crotch and the buttock
+  cleft, so a vertex lifted out along its normal there would cross to the other
+  half, and the faces of the two halves would cut through each other.
+- Where every vertex of the body's skin has a mirror image within 0.01 mm and
+  every vertex of the net one within 1 mm in the reference, the two sides are
+  evened out after every step: a vertex and its mirror image move to the middle
+  of where they lie, and in the last step each takes the larger of their two
+  moves. A mirrored body so gets a mirrored cage; what would differ between the
+  sides comes from points that lie as near to one face of the skin as to the
+  next. A body that is not mirrored is fitted side by side.
 
 These steps fit the neck, the trunk, the arms, and the legs as one net. The
-hands and the feet are fitted after them as a second net that holds the wrist
-and ankle rings where the first left them, so the regions added to the cage
-changed none of its other vertices:
+hands, the feet, and the head are fitted after them as a second net that holds
+the wrist and ankle rings and the neck's top ring where the first left them, so
+the regions added to the cage changed none of its other vertices:
 
-- A hand's vertex moves with the rig like the rest, then to the nearest skin of
-  its own finger or thumb and the palm, the body's hand faces that the finger's
-  or thumb's bones move most, or of the whole hand where its faces belong to
-  more than one; the gaps between the fingers stay open, and the hands are not
-  faired.
+- A hand's net moves with the rig like the rest and is then drawn to the skin
+  as a whole, each vertex toward the nearest skin of its own finger or thumb
+  and the palm, the body's hand faces that the finger's or thumb's bones move
+  most, or of the whole hand where its faces belong to more than one. It is
+  drawn in six rounds: in each, every vertex's move to the skin is evened out
+  with its neighbors' moves, 24, 12, 6, 3, 1, and 0 times, before the net
+  moves, so the net slides into place in one piece, then in ever smaller
+  stretches, and in the last round every vertex takes its place on the skin. A
+  hand whose thumb and fingers stand at other angles than the reference's would
+  otherwise fold the net over itself. The vertices of the palm and between the
+  digits then spread over the skin, 30 times halfway toward the middle of their
+  neighbors and back onto the skin. The gaps between the fingers stay open, and
+  the hands are not faired.
 - A foot is laid on rings: half-planes that turn about an axis across the foot
   in the ankle ring's plane, 25 mm in front of the ankle, from that plane down
   in eight steps until they stand across the foot's forward direction, then
@@ -2814,7 +2861,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_blender_source.py` | The loader itself. |
 | `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid_Next`, and the bones no clip keys. |
 | `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
-| `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies. |
+| `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
 | `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes. |
@@ -2828,7 +2875,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the rebuilt bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,

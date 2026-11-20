@@ -22,7 +22,9 @@ try:
 except ImportError:
     raise unittest.SkipTest("numpy is not installed; see requirements.txt") from None
 
-cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS", numpy=True)
+cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS",
+            "middle_sides", "keep_aside", "away_from_middle", "mirror_images", "twins_of", "evened", "drawn", "MIDDLE",
+            "nearest_on_segments", numpy=True)
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
                numpy=True)
 bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
@@ -122,6 +124,186 @@ class PartTests(unittest.TestCase):
         self.assertEqual(one.borders().tolist(), [0, 1, 2, 3, 5, 6, 7, 8])
         two = cage.Part(GRID, np.array([1, 1, 1, 2]), ("trunk", "arms"))
         self.assertEqual(two.borders().tolist(), list(range(9)))
+
+    def test_a_limb_meets_the_trunk_at_the_vertices_they_share_and_the_neck_does_not(self):
+        arm = cage.Part(GRID, np.array([1, 1, 2, 2]), ("trunk", "arms"))
+        self.assertEqual(np.nonzero(arm.limb_roots())[0].tolist(), [3, 4, 5])
+        neck = cage.Part(GRID, np.array([0, 0, 1, 1]), ("neck", "trunk"))
+        self.assertFalse(neck.limb_roots().any())
+        # A hand hangs from an arm, not from the trunk.
+        hand = cage.Part(GRID, np.array([2, 2, 4, 4]), ("arms", "hands"))
+        self.assertFalse(hand.limb_roots().any())
+
+
+class FoldTests(unittest.TestCase):
+    # Two edges of a fold that meet at a right angle at (1, 0, 0).
+    FOLD = np.array([[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [(1.0, 0.0, 0.0), (1.0, 2.0, 0.0)]])
+
+    def test_the_nearest_point_of_a_fold_lies_on_the_edge_beside_the_point(self):
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.25, 0.5, 3.0)), self.FOLD), (0.25, 0.0, 0.0))
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.9, 1.5, -1.0)), self.FOLD), (1.0, 1.5, 0.0))
+
+    def test_past_the_end_of_an_edge_the_end_is_nearest(self):
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((-2.0, -1.0, 0.0)), self.FOLD), (0.0, 0.0, 0.0))
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((3.0, 5.0, 0.0)), self.FOLD), (1.0, 2.0, 0.0))
+
+    def test_an_edge_without_length_is_its_point(self):
+        point = np.array([[(2.0, 2.0, 2.0), (2.0, 2.0, 2.0)]])
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.0, 0.0, 0.0)), point), (2.0, 2.0, 2.0))
+
+
+class MiddlePlaneTests(unittest.TestCase):
+    # A vertex of the trunk on the body's right, one on its left, one in the middle plane, and one
+    # of a leg, which has a side of its own.
+    KEYS = [("trunk", ""), ("trunk", ""), ("neck", ""), ("legs", "R")]
+    REFERENCE = np.array([(0.02, 0.0, 1.0), (-0.02, 0.0, 1.0), (0.0, 0.1, 1.5), (0.1, 0.0, 0.5)])
+
+    def setUp(self):
+        self.aside = cage.middle_sides(self.KEYS, self.REFERENCE)
+
+    def test_a_vertex_of_the_trunk_has_a_side_of_the_middle_plane_and_one_of_a_limb_none(self):
+        self.assertEqual(self.aside[:3].tolist(), [1.0, -1.0, 0.0])
+        self.assertTrue(np.isnan(self.aside[3]))
+        # A vertex closer to the plane than MIDDLE lies in it.
+        near = cage.middle_sides([("trunk", "")] * 2, np.array([(cage.MIDDLE / 2, 0, 0), (cage.MIDDLE * 2, 0, 0)]))
+        self.assertEqual(near.tolist(), [0.0, 1.0])
+
+    def test_a_vertex_that_crossed_the_plane_or_left_it_goes_back_into_it(self):
+        moved = np.array([(-0.004, 0.1, 1.0), (0.003, 0.2, 1.0), (0.005, 0.3, 1.5), (-0.2, 0.4, 0.5)])
+        kept = cage.keep_aside(moved, self.aside)
+        self.assertEqual(kept[:, 0].tolist(), [0.0, 0.0, 0.0, -0.2])
+        np.testing.assert_array_equal(kept[:, 1:], moved[:, 1:])
+        np.testing.assert_array_equal(moved[:, 0], [-0.004, 0.003, 0.005, -0.2])
+
+    def test_a_vertex_on_its_own_side_stays_where_it_is(self):
+        there = np.array([(0.03, 0.0, 1.0), (-0.01, 0.0, 1.0), (0.0, 0.0, 1.5), (0.1, 0.0, 0.5)])
+        np.testing.assert_array_equal(cage.keep_aside(there, self.aside), there)
+
+    def test_a_direction_loses_its_part_toward_the_plane_and_keeps_the_length_that_is_left(self):
+        directions = np.array([(-0.6, 0.0, -0.8), (-0.6, 0.0, -0.8), (0.6, 0.8, 0.0), (-1.0, 0.0, 0.0)])
+        unit, left = cage.away_from_middle(directions, self.aside)
+        # The right vertex was headed for the plane: straight down is left of its direction.
+        np.testing.assert_allclose(unit[0], (0.0, 0.0, -1.0))
+        self.assertAlmostEqual(left[0], 0.8)
+        # The left vertex was headed away from it and keeps its direction.
+        np.testing.assert_allclose(unit[1], (-0.6, 0.0, -0.8))
+        self.assertAlmostEqual(left[1], 1.0)
+        # A vertex in the plane moves in the plane only.
+        np.testing.assert_allclose(unit[2], (0.0, 1.0, 0.0))
+        self.assertAlmostEqual(left[2], 0.8)
+        # A limb has no such rule.
+        np.testing.assert_allclose(unit[3], (-1.0, 0.0, 0.0))
+
+    def test_a_direction_straight_at_the_plane_leaves_nothing(self):
+        unit, left = cage.away_from_middle(np.array([(-1.0, 0.0, 0.0)]), np.array([1.0]))
+        self.assertEqual(left[0], 0.0)
+        self.assertTrue(np.isfinite(unit).all())
+
+
+class MirrorTests(unittest.TestCase):
+    POINTS = np.array([(0.3, 1.0, 2.0), (0.0, 0.5, 0.5), (-0.3, 1.0, 2.0), (0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)])
+
+    def test_every_point_finds_its_mirror_image_and_one_in_the_plane_itself(self):
+        nearest, distances = cage.mirror_images(self.POINTS)
+        self.assertEqual(nearest.tolist(), [2, 1, 0, 4, 3])
+        np.testing.assert_allclose(distances, 0.0, atol=1e-12)
+        self.assertEqual(cage.twins_of(self.POINTS, 1e-6).tolist(), [2, 1, 0, 4, 3])
+
+    def test_the_distance_to_an_image_is_measured_exactly(self):
+        points = self.POINTS.copy()
+        points[2] += (0.0, 3e-6, 4e-6)
+        _nearest, distances = cage.mirror_images(points)
+        np.testing.assert_allclose(distances[[0, 2]], 5e-6, rtol=1e-6)
+        self.assertIsNone(cage.twins_of(points, 1e-6))
+        self.assertEqual(cage.twins_of(points, 1e-5).tolist(), [2, 1, 0, 4, 3])
+
+    def test_points_without_an_image_or_that_share_one_have_no_twins(self):
+        self.assertIsNone(cage.twins_of(self.POINTS[:4], 1e-3))
+        # Two points at one place, as the lips of a closed mouth, have images but are not twins of one.
+        shared = np.concatenate([self.POINTS, self.POINTS[:1]])
+        self.assertLess(cage.mirror_images(shared)[1].max(), 1e-12)
+        self.assertIsNone(cage.twins_of(shared, 1e-3))
+
+    def test_many_points_are_matched_block_by_block(self):
+        rng = np.random.default_rng(7)
+        half = rng.uniform(0.1, 1.0, (700, 3))
+        points = np.concatenate([half, half * (-1.0, 1.0, 1.0)])
+        twins = cage.twins_of(points, 1e-9)
+        self.assertEqual(twins.tolist(), list(range(700, 1400)) + list(range(700)))
+
+    def test_evening_out_lays_twins_alike_and_a_vertex_in_the_plane_into_it(self):
+        twins = cage.twins_of(self.POINTS, 1e-6)
+        fitted = self.POINTS + np.array([(0.02, 0.0, 0.0), (0.004, 0.01, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.06)])
+        even = cage.evened(fitted, twins)
+        np.testing.assert_allclose(even[0], (0.31, 1.0, 2.0))
+        np.testing.assert_allclose(even[2], (-0.31, 1.0, 2.0))
+        np.testing.assert_allclose(even[1], (0.0, 0.51, 0.5))
+        np.testing.assert_allclose(even[[3, 4], 2], 0.03)
+        np.testing.assert_allclose(even[twins] * (-1.0, 1.0, 1.0), even)
+
+    def test_evening_out_moves_only_the_moving_vertices_and_nothing_without_twins(self):
+        twins = cage.twins_of(self.POINTS, 1e-6)
+        fitted = self.POINTS + np.array([(0.02, 0.0, 0.0)] + [(0.0, 0.0, 0.0)] * 4)
+        even = cage.evened(fitted, twins, np.array([True, True, False, True, True]))
+        np.testing.assert_allclose(even[0], (0.31, 1.0, 2.0))
+        np.testing.assert_array_equal(even[2], fitted[2])
+        self.assertIs(cage.evened(fitted, None), fitted)
+
+
+class DrawTests(unittest.TestCase):
+    def setUp(self):
+        self.net = cage.Net(GRID, 9)
+        self.start = GRID_CO + (0.0, 0.0, 0.5)
+        self.all = np.ones(9, bool)
+
+    @staticmethod
+    def floor(x):
+        """The skin is the floor: every vertex is drawn straight down to it."""
+        return x * (1.0, 1.0, 0.0)
+
+    def test_the_last_round_lays_every_moving_vertex_on_the_skin(self):
+        drawn = cage.drawn(self.net, self.start, self.floor, self.all)
+        np.testing.assert_allclose(drawn, GRID_CO, atol=1e-12)
+        np.testing.assert_array_equal(self.start[:, 2], 0.5)
+
+    def test_a_held_vertex_stays_and_the_others_still_reach_the_skin(self):
+        moving = self.all.copy()
+        moving[4] = False
+        drawn = cage.drawn(self.net, self.start, self.floor, moving)
+        np.testing.assert_array_equal(drawn[4], self.start[4])
+        np.testing.assert_allclose(drawn[moving, 2], 0.0, atol=1e-12)
+
+    def test_without_evening_a_vertex_goes_to_the_skin_by_itself(self):
+        def aside(x):
+            target = x.copy()
+            target[4] = (5.0, 5.0, 0.0)
+            return target
+
+        np.testing.assert_array_equal(cage.drawn(self.net, self.start, aside, self.all, rounds=(0,)), aside(self.start))
+
+    def test_evening_carries_a_vertex_along_with_its_neighbors(self):
+        def all_but_the_middle(x):
+            target = x + (1.0, 0.0, 0.0)
+            target[4] = x[4]
+            return target
+
+        drawn = cage.drawn(self.net, self.start, all_but_the_middle, self.all, rounds=(4,))
+        # The middle vertex asked for no move of its own and takes most of its neighbors'.
+        self.assertGreater(drawn[4, 0] - self.start[4, 0], 0.5)
+        self.assertLess(drawn[4, 0] - self.start[4, 0], 1.0)
+        # The vertices of the open end even out along the end only, so they keep theirs.
+        np.testing.assert_allclose(np.delete(drawn[:, 0] - self.start[:, 0], 4), 1.0)
+
+    def test_a_round_evened_out_more_moves_the_net_more_alike(self):
+        def one_corner(x):
+            target = x.copy()
+            target[0, 0] += 1.0
+            return target
+
+        spreads = [np.ptp(cage.drawn(self.net, self.start, one_corner, self.all, rounds=(times,))[:, 0] - self.start[:, 0])
+                   for times in (0, 1, 6)]
+        self.assertGreater(spreads[0], spreads[1])
+        self.assertGreater(spreads[1], spreads[2])
 
 
 class PolygonTests(unittest.TestCase):

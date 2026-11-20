@@ -242,18 +242,32 @@ pipeline builds, fits, and checks it is in
      blades, the navel, the abdominal muscles, and the cleavage, while the
      figure from top to bottom, the waist, the small of the back, the bust, the
      buttocks, and the shoulders, stays. The cage never webs between an arm and
-     the trunk or between the legs, since the lift and the tension fade in from
-     the borders between its regions and from its open ends.
+     the trunk or between the legs: the lift fades in from the borders between
+     its regions and from its open ends, a ring of the tension ends at such a
+     border, and where an arm stands off the trunk, the border between them lies
+     in the fold of the armpit, so the cage runs along the arm on one side of the
+     fold and along the chest on the other.
   5. The cage is faired, and no vertex and no face centre lies closer to the
      skin than 1 mm. Nor does the skin come out through a face between its
      corners, where a large face cuts across a curve such as a woman's shoulder,
      so no garment on the cage shows skin through it at rest.
 
+  A body is the mirror image of itself across its middle plane, and its two
+  halves face each other in its clefts, the crotch and the buttock cleft. A
+  vertex of the neck or the trunk therefore keeps to its side of that plane
+  through every step, and one in the plane stays in it: lifted out along its
+  normal, a vertex in a cleft would cross to the other half and the cage would
+  cut through itself. A mirrored body also gets a mirrored cage: the two sides
+  are evened out after every step.
+
   The hands and the feet are fitted after the rest and keep the wrist and ankle
   rings where the rest left them, so adding them changed nothing of it: a hand
   follows each finger with the gaps between the fingers open, and a foot follows
   the convex outlines of its cross sections, so the toes and the arch are
-  spanned and the sole is flat.
+  spanned and the sole is flat. A hand's net is drawn to the skin as a whole,
+  sliding into place in one piece before each vertex takes its place, so it
+  also fits a hand whose thumb and fingers stand at other angles than those of
+  the body the cage was made from.
 - **Its figure scale**, the radius of the ball, is one number of the cage asset:
   60 mm. The reviewer judges it on the cage's review sheet and asks for more or
   less figure. Not every groove has to go: the cage is approved with the lower
@@ -288,10 +302,10 @@ reaches out over the shoulders.
 | `Neckline` | `neck` | `Neck` 0.19, rise 5.3 | round the neck's base: just above the hollow of the throat, up at the sides of the neck where the shoulders meet it, and at the nape | a round neckline: the shirts, the robe, the cloak |
 | `CloakNape` | `trunk` | `UpperChest` 0.85 | a few centimeters below the base of the neck at the back | where a cloak's back hangs from |
 | `CloakYoke` | `trunk` | `UpperChest` 0.55 | a few centimeters below the collarbones, above the armpits | where a cloak's yoke ends in front |
-| `HemCrop` | `trunk` | `Chest` 0.5 | under the bust, above the navel | a crop top's hem |
-| `SkirtWaist` | `trunk` | `Spine` 0.45 | just below the navel: 2 to 3 cm on the male, about 1 cm on the female | a robe's or a dress's waist seam, where its skirt starts |
-| `Waist` | `trunk` | `Spine` 0.1 | at the hip bones | the trousers' waistband |
-| `HemHip` | `trunk` | `Hips` 0.72 | about 5 cm under `Waist`, the overlap | a top's hem, over the trousers |
+| `HemCrop` | `trunk` | `Chest` 0.3 | under the bust, above the navel | a crop top's hem |
+| `SkirtWaist` | `trunk` | `Spine` 0.16 | just below the navel: 2 to 3 cm on the male, about 1 cm on the female | a robe's or a dress's waist seam, where its skirt starts |
+| `Waist` | `trunk` | `Hips` 0.79 | at the hip bones | the trousers' waistband |
+| `HemHip` | `trunk` | `Hips` 0.37 | about 5 cm under `Waist`, the overlap | a top's hem, over the trousers |
 | `SleeveShort` | `arms` | `UpperArm` 0.6 | over half the upper arm, about 9 cm below the armpit | a short sleeve |
 | `SleeveElbow` | `arms` | `LowerArm` 0.05 | just below the elbow | an elbow sleeve |
 | `GloveCuff` | `arms` | `LowerArm` 0.65 | on the forearm, about 5 cm toward the elbow from `SleeveLong`, the overlap | a glove's cuff, over the sleeve |

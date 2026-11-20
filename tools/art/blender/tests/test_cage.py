@@ -18,7 +18,9 @@ scene = load("art_pipeline/scene.py", "ArtPipelineError")
 bodies = load("art_pipeline/bodies.py", "ZONES", "body_name", "part_name", "TOPOLOGY_SCHEMA")
 cage = load("art_pipeline/cage.py", "REGIONS", "STAGES", "ATTACHED", "REGION_ZONES", "SKIN_ZONES", "SIDED", "DIGITS",
             "FOOT_RINGS", "HEAD_RINGS", "HEAD_TURN", "OWN_ATTRIBUTES", "version_name", "collection_name", "side_of",
-            "digit_of", "read_manifest", "TENSION_STEPS", "LIFT_SHARE", "CLEARANCE", "NEAR", "REACH",
+            "digit_of", "read_manifest", "TENSION_STEPS", "LIFT_SHARE", "CLEARANCE", "NEAR", "REACH", "DRAW_ROUNDS",
+            "SPREAD_STEPS", "END_EDGE_SHARES", "MIDDLE", "TWIN_REACH", "SKIN_TWIN_REACH", "POKE_REACH", "SKIN_DEPTH",
+            "FOLD_SPAN", "FOLD_HELD",
             ArtPipelineError=scene.ArtPipelineError)
 
 ART = REPOSITORY_ROOT / "art"
@@ -117,6 +119,31 @@ class RingTableTests(unittest.TestCase):
         self.assertTrue(0.0 < cage.LIFT_SHARE < 1.0)
         # A vertex takes the nearest point of the skin once it is closer than the reach it looks over.
         self.assertLess(cage.NEAR, cage.REACH)
+
+    def test_a_net_is_drawn_to_the_skin_in_ever_smaller_stretches_and_ends_on_it(self):
+        self.assertEqual(list(cage.DRAW_ROUNDS), sorted(cage.DRAW_ROUNDS, reverse=True))
+        # The last round evens nothing out, so every vertex lies on the skin after it.
+        self.assertEqual(cage.DRAW_ROUNDS[-1], 0)
+        self.assertGreater(cage.SPREAD_STEPS, 0)
+
+    def test_an_edge_of_an_open_end_is_kept_outside_the_skin_at_points_that_mirror_each_other(self):
+        self.assertEqual(sorted(cage.END_EDGE_SHARES), sorted(1.0 - share for share in cage.END_EDGE_SHARES))
+        self.assertTrue(all(0.0 < share < 1.0 for share in cage.END_EDGE_SHARES))
+        self.assertIn(0.5, cage.END_EDGE_SHARES)
+
+    def test_a_border_lies_in_a_fold_before_the_fairing_holds_it_there(self):
+        # A vertex is on its way into a fold long before its faces span a hollow as deep as FOLD_SPAN,
+        # and the fairing holds it once it has moved as far as the cage keeps from the skin.
+        self.assertGreater(cage.FOLD_SPAN, cage.FOLD_HELD)
+        self.assertGreaterEqual(cage.FOLD_HELD, cage.CLEARANCE)
+
+    def test_the_reaches_of_the_mirror_and_of_the_rays_keep_their_order(self):
+        # A body's skin mirrors itself more closely than the reference, whose feet and head were laid on a body.
+        self.assertLess(cage.SKIN_TWIN_REACH, cage.TWIN_REACH)
+        self.assertLess(cage.MIDDLE, cage.TWIN_REACH)
+        # A ray through the body starts inside the skin, far short of where it looks to.
+        self.assertLess(cage.SKIN_DEPTH, cage.CLEARANCE)
+        self.assertLess(cage.SKIN_DEPTH, cage.POKE_REACH)
 
 
 class CageNameTests(unittest.TestCase):
