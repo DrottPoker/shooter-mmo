@@ -3,15 +3,21 @@
 # to key the clips on, and in the Reference collection the rig's body bound to it, every preview
 # character copying its pose, and a ground grid. A library whose armature is already the current
 # rig is left as it is. Otherwise its armature and bodies are replaced and every action is kept,
-# so the file changes and needs a new review and approval. -Generate adds clips of the human gait
-# model that the library lacks, as starting points to edit by hand, and never replaces a clip. A
-# library on the Humanoid skeleton then gets a report of how far a foot on the ground slides in its
-# Idle, Walk, and Jog clips. See docs/ART_PIPELINE.md.
+# so the file changes and needs a new review and approval. -Refit also moves every clip from the
+# rest pose of the old rig to the new rig's, for a rig whose joints moved, so the clips look as
+# they did, and keeps the library as it was below artifacts/animation-libraries. -Generate adds
+# clips of the human gait model that the library lacks, as starting points to edit by hand, and
+# never replaces a clip; with -Refit the gait model makes the clips it names again on the new rig.
+# A library on the Humanoid skeleton then gets a report of how far a foot on the ground slides in
+# its Idle, Walk, and Jog clips. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # Rebuilds the armature and the bodies even when the rig did not change.
     [switch]$Force,
+    # Moves every clip to the new rig's rest pose when the sync replaces the armature. The clips
+    # named in -Generate are made again by the gait model instead.
+    [switch]$Refit,
     # Clips of the gait model to add when the library lacks them: Idle, Walk, Jog.
     [string[]]$Generate = @(),
     [string]$BlenderPath
@@ -32,6 +38,21 @@ foreach ($character in @($manifest.Rig) + @($manifest.Previews)) {
     $item = Get-Item -LiteralPath $character.SourcePath
     if ($item.Length -lt 1024 -and [System.IO.File]::ReadAllText($item.FullName).StartsWith("version https://git-lfs")) {
         throw "$($character.SourcePath) is a Git LFS pointer; run git lfs pull first."
+    }
+}
+
+# The library as it is, with the rig its clips were keyed on, for the refit to read them from.
+$before = $null
+if ($Refit) {
+    if ($manifest.Skeleton -ne "Humanoid") {
+        throw "Only the clips of the Humanoid skeleton are moved to a new rig; $($manifest.Name) has the $($manifest.Skeleton) skeleton."
+    }
+
+    if (Test-Path -LiteralPath $manifest.SourcePath) {
+        $kept = Join-Path $script:ArtRepositoryRoot "artifacts/animation-libraries"
+        New-Item -ItemType Directory -Force -Path $kept | Out-Null
+        $before = Join-Path $kept "$($manifest.Name)_before_refit.blend"
+        Copy-Item -LiteralPath $manifest.SourcePath -Destination $before -Force
     }
 }
 
@@ -89,6 +110,21 @@ else {
         }
 
         return $stepOutput
+    }
+
+    if ($null -ne $before) {
+        if ($changed) {
+            $leave = if ($Generate.Count -gt 0) { $Generate -join "," } else { "-" }
+            $stepOutput = Invoke-HumanBaseLibraryStep @("refit-clips", $manifest.SourcePath, $manifest.RootObjects[0], $before, $manifest.SkeletonPath, $leave)
+            foreach ($line in @($stepOutput | Where-Object { $_ -like "HUMAN_BASE_REPORT *" })) {
+                Write-Host $line.Substring("HUMAN_BASE_REPORT ".Length)
+            }
+
+            Write-Host "The library as it was: $before"
+        }
+        else {
+            Write-Host "No clip is moved: the armature was the current rig already."
+        }
     }
 
     $generated = @()

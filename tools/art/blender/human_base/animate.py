@@ -372,7 +372,7 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
     """Writes one clip of the given number of frames as an action: every frame keyed, linear. A
     looping clip ends with its first frame again, one frame later; one that does not loop ends at
     its last frame. The bones in skip, such as the cloth chains that the runtime solver moves, get
-    no keys."""
+    no keys, and neither does the hips' place when the hips are among them."""
     keys = [frame_fn(f) for f in range(frames)]
     last = frames if loop else frames - 1
     action = bpy.data.actions.new(name)
@@ -397,9 +397,10 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
             previous[pb.name] = q
         if f == 0:
             first = dict(previous)
-        hips = arm.pose.bones["Hips"]
-        hips.location = hips_loc
-        hips.keyframe_insert("location", frame=f)
+        if "Hips" not in skip:
+            hips = arm.pose.bones["Hips"]
+            hips.location = hips_loc
+            hips.keyframe_insert("location", frame=f)
     channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
     for fc in channelbag.fcurves:
         for key in fc.keyframe_points:
@@ -423,7 +424,7 @@ def generate(path, label, names, skeleton_path):
         raise RuntimeError(f"The gait model makes the clips {list(CLIPS)}, not {unknown}.")
     from art_pipeline import skeleton as skeleton_definition
 
-    skip = frozenset(skeleton_definition.load(skeleton_path).chain_bones)
+    skip = frozenset(skeleton_definition.load(skeleton_path).unkeyed_bones)
     bpy.ops.wm.open_mainfile(filepath=path)
     arm = bpy.data.objects[label]
     arm.animation_data_create()

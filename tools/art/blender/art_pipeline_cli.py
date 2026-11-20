@@ -408,7 +408,7 @@ def main() -> int:
             print(f"ART_REFERENCE {json.dumps(result, separators=(',', ':'))}")
         return 0
     if args.command == "clips":
-        skip = skeleton_definition.load(args.skeleton).chain_bones if args.skeleton else set()
+        skip = skeleton_definition.load(args.skeleton).unkeyed_bones if args.skeleton else set()
         for result in clip_video.render_clips(os.path.abspath(args.output), args.armature, args.clip, args.speed, skip,
                                               _held_attachments(args)):
             print(f"ART_MOTION {json.dumps(result, separators=(',', ':'))}")

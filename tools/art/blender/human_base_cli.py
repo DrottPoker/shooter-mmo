@@ -20,6 +20,7 @@ Steps:
     generate-clips <library.blend> <armature> <Idle,Walk,Jog> <skeleton.json>
     check-clips <library.blend> <armature>
     import-clip <library.blend> <armature> <source file> <map.json> <Clip+Clip> <Name> <-|L|R|LR> <skeleton.json>
+    refit-clips <library.blend> <armature> <library before.blend> <skeleton.json> <Clip,Clip|->
 
 Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, the result
 of compare is HUMAN_BASE_SAME yes or no, and the motion numbers of an imported clip are
@@ -56,9 +57,10 @@ RENDERS = {
     "review": (3, review.render),
     "review-rig": (5, rig_review.render),
 }
-# Steps that add to a file and report on what they added.
+# Steps that add to a file or replace what it has, and report on it.
 IMPORTS = {
     "import-clip": (8, retarget.import_clip),
+    "refit-clips": (5, retarget.refit),
 }
 
 

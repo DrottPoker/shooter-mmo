@@ -147,6 +147,14 @@ class SkeletonFileTests(unittest.TestCase):
         self.assertEqual(sorted(loaded.eyelids.bones), sorted(lids))
         self.assertIsNone(humanoid().eyelids)
 
+    def test_no_clip_keys_the_cloth_chains_or_the_eyelids(self):
+        loaded = skeleton.load(str(SKELETONS / "Humanoid_Next.json"))
+        self.assertEqual(loaded.unkeyed_bones, loaded.chain_bones | set(loaded.eyelids.bones))
+        self.assertIn("EyelidUpper_L", loaded.unkeyed_bones)
+        self.assertIn("CloakCenter1", loaded.unkeyed_bones)
+        self.assertNotIn("Eye_L", loaded.unkeyed_bones)
+        self.assertEqual(humanoid().unkeyed_bones, humanoid().chain_bones)
+
     def test_the_humanoid_maps_each_unity_avatar_bone_at_most_once(self):
         mapped = [b.human for b in humanoid().bones if b.human]
         self.assertEqual(len(mapped), len(set(mapped)))
