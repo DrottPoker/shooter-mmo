@@ -30,8 +30,8 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
                  "_thin", "band", "EAR_MARGIN", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
-                 "BUST_ROUND", "armpit_opened", "armpit_room", "wall_shares", "narrowing", "ARMPIT_REACH", "ARMPIT_BEYOND",
-                 "ARMPIT_ROOM", evened=evened, numpy=True)
+                 "BUST_ROUND", "SHOULDER_REACH", "armpit_opened", "armpit_room", "wall_shares", "narrowing", "ARMPIT_REACH",
+                 "ARMPIT_BEYOND", "ARMPIT_ROOM", evened=evened, numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
            "merged", "band", "filled", "outline_at", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
@@ -342,6 +342,23 @@ class ShapeTests(unittest.TestCase):
         middle = points[:, 0] == 0.0
         np.testing.assert_array_equal(out[middle, 0], 0.0)
         self.assertTrue((out[points[:, 0] > 0.0, 0] > 0.0).all())
+
+    def test_the_round_of_the_shoulder_grows_to_the_side_and_the_front_and_neither_up_nor_to_the_neck(self):
+        _points, joints = self.body()
+        joint = joints[0]
+        only = {name: 0.0 for name in reference.FULLER["Male"]} | {"shoulder": 0.1}
+        # The skin 6 cm beside, in front of, above, and above and inside the joint, and beyond the reach.
+        points = joint + np.array([(0.06, 0, 0), (0.03, 0.06, 0), (0.02, 0, 0.06), (-0.03, 0, 0.04), (0.13, 0, 0)])
+        out = self.grown(points, joints, only) - points
+        def weight(point):
+            return 0.1 * (1.0 - (np.linalg.norm(point - joint) / reference.SHOULDER_REACH) ** 2) ** 2
+
+        np.testing.assert_allclose(out[0], (0.06 * weight(points[0]), 0.0, 0.0), atol=1e-12)
+        np.testing.assert_allclose(out[1], np.array([0.03, 0.06, 0.0]) * weight(points[1]), atol=1e-12)
+        # Above the joint nothing rises, and what lies inside the joint does not move toward the neck.
+        np.testing.assert_allclose(out[2:, 2], 0.0, atol=1e-12)
+        self.assertGreaterEqual(out[3, 0], 0.0)
+        np.testing.assert_allclose(out[4], 0.0, atol=1e-12)
 
     def test_a_body_with_nothing_to_grow_stays(self):
         points, joints = self.body()

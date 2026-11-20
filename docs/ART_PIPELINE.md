@@ -1390,14 +1390,20 @@ asked for, by smooth, mirrored fields before the net is laid onto it:
   own form at the patch's edge. A fifth of his own form stays, a hint of a male
   groin: the front of the centre line now rises evenly from the crotch, where
   it stood out 4 mm beyond the belly above it.
-- **Both bodies a little fuller.** The bundle's bodies are slim and read as thin
-  in the game. Each limb, the round of the shoulder, the chest, and the neck grow
-  about their own middles by a share of their width where each is widest,
-  fading out toward the joints, so the elbows, the wrists, the knees, the
-  ankles, the hands, the feet, and the head keep their size: the male's upper
-  arm, forearm, thigh, and calf by 6 to 7 %, his shoulders and neck by 5 % and
-  his chest by 4 %; the female's upper arm by 8 %, the rest of her by 2 to 5 %,
-  her chest not at all. `FULLER` in `reference.py` holds the shares.
+- **Both bodies fuller.** The bundle's bodies are slim and read as thin in the
+  game. Each limb, the round of the shoulder, the chest, and the neck grow by a
+  share of their width where each is widest, fading out toward the joints, so
+  the elbows, the wrists, the knees, the ankles, the hands, the feet, and the
+  head keep their size. The limbs grow about their own lines, and the chest and
+  the neck about the trunk's middle. The round of the shoulder grows away from
+  the shoulder joint: out to the side, to the front and the back, and down
+  along the arm, but neither upward, where the bone lies under the skin, nor
+  toward the neck, so the line of the shoulder stays. The female grows most in
+  her arms, which were the thinnest part of her: her upper arm by 19 %, her
+  forearm by 14 %, the round of her shoulder by 18 %, her thigh by 10 %, her
+  calf by 9 %, her chest by 3 %, and her neck by 2 %. The male grows by 8 to
+  10 % in his limbs, 15 % in the round of his shoulder, 4 % in his chest, and
+  5 % in his neck. `FULLER` in `reference.py` holds the shares.
 
 The bodies stand in an A-pose. The bundle's bodies stand with their arms
 hanging, the line from the shoulder joint to the wrist 19 degrees from straight

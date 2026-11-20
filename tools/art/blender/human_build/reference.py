@@ -172,22 +172,27 @@ HIP_HEIGHT_SHARE = 0.52
 GROIN_REACH = (0.075, 0.13, 0.03)
 GROIN_CORE = (0.035, 0.085)
 GROIN_KEEP = 0.2
-# A little more fullness on both bodies, as the reviewer asked for it: more filled out and not as
-# thin, only a little, and the male most. The female's upper arm, the thinnest part of her, grows
-# by about as much as his in width. The limbs, the round of the shoulder, the chest, and the neck
-# grow about their own middles by these shares of their width, where each is widest, fading out
-# toward the joints, so the elbows, the wrists, the knees, and the ankles keep their width. FULLER_ALONG gives where along each limb, from its upper joint at 0 to its lower one
-# at 1, the growth starts, is greatest, and ends; FULLER_REACH how far from the limb's line its skin
-# lies, at 1.79 m. The round of the shoulder grows about the shoulder joint within SHOULDER_REACH of
-# it, the chest about the trunk's middle between the waist and the armpit, and the neck about its
-# middle from the notch above the breastbone up to NECK_TOP above it.
+# More fullness on both bodies, as the reviewer asked for it in two steps: first a little more
+# filled out and not as thin, the male most; then the female fuller and with more muscle, most in
+# her arms, which were the thinnest part of her, and the male a little more where he was thin
+# beside his upper arms and his chest: his forearms, the rounds of his shoulders, and his legs.
+# The limbs, the round of the shoulder, the chest, and the neck grow about their own middles by
+# these shares of their width, where each is widest, fading out toward the joints, so the elbows,
+# the wrists, the knees, and the ankles keep their width. FULLER_ALONG gives where along each
+# limb, from its upper joint at 0 to its lower one at 1, the growth starts, is greatest, and
+# ends; FULLER_REACH how far from the limb's line its skin lies, at 1.79 m. The round of the
+# shoulder grows away from the shoulder joint within SHOULDER_REACH of it, which takes in its
+# skin: out to the side, to the front and the back, and down along the arm, but neither upward,
+# where the bone lies under the skin and the line of the shoulder is to stay, nor toward the
+# neck. The chest grows about the trunk's middle between the waist and the armpit, and the neck
+# about its middle from the notch above the breastbone up to NECK_TOP above it.
 FULLER = {
-    "Male": {"upper_arm": 0.07, "forearm": 0.06, "shoulder": 0.05, "thigh": 0.06, "calf": 0.07, "chest": 0.04, "neck": 0.05},
-    "Female": {"upper_arm": 0.08, "forearm": 0.05, "shoulder": 0.03, "thigh": 0.04, "calf": 0.04, "chest": 0.0, "neck": 0.02},
+    "Male": {"upper_arm": 0.08, "forearm": 0.10, "shoulder": 0.15, "thigh": 0.09, "calf": 0.09, "chest": 0.04, "neck": 0.05},
+    "Female": {"upper_arm": 0.19, "forearm": 0.14, "shoulder": 0.18, "thigh": 0.10, "calf": 0.09, "chest": 0.03, "neck": 0.02},
 }
 FULLER_ALONG = {"upper_arm": (0.15, 0.55, 0.97), "forearm": (0.0, 0.3, 0.85), "thigh": (0.1, 0.4, 0.92), "calf": (0.05, 0.3, 0.8)}
 FULLER_REACH = {"upper_arm": 0.075, "forearm": 0.065, "thigh": 0.12, "calf": 0.085}
-SHOULDER_REACH, NECK_TOP = 0.09, 0.09
+SHOULDER_REACH, NECK_TOP = 0.12, 0.09
 
 
 def _evaluated(obj, level):
@@ -575,7 +580,7 @@ def _grown_about_line(points, start, end, amount, along, reach, mask):
 
 def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y, waist_z, armpit_z, notch_z, scale):
     """The points of a body grown a little fuller: each limb about its line, the round of the
-    shoulder about the joint, and the chest and the neck about the trunk's middle. The arms' and
+    shoulder away from the joint, and the chest and the neck about the trunk's middle. The arms' and
     the legs' joints are the right side's; the left side grows as its mirror image. gap(z) is
     where the arm parts from the trunk at a height and centre_y(z) the trunk's middle front to back."""
     points = np.asarray(points, float)
@@ -596,7 +601,10 @@ def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y
         distance = np.linalg.norm(offset, axis=1)
         round_ = np.clip(1.0 - (distance / (SHOULDER_REACH * scale)) ** 2, 0.0, 1.0) ** 2
         outside = np.clip((x - gap(z) + 0.04 * scale) / (0.04 * scale), 0.0, 1.0)
-        move += offset * (amounts["shoulder"] * round_ * outside)[:, None]
+        # Less the more a point lies above the joint, and nothing straight above it.
+        beside = 1.0 - np.clip(offset[:, 2] / np.maximum(distance, 1e-9), 0.0, 1.0) ** 2
+        away = np.column_stack([np.maximum(offset[:, 0], 0.0), offset[:, 1], np.minimum(offset[:, 2], 0.0)])
+        move += away * (amounts["shoulder"] * round_ * outside * beside)[:, None]
     middle = np.column_stack([np.zeros_like(x), centre_y(z), z])
     across = right - middle
     if amounts["chest"]:
