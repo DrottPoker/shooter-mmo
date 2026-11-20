@@ -33,7 +33,9 @@ rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "l
            "HIP_BOUNDARY_REBUILT", "MIN_WEIGHT", "MAX_INFLUENCES", bodies=bodies, numpy=True)
 paint = load("art_pipeline/paint.py", "crop", "_turn", "_landmark_pairs", "CROP_BLOCK", "MIRROR_MARGIN", "LANDMARK_MERGE",
              numpy=True)
-texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", numpy=True)
+texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", "open_loops",
+               "hang_lines", "nearest_on", "spread", "drawn", "sampled", "grown", "CURVE_REACH", "SIDE_REACH", "BAKE_MARGIN",
+               numpy=True)
 coverage = load("art_pipeline/coverage.py", "Coverage", "summary", garment=garment, numpy=True)
 
 # Three rows of three vertices, in four quads, counterclockwise seen from +Z:
@@ -669,6 +671,136 @@ class CoverageReportTests(unittest.TestCase):
                                                           pull_distances=np.array([0.001, 0.0024])))
         self.assertEqual(report, "Shirt_Male: covers 3 of 4 body faces, leaves 2 at its edges visible, and pulls in 2 "
                                  "visible vertices by at most 2.4 mm")
+
+
+class TextureMoveTests(unittest.TestCase):
+    """A texture follows a template that was built again: its preview's feature curves are drawn onto
+    the template's, and its texels take the paint of the old image where they lie."""
+
+    # A strip of four quads in a row, ten vertices: 0 to 4 along the bottom, 5 to 9 along the top.
+    STRIP = [(0, 1, 6, 5), (1, 2, 7, 6), (2, 3, 8, 7), (3, 4, 9, 8)]
+    STRIP_CO = np.array([(float(x), 0.0, 0.0) for x in range(5)] + [(float(x), 1.0, 0.0) for x in range(5)])
+    TUBE = [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+
+    def test_the_open_edges_of_a_sheet_are_one_closed_loop_in_order(self):
+        loops = texture.open_loops(self.STRIP)
+        self.assertEqual(len(loops), 1)
+        loop, closed = loops[0]
+        self.assertTrue(closed)
+        self.assertEqual(sorted(loop), list(range(10)))
+        edges = {tuple(sorted((a, b))) for face in self.STRIP for a, b in zip(face, face[1:] + face[:1])}
+        for a, b in zip(loop, loop[1:] + loop[:1]):
+            self.assertIn(tuple(sorted((a, b))), edges)
+
+    def test_a_tube_has_an_open_loop_at_each_end_and_a_closed_surface_none(self):
+        loops = texture.open_loops(self.TUBE)
+        self.assertEqual(sorted(sorted(loop) for loop, closed in loops if closed), [[0, 1, 2, 3], [4, 5, 6, 7]])
+        self.assertEqual(texture.open_loops(self.TUBE + [(0, 3, 2, 1), (4, 5, 6, 7)]), [])
+
+    def test_the_line_a_loose_part_hangs_from_is_read_in_its_order_along_the_edge(self):
+        loose = np.array([0, 0, 0, 0, 0, -1, -1, -1, -1, -1])
+        top = np.array([0, 0, 0, 0, 0, 4, 3, 2, 1, 0])
+        self.assertEqual(texture.hang_lines(self.STRIP, loose, top), [([9, 8, 7, 6, 5], False)])
+        self.assertEqual(texture.hang_lines(self.STRIP, None, None), [])
+        self.assertEqual(texture.hang_lines(self.STRIP, np.zeros(10, int), top), [])
+
+    def test_a_hang_line_all_around_closes(self):
+        loose = np.array([-1, -1, -1, -1, 1, 1, 1, 1])
+        self.assertEqual(texture.hang_lines(self.TUBE, loose, np.array([0, 1, 2, 3, 0, 1, 2, 3])), [([0, 1, 2, 3], True)])
+
+    def test_the_nearest_point_of_a_line_lies_on_its_segments(self):
+        line = np.array([(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 2.0, 0.0)])
+        points = np.array([(1.0, 1.0, 0.0), (3.0, 1.0, 0.0), (-1.0, 0.5, 0.0)])
+        onto, far = texture.nearest_on(points, line, False)
+        np.testing.assert_allclose(onto, [(1.0, 0.0, 0.0), (2.0, 1.0, 0.0), (0.0, 0.0, 0.0)])
+        np.testing.assert_allclose(far, [1.0, 1.0, np.sqrt(1.25)])
+        # A closed line also has the segment from its last point back to its first.
+        onto, _far = texture.nearest_on(np.array([(1.1, 1.0, 0.0)]), line, True)
+        np.testing.assert_allclose(onto, [(1.05, 1.05, 0.0)])
+
+    def test_a_move_spreads_evenly_between_the_fixed_vertices(self):
+        fixed = np.zeros(10, bool)
+        fixed[[0, 5, 4, 9]] = True
+        moves = np.zeros((10, 3))
+        moves[[4, 9]] = (0.0, 0.0, 4.0)
+        out = texture.spread(10, self.STRIP, fixed, moves)
+        np.testing.assert_allclose(out[:5, 2], [0.0, 1.0, 2.0, 3.0, 4.0], atol=1e-6)
+        np.testing.assert_allclose(out[5:, 2], [0.0, 1.0, 2.0, 3.0, 4.0], atol=1e-6)
+        np.testing.assert_allclose(out[:, :2], 0.0, atol=1e-9)
+
+    def test_a_piece_that_no_fixed_vertex_is_joined_to_stays(self):
+        faces = self.STRIP + [(10, 11, 12)]
+        fixed = np.zeros(13, bool)
+        fixed[[0, 5]] = True
+        moves = np.zeros((13, 3))
+        moves[[0, 5]] = (1.0, 0.0, 0.0)
+        out = texture.spread(13, faces, fixed, moves)
+        np.testing.assert_allclose(out[:10], np.tile((1.0, 0.0, 0.0), (10, 1)), atol=1e-5)
+        np.testing.assert_allclose(out[10:], 0.0, atol=1e-6)
+
+    def test_an_edge_is_drawn_onto_the_templates_and_the_cloth_between_follows(self):
+        # The template's sheet reaches half a unit farther at its right end; the left end stays.
+        curves = [("edge", [0, 5], False), ("edge", [4, 9], False)]
+        theirs = [("edge", np.array([(0.0, 0.0, 0.0), (0.0, 1.0, 0.0)]), False),
+                  ("edge", np.array([(4.5, 0.0, 0.0), (4.5, 1.0, 0.0)]), False)]
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, curves, theirs, reach=1.0)
+        np.testing.assert_allclose(out[:5, 0], [0.0, 1.125, 2.25, 3.375, 4.5], atol=1e-6)
+        np.testing.assert_allclose(out[5:, 0], [0.0, 1.125, 2.25, 3.375, 4.5], atol=1e-6)
+        np.testing.assert_allclose(out[:, 1:], self.STRIP_CO[:, 1:], atol=1e-9)
+        self.assertEqual(len(notes), 2)
+        self.assertIn("500.0 mm", notes[1])
+
+    def test_a_curve_out_of_reach_stays_and_holds_its_cloth(self):
+        far = [("edge", np.array([(0.0, 0.0, 9.0), (0.0, 1.0, 9.0)]), False)]
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, [("edge", [0, 5], False)], far, reach=0.1)
+        np.testing.assert_allclose(out, self.STRIP_CO, atol=1e-9)
+        self.assertIn("stays", notes[0])
+        # A curve only takes one of its own kind.
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, [("hang", [0, 5], False)],
+                                   [("edge", np.array([(0.0, 0.0, 0.01), (0.0, 1.0, 0.01)]), False)])
+        np.testing.assert_allclose(out, self.STRIP_CO, atol=1e-9)
+        self.assertIn("stays", notes[0])
+
+    def test_an_open_edge_goes_before_a_hang_line_at_a_shared_vertex(self):
+        theirs = [("edge", np.array([(0.0, 0.0, 0.02), (0.0, 1.0, 0.02)]), False),
+                  ("hang", np.array([(0.0, 1.0, 0.05), (4.0, 1.0, 0.05)]), False)]
+        curves = [("edge", [0, 5], False), ("hang", [5, 6, 7, 8, 9], False)]
+        out, _notes = texture.drawn(self.STRIP_CO, self.STRIP, curves, theirs, reach=1.0)
+        self.assertAlmostEqual(out[5, 2], 0.02)
+        self.assertAlmostEqual(out[9, 2], 0.05)
+
+    def test_the_reaches_are_centimeters(self):
+        self.assertTrue(0.02 <= texture.CURVE_REACH <= 0.2)
+        self.assertTrue(0.005 <= texture.SIDE_REACH <= 0.05)
+
+    def test_a_texel_is_read_between_its_four_nearest_and_every_channel_on_its_own(self):
+        image = np.zeros((2, 2, 4))
+        image[0, 0] = (1.0, 0.0, 0.0, 1.0)
+        image[0, 1] = (0.0, 1.0, 0.0, 0.0)
+        image[1, 0] = (0.0, 0.0, 1.0, 1.0)
+        image[1, 1] = (1.0, 1.0, 1.0, 1.0)
+        centres = np.array([(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)])
+        np.testing.assert_allclose(texture.sampled(image, centres), image.reshape(4, 4))
+        # Halfway between a painted texel and a hole the color is the mean of the two colors: the
+        # hole's color counts, and the hole does not darken it.
+        np.testing.assert_allclose(texture.sampled(image, np.array([(0.5, 0.25)])), [(0.5, 0.5, 0.0, 0.5)])
+        # Beyond the image its edge texels hold.
+        np.testing.assert_allclose(texture.sampled(image, np.array([(-1.0, -1.0)])), [image[0, 0]])
+
+    def test_paint_grows_over_the_margin_and_the_rest_is_black_and_opaque(self):
+        image = np.zeros((9, 9, 4), np.float32)
+        filled = np.zeros((9, 9), bool)
+        image[4, 4] = (0.2, 0.4, 0.6, 0.5)
+        filled[4, 4] = True
+        out = texture.grown(image, filled, margin=2)
+        np.testing.assert_allclose(out[2:7, 2:7], np.tile((0.2, 0.4, 0.6, 0.5), (5, 5, 1)), atol=1e-6)
+        np.testing.assert_allclose(out[0, 0], (0.0, 0.0, 0.0, 1.0))
+        np.testing.assert_allclose(out[4, 7], (0.0, 0.0, 0.0, 1.0))
+        # Between two paints a texel takes the mean of its filled neighbours.
+        image[4, 6] = (1.0, 1.0, 1.0, 1.0)
+        filled[4, 6] = True
+        np.testing.assert_allclose(texture.grown(image, filled, margin=1)[4, 5], (0.6, 0.7, 0.8, 0.75), atol=1e-6)
+        self.assertGreaterEqual(texture.BAKE_MARGIN, 4)
 
 
 if __name__ == "__main__":

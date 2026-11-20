@@ -1,6 +1,7 @@
-# Brings a garment texture up to date with its template and checks it: when the template's UVs
-# changed, the texture moves to the new UVs by projection from its preview, which keeps the UVs it
-# was painted in. A file that this leaves as it was is not saved, so its approval stays valid. Then
+# Brings a garment texture up to date with its template and checks it: when the template's faces or
+# UVs changed, the texture moves to the new UVs by correspondence: its preview, which keeps the UVs
+# it was painted in, follows the template, and every texel takes the paint of the nearest point of
+# the moved preview. A file that this leaves as it was is not saved, so its approval stays valid. Then
 # it writes the review sheet, the texture on every body of its template, and checks every rule of
 # the texture. See docs/ART_PIPELINE.md.
 param(
@@ -22,7 +23,7 @@ $output = Invoke-ArtNative $blender @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "texture-sync",
     "--file", $manifest.SourcePath, "--texture", $manifest.Name, "--garment-file", $manifest.Garment.SourcePath,
-    "--garment", $manifest.Garment.Name, "--label", $manifest.RootObjects[0])
+    "--garment", $manifest.Garment.Name, "--label", $manifest.RootObjects[0], "--manifest", $manifest.Garment.ManifestPath)
 $errors = @($output | Where-Object { $_ -like "ART_PIPELINE_ERROR *" } |
     ForEach-Object { $_.Substring("ART_PIPELINE_ERROR ".Length) })
 if ($errors.Count -gt 0) {
@@ -39,6 +40,8 @@ if ($result -like "ART_TEXTURE_FILE up-to-date *") {
 }
 else {
     Write-Host "Moved $($manifest.Name) to the new UVs of $($manifest.Garment.Name): $($manifest.SourcePath)"
+    $output | Where-Object { $_ -like "ART_TEXTURE_NOTE *" } |
+        ForEach-Object { Write-Host $_.Substring("ART_TEXTURE_NOTE ".Length) }
 }
 
 # The review sheet, which Git ignores.

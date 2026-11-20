@@ -659,14 +659,18 @@ bodies, not code:
 
 A new base model that replaces today's human bodies, with another topology, is
 handled the same way: the new bodies join the cage, the cage is fitted to them,
-the templates are fitted and their masks computed anew, and the textures keep
-their images and are exported again, with new masks where they have transparent
-parts. Each paint layer's canvas moves to the new first body through the cage,
+the templates are fitted and their masks computed anew, and the textures are
+exported again, with new masks where they have transparent parts: a texture
+keeps its image where its template keeps its faces and UVs, and moves to the new
+UVs where the template was built again. Each paint layer's canvas moves to the new first body through the cage,
 its paint is checked and touched up there, and the other bodies of the new
 model's topology get the exact move. A better cage of another topology is a new
 cage asset. Templates with a recipe of lines are built again from it, keeping
 their handmade shape by projection onto the new cage, and their textures move to
-the new UVs by projection. A modeled template keeps its mesh, its UVs, and its
+the new UVs by correspondence: a texture's preview follows the cage and then the
+template's edges, and every texel takes the paint of the nearest point of the
+moved preview; see
+[Garment Textures](ART_PIPELINE.md#garment-textures). A modeled template keeps its mesh, its UVs, and its
 painted weights: each vertex is bound to the new cage at its place on the first
 body, and its textures stay as they are.
 

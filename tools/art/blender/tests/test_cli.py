@@ -131,7 +131,7 @@ class ParserTests(unittest.TestCase):
                                   ("garment-sync", ["--file", "--garment", "--manifest", "--cage-manifest"]),
                                   ("garment-review-file", ["--file", "--garment", "--output"]),
                                   ("texture-create", ["--file", "--texture", "--garment-file", "--garment", "--label"]),
-                                  ("texture-sync", ["--file", "--texture", "--garment-file", "--garment", "--label"]),
+                                  ("texture-sync", ["--file", "--texture", "--garment-file", "--garment", "--label", "--manifest"]),
                                   ("texture-dyes", ["--file", "--texture"]), ("cage-create", ["--file", "--manifest"]),
                                   ("cage-sync", ["--file", "--manifest"]), ("paint-sync", ["--file", "--paint", "--part"]),
                                   ("paint-projection", ["--file", "--paint", "--part", "--roots", "--cage"]),

@@ -294,15 +294,15 @@ def _positions(mesh: bpy.types.Mesh) -> np.ndarray:
 
 
 class Texels:
-    """The texels of a material's faces in a mesh's paint UV map, at the image size: each texel's
-    place in the image, the triangle of _loop_triangles it lies on, and its barycentric
-    coordinates there. A texel on an edge belongs to one triangle."""
+    """The texels of a material's faces, or of every face, in a mesh's paint UV map, or in the one
+    named, at the image size: each texel's place in the image, the triangle of _loop_triangles it
+    lies on, and its barycentric coordinates there. A texel on an edge belongs to one triangle."""
 
-    def __init__(self, mesh: bpy.types.Mesh, index: int, size: tuple[int, int]):
+    def __init__(self, mesh: bpy.types.Mesh, index: int | None, size: tuple[int, int], uv_map: str | None = bodies.PAINT_UV):
         width, height = size
         self.size = size
         self.faces, self.loops = _loop_triangles(mesh, index)
-        uv = bodies._uvs(mesh, bodies.PAINT_UV) * (width, height)
+        uv = bodies._uvs(mesh, uv_map) * (width, height)
         taken = np.zeros(width * height, bool)
         places, triangles, weights = [], [], []
         for t, (a, b, c) in enumerate(uv[self.loops]):

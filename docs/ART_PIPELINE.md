@@ -152,7 +152,7 @@ only you run Claude Code, and save your work before a live session.
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
-| `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
+| `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs, with the preview it is painted on and the cage version that preview lies on. |
 | `art/Attachments/<Name>/<Name>.blend` | An [attachment](#attachments): a static model below its root `Grip`, held on a socket, such as a sword or a shield, or a [skinned one](#skinned-attachments) whose armature is `Grip`, such as a bow. |
 | `art/Projectiles/<Name>/<Name>.blend` | A [projectile](#projectiles): a static model that flies, such as an arrow, its point at the origin. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
@@ -179,7 +179,7 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/Sync-CageAsset.ps1`, `tools/art/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
 | `tools/art/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
 | `tools/art/Sync-GarmentAsset.ps1`, `tools/art/blender/art_pipeline/garment.py`, `hang.py`, `coverage.py` | Builds a garment template from its recipe on the cage, with its loose parts on their scaffolds (`hang.py`), fits it to every body through the cage, gives every version the weights of its body, computes what it covers on every body (`coverage.py`), writes its review sheet and review file, and checks it. |
-| `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template's new UVs, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
+| `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template when the template's faces or UVs changed, by correspondence, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
 | `tools/art/Set-TextureDyes.ps1` | Makes a garment texture dyeable: its dye mask and the natural color of each channel, with its image divided so that it looks undyed as it was painted. |
 | `tools/art/Sync-HumanBase.ps1`, `tools/art/blender/human_base`, `tools/art/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
 | `tools/art/blender/human_build` | The scripts that build the next human base bodies from their reference, vertex by vertex; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). Their work files go to `artifacts/human-build`. |
@@ -2876,7 +2876,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the rebuilt bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -3037,7 +3037,9 @@ properties `roughness` and `metallic`, and the mesh `Preview`, a copy of the
 template's first version with the material `M_Garment_<Name>` that shows the
 image, for painting in Texture Paint mode. `Preview` keeps the UVs the image is
 painted in, and its property `template_uvs` the fingerprint of the template's
-UVs then. Where the image's alpha is below 0.5, the garment is cut: the skin
+UVs then. The file also keeps `Preview_Cage`, hidden, the version of the garment
+cage that `Preview` lies on. Where the image's alpha is below 0.5, the garment
+is cut: the skin
 shows through, with its paint. A texture and a template both export the material
 `M_Garment_<Name>`, so a texture never takes a template's name:
 `New-ArtAsset.ps1` refuses it, and `Verify-ArtAssets.ps1` fails when two assets
@@ -3049,10 +3051,36 @@ export a material of the same name.
   color and its alpha moved to the template's UVs by projection: Cycles bakes
   them from `Preview`'s surface, looking 60 mm both ways for the other mesh.
 - `tools/art/Sync-TextureAsset.ps1` moves the texture to the template's new UVs
-  the same way, from the old `Preview`, when the template's UVs changed, such as
-  after a rebuild of its recipe, or when `Preview`'s own faces or UVs were
-  edited, and leaves the file as it was otherwise. It then writes the review
-  sheet and checks every rule.
+  when the template's faces or UVs changed, such as after a rebuild of its
+  recipe, or when `Preview`'s own faces or UVs were edited, and leaves the file
+  as it was otherwise. It then writes the review sheet and checks every rule.
+  The move goes by correspondence, not by rays, because a body may come to rest
+  in another pose, where rays from the new sleeve never meet the old one, and a
+  template built again from its recipe has other faces:
+  - `Preview` first follows the template. When the template still has its
+    faces, it takes the template's shape vertex by vertex. Otherwise it moves
+    with the cage, from `Preview_Cage` to the template's cage as it is now, as a
+    template's first version moves with its cage: cloth on the cage face by
+    face, a loose part as a whole with the edge it hangs from, and a modeled
+    form with the cage's smooth field.
+  - Then its feature curves, its open edges and the lines its loose parts hang
+    from, are each drawn onto the template's nearest curve of its kind, when
+    that lies within 100 mm on average, and the move is spread evenly over the
+    cloth between the curves. The standard lines a template is cut at are
+    measured on the bones, and the cage's net slides along the body from one fit
+    to the next, so the cage alone leaves a hem off its place: on the rebuilt
+    human bodies the shirt's hem lay 49 mm from where the cage put it.
+  - Every texel of the new UVs then takes the color and the alpha of the nearest
+    point of the moved `Preview`, each channel filtered on its own, from a face
+    that faces the texel's way when one lies within 30 mm beyond the nearest of
+    all, so the inside of a turned edge never paints the outside. The paint
+    grows 8 texels beyond the UV islands, and a dye mask moves the same way as
+    the image.
+  - The script prints how far `Preview` moved with the cage, how far each curve
+    lay from the template's, and from how far away the texels took their paint.
+    A texture file from before the sync kept `Preview_Cage` has none: its
+    `Preview` is taken to lie on the template's cage as it is now, and the
+    script says so.
 - The `texture` stage checks that the image is packed as a PNG, of a known size,
   with its roughness and metallic, that `Preview` shows it, and that it was
   painted in the template's current UVs, which `Preview` still has. A texture
@@ -3156,7 +3184,7 @@ at the front where the skin shows between the laces.
    rule. Review it, then record the approval with tools/art/Approve-ArtAsset.ps1
    -Asset art/GarmentTextures/WoolTunic -Stage texture.` After the template's
    UVs changed, such as after a rebuild, it first prints `Moved WoolTunic to the
-   new UVs of Tunic: ...`.
+   new UVs of Tunic: ...` and the notes of the move.
 3. Look at `artifacts\art-previews\WoolTunic.png`, the sheet that
    [Garment Textures](#garment-textures) describes. Expected result: the
    texture lies on both bodies as painted, with its trim at the template's hems,
