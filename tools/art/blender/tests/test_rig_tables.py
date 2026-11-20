@@ -231,11 +231,11 @@ class GaitTests(unittest.TestCase):
             self.assertTrue(frames[name]["loop"], name)
 
     def test_the_length_of_a_cycle_for_the_leg_of_the_human_rig_is_the_exported_length(self):
-        # The human rig's leg, hip joint to ankle, is about 0.78 m: the cycle rounds to the exported
-        # 28 and 19 frames for the legs from 0.771 to 0.782 m.
+        # The leg of the library's rig, the male body's, is 0.821 m from hip joint to ankle: the
+        # cycle rounds to the exported 30 and 20 frames for the legs from 0.813 to 0.837 m.
         library = json.loads((REPOSITORY_ROOT / "art/Animations/Human_Actions/asset.json").read_text(encoding="utf-8"))
         frames = {clip["name"]: clip["frames"] for clip in library["export"]["clips"]}
-        for leg in (0.772, 0.777, 0.781):
+        for leg in (0.814, 0.821, 0.836):
             rig_of_leg = types.SimpleNamespace(leg=leg)
             with self.subTest(leg=leg):
                 self.assertEqual(animate.gait_frames(rig_of_leg, animate.WALK), frames["Walk"])
