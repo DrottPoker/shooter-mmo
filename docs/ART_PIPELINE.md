@@ -1666,17 +1666,16 @@ sheets, and report go to `artifacts/human-base-next`.
   rings around its joint, and its base 0.4 of the way from the wrist to its web.
   A digit's skin is what lies beyond the ring it grows from, `finger_bases`. The
   toes bend at the middle of the ring over the ball of the foot, `toe_ball`.
-- **Shoulders.** The arm takes the skin by the shares the build turned the arms
-  out with, seen in the pose the body is bound in. The round of the shoulder,
-  more than 6 cm outside the joint with the arm hanging, and the arm from 6 cm
-  below the armpit turn whole with the arm. The trunk more than 8 cm inside the
-  joint at its height, and 9 cm at the armpit's, and the side of the chest from
-  4 cm below the armpit stay. Between them the share evens out along the edges
-  and eases in and out. The arm's bones take a vertex by this share, in the
-  shares bone heat gave them among themselves, and the other bones keep the
-  rest in theirs, so an arm raised to the side continues the line of the
-  shoulder and an arm that reaches forward does not fold its skin over the
-  chest's. Lengths are at 1.785 m and follow the body's height.
+- **Shoulders.** The shoulders take the shaping of the current bodies. Of the
+  bone heat the upper arm keeps at most half on the torso at the cut between
+  the torso and the arm, fading out over 6 cm; the collarbone keeps the skin
+  over it and, at the back, over the shoulder blade; and the weights around the
+  cut are smoothed. The rebuilt bodies' cut lies 3 to 4 cm inside the shoulder
+  joint, and their armpit is a hollow of its own in the model, so an arm that
+  rises or hangs leaves the side of the chest in place without a rule of its
+  own. A rule that gave the arm the shares the build turned the arms out with
+  was tried on these bodies and left out: with the arms overhead it left the
+  upper arm thick over a narrow root.
 - **Eyelids.** The lids' inner edge is the line where their skin meets the pocket
   behind them, with its corners nearest to and furthest from the nose. The lids
   meet on a line a fifth of the way from the lower lid's edge to the upper
@@ -1712,6 +1711,19 @@ lid's closed turn and how far the closed lids lie apart. Look closest at
 `<Asset>_rig_face.png`, with the jaw opening and the lids closing,
 `<Asset>_rig_arms.png`, `<Asset>_rig_hips.png`, `<Asset>_rig_hands.png`, and
 the lids on `<Asset>_rig_weights.png`.
+
+The command writes the rigged bodies over the two model files. An approved
+`rig` stage is the last stage of a body, after which it needs its export, and
+the export belongs to the move of everything that is fitted to a body. Until
+then the rigged bodies stay out of the repository: copy them to
+`artifacts/human-base-next/rigged` and bring the approved model files back:
+
+```powershell
+git restore art/Characters/Human_Male_Next art/Characters/Human_Female_Next
+```
+
+Expected result: `tools/art/Verify-ArtAssets.ps1` passes again, because each
+model file is the one its `model` approval covers.
 
 ## Animation Libraries
 
@@ -2696,7 +2708,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
-| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the shares and weights of the shoulders, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
