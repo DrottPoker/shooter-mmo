@@ -1439,21 +1439,29 @@ muscle behind. So `reference.py` opens the armpit by the measures of a standing
 body:
 
 - **Where the armpit lies.** The top of the gap is moved up and in, to 13.5 cm
-  below the top of the shoulder and 1 cm out from the side of the chest, which
-  is the trunk's outline 6 cm below the armpit: 3.3 cm up and 2.8 cm in on the
+  below the top of the shoulder and 1 cm out from the foot of the chest's side,
+  which is its outline 6 cm below the armpit: 3.3 cm up and 2.8 cm in on the
   male, 2.7 cm up and 3.9 cm in on the female.
-- **What moves with it.** The move is whole along the top of the gap through the
-  whole depth of the body there, so the two folds move as they are, and it ends
-  5 cm behind and in front of that depth. The move up fades out over 12 cm
-  around the top of the gap. The move in fades out over 12 cm along the line of
-  the arm, so the underside of the arm is drawn in along itself, and over 9 cm
-  across that line, so the side of the chest is drawn straight up to the armpit
-  and keeps its width below.
+- **The side of the chest keeps its place.** Below that foot nothing moves.
+  Above it the side comes to run straight from the foot to the new top of the
+  gap. Each piece of the body takes a share of the move, and across the line of
+  the arm that share is what the measured outline of the chest's side needs to
+  land on the straight line. So only what stood out beyond that line is drawn
+  in, the skin of the arm that lay against the chest. A move that only fades
+  out with the distance draws the whole side of the chest in under the armpit
+  and leaves it bulging below.
+- **What moves with it.** Along the line of the arm the share falls evenly over
+  12 cm, so the underside of the arm is drawn in along itself. The move is
+  whole through the whole depth of the body there, so the two folds move as
+  they are, and it ends 5 cm behind and in front of that depth.
 - **The hollow.** Between the folds the skin is lifted 2.5 cm more, to a hollow
   that runs out along the underside of the arm.
-- **No skin over skin.** The script measures the least room that the opening
-  leaves a piece of the body and refuses under a tenth: a move too far for its
-  reach lays skin over skin. Both bodies keep 0.16 of their room or more.
+- **What the script refuses.** It measures the least room that the opening
+  leaves a piece of the body and refuses under a tenth, where skin would be
+  laid over skin. It measures the side of the chest again from below its foot
+  up to the armpit and refuses a side that narrows by more than 2 mm on the
+  way, which is a bulge under the armpit. Both bodies keep 0.13 of their room
+  or more, and neither side narrows at all.
 
 The reference names the opened armpit, and the cage's ring around the shoulder
 stands upright in its plane, which lies 3 to 4 cm nearer to the neck than the
@@ -1594,8 +1602,9 @@ foreach ($label in "Male", "Female") {
 
 Expected result: `reference.py` prints the height of both references, how far
 each body's arms hung and that they are turned out to 45 degrees, how much
-each part of each body grew, how far each armpit is moved and how much room
-its opening leaves the body, how
+each part of each body grew, how far each armpit is moved, how far out the
+side of the chest lies below it, by how much that side narrows on its way up,
+and how much room the opening leaves the body, how
 near the head cage lies to the female one, a median under 1 mm, and how many
 faces of the control cage and triangles of the band set each ear into the head
 cage; `build.py` prints the measures it found, the navel, the nostril, and the

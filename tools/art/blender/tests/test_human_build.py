@@ -30,8 +30,8 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
                  "_thin", "band", "EAR_MARGIN", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
-                 "BUST_ROUND", "armpit_opened", "armpit_room", "ARMPIT_REACH", "ARMPIT_ACROSS", "ARMPIT_BEYOND", "ARMPIT_ROOM",
-                 evened=evened, numpy=True)
+                 "BUST_ROUND", "armpit_opened", "armpit_room", "wall_shares", "narrowing", "ARMPIT_REACH", "ARMPIT_BEYOND",
+                 "ARMPIT_ROOM", evened=evened, numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
            "merged", "band", "filled", "outline_at", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
@@ -430,20 +430,22 @@ class PoseTests(unittest.TestCase):
 class ArmpitTests(unittest.TestCase):
     """The opened armpit, on the measures of a body of 1.79 m: the top of the gap between the arm
     and the trunk lies 22 cm from the middle, its folds 4 cm behind and in front of its middle,
-    the body is 15 cm deep at the shoulder, and the arm runs out and down at 45 degrees. The
-    body looks along +Y."""
+    the body is 15 cm deep at the shoulder, the arm runs out and down at 45 degrees, and the
+    side of the chest takes an even part of the move up to 4 cm across the arm's line. The body
+    looks along +Y."""
     TOP = np.array([0.22, -0.03, 1.285])
     MOVE = np.array([-0.028, 0.0, 0.033])
     ARM = np.array([1.0, 0.0, -1.0]) / np.sqrt(2.0)
+    ACROSS = (np.array([0.0, 0.04]), np.array([1.0, 0.0]))
     DEPTH = (-0.08, 0.07)
     HOLLOW, HALF = 0.025, 0.04
 
     def opened(self, points):
-        return reference.armpit_opened(np.array(points, float), self.TOP, self.MOVE, self.ARM, self.DEPTH, self.HOLLOW,
-                                       self.HALF, 1.0)
+        return reference.armpit_opened(np.array(points, float), self.TOP, self.MOVE, self.ARM, self.ACROSS, self.DEPTH,
+                                       self.HOLLOW, self.HALF, 1.0)
 
     def room(self, move, hollow):
-        return reference.armpit_room(self.TOP, move, self.ARM, self.DEPTH, hollow, self.HALF, 1.0)
+        return reference.armpit_room(self.TOP, move, self.ARM, self.ACROSS, self.DEPTH, hollow, self.HALF, 1.0)
 
     def test_the_top_of_the_gap_moves_whole_through_the_body_and_is_lifted_only_between_the_folds(self):
         folds = [self.TOP + (0.0, -self.HALF, 0.0), self.TOP + (0.0, self.HALF, 0.0)]
@@ -452,23 +454,57 @@ class ArmpitTests(unittest.TestCase):
         np.testing.assert_allclose(out[0], self.TOP + self.MOVE + (0.0, 0.0, self.HOLLOW), atol=1e-12)
         np.testing.assert_allclose(out[1:], np.array([*folds, *skin]) + self.MOVE, atol=1e-12)
 
-    def test_the_move_ends_at_its_reach_around_the_gap_and_beyond_the_depth_of_the_body(self):
-        reach, beyond = reference.ARMPIT_REACH, reference.ARMPIT_BEYOND
-        far = np.array([self.TOP + (reach, 0.0, 0.0), self.TOP + (0.0, 0.0, -reach), self.TOP + (0.0, 0.0, reach),
-                        (self.TOP[0], self.DEPTH[0] - beyond, self.TOP[2]), (self.TOP[0], self.DEPTH[1] + beyond, self.TOP[2])])
+    # Straight across the line of the arm, down and in: the way to the side of the chest.
+    TO_CHEST = np.array([-1.0, 0.0, -1.0]) / np.sqrt(2.0)
+
+    def test_the_move_ends_at_its_reach_along_the_arm_across_it_and_beyond_the_depth_of_the_body(self):
+        reach, beyond = 1.3 * reference.ARMPIT_REACH, 1.3 * reference.ARMPIT_BEYOND
+        far = np.array([self.TOP + self.ARM * reach, self.TOP - self.ARM * reach, self.TOP + self.TO_CHEST * 0.04,
+                        self.TOP - self.TO_CHEST * 0.04, (self.TOP[0], self.DEPTH[0] - beyond, self.TOP[2]),
+                        (self.TOP[0], self.DEPTH[1] + beyond, self.TOP[2])])
         np.testing.assert_allclose(self.opened(far), far, atol=1e-12)
 
-    def test_the_underside_of_the_arm_is_drawn_in_along_itself(self):
-        # Half the reach out along the arm from the top of the gap, at a fold, where nothing is lifted.
-        point = self.TOP + self.ARM * (reference.ARMPIT_REACH / 2) + (0.0, self.HALF, 0.0)
-        np.testing.assert_allclose(self.opened([point])[0], point + 0.75 ** 1.5 * self.MOVE, atol=1e-12)
+    def test_the_underside_of_the_arm_is_drawn_in_along_itself_by_an_even_share(self):
+        # Out along the arm from the top of the gap, at a fold, where nothing is lifted.
+        for share in (0.75, 0.5):
+            point = self.TOP + self.ARM * ((1.0 - share) * reference.ARMPIT_REACH) + (0.0, self.HALF, 0.0)
+            np.testing.assert_allclose(self.opened([point])[0], point + share * self.MOVE, atol=1e-12)
 
-    def test_the_side_of_the_chest_keeps_its_width_across_the_arm_and_is_only_drawn_up(self):
-        # Straight across the line of the arm, down and in, as far as the move in reaches.
-        across = np.array([-self.ARM[0], 0.0, self.ARM[2]])
-        point = self.TOP + across * reference.ARMPIT_ACROSS + (0.0, self.HALF, 0.0)
-        up = (1.0 - (reference.ARMPIT_ACROSS / reference.ARMPIT_REACH) ** 2) ** 1.5 * self.MOVE[2]
-        np.testing.assert_allclose(self.opened([point])[0], point + (0.0, 0.0, up), atol=1e-12)
+    def test_the_side_of_the_chest_takes_the_share_that_its_outline_names_across_the_arm(self):
+        point = self.TOP + self.TO_CHEST * 0.01 + (0.0, self.HALF, 0.0)
+        np.testing.assert_allclose(self.opened([point])[0], point + 0.75 * self.MOVE, atol=1e-12)
+
+    def test_the_hollow_takes_the_same_share_as_the_move(self):
+        point = self.TOP + self.TO_CHEST * 0.02
+        np.testing.assert_allclose(self.opened([point])[0], point + 0.5 * (self.MOVE + (0.0, 0.0, self.HOLLOW)), atol=1e-12)
+
+    # The outline of a chest's side that flares out to the top of the gap, from its foot upward.
+    WALL = np.array([(0.18, 1.225), (0.184, 1.24), (0.19, 1.255), (0.198, 1.27), (0.212, 1.281)])
+
+    def test_the_side_of_the_chest_comes_to_run_straight_from_its_foot_to_the_new_top_of_the_gap(self):
+        to = self.TOP + self.MOVE
+        across = reference.wall_shares(self.WALL, self.TOP, to, self.ARM, 1.0)
+        self.assertTrue(np.all(np.diff(across[0]) > 0.0) and np.all(np.diff(across[1]) <= 0.0))
+        self.assertEqual((across[1][0], across[1][-1]), (1.0, 0.0))
+        # The foot lies a little along the arm's line, which takes what is left of its share.
+        self.assertLess(across[1][-2], 0.02)
+        points = np.array([(x, self.TOP[1] + self.HALF, z) for x, z in self.WALL])
+        out = reference.armpit_opened(points, self.TOP, self.MOVE, self.ARM, across, self.DEPTH, self.HOLLOW, self.HALF, 1.0)
+        foot = self.WALL[0]
+        slope = (to[0] - foot[0]) / (to[2] - foot[1])
+        np.testing.assert_allclose(out[:, 0], foot[0] + slope * (out[:, 2] - foot[1]), atol=1e-12)
+        # The foot stays, and the outline neither narrows nor turns back on its way up.
+        np.testing.assert_allclose(out[0], points[0], atol=1e-12)
+        self.assertTrue(np.all(np.diff(out[:, 2]) > 0.0))
+        self.assertEqual(reference.narrowing(out[:, 0]), 0.0)
+
+    def test_an_outline_that_crosses_the_line_of_the_arm_is_refused(self):
+        with self.assertRaises(ValueError):
+            reference.wall_shares([(0.18, 1.225), (0.24, 1.275)], self.TOP, self.TOP + self.MOVE, self.ARM, 1.0)
+
+    def test_an_outline_narrows_by_the_most_that_it_lies_inside_a_point_further_down(self):
+        self.assertEqual(reference.narrowing([0.17, 0.18, 0.185, 0.19]), 0.0)
+        self.assertAlmostEqual(reference.narrowing([0.17, 0.18, 0.172, 0.176, 0.19]), 0.008)
 
     def test_the_left_armpit_is_the_mirror_image(self):
         right = self.TOP + np.random.default_rng(3).uniform(-0.1, 0.1, (40, 3))

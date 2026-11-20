@@ -70,28 +70,31 @@ ARM_EVEN_ROUNDS = 60
 # that seam as the top of the gap between them, with the arm grown into the trunk above it. On a
 # body that holds its arms out, the underside of the arm runs in to the side of the chest, and a
 # hollow lies there between the fold of the chest's muscle in front and the fold of the back's
-# muscle behind. So the reference's armpit is opened by body measures. The body about the top of
-# the gap is moved up and in, so that the top of the gap comes to lie ARMPIT_BELOW_SHOULDER below
-# the top of the shoulder, as far as an armpit lies below the point of the shoulder on a standing
-# body, and ARMPIT_BESIDE out from the side of the chest, which is the trunk's outline
-# ARMPIT_WALL below the armpit. The move is whole along the top of the gap through the whole depth
-# of the body there, from the skin behind the shoulder to the skin in front of it, so the folds
-# move as they are with what lies between them, and less away from it, down to nothing
-# ARMPIT_BEYOND in front of and behind that depth. The move up fades out over ARMPIT_REACH around
-# the top of the gap. The move in fades out over the same reach along the line of the arm, so the
-# underside of the arm is drawn in along itself, but over ARMPIT_ACROSS across that line, so the
-# side of the chest is drawn straight up to the armpit and keeps its width below. Between the
-# folds the skin is lifted ARMPIT_HOLLOW more, to a hollow that runs out along the underside of
-# the arm; the folds are where the ring around the shoulder lies less than ARMPIT_ARC above its
-# lowest point. No piece of the body may be left less than ARMPIT_ROOM of its room, or skin
-# would be laid over skin. Lengths at 1.79 m.
+# muscle behind. So the reference's armpit is opened by body measures. The top of the gap is
+# moved up and in, to ARMPIT_BELOW_SHOULDER below the top of the shoulder, as far as an armpit
+# lies below the point of the shoulder on a standing body, and ARMPIT_BESIDE out from the foot of
+# the chest's side, which is its outline ARMPIT_WALL below the armpit. Below that foot the side
+# of the chest keeps its place. Above it the side comes to run straight from the foot to the new
+# top of the gap: each piece of the body takes a share of the move, and across the line of the
+# arm that share is what the outline of the chest's side needs to land on the straight line, so
+# only what stood out beyond that line is drawn in, and nothing under the armpit is pinched.
+# Along the line of the arm the share falls evenly over ARMPIT_REACH, so the underside of the arm
+# is drawn in along itself. The move is whole through the whole depth of the body there, from
+# the skin behind the shoulder to the skin in front of it, so the folds move as they are with
+# what lies between them, and it ends ARMPIT_BEYOND behind and in front of that depth. Between
+# the folds the skin is lifted ARMPIT_HOLLOW more, to a hollow that runs out along the underside
+# of the arm; the folds are where the ring around the shoulder lies less than ARMPIT_ARC above
+# its lowest point. No piece of the body may be left less than ARMPIT_ROOM of its room, or skin
+# would be laid over skin, and the side of the chest may nowhere narrow by more than
+# ARMPIT_NARROWS on its way up to the armpit, or it would bulge below it. Lengths at 1.79 m.
 ARMPIT_BELOW_SHOULDER = 0.135
 ARMPIT_BESIDE = 0.01
 ARMPIT_WALL = 0.06
-ARMPIT_REACH, ARMPIT_ACROSS, ARMPIT_BEYOND = 0.12, 0.09, 0.05
+ARMPIT_REACH, ARMPIT_BEYOND = 0.12, 0.05
 ARMPIT_HOLLOW = 0.025
 ARMPIT_ARC = 0.015
 ARMPIT_ROOM = 0.1
+ARMPIT_NARROWS = 0.002
 HEAD = "Head - Generic Topology"
 # The shape of the head cage that is the female body's head, and the body it is laid onto first.
 HEAD_SHAPE, HEAD_BODY = "Real_FEMALE", "Female"
@@ -287,49 +290,95 @@ def _bell(t):
     return (1.0 - t) ** 1.5
 
 
-def armpit_opened(points, top, move, arm, depth, hollow, half_width, scale):
+def _eased(u):
+    """A distance in reaches as a loss of share: the distance itself up to 0.7, then levelling
+    out to 1 at 1.3, so a share that falls evenly with the distance ends without a crease."""
+    u = np.abs(np.asarray(u, float))
+    return np.where(u < 0.7, u, 1.0 - np.maximum(1.3 - u, 0.0) ** 2 / 1.2)
+
+
+def wall_shares(wall, top, to, arm, scale):
+    """How much of the armpit's move the side of the chest takes at distances across the line of
+    the arm, so that it comes to run straight from its foot to the new top of the gap. wall is
+    the outline of the chest's side as (x, z) from its foot, which stays, up to the top of the
+    gap; top and to are the top of the gap before and after the move, and arm is the way the
+    upper arm runs, out and down. Gives the distances across the arm's line, from 0 at the top of
+    the gap outward, and the share at each, which only falls with the distance and ends at
+    nothing a centimetre beyond the foot."""
+    wall, top, to = np.asarray(wall, float), np.asarray(top, float), np.asarray(to, float)
+    foot = wall[0]
+    slope = (to[0] - foot[0]) / (to[2] - foot[1])
+    # A point of the outline moved by its share lies on the line from the foot to the new top.
+    share = (wall[:, 0] - foot[0] - slope * (wall[:, 1] - foot[1])) / (slope * (to[2] - top[2]) - (to[0] - top[0]))
+    out, rise = wall[:, 0] - top[0], wall[:, 1] - top[2]
+    across = out * arm[2] - rise * arm[0]
+    if across.min() <= 0.0:
+        raise ValueError("the outline of the chest's side crosses the line of the arm below the top of the gap")
+    # What the outline loses of the move by lying a little along the arm's line is not lost again.
+    along = _eased((out * arm[0] + rise * arm[2]) / (ARMPIT_REACH * scale))
+    lost = np.sqrt(np.maximum((1.0 - np.clip(share, 0.0, 1.0)) ** 2 - along * along, 0.0))
+    order = np.argsort(across)
+    share = np.minimum.accumulate(np.concatenate([[1.0], 1.0 - lost[order]]))
+    return np.concatenate([[0.0], across[order], [across.max() + 0.01 * scale]]), np.concatenate([share, [0.0]])
+
+
+def armpit_opened(points, top, move, arm, across, depth, hollow, half_width, scale):
     """The points with both armpits opened. top is the top of the gap between the right arm and
     the trunk, in the middle between its folds, which lie half_width behind and in front of it;
-    arm is the way the upper arm runs, out and down, and depth is the y of the body's skin
-    behind and in front of the shoulder. The body about the top of the gap is moved by move, up
-    and in to the side of the chest, whole through that depth, and between the folds lifted by
-    hollow more. The move up and the lift fade out over ARMPIT_REACH around the top of the gap,
-    the move in over that reach along the arm and over ARMPIT_ACROSS across it, and both over
-    ARMPIT_BEYOND behind and in front of the depth. The left side is the mirror image."""
+    arm is the way the upper arm runs, out and down, across is the share of the move at
+    distances across the arm's line (wall_shares), and depth is the y of the body's skin behind
+    and in front of the shoulder. Each point is moved by its share of move, up and in to the side
+    of the chest, and between the folds lifted by its share of hollow more. The share is whole
+    at the top of the gap through that depth; it falls evenly over ARMPIT_REACH along the arm,
+    as across says across it, and evenly over ARMPIT_BEYOND behind and in front of the depth.
+    The left side is the mirror image."""
     points = np.asarray(points, float)
     top, move = np.asarray(top, float), np.asarray(move, float)
     sign = np.where(points[:, 0] >= 0.0, 1.0, -1.0)
     out = np.abs(points[:, 0]) - top[0]
     rise = points[:, 2] - top[2]
-    along = (out * arm[0] + rise * arm[2]) / (ARMPIT_REACH * scale)
-    across = (out * arm[2] - rise * arm[0]) / (ARMPIT_ACROSS * scale)
-    beyond = np.maximum(np.maximum(depth[0] - points[:, 1], points[:, 1] - depth[1]), 0.0) / (ARMPIT_BEYOND * scale)
-    rises = _bell(np.sqrt((out * out + rise * rise) / (ARMPIT_REACH * scale) ** 2 + beyond * beyond))
-    draws = _bell(np.sqrt(along * along + across * across + beyond * beyond))
-    lift = hollow * rises * _bell((points[:, 1] - top[1]) / half_width)
+    along = _eased((out * arm[0] + rise * arm[2]) / (ARMPIT_REACH * scale))
+    lost = 1.0 - np.interp(np.abs(out * arm[2] - rise * arm[0]), across[0], across[1], right=0.0)
+    beyond = _eased(np.maximum(np.maximum(depth[0] - points[:, 1], points[:, 1] - depth[1]), 0.0) / (ARMPIT_BEYOND * scale))
+    share = np.clip(1.0 - np.sqrt(along * along + lost * lost + beyond * beyond), 0.0, 1.0)
+    lift = hollow * share * _bell((points[:, 1] - top[1]) / half_width)
     opened = points.copy()
-    opened[:, 0] = sign * (np.abs(points[:, 0]) + draws * move[0])
-    opened[:, 1] += rises * move[1]
-    opened[:, 2] += rises * move[2] + lift
+    opened[:, 0] = sign * (np.abs(points[:, 0]) + share * move[0])
+    opened[:, 1] += share * move[1]
+    opened[:, 2] += share * move[2] + lift
     return opened
 
 
-def armpit_room(top, move, arm, depth, hollow, half_width, scale, step=0.002):
+def armpit_room(top, move, arm, across, depth, hollow, half_width, scale, step=0.002):
     """The least share of its room that the opening of the armpit leaves a piece of the body:
     1 where nothing moves, less where the body is pressed together, and nothing or less where
     skin would be laid over skin. Measured in the middle of the hollow and at a fold, which the
     opening moves most, on a grid of step across the reach of the move."""
-    reach = ARMPIT_REACH * scale
+    reach = 1.3 * ARMPIT_REACH * scale
     span = np.arange(-reach, reach + step / 2, step)
     out, rise = np.meshgrid(span, span, indexing="ij")
     least = 1.0
     for y in (top[1], top[1] + half_width):
         grid = np.stack([top[0] + out, np.full_like(out, y), top[2] + rise], axis=-1)
-        opened = armpit_opened(grid.reshape(-1, 3), top, move, arm, depth, hollow, half_width, scale).reshape(grid.shape)
+        opened = armpit_opened(grid.reshape(-1, 3), top, move, arm, across, depth, hollow, half_width, scale)
+        opened = opened.reshape(grid.shape)
         x_out, x_rise = np.gradient(opened[..., 0], step)
         z_out, z_rise = np.gradient(opened[..., 2], step)
         least = min(least, float((x_out * z_rise - x_rise * z_out).min()))
     return least
+
+
+def narrowing(outline):
+    """How far an outline of the chest's side, as its x from the foot upward, narrows on its way
+    up: the most that it lies inside a point further down."""
+    outline = np.asarray(outline, float)
+    return float((np.maximum.accumulate(outline) - outline).max())
+
+
+def _side(m, z, middle, half):
+    """How far out the side of the chest lies at a height, between the armpit's folds."""
+    points = m._central(z).points
+    return float(points[np.abs(points[:, 1] - middle) <= half][:, 0].max())
 
 
 def _open_armpit(sculpt, base, label):
@@ -346,19 +395,22 @@ def _open_armpit(sculpt, base, label):
     arm = np.array([elbow[0] - shoulder[0], 0.0, elbow[2] - shoulder[2]])
     arm /= np.linalg.norm(arm)
     top = np.array([m.gap_x, middle, m.armpit_z])
-    wall = float(m._central(m.armpit_z - ARMPIT_WALL * s).points[:, 0].max())
-    to = np.array([wall + ARMPIT_BESIDE * s, middle, m.shoulder_top - ARMPIT_BELOW_SHOULDER * s])
+    # The outline of the chest's side from its foot up to the top of the gap.
+    heights = np.linspace(m.armpit_z - ARMPIT_WALL * s, m.armpit_z - 0.004, 25)
+    wall = np.array([(_side(m, z, middle, half), z) for z in heights])
+    to = np.array([wall[0, 0] + ARMPIT_BESIDE * s, middle, m.shoulder_top - ARMPIT_BELOW_SHOULDER * s])
     move = to - top
     if move[2] <= 0.0 or move[0] >= 0.0:
         raise RuntimeError(f"{label}: the armpit already lies where it is opened to, {np.round(move * 100, 1).tolist()} cm away")
+    across = wall_shares(wall, top, to, arm, s)
     hollow = ARMPIT_HOLLOW * s
-    room = armpit_room(top, move, arm, depth, hollow, half, s)
+    room = armpit_room(top, move, arm, across, depth, hollow, half, s)
     if room < ARMPIT_ROOM:
         raise RuntimeError(f"{label}: opening the armpit leaves a piece of the body {room:.2f} of its room, so it lays "
                            f"skin over skin; the move is {np.round(move * 100, 1).tolist()} cm and the hollow "
                            f"{hollow * 100:.1f} cm")
     for mesh in (sculpt, base):
-        opened = armpit_opened(_points(mesh), top, move, arm, depth, hollow, half, s)
+        opened = armpit_opened(_points(mesh), top, move, arm, across, depth, hollow, half, s)
         mesh.vertices.foreach_set("co", opened.ravel())
         mesh.update()
     # The build takes the armpit from here: the top of the gap between the arm and the trunk, in
@@ -369,12 +421,22 @@ def _open_armpit(sculpt, base, label):
     # Just below the named height the arm must be apart from the trunk on its whole width.
     if measured._central(to[2] - 0.004).points[:, 0].max() > to[0] + 0.05 * s:
         raise RuntimeError(f"{label}: a fold of the opened armpit hangs below the height it was opened to")
+    # The side of the chest as it now runs, from below its foot up to the armpit.
+    heights = np.arange(wall[0, 1] - ARMPIT_WALL * s, to[2] - 0.004, 0.005 * s)
+    outline = [_side(measured, z, middle, half) for z in heights]
+    narrows = narrowing(outline)
+    if narrows > ARMPIT_NARROWS * s:
+        raise RuntimeError(f"{label}: the side of the chest narrows by {narrows * 1000:.1f} mm on its way up to the armpit, "
+                           f"so it bulges below it")
     sculpt["armpit"] = named
     print(f"HUMAN_BUILD_REFERENCE {label}: the armpit, {(m.shoulder_top - m.armpit_z) * 100:.1f} cm below the top of the "
-          f"shoulder and {(m.gap_x - wall) * 100:.1f} cm out from the side of the chest, is moved {move[2] * 100:.1f} cm up and "
-          f"{-move[0] * 100:.1f} cm in, through a depth of {(depth[1] - depth[0]) * 100:.1f} cm, with a hollow "
-          f"{hollow * 100:.1f} cm deep and {2 * half * 100:.1f} cm from front to back, {(depth[1] - middle) * 100:.1f} cm "
-          f"behind the front; the body keeps {room:.2f} of its room or more")
+          f"shoulder and {(m.gap_x - wall[0, 0]) * 100:.1f} cm out from the foot of the chest's side, is moved "
+          f"{move[2] * 100:.1f} cm up and {-move[0] * 100:.1f} cm in, through a depth of {(depth[1] - depth[0]) * 100:.1f} cm, "
+          f"with a hollow {hollow * 100:.1f} cm deep and {2 * half * 100:.1f} cm from front to back, "
+          f"{(depth[1] - middle) * 100:.1f} cm behind the front; the side of the chest takes a part of the move up to "
+          f"{across[0][-1] * 100:.1f} cm across the arm's line and narrows by {narrows * 1000:.1f} mm at most, "
+          f"{outline[0] * 100:.1f} cm out at {heights[0] * 100:.1f} and {outline[-1] * 100:.1f} cm under the armpit; the body "
+          f"keeps {room:.2f} of its room or more")
 
 
 def _points(mesh):
