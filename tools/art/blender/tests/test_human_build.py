@@ -2,12 +2,13 @@
 islands, seams, slivers, folds, and tucks, the islands that follow from the net's shape, the way
 along a skin that lays the head cage's line under the chin, the outline of the cage's faces over a
 nostril, the ear's patch of the control cage and the band of triangles that sets it into the head
-cage, and the cutting of faces and the layout of the UV map, on small nets and skins whose answers
-follow from the input. Without numpy this file is skipped; see test_numeric_logic.py and
-blender_source.py."""
+cage, the opening of the armpit and the cage's ring around it, and the cutting of faces and the
+layout of the UV map, on small nets and skins whose answers follow from the input. Without numpy
+this file is skipped; see test_numeric_logic.py and blender_source.py."""
 
 import pathlib
 import sys
+import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -29,12 +30,14 @@ assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
                  "_thin", "band", "EAR_MARGIN", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
-                 "BUST_ROUND", evened=evened, numpy=True)
+                 "BUST_ROUND", "armpit_opened", "armpit_room", "ARMPIT_REACH", "ARMPIT_ACROSS", "ARMPIT_BEYOND", "ARMPIT_ROOM",
+                 evened=evened, numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
            "merged", "band", "filled", "outline_at", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
-body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", numpy=True, Net=Net, FIXED=FIXED, MIRROR=MIRROR,
-            PINNED=PINNED)
+surface = load("human_build/surface.py", "Loop", numpy=True)
+body = load("human_build/body.py", "refine_trunk", "NAVEL_ROW", "CHEST_LINE", "Measures", "X", numpy=True, Net=Net, FIXED=FIXED,
+            MIRROR=MIRROR, PINNED=PINNED)
 
 
 def strip_net():
@@ -422,6 +425,102 @@ class PoseTests(unittest.TestCase):
         half = reference.turned_out(points, [0.5, 0.5, 0.0], joint, 90.0)
         np.testing.assert_allclose(half[0], (0.2 + 0.3 * np.sqrt(0.5), 0.01, 1.4 - 0.3 * np.sqrt(0.5)), atol=1e-12)
         np.testing.assert_allclose(half[1], half[0] * (-1.0, 1.0, 1.0), atol=1e-12)
+
+
+class ArmpitTests(unittest.TestCase):
+    """The opened armpit, on the measures of a body of 1.79 m: the top of the gap between the arm
+    and the trunk lies 22 cm from the middle, its folds 4 cm behind and in front of its middle,
+    the body is 15 cm deep at the shoulder, and the arm runs out and down at 45 degrees. The
+    body looks along +Y."""
+    TOP = np.array([0.22, -0.03, 1.285])
+    MOVE = np.array([-0.028, 0.0, 0.033])
+    ARM = np.array([1.0, 0.0, -1.0]) / np.sqrt(2.0)
+    DEPTH = (-0.08, 0.07)
+    HOLLOW, HALF = 0.025, 0.04
+
+    def opened(self, points):
+        return reference.armpit_opened(np.array(points, float), self.TOP, self.MOVE, self.ARM, self.DEPTH, self.HOLLOW,
+                                       self.HALF, 1.0)
+
+    def room(self, move, hollow):
+        return reference.armpit_room(self.TOP, move, self.ARM, self.DEPTH, hollow, self.HALF, 1.0)
+
+    def test_the_top_of_the_gap_moves_whole_through_the_body_and_is_lifted_only_between_the_folds(self):
+        folds = [self.TOP + (0.0, -self.HALF, 0.0), self.TOP + (0.0, self.HALF, 0.0)]
+        skin = [np.array([self.TOP[0], y, self.TOP[2]]) for y in self.DEPTH]
+        out = self.opened([self.TOP, *folds, *skin])
+        np.testing.assert_allclose(out[0], self.TOP + self.MOVE + (0.0, 0.0, self.HOLLOW), atol=1e-12)
+        np.testing.assert_allclose(out[1:], np.array([*folds, *skin]) + self.MOVE, atol=1e-12)
+
+    def test_the_move_ends_at_its_reach_around_the_gap_and_beyond_the_depth_of_the_body(self):
+        reach, beyond = reference.ARMPIT_REACH, reference.ARMPIT_BEYOND
+        far = np.array([self.TOP + (reach, 0.0, 0.0), self.TOP + (0.0, 0.0, -reach), self.TOP + (0.0, 0.0, reach),
+                        (self.TOP[0], self.DEPTH[0] - beyond, self.TOP[2]), (self.TOP[0], self.DEPTH[1] + beyond, self.TOP[2])])
+        np.testing.assert_allclose(self.opened(far), far, atol=1e-12)
+
+    def test_the_underside_of_the_arm_is_drawn_in_along_itself(self):
+        # Half the reach out along the arm from the top of the gap, at a fold, where nothing is lifted.
+        point = self.TOP + self.ARM * (reference.ARMPIT_REACH / 2) + (0.0, self.HALF, 0.0)
+        np.testing.assert_allclose(self.opened([point])[0], point + 0.75 ** 1.5 * self.MOVE, atol=1e-12)
+
+    def test_the_side_of_the_chest_keeps_its_width_across_the_arm_and_is_only_drawn_up(self):
+        # Straight across the line of the arm, down and in, as far as the move in reaches.
+        across = np.array([-self.ARM[0], 0.0, self.ARM[2]])
+        point = self.TOP + across * reference.ARMPIT_ACROSS + (0.0, self.HALF, 0.0)
+        up = (1.0 - (reference.ARMPIT_ACROSS / reference.ARMPIT_REACH) ** 2) ** 1.5 * self.MOVE[2]
+        np.testing.assert_allclose(self.opened([point])[0], point + (0.0, 0.0, up), atol=1e-12)
+
+    def test_the_left_armpit_is_the_mirror_image(self):
+        right = self.TOP + np.random.default_rng(3).uniform(-0.1, 0.1, (40, 3))
+        np.testing.assert_allclose(self.opened(right * (-1.0, 1.0, 1.0)), self.opened(right) * (-1.0, 1.0, 1.0), atol=1e-12)
+
+    def test_a_body_that_is_not_moved_keeps_its_room_and_an_opened_one_is_pressed_together_but_not_folded(self):
+        self.assertAlmostEqual(self.room(self.MOVE * 0.0, 0.0), 1.0, places=9)
+        self.assertTrue(reference.ARMPIT_ROOM < self.room(self.MOVE, self.HOLLOW) < 1.0)
+
+    def test_a_move_too_far_for_its_reach_lays_skin_over_skin(self):
+        self.assertLess(self.room(self.MOVE * 3.0, self.HOLLOW), 0.0)
+
+    X = 0.19
+
+    def ring(self, corners):
+        """A ring around a shoulder in the plane x = X, straight between corners given as (y, z),
+        as the measures hold it."""
+        points = []
+        for (y0, z0), (y1, z1) in zip(corners, corners[1:] + corners[:1]):
+            points += [(self.X, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t) for t in np.linspace(0.0, 1.0, 20, endpoint=False)]
+        return surface.Loop(points).oriented(body.X)
+
+    def hole(self, corners, armpit_y):
+        measures = types.SimpleNamespace(armpit_y=armpit_y, gap_x=self.X, shoulder_ring=self.ring(corners))
+        return body.Measures.arm_hole(measures, 8)
+
+    # The top of the hollow, the fold in front, the front, the top, the back, and the fold behind.
+    HOLLOWED = [(0.02, 1.34), (0.06, 1.32), (0.08, 1.40), (0.0, 1.47), (-0.07, 1.40), (-0.03, 1.325)]
+
+    def test_the_ring_around_an_opened_armpit_starts_in_the_hollow_with_the_folds_as_its_next_corners(self):
+        hole = self.hole(self.HOLLOWED, 0.02)
+        np.testing.assert_allclose(hole[0], (self.X, 0.02, 1.34), atol=1e-9)
+        np.testing.assert_allclose(hole[1], (self.X, 0.06, 1.32), atol=1e-9)
+        np.testing.assert_allclose(hole[7], (self.X, -0.03, 1.325), atol=1e-9)
+        # The others lie evenly between the folds over the top: the middle one next to the top.
+        steps = np.linalg.norm(np.diff(hole[1:], axis=0), axis=1)
+        self.assertLess(steps.max() - steps.min(), 0.012)
+        self.assertGreater(hole[4][2], 1.46)
+
+    def test_the_ring_around_a_closed_armpit_is_divided_evenly_from_under_its_middle(self):
+        closed = [(0.0, 1.30), (0.08, 1.40), (0.0, 1.47), (-0.08, 1.40)]
+        hole = self.hole(closed, None)
+        np.testing.assert_allclose(hole[0], (self.X, 0.0, 1.30), atol=1e-9)
+        ring = self.ring(closed)
+        np.testing.assert_allclose([ring.share_of(p) for p in hole[1:]], np.arange(1, 8) / 8, atol=1e-9)
+        # The ring runs from the armpit over the front.
+        self.assertGreater(hole[1][1], 0.0)
+
+    def test_an_opened_armpit_without_a_fold_on_one_side_is_refused(self):
+        # Behind the hollow the ring only rises.
+        with self.assertRaises(RuntimeError):
+            self.hole([(0.02, 1.34), (0.06, 1.32), (0.08, 1.40), (0.0, 1.47), (-0.07, 1.40), (-0.03, 1.36)], 0.02)
 
 
 class EarTests(unittest.TestCase):

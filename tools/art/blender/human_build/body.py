@@ -74,11 +74,14 @@ def _bisect(low, high, test, steps=14):
 class Measures:
     """What the cage needs to know about a reference body, found from its own surface."""
 
-    def __init__(self, surface: Surface, joint=None):
+    def __init__(self, surface: Surface, joint=None, armpit=None):
         """joint is the right arm's shoulder joint, where the reference names it: a reference
-        whose arms were turned out knows the point they were turned about."""
+        whose arms were turned out knows the point they were turned about. armpit is where a
+        reference that opened its armpit names it: the top of the gap between the arm and the
+        trunk, in the middle, from front to back, of the hollow that lies above it."""
         self.surface = surface
         self.joint = None if joint is None else np.asarray(joint, float)
+        self.armpit_y = None if armpit is None else float(armpit[1])
         self._skins = None
         points = surface.points
         self.height = float(points[:, 2].max())
@@ -88,10 +91,15 @@ class Measures:
         self.mid = mid.oriented(X)
         # Where the trunk divides into the legs.
         self.leg_split = _bisect(0.70 * s, 0.95 * s, lambda z: self._central(z) is not None)
-        # The armpit: the height at which the arm joins the trunk.
-        self.armpit_z = _bisect(1.15 * s, 1.40 * s, lambda z: self._arm(z) is None)
-        below = self.armpit_z - 0.004
-        self.gap_x = (self._central(below).points[:, 0].max() + self._arm(below).points[:, 0].min()) / 2
+        # The armpit: the height at which the arm joins the trunk. The hollow of an opened armpit
+        # would count as a part of the gap, so its reference names the armpit.
+        if armpit is None:
+            self.armpit_z = _bisect(1.15 * s, 1.40 * s, lambda z: self._arm(z) is None)
+            below = self.armpit_z - 0.004
+            self.gap_x = (self._central(below).points[:, 0].max() + self._arm(below).points[:, 0].min()) / 2
+        else:
+            self.gap_x, self.armpit_z = float(armpit[0]), float(armpit[2])
+            below = self.armpit_z - 0.004
         self.gap_heights = np.linspace(self.leg_split + 0.06 * s, below, 24)
         gaps, beside = [], []
         for z in self.gap_heights:
@@ -103,6 +111,8 @@ class Measures:
         # Whether the arm hangs beside the hips, so the hand lies beside the thigh.
         self.arm_hangs = beside[0]
         # The ring around the shoulder: the section in the plane of the gap between arm and chest.
+        # The plane stands upright: below the armpit it passes between the arm and the side of
+        # the chest, where a plane that leaned out to the shoulder joint would cut into the chest.
         loops = surface.section((self.gap_x, 0, 0), X)
         target = np.array([self.gap_x, 0.0, self.armpit_z + 0.09 * s])
         self.shoulder_ring = min(loops, key=lambda l: np.linalg.norm(l.centre - target)).oriented(X)
@@ -137,6 +147,25 @@ class Measures:
                 if best is None or loop.length > best.length:
                     best = loop
         return None if best is None else best.oriented(Z)
+
+    def arm_hole(self, count):
+        """The ring around the shoulder as points from the armpit over the front and the top:
+        evenly along it from where it passes under the middle of the shoulder. Around an opened
+        armpit it starts in the top of the hollow, its next points in front and behind are the
+        lowest points of the folds there, and the others lie evenly between those over the top,
+        so the hollow and the folds each have corners of their own."""
+        if self.armpit_y is None:
+            return self.shoulder_ring.start_at(-Z, X).resample(count)
+        centre = np.array([self.gap_x, self.armpit_y, self.shoulder_ring.centre[2]])
+        ring = self.shoulder_ring.start_at(-Z, X, centre=centre)
+        along = np.concatenate([[0.0], np.cumsum(ring.lengths)])[:-1] / ring.length
+        z = ring.points[:, 2]
+        front, back = along < 0.3, along > 0.7
+        first, last = along[front][int(np.argmin(z[front]))], along[back][int(np.argmin(z[back]))]
+        if max(z[front].min(), z[back].min()) >= z[0]:
+            raise RuntimeError("the opened armpit is no hollow: a fold in front of or behind it does not lie below its top")
+        over = [first + (last - first) * k / (count - 2) for k in range(1, count - 2)]
+        return ring.resample(count, [0.0, first, *over, last])
 
     def gap(self, z):
         """The x between the trunk and the arm at a height; above the armpit the plane of the ring
@@ -223,8 +252,7 @@ def build_trunk(net: Net, m: Measures):
     heights = [bottom + (m.navel_z - bottom) * row / NAVEL_ROW for row in range(NAVEL_ROW)]
     heights += [m.navel_z + share * (top - m.navel_z) for share in (0.0, *TRUNK_SHARES)]
     # The ring around the shoulder: eight points from the armpit over the front and the top.
-    ring = m.shoulder_ring.start_at(-Z, X)
-    hole_points = ring.resample(ARM_RING)
+    hole_points = m.arm_hole(ARM_RING)
     rows = []
     for index, z in enumerate(heights[:-1]):
         # Up to the navel the side column lies where the body is widest. From there it makes
@@ -453,9 +481,15 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
         a = angle * share
         return X * math.cos(a) + np.cross(turn_axis, X) * math.sin(a) + turn_axis * (turn_axis @ X) * (1 - math.cos(a))
 
-    def ring_at(origin, normal, near, start, name=None):
+    def ring_at(origin, normal, near, start, name=None, share=1.0):
         loop = surface.loop(origin, normal, near=near)
-        loop = loop.oriented(normal).start_at(start, normal)
+        # Along an opened armpit the rings of the fan start in the line of its hollow, and turn
+        # to their own middle as they leave it.
+        centre = None
+        if m.armpit_y is not None and share < 1.0:
+            centre = np.array(loop.centre)
+            centre[1] = m.armpit_y + (centre[1] - m.armpit_y) * share
+        loop = loop.oriented(normal).start_at(start, normal, centre=centre)
         holds = [net.plane(name, origin, normal)] if name else []
         return net.add_ring(loop.resample(ARM_RING), *holds), loop
 
@@ -469,7 +503,7 @@ def build_arm(net: Net, m: Measures, to_wrist=True, wrist_start=None):
         # down, so it meets the inside of the arm a step further out and the hollow of the armpit
         # keeps skin to stretch when the arm rises.
         through = pivot - Z * (FAN_STEP * (step - 1) * s)
-        ring, loop = ring_at(through, normal, near, -Z if share < 1 else -X)
+        ring, loop = ring_at(through, normal, near, -Z if share < 1 else -X, share=share)
         rings.append(ring)
         previous_centre = loop.centre
     # Down the upper arm to the elbow, across it, and down the forearm.

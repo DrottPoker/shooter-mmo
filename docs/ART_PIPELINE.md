@@ -1429,9 +1429,41 @@ pulled:
   stretched to several times its width, with the sculpt's folds of a hanging
   arm standing in it as creases, so it is smoothed, most in the middle.
 
-The shape of the armpit in this pose is computed, not sculpted: it is the part
-of the model to look at most closely, from in front, behind, and below, beside
-the bundle's own pose.
+The turn alone leaves the armpit closed. The bundle's arms hang against the
+chest, so the arm and the trunk meet where their skins touch, low and out from
+the chest, and after the turn that seam is the top of the gap between them, with
+the arm grown into the trunk above it. On a body that holds its arms out, the
+underside of the arm runs in to the side of the chest, and a hollow lies there
+between the fold of the chest's muscle in front and the fold of the back's
+muscle behind. So `reference.py` opens the armpit by the measures of a standing
+body:
+
+- **Where the armpit lies.** The top of the gap is moved up and in, to 13.5 cm
+  below the top of the shoulder and 1 cm out from the side of the chest, which
+  is the trunk's outline 6 cm below the armpit: 3.3 cm up and 2.8 cm in on the
+  male, 2.7 cm up and 3.9 cm in on the female.
+- **What moves with it.** The move is whole along the top of the gap through the
+  whole depth of the body there, so the two folds move as they are, and it ends
+  5 cm behind and in front of that depth. The move up fades out over 12 cm
+  around the top of the gap. The move in fades out over 12 cm along the line of
+  the arm, so the underside of the arm is drawn in along itself, and over 9 cm
+  across that line, so the side of the chest is drawn straight up to the armpit
+  and keeps its width below.
+- **The hollow.** Between the folds the skin is lifted 2.5 cm more, to a hollow
+  that runs out along the underside of the arm.
+- **No skin over skin.** The script measures the least room that the opening
+  leaves a piece of the body and refuses under a tenth: a move too far for its
+  reach lays skin over skin. Both bodies keep 0.16 of their room or more.
+
+The reference names the opened armpit, and the cage's ring around the shoulder
+stands upright in its plane, which lies 3 to 4 cm nearer to the neck than the
+shoulder joint. That ring is the border between the torso and the upper arms,
+so the upper arms' part begins on the shoulder, inside the joint. A ring that
+leaned out to the joint would be the seam of a sleeve, but its plane cuts into
+the side of the chest below the armpit, where its section is no ring. The
+armpit is the part of the model to look at most closely: from in front, behind,
+and below, beside the bundle's own pose, and with the arm raised to the side
+and over the head.
 
 What is built:
 
@@ -1440,8 +1472,10 @@ What is built:
   reference: rows of sixteen around the trunk, one of them through the navel
   and twice as close over the chest, with the side column at the body's widest
   point up to the navel and making for the armpit above it, as the side seam of
-  a shirt does, an arm hole of eight with four rings
-  fanning under the arm, arms of eight around, legs of ten, hands with a ring
+  a shirt does, an arm hole of eight that starts in the top of the armpit's
+  hollow and has the lowest points of the two folds as its next corners, with
+  four rings fanning under the arm, arms of eight around, legs of ten, hands
+  with a ring
   per finger joint, and feet with rings around the corner of the heel and five
   toes of their own, each built like a finger with two rings. It is subdivided
   once, laid onto the reference, relaxed along the surface, and mirrored: 7,292
@@ -1560,7 +1594,8 @@ foreach ($label in "Male", "Female") {
 
 Expected result: `reference.py` prints the height of both references, how far
 each body's arms hung and that they are turned out to 45 degrees, how much
-each part of each body grew, how
+each part of each body grew, how far each armpit is moved and how much room
+its opening leaves the body, how
 near the head cage lies to the female one, a median under 1 mm, and how many
 faces of the control cage and triangles of the band set each ear into the head
 cage; `build.py` prints the measures it found, the navel, the nostril, and the
@@ -1574,7 +1609,7 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 
 | Script | What it does |
 | --- | --- |
-| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, smooths the male's groin, shapes the female, grows both a little fuller, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
+| `reference.py` | Takes the two bodies with their eyeballs and their control cages from the bundle, turns them to face +Y, stands them on the ground at 1.79 m and 1.70 m, turns their arms out to the A-pose and names the shoulder joint they were turned about, smooths the male's groin, shapes the female, grows both a little fuller, opens their armpits and names them, lays the head cage onto both heads, and takes each ear with the skin around it from the control cage, with the band that sets it into the head cage. |
 | `build.py` | Builds one body's net from its reference into a work file, with its zones, hidden parts, UV islands, and seams, and reports its quality. |
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, and a bent quad cut along its side of the reference's skin, so a fold shows as a hollow and not as a ridge; the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
