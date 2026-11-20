@@ -66,8 +66,13 @@ LID_RINGS = {"upper": (1.0, 1.0, 1.0, 0.9, 0.55, 0.15), "lower": (1.0, 1.0, 1.0,
 # Offsets are given for the male body (1.785 m) and scale with the body's height.
 REFERENCE_HEIGHT = 1.785
 # The hip joint sits this far above the crotch, near the groin crease, so the thigh swings out of
-# the leg opening instead of rising into the belly.
+# the leg opening instead of rising into the belly. A rebuilt body's joint sits where the joint is,
+# level with the roundest of the buttock: only about a joint that high can the fold of the groin run
+# up toward the hip bone, as it does on a body. About a low joint the skin under the hip bone would
+# have to swing far down and forward with the thigh, so the fold can only run level, straight
+# across the top of the thigh.
 HIP_ABOVE_CROTCH = 0.045
+HIP_ABOVE_CROTCH_REBUILT = 0.09
 # Spine, Chest and UpperChest at these shares between the hip joints and the base of the neck,
 # this far in front of the back.
 SPINE_SHARES = (0.21, 0.47, 0.72)
@@ -114,6 +119,22 @@ SHAPE_REACH = 0.14
 # a thin ridge.
 HIP_BOUNDARY = ((0, -0.03, 0.10), (90, -0.03, 0.08), (180, 0.0, 0.10), (270, 0.02, 0.03))
 HIP_REGION = 0.22
+# The rebuilt bodies' boundary, about their higher joint. In front it follows the groin: from the
+# crotch on the inner side it rises past the front of the thigh to its highest place under the hip
+# bone, 20 degrees outside the front, so the legs meet the trunk in a V, and a thigh that rises, as
+# when sitting, folds along that line and not straight across its top. From there it comes down
+# nearly to the joint's height at the outer side with a wide blend, where the skin of the hip
+# stretches and does not fold. At the back it lies just below the fold under the buttock, lower
+# than the current bodies', with a wider blend: about the higher joint the underside of the buttock swings
+# further with the thigh, and a boundary halfway up the buttock draws it in under the pelvis when
+# the thigh rises. At the crotch it lies where the current bodies' does. The weights are then
+# evened out over the body's edges, this many times, within this distance above and below the
+# joints: the boundary crosses the body's level rows of faces at a slant, and unevened, each row
+# folds at a place of its own, which cuts teeth into the fold.
+HIP_BOUNDARY_REBUILT = ((0, -0.03, 0.07), (20, -0.06, 0.07), (50, -0.04, 0.09), (90, -0.01, 0.10),
+                        (180, 0.10, 0.12), (270, 0.065, 0.03), (325, 0.05, 0.05))
+HIP_REGION_REBUILT = 0.27
+HIP_EVENING_REBUILT = (4, 0.22)
 # Between the legs the thighs' shares fade toward the lowest point of the crotch, down to this share
 # at it, within this distance of it, on the pelvis and the thighs alike, and are then smoothed
 # there: the crotch keeps its place, the skin around it stretches evenly, and no two neighbouring
@@ -122,6 +143,18 @@ HIP_REGION = 0.22
 CROTCH_RADIUS = 0.07
 CROTCH_FLOOR = 0.0
 CROTCH_SMOOTHING = 6
+# A rebuilt body's crotch does not move when the legs do: the underside of the trunk between the
+# legs and, up its front, the middle between the folds of the groin stay with the pelvis whole.
+# The thighs have no share within the first distance of the crotch's middle line, and grow to
+# their full share at CROTCH_RADIUS from it. The line is the body's middle line under the trunk,
+# what of it lies lower than the second distance above its lowest point, and from there on up the
+# front to the hip joints' height. The smoothing around the crotch and the evening around the
+# joints leave what has no share as it is, so neither draws the crotch along again: with a share
+# there, raised thighs push the skin above the crotch into a fold under the belly. The first
+# distance holds the line's own vertices and not the next ones beside them, which lie on the root
+# of the inner thigh at the corners of the crotch: held, they stay behind as a tooth when the thigh
+# moves.
+CROTCH_MIDDLE_REBUILT = (0.015, 0.03)
 # The knee and the elbow blend from the upper to the lower bone across their joint, along the lower
 # bone, over a half width on the side the joint folds to (the back of the knee, the inside of the
 # elbow) and another on the opposite side, within this reach of the joint.
@@ -240,6 +273,11 @@ def _mirror(v):
     return Vector((-v.x, v.y, v.z))
 
 
+def rebuilt(root):
+    """Whether the character is a rebuilt body, whose landmarks name its shoulder joints."""
+    return "lmw_shoulder_joint" in root
+
+
 def eye_centre(obj):
     """The centre of an eyeball, the middle of its mesh in world space, whatever its origin."""
     co = _world(obj)
@@ -315,7 +353,7 @@ def joints(label, shoulder_guess=None):
     # Spine from the hip joints to the base of the neck.
     pelvis = _world(_part(label, "Pelvis"))
     crotch_z = float(pelvis[np.abs(pelvis[:, 0]) < 1e-5][:, 2].min())  # lowest point on the centre line
-    hip_z = crotch_z + HIP_ABOVE_CROTCH * s
+    hip_z = crotch_z + (HIP_ABOVE_CROTCH_REBUILT if rebuilt(root) else HIP_ABOVE_CROTCH) * s
     back, front, lateral = _section(label, ("Pelvis", "Thighs"), hip_z, 0.28)
     hip_y = (back + front) / 2
     neck_base = _cut(label, "Neck", "Torso")
@@ -735,19 +773,71 @@ def _around(axis, forward, outward):
     return f, o / np.linalg.norm(o)
 
 
-def hip_weights(points, faces, index, weights, column, arm, s):
-    """Sets the share of each thigh around the hip from HIP_BOUNDARY: the thigh takes the skin
-    below the boundary, the pelvis keeps the rest with its own bones from the bone heat."""
+def hip_boundary(boundary, phi):
+    """A hip boundary's distance below the hip joint and the half width of its blend at the angles
+    phi around the thigh, in degrees. Between the boundary's rows both run straight, and on from
+    its last row to its first, which lies at 0 degrees."""
+    angles = [a for a, _b, _w in boundary] + [360.0]
+    below = [b for _a, b, _w in boundary] + [boundary[0][1]]
+    widths = [w for _a, _b, w in boundary] + [boundary[0][2]]
+    phi = np.asarray(phi, float) % 360.0
+    return np.interp(phi, angles, below), np.interp(phi, angles, widths)
+
+
+def evened_out(weights, rows, faces, times):
+    """Moves the weights of the given rows halfway to the mean of their neighbours along the
+    faces' edges, this many times, and returns the weights."""
+    neighbours = {int(v): set() for v in rows}
+    for face in faces:
+        for i, v in enumerate(face):
+            if v in neighbours:
+                neighbours[v].update((face[i - 1], face[(i + 1) % len(face)]))
+    for _ in range(times):
+        mean = np.array([weights[list(neighbours[int(v)])].mean(0) for v in rows])
+        weights[rows] = 0.5 * weights[rows] + 0.5 * mean
+    return weights
+
+
+def crotch_line(centre, hip, height):
+    """The crotch's middle line as places in their order, from a body's middle line (N, 3) and a
+    hip joint: what lies lower than height above the line's lowest place, from the back to the
+    front, and from there what lies in front of the joint and below it, upward."""
+    low = centre[:, 2] < centre[:, 2].min() + height
+    under = centre[low]
+    front = centre[~low & (centre[:, 1] > hip[1]) & (centre[:, 2] < hip[2])]
+    return np.concatenate([under[np.argsort(under[:, 1])], front[np.argsort(front[:, 2])]])
+
+
+def line_distance(points, line):
+    """The distances from points to a line that runs straight between the given places."""
+    if len(line) == 1:
+        return np.linalg.norm(points - line[0], axis=1)
+    return np.min([_segment_distance(points, a, b) for a, b in zip(line, line[1:])], axis=0)
+
+
+def hip_weights(points, faces, index, weights, column, arm, s, boundary=HIP_BOUNDARY, reach=HIP_REGION, evening=None,
+                middle=None):
+    """Sets the share of each thigh around the hip from a boundary, HIP_BOUNDARY or the rebuilt
+    bodies': the thigh takes the skin below the boundary, as far down the thigh as the reach, and
+    the pelvis keeps the rest with its own bones from the bone heat. The shares fade toward the
+    lowest point of the crotch or, with a middle as CROTCH_MIDDLE_REBUILT, toward the crotch's
+    middle line, around which the thighs have none. An evening, as HIP_EVENING_REBUILT, then evens
+    the weights out around the joints."""
     bones = arm.data.bones
     rows = np.unique(np.concatenate([index["Pelvis"], index["Thighs"]]))
     pelvis = points[index["Pelvis"]]
     centre = pelvis[np.abs(pelvis[:, 0]) < 1e-5]
-    crotch_point = centre[np.argmin(centre[:, 2])]
-    to_crotch = np.linalg.norm(points[rows] - crotch_point, axis=1)
-    crotch = CROTCH_FLOOR + (1.0 - CROTCH_FLOOR) * _smooth(0.0, CROTCH_RADIUS * s, to_crotch)
-    angles = [a for a, _b, _w in HIP_BOUNDARY] + [360.0]
-    below = [b for _a, b, _w in HIP_BOUNDARY] + [HIP_BOUNDARY[0][1]]
-    widths = [w for _a, _b, w in HIP_BOUNDARY] + [HIP_BOUNDARY[0][2]]
+    if middle is None:
+        to_crotch = np.linalg.norm(points[rows] - centre[np.argmin(centre[:, 2])], axis=1)
+        fade = CROTCH_RADIUS * s
+        held = np.zeros(len(rows), bool)
+    else:
+        half_width, height = middle
+        line = crotch_line(centre, np.array(bones["UpperLeg_R"].head_local), height * s)
+        to_crotch = np.maximum(line_distance(points[rows], line) - half_width * s, 0.0)
+        fade = (CROTCH_RADIUS - half_width) * s
+        held = to_crotch <= 0.0
+    crotch = CROTCH_FLOOR + (1.0 - CROTCH_FLOOR) * _smooth(0.0, fade, to_crotch)
     share, inside = {}, {}
     for side, sx in SIDES:
         bone = bones[f"UpperLeg_{side}"]
@@ -757,11 +847,10 @@ def hip_weights(points, faces, index, weights, column, arm, s):
         v = points[rows] - hip
         t = v @ axis
         radial = v - t[:, None] * axis
-        phi = np.degrees(np.arctan2(radial @ outward, radial @ forward)) % 360.0
-        b = np.interp(phi, angles, below) * s
-        w = np.interp(phi, angles, widths) * s
+        below, width = hip_boundary(boundary, np.degrees(np.arctan2(radial @ outward, radial @ forward)))
+        b, w = below * s, width * s
         thigh = _smooth(b - w, b + w, t) * crotch
-        inside[side] = (points[rows, 0] * sx > -1e-6) & (t < HIP_REGION * s)
+        inside[side] = (points[rows, 0] * sx > -1e-6) & (t < reach * s)
         share[side] = np.where(inside[side], thigh, 0.0)
     region = inside["R"] | inside["L"]
     selected = rows[region]
@@ -778,15 +867,11 @@ def hip_weights(points, faces, index, weights, column, arm, s):
         weights[selected, column[f"UpperLeg_{side}"]] += share[side][region]
 
     # Smooth the weights around the crotch over the body's edges.
-    near = rows[to_crotch < CROTCH_RADIUS * s * 1.5]
-    neighbours = {v: set() for v in near}
-    for face in faces:
-        for i, v in enumerate(face):
-            if v in neighbours:
-                neighbours[v].update((face[i - 1], face[(i + 1) % len(face)]))
-    for _ in range(CROTCH_SMOOTHING):
-        mean = np.array([weights[list(neighbours[v])].mean(0) for v in near])
-        weights[near] = 0.5 * weights[near] + 0.5 * mean
+    evened_out(weights, rows[(to_crotch < CROTCH_RADIUS * s * 1.5) & ~held], faces, CROTCH_SMOOTHING)
+    if evening is not None:
+        times, distance = evening
+        hip_z = bones["UpperLeg_R"].head_local[2]
+        evened_out(weights, rows[(np.abs(points[rows, 2] - hip_z) < distance * s) & ~held], faces, times)
     return weights
 
 
@@ -978,7 +1063,11 @@ def solve_weights(label, arm, skeleton, digit_verts):
     weights /= weights.sum(1, keepdims=True)
     weights = shape_weights(label, arm, points, faces, index, weights, allowed, column)
     scale = float(points[:, 2].max()) / REFERENCE_HEIGHT
-    weights = hip_weights(points, faces, index, weights, column, arm, scale)
+    if rebuilt(bpy.data.objects[label]):
+        weights = hip_weights(points, faces, index, weights, column, arm, scale, HIP_BOUNDARY_REBUILT, HIP_REGION_REBUILT,
+                              HIP_EVENING_REBUILT, CROTCH_MIDDLE_REBUILT)
+    else:
+        weights = hip_weights(points, faces, index, weights, column, arm, scale)
     weights = hinge_weights(points, index, weights, column, arm, scale)
     head_idx = np.concatenate([index["Head"], index["Neck"]])
     share = _lips_apart(points, faces, head_idx, _jaw_share(label, points[head_idx]))

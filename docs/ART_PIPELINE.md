@@ -1659,7 +1659,14 @@ sheets, and report go to `artifacts/human-base-next`.
 - **Joints.** The shoulder joint lies where the reference's arm was turned,
   `shoulder_joint`: the ray casts that find it on the current bodies look for
   the joint of a hanging arm and land 4 cm below it and 2 cm outside it on an
-  arm turned out to 45 degrees. A finger's middle and end joints lie in the
+  arm turned out to 45 degrees. The hip joint lies 9 cm above the crotch, where
+  the joint is, level with the roundest of the buttock; the current bodies' lies
+  4.5 cm above it. Only about a joint that high can the fold of the groin run
+  up toward the hip bone: about a low joint the skin under the hip bone would
+  have to swing far down and forward with the thigh, so the fold can only run
+  level, straight across the top of the thigh. The spine's joints keep their
+  shares of the way from the hip joints to the neck, so they lie higher too. A
+  finger's middle and end joints lie in the
   middle of the rings around each, and its knuckle 2.2 cm inside the palm from
   the middle of its ring at the web, along its first bone, where the build put
   the palm's ring of knuckles; the thumb's joints lie at its web and between the
@@ -1676,6 +1683,29 @@ sheets, and report go to `artifacts/human-base-next`.
   own. A rule that gave the arm the shares the build turned the arms out with
   was tried on these bodies and left out: with the arms overhead it left the
   upper arm thick over a narrow root.
+- **Hips.** The legs meet the trunk in a V, as the groin of a body does. The
+  boundary below which the thigh takes the skin rises in front from the crotch
+  on the inner side, past the front of the thigh, to its highest place under
+  the hip bone, 6 cm above the joint and 20 degrees outside the front. From
+  there it comes down to 1 cm above the joint at the outer side, with a blend
+  of 20 cm, where the skin of the hip stretches and does not fold. A thigh that
+  rises, as when sitting, so folds along the groin and not straight across its
+  top. At the back the boundary lies just below the fold under the buttock,
+  10 cm below the joint, with a blend of 24 cm: about the higher joint the
+  underside of the buttock swings further with the thigh, and a boundary
+  halfway up the buttock, as the current bodies have it, draws that underside
+  in under the pelvis when the thigh rises. At the crotch it lies where the
+  current bodies' does. The crotch itself does not move when the legs do: the
+  thighs have no share within 1.5 cm of its middle line, which runs under the
+  trunk between the legs and up its front to the hip joints' height, and reach
+  their full share 7 cm from it. With a share there, raised thighs push the
+  skin above the crotch into a fold under the belly. The weights are then
+  evened out over the body's edges four times, within 22 cm above and below
+  the joints, and what has no share is left as it is: the boundary crosses the
+  body's level rows of
+  faces at a slant, and unevened, each row folds at a place of its own, which
+  cuts teeth into the fold. Lengths are at 1.785 m and follow the body's
+  height.
 - **Eyelids.** The lids' inner edge is the line where their skin meets the pocket
   behind them, with its corners nearest to and furthest from the nose. The lids
   meet on a line a fifth of the way from the lower lid's edge to the upper

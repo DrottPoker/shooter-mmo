@@ -27,7 +27,8 @@ garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_wei
                numpy=True)
 bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
 rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "limit", "_move_excess", "_segment_distance",
-           "_smooth", "_around", "MIN_WEIGHT", "MAX_INFLUENCES", bodies=bodies, numpy=True)
+           "_smooth", "_around", "hip_boundary", "evened_out", "crotch_line", "line_distance", "HIP_BOUNDARY",
+           "HIP_BOUNDARY_REBUILT", "MIN_WEIGHT", "MAX_INFLUENCES", bodies=bodies, numpy=True)
 paint = load("art_pipeline/paint.py", "crop", "_turn", "_landmark_pairs", "CROP_BLOCK", "MIRROR_MARGIN", "LANDMARK_MERGE",
              numpy=True)
 texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", numpy=True)
@@ -284,6 +285,66 @@ class BodyWeightTests(unittest.TestCase):
         np.testing.assert_allclose(outward, [1.0, 0.0, 0.0], atol=1e-12)
         self.assertAlmostEqual(forward @ outward, 0.0)
         self.assertAlmostEqual(forward @ axis, 0.0)
+
+    def test_a_hip_boundary_runs_straight_between_its_rows_and_on_from_the_last_to_the_first(self):
+        boundary = ((0, 0.0, 0.1), (90, 0.2, 0.3), (180, 0.0, 0.1))
+        below, width = rig.hip_boundary(boundary, [0.0, 45.0, 90.0, 135.0, 270.0, 405.0, -90.0])
+        np.testing.assert_allclose(below, [0.0, 0.1, 0.2, 0.1, 0.0, 0.1, 0.0], atol=1e-12)
+        np.testing.assert_allclose(width, [0.1, 0.2, 0.3, 0.2, 0.1, 0.2, 0.1], atol=1e-12)
+
+    def test_the_rebuilt_bodies_groin_rises_from_the_crotch_to_under_the_hip_bone_and_comes_down_to_the_side(self):
+        # Negative is above the hip joint. From the inner side over the front to 20 degrees outside
+        # it, the boundary rises all the way, so the legs meet the trunk in a V.
+        rising, _widths = rig.hip_boundary(rig.HIP_BOUNDARY_REBUILT, [270.0, 300.0, 325.0, 345.0, 0.0, 10.0, 20.0])
+        self.assertTrue((np.diff(rising) < 0.0).all())
+        # From there it comes down to the outer side, and nowhere does it lie higher.
+        falling, _widths = rig.hip_boundary(rig.HIP_BOUNDARY_REBUILT, [20.0, 35.0, 50.0, 70.0, 90.0])
+        self.assertTrue((np.diff(falling) > 0.0).all())
+        everywhere, widths = rig.hip_boundary(rig.HIP_BOUNDARY_REBUILT, np.arange(0.0, 360.0, 1.0))
+        self.assertEqual(int(np.argmin(everywhere)), 20)
+        self.assertTrue((widths > 0.0).all())
+
+    def test_the_current_bodies_groin_lies_level_from_the_front_to_the_outer_side(self):
+        level, _widths = rig.hip_boundary(rig.HIP_BOUNDARY, [0.0, 30.0, 60.0, 90.0])
+        self.assertEqual(len(set(level.tolist())), 1)
+
+    def test_evening_out_moves_the_given_rows_halfway_to_their_neighbours_each_time(self):
+        # The middle vertex of the grid holds all of one bone, its neighbours along the edges none.
+        weights = np.zeros((9, 2))
+        weights[:, 1] = 1.0
+        weights[4] = (1.0, 0.0)
+        once = rig.evened_out(weights.copy(), np.array([4]), GRID, 1)
+        np.testing.assert_allclose(once[4], [0.5, 0.5])
+        twice = rig.evened_out(weights.copy(), np.array([4]), GRID, 2)
+        np.testing.assert_allclose(twice[4], [0.25, 0.75])
+        # The other rows keep their weights, and every row still adds up to one.
+        np.testing.assert_allclose(np.delete(twice, 4, axis=0), np.delete(weights, 4, axis=0))
+        np.testing.assert_allclose(twice.sum(axis=1), 1.0)
+
+    def test_the_distance_to_a_line_is_to_its_nearest_stretch_and_a_line_of_one_place_is_a_point(self):
+        line = np.array([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)])
+        points = np.array([(0.5, 1.0, 0.0), (-1.0, 0.0, 0.0), (1.0, 0.5, 2.0), (0.25, 0.0, 0.0)])
+        np.testing.assert_allclose(rig.line_distance(points, line), [0.5, 1.0, 2.0, 0.0])
+        np.testing.assert_allclose(rig.line_distance(points, line[:1]), [np.sqrt(1.25), 1.0, np.sqrt(5.25), 0.25])
+
+    def test_the_crotchs_middle_line_runs_under_the_trunk_from_the_back_and_up_its_front_to_the_hip_joint(self):
+        # A body's middle line in no order: the cleft at the back, the underside, the front up to
+        # the belly. The hip joint lies at 0.90, and the underside is what lies within 3 cm of
+        # the lowest place.
+        under = [(0.0, -0.04, 0.83), (0.0, 0.0, 0.82), (0.0, 0.05, 0.81), (0.0, 0.09, 0.82)]
+        front = [(0.0, 0.11, 0.85), (0.0, 0.13, 0.88)]
+        cleft, belly = (0.0, -0.08, 0.90), (0.0, 0.14, 0.93)
+        centre = np.array([front[1], under[2], cleft, under[0], belly, front[0], under[3], under[1]])
+        line = rig.crotch_line(centre, np.array([0.09, 0.015, 0.90]), 0.03)
+        np.testing.assert_allclose(line, under + front)
+
+    def test_evening_out_takes_every_row_from_the_weights_before_the_step(self):
+        # Rows 3, 4, 5 across the middle of the grid: 4 has 3 and 5 among its neighbours along the
+        # edges, and each of them has 4. A step moves all three from the weights they had.
+        weights = np.zeros((9, 1))
+        weights[4, 0] = 1.0
+        evened = rig.evened_out(weights, np.array([3, 4, 5]), GRID, 1)
+        np.testing.assert_allclose(evened[[3, 4, 5], 0], [1.0 / 6.0, 0.5, 1.0 / 6.0])
 
 
 class PaintTests(unittest.TestCase):
