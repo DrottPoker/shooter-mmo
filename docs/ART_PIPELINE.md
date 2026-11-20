@@ -1390,14 +1390,33 @@ asked for, by smooth, mirrored fields before the net is laid onto it:
   own form at the patch's edge. A fifth of his own form stays, a hint of a male
   groin: the front of the centre line now rises evenly from the crotch, where
   it stood out 4 mm beyond the belly above it.
-- **Both bodies a little fuller.** The bundle's bodies are slim and read as thin
-  in the game. Each limb, the round of the shoulder, the chest, and the neck grow
-  about their own middles by a share of their width where each is widest,
-  fading out toward the joints, so the elbows, the wrists, the knees, the
-  ankles, the hands, the feet, and the head keep their size: the male's upper
-  arm, forearm, thigh, and calf by 6 to 7 %, his shoulders and neck by 5 % and
-  his chest by 4 %; the female's upper arm by 8 %, the rest of her by 2 to 5 %,
-  her chest not at all. `FULLER` in `reference.py` holds the shares.
+- **Both bodies fuller.** The bundle's bodies are slim and read as thin in the
+  game. Each limb, the round of the shoulder, the chest, and the neck grow by a
+  share of their width where each is widest, fading out toward the joints, so
+  the elbows, the wrists, the knees, the ankles, the hands, the feet, and the
+  head keep their size. The limbs grow about their own lines, and the chest and
+  the neck about the trunk's middle. The round of the shoulder grows away from
+  the shoulder joint: out to the side, to the front and the back, and down
+  along the arm, but neither upward, where the bone lies under the skin, nor
+  toward the neck, so the line of the shoulder stays. The female grows most in
+  her arms, which were the thinnest part of her: her upper arm by 19 %, her
+  forearm by 14 %, the round of her shoulder by 18 %, her thigh by 10 %, her
+  calf by 9 %, her chest by 3 %, and her neck by 2 %. The male grows by 8 to
+  10 % in his limbs, 15 % in the round of his shoulder, 4 % in his chest, and
+  5 % in his neck. `FULLER` in `reference.py` holds the shares.
+- **The male's waist filled.** His waist narrowed to four fifths of the width
+  of his hips and of his chest, and his side swelled out again fast below the
+  armpit, so the muscle of his back stood out there as a bulge over a thin
+  waist. `reference.py` measures the outline of his trunk and fills it. The
+  waist grows 8 % wider, from 31.0 to 33.5 cm. Above it the side is filled
+  out to the straight line from the wider waist up to the foot of the chest's
+  side, where the opened armpit's own straight line begins, so one even line
+  runs from his waist to his armpit. Below the waist the side is filled
+  straight down, to where his hips are that wide of their own. Each height
+  grows about the trunk's middle by the share that its outline needs, in
+  width, and by 0.4 of that share from front to back, so his belly does not
+  stand out with it. `WAIST` holds the share; the female's is nothing, and her
+  waist is as it was.
 
 The bodies stand in an A-pose. The bundle's bodies stand with their arms
 hanging, the line from the shoulder joint to the wrist 19 degrees from straight
@@ -1602,7 +1621,8 @@ foreach ($label in "Male", "Female") {
 
 Expected result: `reference.py` prints the height of both references, how far
 each body's arms hung and that they are turned out to 45 degrees, how much
-each part of each body grew, how far each armpit is moved, how far out the
+each part of each body grew, how wide the male's waist becomes and between
+which heights his trunk is filled, how far each armpit is moved, how far out the
 side of the chest lies below it, by how much that side narrows on its way up,
 and how much room the opening leaves the body, how
 near the head cage lies to the female one, a median under 1 mm, and how many

@@ -172,22 +172,39 @@ HIP_HEIGHT_SHARE = 0.52
 GROIN_REACH = (0.075, 0.13, 0.03)
 GROIN_CORE = (0.035, 0.085)
 GROIN_KEEP = 0.2
-# A little more fullness on both bodies, as the reviewer asked for it: more filled out and not as
-# thin, only a little, and the male most. The female's upper arm, the thinnest part of her, grows
-# by about as much as his in width. The limbs, the round of the shoulder, the chest, and the neck
-# grow about their own middles by these shares of their width, where each is widest, fading out
-# toward the joints, so the elbows, the wrists, the knees, and the ankles keep their width. FULLER_ALONG gives where along each limb, from its upper joint at 0 to its lower one
-# at 1, the growth starts, is greatest, and ends; FULLER_REACH how far from the limb's line its skin
-# lies, at 1.79 m. The round of the shoulder grows about the shoulder joint within SHOULDER_REACH of
-# it, the chest about the trunk's middle between the waist and the armpit, and the neck about its
-# middle from the notch above the breastbone up to NECK_TOP above it.
+# More fullness on both bodies, as the reviewer asked for it in two steps: first a little more
+# filled out and not as thin, the male most; then the female fuller and with more muscle, most in
+# her arms, which were the thinnest part of her, and the male a little more where he was thin
+# beside his upper arms and his chest: his forearms, the rounds of his shoulders, and his legs.
+# The limbs, the round of the shoulder, the chest, and the neck grow about their own middles by
+# these shares of their width, where each is widest, fading out toward the joints, so the elbows,
+# the wrists, the knees, and the ankles keep their width. FULLER_ALONG gives where along each
+# limb, from its upper joint at 0 to its lower one at 1, the growth starts, is greatest, and
+# ends; FULLER_REACH how far from the limb's line its skin lies, at 1.79 m. The round of the
+# shoulder grows away from the shoulder joint within SHOULDER_REACH of it, which takes in its
+# skin: out to the side, to the front and the back, and down along the arm, but neither upward,
+# where the bone lies under the skin and the line of the shoulder is to stay, nor toward the
+# neck. The chest grows about the trunk's middle between the waist and the armpit, and the neck
+# about its middle from the notch above the breastbone up to NECK_TOP above it.
 FULLER = {
-    "Male": {"upper_arm": 0.07, "forearm": 0.06, "shoulder": 0.05, "thigh": 0.06, "calf": 0.07, "chest": 0.04, "neck": 0.05},
-    "Female": {"upper_arm": 0.08, "forearm": 0.05, "shoulder": 0.03, "thigh": 0.04, "calf": 0.04, "chest": 0.0, "neck": 0.02},
+    "Male": {"upper_arm": 0.08, "forearm": 0.10, "shoulder": 0.15, "thigh": 0.09, "calf": 0.09, "chest": 0.04, "neck": 0.05},
+    "Female": {"upper_arm": 0.19, "forearm": 0.14, "shoulder": 0.18, "thigh": 0.10, "calf": 0.09, "chest": 0.03, "neck": 0.02},
 }
 FULLER_ALONG = {"upper_arm": (0.15, 0.55, 0.97), "forearm": (0.0, 0.3, 0.85), "thigh": (0.1, 0.4, 0.92), "calf": (0.05, 0.3, 0.8)}
 FULLER_REACH = {"upper_arm": 0.075, "forearm": 0.065, "thigh": 0.12, "calf": 0.085}
-SHOULDER_REACH, NECK_TOP = 0.09, 0.09
+SHOULDER_REACH, NECK_TOP = 0.12, 0.09
+# The male's waist, as the reviewer asked for it: not as narrow. The bundle's male narrows at the
+# waist to four fifths of his hips' and his chest's width, and his side swells out again fast
+# below the armpit, so the muscle of his back stands out there as a bulge over a thin waist. His
+# waist grows wider by the share WAIST of its width, and above it the side of his trunk is filled
+# out to the straight line from the wider waist up to the foot of the chest's side, where the
+# opened armpit's own straight line begins (ARMPIT_WALL below the armpit), so one even line runs
+# from his waist to his armpit. Below the waist his side is filled straight down, as wide as the
+# waist, to where his hips are that wide of their own. Each height of the trunk grows about the
+# trunk's middle by the share that its measured outline needs for that, in width, and by
+# WAIST_DEPTH of that share from front to back, so his belly does not stand out with it.
+WAIST = {"Male": 0.08, "Female": 0.0}
+WAIST_DEPTH = 0.4
 
 
 def _evaluated(obj, level):
@@ -575,7 +592,7 @@ def _grown_about_line(points, start, end, amount, along, reach, mask):
 
 def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y, waist_z, armpit_z, notch_z, scale):
     """The points of a body grown a little fuller: each limb about its line, the round of the
-    shoulder about the joint, and the chest and the neck about the trunk's middle. The arms' and
+    shoulder away from the joint, and the chest and the neck about the trunk's middle. The arms' and
     the legs' joints are the right side's; the left side grows as its mirror image. gap(z) is
     where the arm parts from the trunk at a height and centre_y(z) the trunk's middle front to back."""
     points = np.asarray(points, float)
@@ -596,7 +613,10 @@ def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y
         distance = np.linalg.norm(offset, axis=1)
         round_ = np.clip(1.0 - (distance / (SHOULDER_REACH * scale)) ** 2, 0.0, 1.0) ** 2
         outside = np.clip((x - gap(z) + 0.04 * scale) / (0.04 * scale), 0.0, 1.0)
-        move += offset * (amounts["shoulder"] * round_ * outside)[:, None]
+        # Less the more a point lies above the joint, and nothing straight above it.
+        beside = 1.0 - np.clip(offset[:, 2] / np.maximum(distance, 1e-9), 0.0, 1.0) ** 2
+        away = np.column_stack([np.maximum(offset[:, 0], 0.0), offset[:, 1], np.minimum(offset[:, 2], 0.0)])
+        move += away * (amounts["shoulder"] * round_ * outside * beside)[:, None]
     middle = np.column_stack([np.zeros_like(x), centre_y(z), z])
     across = right - middle
     if amounts["chest"]:
@@ -611,6 +631,34 @@ def fuller(points, amounts, joint, elbow, wrist, hip, knee, ankle, gap, centre_y
     out[:, 0] *= side
     # The centre line stays on the mirror plane.
     out[np.abs(points[:, 0]) < 1e-6, 0] = 0.0
+    return out
+
+
+def waist_shares(heights, outline, waist, amount):
+    """By what share of its width a trunk grows at each height, so that its waist is wider by
+    amount and its side runs straight from there up to the top of the outline, and straight down
+    to where the trunk is as wide of its own. heights and outline are the trunk's half width from
+    above the legs up to the foot of the chest's side, and waist is the index of its waist. A
+    height at which the trunk is already as wide as that line does not grow."""
+    heights, outline = np.asarray(heights, float), np.asarray(outline, float)
+    wide = outline[waist] * (1.0 + amount)
+    line = wide + (outline[-1] - wide) * (heights - heights[waist]) / (heights[-1] - heights[waist])
+    line[:waist] = wide
+    return np.maximum(line, outline) / outline - 1.0
+
+
+def waist_filled(points, heights, shares, gap, centre_y, scale):
+    """The points of a body whose trunk has grown about its middle by the share of each height:
+    whole in width, and by WAIST_DEPTH of it from front to back. gap(z) is where the arm parts
+    from the trunk at a height and centre_y(z) the trunk's middle front to back; the arms and
+    what lies above and below the heights stay."""
+    points = np.asarray(points, float)
+    z = points[:, 2]
+    trunk = 1.0 - np.clip((np.abs(points[:, 0]) - gap(z) + 0.01 * scale) / (0.02 * scale), 0.0, 1.0)
+    share = np.interp(z, heights, shares, left=0.0, right=0.0) * trunk
+    out = points.copy()
+    out[:, 0] += points[:, 0] * share
+    out[:, 1] += (points[:, 1] - centre_y(z)) * share * WAIST_DEPTH
     return out
 
 
@@ -649,6 +697,33 @@ def _fill_out(sculpt, base, label):
         mesh.update()
     print(f"HUMAN_BUILD_REFERENCE {label}: grown fuller by "
           + ", ".join(f"{name.replace('_', ' ')} {share * 100:.0f} %" for name, share in FULLER[label].items() if share))
+
+
+def _fill_waist(sculpt, base, label):
+    """Fills the waist of a body's reference and its control cage, by the measured outline of
+    the reference's trunk."""
+    if not WAIST[label]:
+        return
+    m = body.Measures(Surface(_points(sculpt), _triangles(sculpt)), sculpt.get("shoulder_joint"))
+    s = m.scale
+    # The trunk's outline from above the legs up to the foot of the chest's side.
+    heights = np.arange(m.leg_split + 0.03 * s, m.armpit_z - ARMPIT_WALL * s, 0.005 * s)
+    heights = np.append(heights, m.armpit_z - ARMPIT_WALL * s)
+    loops = [m._central(z) for z in heights]
+    outline = np.array([loop.points[:, 0].max() for loop in loops])
+    middles = np.array([loop.centre[1] for loop in loops])
+    between = (heights > 0.57 * m.height) & (heights < 0.67 * m.height)
+    waist = int(np.argmin(np.where(between, outline, np.inf)))
+    shares = waist_shares(heights, outline, waist, WAIST[label])
+    for mesh in (sculpt, base):
+        filled = waist_filled(_points(mesh), heights, shares, m.gap, lambda z: np.interp(z, heights, middles), s)
+        mesh.vertices.foreach_set("co", filled.ravel())
+        mesh.update()
+    grows = heights[shares > 1e-6]
+    print(f"HUMAN_BUILD_REFERENCE {label}: the waist at {heights[waist] * 100:.1f} cm grows from {outline[waist] * 200:.1f} to "
+          f"{outline[waist] * (1.0 + shares[waist]) * 200:.1f} cm wide, and the trunk is filled from {grows.min() * 100:.1f} to "
+          f"{grows.max() * 100:.1f} cm, by {shares.max() * 100:.1f} % at most, to a straight side up to the foot of the chest's "
+          f"side, {outline[-1] * 200:.1f} cm wide at {heights[-1] * 100:.1f} cm")
 
 
 def _triangles(mesh):
@@ -993,6 +1068,7 @@ def build(out_path):
             nipple = _shape(sculpt, height)
             _shape(base, height, nipple)
         _fill_out(sculpt, base, label)
+        _fill_waist(sculpt, base, label)
         _open_armpit(sculpt, base, label)
 
     # The head cage of the bundle, a coarse cage of quads with loops around the eyes and the mouth,
