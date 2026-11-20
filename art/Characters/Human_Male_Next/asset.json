@@ -9,8 +9,8 @@
     "skeleton": "Humanoid",
     "approvals": {
         "model": {
-            "date": "2026-11-19",
-            "sourceSha256": "7a6a58df2680deb1b67c8c87b2c9763f6e9692271c0c627e296d13d9b692449e"
+            "date": "2026-11-20",
+            "sourceSha256": "38fc913c1c457df995aad5c7523a97e5f389549607e9508a17e0ff84374197a4"
         }
     },
     "export": null
