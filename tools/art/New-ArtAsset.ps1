@@ -64,7 +64,7 @@ param(
     # garment: what it lies over beyond a line, each <Line>:<head|tail>:<band>, the side the inner
     # garment keeps and its band, such as Waist:head:mid for a top over trousers.
     [string[]]$Over = @(),
-    # garment: its loose parts, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>], the line
+    # garment: its loose parts, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>][:<to>], the line
     # of the trunk it hangs from, all around or across the back, the cloth chains it hangs on, how much
     # wider it grows toward its hem, in meters, and across the back optionally the half width of its
     # top and its yoke and the half width it fans out to, as shares of how far the shoulder joints lie
@@ -254,8 +254,15 @@ switch ($Kind) {
                     })
                 hang = @($Hang | ForEach-Object {
                         $parts = $_.Split(":")
+                        # A fifth or seventh part names the line of the legs the part ends at.
+                        $to = $null
+                        if ($parts.Count -eq 5 -or $parts.Count -eq 7) {
+                            $to = $parts[$parts.Count - 1]
+                            $parts = $parts[0..($parts.Count - 2)]
+                        }
+
                         if ($parts.Count -ne 4 -and $parts.Count -ne 6) {
-                            throw "Pass each -Hang as <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>], such as SkirtWaist:all:skirt:0.08 or CloakNape:back:cloak:0.03:0.72:0.8."
+                            throw "Pass each -Hang as <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>][:<to>], such as SkirtWaist:all:skirt:0.08:SkirtHem or CloakNape:back:cloak:0.03:0.72:0.8."
                         }
 
                         $culture = [System.Globalization.CultureInfo]::InvariantCulture
@@ -263,6 +270,10 @@ switch ($Kind) {
                         if ($parts.Count -eq 6) {
                             $part.top = [double]::Parse($parts[4], $culture)
                             $part.width = [double]::Parse($parts[5], $culture)
+                        }
+
+                        if ($null -ne $to) {
+                            $part.to = $to
                         }
 
                         $part
@@ -273,7 +284,7 @@ switch ($Kind) {
         }
 
         if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
-            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>] with a flare from 0 to $script:ArtGarmentFlareLimit and across the back a top and a width up to $script:ArtGarmentHangShareLimit, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>][:<to>] with a flare from 0 to $script:ArtGarmentFlareLimit, across the back a top and a width up to $script:ArtGarmentHangShareLimit, and the line of the legs it ends at, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
         }
 
         Add-ArtRecipeLines $lines $recipe
@@ -315,6 +326,7 @@ switch ($Kind) {
             @("LegShorts", "legs", "UpperLeg", 0.5),
             @("LegKnee", "legs", "LowerLeg", 0.1),
             @("BootCalf", "legs", "LowerLeg", 0.55),
+            @("SkirtHem", "legs", "LowerLeg", 0.87),
             @("LegAnkle", "legs", "LowerLeg", 0.9))
         $lines.Add('    "lines": [')
         for ($i = 0; $i -lt $standard.Count; $i++) {

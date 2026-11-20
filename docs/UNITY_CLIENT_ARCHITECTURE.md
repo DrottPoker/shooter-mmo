@@ -3111,7 +3111,7 @@ following the layers of
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#layers-of-a-character):
 
 1. The garments of a slot that a worn garment of a higher layer hides are left
-   out, such as trousers under a floor-length robe, while leg armor over the robe
+   out, such as trousers under a long robe, while leg armor over the robe
    stays, and so is the hair under headwear whose `Hair` is `hide`; the others are
    drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a

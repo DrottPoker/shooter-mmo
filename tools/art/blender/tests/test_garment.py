@@ -14,7 +14,7 @@ from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
 cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError)
-hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES")
+hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", ArtPipelineError=scene.ArtPipelineError)
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
                "collection_name", "version_name", "material_name", "image_name", "file_sha256", "recipe_text",
                "recipe_regions", "export_paths", "read_wearing", "read_manifests", cage=cage, hang=hang,
@@ -135,6 +135,14 @@ class RecipeTextTests(unittest.TestCase):
         text = garment.recipe_text({**self.BASE, "hang": [part]})
         self.assertNotIn('"top"', text)
         self.assertNotIn('"width"', text)
+        self.assertNotIn('"to"', text)
+
+    def test_the_hem_of_a_hang_part_is_kept_and_changes_the_recipe(self):
+        part = {"line": "SkirtWaist", "side": "all", "chains": "skirt", "flare": 0.08}
+        to_the_tips = garment.recipe_text({**self.BASE, "hang": [part]})
+        to_a_line = garment.recipe_text({**self.BASE, "hang": [{**part, "to": "SkirtHem"}]})
+        self.assertIn('"to":"SkirtHem"', to_a_line)
+        self.assertNotEqual(to_the_tips, to_a_line)
 
     def test_a_modeled_template_keeps_its_word(self):
         self.assertEqual(garment.recipe_text("modeled"), '"modeled"')
@@ -248,6 +256,17 @@ class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):
                 for part in recipe.get("hang", []):
                     self.assertIn(part["chains"], hang.PREFIXES)
                     self.assertIn(part["side"], hang.SIDES)
+                    # A part's hem is a line of the legs, whether or not the template covers them.
+                    if "to" in part:
+                        self.assertEqual(self.lines[part["to"]]["region"], "legs")
+
+    def test_the_robe_s_skirt_ends_above_the_ankle_so_the_shoes_show(self):
+        robe = json.loads((ART / "Garments" / "Robe" / "asset.json").read_text(encoding="utf-8"))
+        skirt = next(part for part in robe["recipe"]["hang"] if part["chains"] == "skirt")
+        hem, ankle = self.lines[skirt["to"]], self.lines["LegAnkle"]
+        self.assertEqual((hem["bone"], ankle["bone"]), ("LowerLeg", "LowerLeg"))
+        # A smaller share of the lower leg lies higher on it.
+        self.assertLess(hem["share"], ankle["share"])
 
     def test_every_cut_line_lies_in_a_region_the_recipe_builds(self):
         for name, manifest in self.manifests.items():
@@ -263,6 +282,23 @@ class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):
         for name, manifest in self.manifests.items():
             with self.subTest(garment=name):
                 self.assertLessEqual(manifest["dyes"], texture.MAX_DYES)
+
+
+class HemTests(unittest.TestCase):
+    PART = {"line": "SkirtWaist", "chains": "skirt", "to": "SkirtHem"}
+
+    def test_a_part_without_a_hem_hangs_to_the_tips_of_its_chains(self):
+        self.assertEqual(hang.hem_height(self.PART, 0.085, None), 0.085)
+
+    def test_a_part_ends_at_its_hem_above_the_tips(self):
+        self.assertEqual(hang.hem_height(self.PART, 0.085, 0.139), 0.139)
+        self.assertEqual(hang.hem_height(self.PART, 0.085, 0.085), 0.085)
+
+    def test_a_hem_below_the_tips_has_no_chain_to_carry_it(self):
+        with self.assertRaises(scene.ArtPipelineError) as raised:
+            hang.hem_height(self.PART, 0.085, 0.06)
+        self.assertIn("SkirtHem", str(raised.exception))
+        self.assertIn("2.5 cm", str(raised.exception))
 
 
 if __name__ == "__main__":

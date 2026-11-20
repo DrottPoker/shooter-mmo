@@ -187,7 +187,7 @@ so `head` is the highest layer.
 
 An item names the garments it shows, so one item may show several garments,
 such as a robe with a hood. A garment may also hide whole slots below it, such
-as a floor-length robe that hides the `legs` slot. The equipment slots `head`,
+as a long robe that hides the `legs` slot. The equipment slots `head`,
 `body`, `legs`, `hands`, `feet`, and `back` map to the visual slots of the same
 name. `main_hand` and `off_hand` show attachments, the `tool` slot shows its
 tool only while it is used, `neck`, `ring_1`, `ring_2`, and `ammunition` show
@@ -313,6 +313,7 @@ reaches out over the shoulders.
 | `LegShorts` | `legs` | `UpperLeg` 0.5 | at half the thigh | shorts |
 | `LegKnee` | `legs` | `LowerLeg` 0.1 | below the knee | knee breeches |
 | `BootCalf` | `legs` | `LowerLeg` 0.55 | at the calf | a boot's top, over the trouser leg |
+| `SkirtHem` | `legs` | `LowerLeg` 0.87 | just above the ankle, 13 to 14 cm above the ground | a long skirt's hem: the robe's, so the shoes show below it |
 | `LegAnkle` | `legs` | `LowerLeg` 0.9 | at the ankle | a trouser hem, in the boot |
 
 The lines and their shares are part of the cage asset and are approved with it;
@@ -398,7 +399,10 @@ line instead of lying on the cage and take the cloth chains. A recipe names the
 trunk line a part hangs from, its side, all around for a skirt or across the
 back for a cloak, its chains, and its flare, how much wider it grows toward its
 hem. The template's open edge is cut at that line, and rings of cloth hang below
-it down to the chains' tips.
+it down to the chains' tips, or to a line of the legs that the recipe names as
+the part's hem. The skirt chains reach the ankles, and a skirt that hung that far
+would hide the shoes under it, so the robe's skirt ends at `SkirtHem`, just above
+the ankle.
 
 On every body the rings follow a scaffold, and the cloth does not follow the
 figure under it: every column is stretched like a string from the edge over the

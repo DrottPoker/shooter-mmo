@@ -19,6 +19,7 @@
         { "name": "LegShorts", "region": "legs", "bone": "UpperLeg", "share": 0.5 },
         { "name": "LegKnee", "region": "legs", "bone": "LowerLeg", "share": 0.1 },
         { "name": "BootCalf", "region": "legs", "bone": "LowerLeg", "share": 0.55 },
+        { "name": "SkirtHem", "region": "legs", "bone": "LowerLeg", "share": 0.87 },
         { "name": "LegAnkle", "region": "legs", "bone": "LowerLeg", "share": 0.9 }
     ],
     "fittedTo": [

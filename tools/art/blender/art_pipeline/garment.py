@@ -856,6 +856,18 @@ def _hang_line(recipe, lines: list[dict], label: str, part: dict) -> tuple[Vecto
     return point, normal
 
 
+def _hang_hem(lines: list[dict], label: str, part: dict) -> float | None:
+    """The height a loose part hangs down to on a body: that of the standard line its recipe names
+    as its hem, between the body's two sides, or None for a part that hangs to the tips of its
+    chains."""
+    if part.get("to") is None:
+        return None
+    line = next((line for line in lines if line["name"] == part["to"]), None)
+    if line is None:
+        raise ArtPipelineError(f'The cage has no line "{part["to"]}" for the hem of the part at {part["line"]}.')
+    return float(np.mean([point.z for _side, point, _normal in cage.line_planes(label, line)]))
+
+
 def _add_hangs(bm: bmesh.types.BMesh, arm: bpy.types.Object, recipe, lines: list[dict], label: str) -> None:
     """Adds the recipe's loose parts to the cut cage: per part a grid of rings below the open edge
     at its line, laid on its scaffold on the first body, with the faces marked as the part's and,
@@ -876,8 +888,9 @@ def _add_hangs(bm: bmesh.types.BMesh, arm: bpy.types.Object, recipe, lines: list
         edge = hang.edge(bm, part, point, normal)
         closed = part["side"] == "all"
         top = np.array([tuple(v.co) for v in edge])
-        rings = hang.ring_count(part, arm, top)
-        co, _weights = hang.scaffold(part, arm, body, top, np.zeros((len(top), len(names))), names, rings)
+        hem = _hang_hem(lines, label, part)
+        rings = hang.ring_count(part, arm, top, hem)
+        co, _weights = hang.scaffold(part, arm, body, top, np.zeros((len(top), len(names))), names, rings, hem)
         for column, v in enumerate(edge):
             v[loose] = -(number + 1)
             v[top_layer] = column
@@ -923,7 +936,7 @@ def _hang_columns(mesh: bpy.types.Mesh, number: int) -> tuple[np.ndarray, int]:
     return edge, int(rings[loose == number + 1].max())
 
 
-def _lay_hangs(mesh: bpy.types.Mesh, arm: bpy.types.Object, recipe, label: str) -> None:
+def _lay_hangs(mesh: bpy.types.Mesh, arm: bpy.types.Object, recipe, lines: list[dict], label: str) -> None:
     """Lays the rings of every loose part on its scaffold from the edge where it now lies, before
     its edges are turned."""
     entries = hang.parts(recipe)
@@ -939,7 +952,7 @@ def _lay_hangs(mesh: bpy.types.Mesh, arm: bpy.types.Object, recipe, label: str) 
     for number, part in enumerate(entries):
         edge, rings = _hang_columns(mesh, number)
         laid, _weights = hang.scaffold(part, arm, bodies.source_body(label), co[edge], np.zeros((len(edge), len(names))),
-                                       names, rings)
+                                       names, rings, _hang_hem(lines, label, part))
         members = np.nonzero((loose == number + 1) & (rings_of > 0))[0]
         co[members] = laid[rings_of[members], columns[members]]
     mesh.vertices.foreach_set("co", co.reshape(-1))
@@ -991,7 +1004,7 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
     co = _settle_band(co, polygons, surface, recipe, lines, label, band, loose)
     mesh.vertices.foreach_set("co", co.reshape(-1))
     mesh.update()
-    _lay_hangs(mesh, arm, recipe, label)
+    _lay_hangs(mesh, arm, recipe, lines, label)
     if recipe.get("hem", 0.0) > 0.0:
         _turn_edges(mesh, recipe["hem"])
         # The turned edges keep the band too.
@@ -1007,10 +1020,12 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
 
 
 @contextlib.contextmanager
-def _scaffold(part: dict, arm: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray, names: list[str], rings: int):
+def _scaffold(part: dict, lines: list[dict], arm: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray,
+              names: list[str], rings: int):
     """A loose part's scaffold on a body as a surface to bind to and place on, with the chains'
     weights, for the time of a with block."""
-    co, weights = hang.scaffold(part, arm, bodies.source_body(arm.name), top, top_weights, names, rings)
+    co, weights = hang.scaffold(part, arm, bodies.source_body(arm.name), top, top_weights, names, rings,
+                                _hang_hem(lines, arm.name, part))
     obj = hang.surface_object(co, weights, names, part["side"] == "all")
     try:
         yield Surface(obj, names)
@@ -1053,7 +1068,7 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     hangs = []
     for number, part in enumerate(entries):
         edge, rings = columns[number]
-        with _scaffold(part, arms[0], co[edge], transferred[edge], names, rings) as surface:
+        with _scaffold(part, lines, arms[0], co[edge], transferred[edge], names, rings) as surface:
             bound = [surface.bind(Vector(co[i])) for i in members[number]]
             transferred[members[number]] = _rounded_weights(np.array([surface.weights_at(t, w) for t, w, _o in bound]))
         hangs.append(bound)
@@ -1092,7 +1107,7 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
         # Then the loose parts, on this body's scaffolds from where their edges now lie.
         for number, part in enumerate(entries):
             edge, rings = columns[number]
-            with _scaffold(part, arm, positions[edge], weights[edge], names, rings) as surface:
+            with _scaffold(part, lines, arm, positions[edge], weights[edge], names, rings) as surface:
                 positions[members[number]] = np.array([surface.place(t, w, o) for t, w, o in hangs[number]])
                 weights[members[number]] = _rounded_weights(
                     np.array([surface.weights_at(t, w) for t, w, _o in hangs[number]]))

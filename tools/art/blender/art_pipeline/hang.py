@@ -3,8 +3,9 @@ of lying on the garment cage, such as the skirt of a robe or the back of a cloak
 docs/EQUIPMENT_VISUALS_DESIGN.md.
 
 A part hangs from the template's open edge at its line, all around for a skirt or across the back for
-a cloak. Per body, a scaffold of rings is laid from that edge down to the tips of the chains, and the
-cloth does not follow the figure under it: every column is stretched like a string from the edge
+a cloak. Per body, a scaffold of rings is laid from that edge down to the tips of the chains, or to
+the height of the line the part's recipe names as its hem, such as a skirt that ends above the ankle
+so the shoes show, and the cloth does not follow the figure under it: every column is stretched like a string from the edge
 over the body's outline, the margin of the chains' cloth profile outside it, to where the body
 reaches out farthest, and hangs straight down from there, spanning the hollows. A skirt's columns
 lie around the hips between the chains and widen by the part's flare toward the hem, so it falls
@@ -271,26 +272,38 @@ def _flared(outline: Outline, starts: np.ndarray, chain_radii: np.ndarray, angle
     return profiles
 
 
-def ring_count(part: dict, arm: bpy.types.Object, top: np.ndarray) -> int:
+def hem_height(part: dict, tips: float, hem: float | None) -> float:
+    """The height a part hangs down to: the tips of its chains, or its hem where its recipe names a
+    line for it. The hem may not lie below the tips, where no chain carries the cloth."""
+    if hem is None:
+        return tips
+    if hem < tips:
+        raise ArtPipelineError(f'The hem of the part at {part["line"]}, the line {part["to"]}, lies '
+                               f'{(tips - hem) * 100:.1f} cm below the tips of its {part["chains"]} chains.')
+    return hem
+
+
+def ring_count(part: dict, arm: bpy.types.Object, top: np.ndarray, hem: float | None = None) -> int:
     """How many rings a part has below the edge it hangs from, on the first body."""
     joints = [j for _names, j in chains(arm, part["chains"])]
-    drop = float(top[:, 2].mean() - np.mean([j[-1, 2] for j in joints]))
+    drop = float(top[:, 2].mean() - hem_height(part, float(np.mean([j[-1, 2] for j in joints])), hem))
     if drop <= RING_SPACING:
-        raise ArtPipelineError(f"The edge a part hangs from lies below the tips of its {part['chains']} chains.")
+        raise ArtPipelineError(f"The edge a part hangs from lies below its hem or the tips of its {part['chains']} chains.")
     return max(2, round(drop / RING_SPACING))
 
 
 def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray,
-             names: list[str], rings: int) -> tuple[np.ndarray, np.ndarray]:
+             names: list[str], rings: int, hem: float | None = None) -> tuple[np.ndarray, np.ndarray]:
     """A part's scaffold on a body: points (rings + 1, columns, 3), its first ring the edge it hangs
-    from, and their weights over the bones of names."""
+    from, and their weights over the bones of names. It reaches down to the tips of the chains, or
+    to the height hem."""
     kind = part["chains"]
     found = chains(arm, kind)
     margin = MARGINS[kind]
     outline = Outline(body, OUTLINE_ZONES[kind])
     column = {name: i for i, name in enumerate(names)}
     z_top = float(top[:, 2].mean())
-    z_tip = float(np.mean([j[-1, 2] for _n, j in found]))
+    z_tip = hem_height(part, float(np.mean([j[-1, 2] for _n, j in found])), hem)
     # Above where the chains hang from, the cloth moves with the body, as its edge does.
     z_root = float(np.mean([j[0, 2] for _n, j in found]))
     co = np.zeros((rings + 1, len(top), 3))
