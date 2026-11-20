@@ -78,6 +78,25 @@ def _key(co) -> tuple[int, int, int]:
     return tuple(int(round(c * 1e5)) for c in co)
 
 
+def place_keys(co) -> list[tuple[int, int, int, int]]:
+    """A key per vertex of a mesh by its place, and by how many vertices before it lie at the same
+    place: the lips of the rebuilt bodies meet, and the upper lip's vertex and the lower lip's at one
+    place keep keys of their own. Vertices at one place lie in one body part in the order of the
+    source body, so a part and its body give such vertices the same keys."""
+    seen: dict[tuple[int, int, int], int] = {}
+    keys = []
+    for point in co:
+        key = _key(point)
+        keys.append((*key, seen.get(key, 0)))
+        seen[key] = seen.get(key, 0) + 1
+    return keys
+
+
+def mirror_key(key: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """The place key of a vertex's mirror image across x = 0."""
+    return (-key[0], key[1], key[2], key[3])
+
+
 def world_positions(obj: bpy.types.Object) -> np.ndarray:
     co = np.empty(len(obj.data.vertices) * 3)
     obj.data.vertices.foreach_get("co", co)
@@ -309,11 +328,10 @@ def body_weights_from_parts(root: str, bone_names: list[str]) -> None:
     body = source_body(root)
     found = {}
     for obj in parts_of(root):
-        for co, row in zip(world_positions(obj), weights_of(obj, bone_names)):
-            found[_key(co)] = row
+        for key, row in zip(place_keys(world_positions(obj)), weights_of(obj, bone_names)):
+            found[key] = row
     rows = []
-    for co in world_positions(body):
-        key = _key(co)
+    for co, key in zip(world_positions(body), place_keys(world_positions(body))):
         if key not in found:
             raise RuntimeError(f"{body.name} has a vertex at {tuple(co)} that no part has.")
         rows.append(found[key])
@@ -357,8 +375,8 @@ def part_errors(root: str) -> list[str]:
                         and all(float(np.abs(_uvs(part.data, u.name) - _uvs(mesh, u.name)).max(initial=0.0)) <= UV_TOLERANCE
                                 for u in mesh.uv_layers))
             if same:
-                order = {_key(co): i for i, co in enumerate(part_co)}
-                rows = [order.get(_key(co)) for co in fresh_co]
+                order = {key: i for i, key in enumerate(place_keys(part_co))}
+                rows = [order.get(key) for key in place_keys(fresh_co)]
                 same = None not in rows and float(np.abs(
                     weights_of(part, names)[rows] - body_weights[vertices]).max(initial=0.0)) <= WEIGHT_TOLERANCE
             if not same:

@@ -1029,7 +1029,8 @@ A skeleton definition in `art/Skeletons/<Name>.json` lists the bones that every
 skinned asset of that skeleton has, so equipment, animations, and game code can
 rely on them across bodies. Each bone has a `name`, its `parent` (null for the
 one root), the Unity `human` bone it maps to (a `HumanBodyBones` name), whether
-it should `deform` the skin, and for a bone of a cloth chain its `chain`.
+it should `deform` the skin, and for a bone of a cloth chain its `chain`. A
+skeleton with eyelids has an `eyelids` section.
 
 `Humanoid` is the skeleton of the playable bodies: 55 deforming body bones, from
 `Hips` through `Spine`, `Chest`, `UpperChest`, `Neck`, and `Head` with `Jaw` and
@@ -1070,6 +1071,20 @@ part of the legs beside each bone, its profile's margin and slack, the kind it
 lies over, what it collides with, the bone its frame is, and its chains with
 their angles around the hips. `ClothPoseTests` checks the client's constants
 against it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
+
+`Humanoid_Next` is the skeleton of the rebuilt bodies, see
+[Rebuild The Human Base Characters](#rebuild-the-human-base-characters), until
+they take the place of the current ones and it takes the name `Humanoid`: the
+bones and the `cloth` section of `Humanoid`, and four eyelid bones,
+`EyelidUpper_L`, `EyelidLower_L`, `EyelidUpper_R`, and `EyelidLower_R`,
+deforming children of `Head` beside the eyes and outside the Humanoid avatar.
+Each sits at its eyeball's centre and points forward with its Z axis up, as the
+eye bones do, so it turns its lid about the eye's centre around its X axis. The
+`eyelids` section names per eye its eye bone and its two lid bones, and the
+turns about X that close the lids, `upperClosedDegrees` -46 for the upper lids
+and `lowerClosedDegrees` 11 for the lower ones, just more than the rebuilt male's
+lids need: the rig weights each body's lids so they meet at these turns, and a
+share of them closes the eyes that far.
 
 `Quadruped` is the skeleton of four-legged creatures, such as the wolf: 30
 deforming bones outside any Unity avatar, so its assets import with a Generic
@@ -1159,7 +1174,11 @@ one Blender process per step:
    first placed again from the model. A new rig needs a new sync and review of
    the animation libraries keyed on it.
 2. `check-rig`: the step changes no mesh at rest, the art pipeline's rig rules
-   hold, and the weights are mirror symmetric.
+   hold, and the weights are mirror symmetric. On a skeleton with eyelids it
+   closes the lids by the skeleton's turns: at each place across the eye the
+   lids' inner edges lie at most 0.3 mm apart around the eyeball and 0.8 mm
+   toward its axis, and no skin of a lid lies more than 0.3 mm inside its
+   eyeball.
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
    symmetry, identical topology of both bodies and of every part, at most 15,400
@@ -1175,9 +1194,13 @@ one Blender process per step:
    bytes from run to run, so the script replaces a committed file only when its
    content changed, and an unchanged file keeps its approval.
 5. The review files `Human_Base.blend`, both characters side by side, and
-   `Human_Base_Rig.blend`, with the test poses as an animation, and the review
+   `Human_Base_Rig.blend`, with the test poses as an animation that ends by
+   closing the eyes on a skeleton with eyelids, and the review
    sheets of the models, such as the faces sheet `Human_Base_faces.png`, and of
-   the rigs, such as the cloth chains on `<Asset>_rig_chains.png`.
+   the rigs, such as the cloth chains on `<Asset>_rig_chains.png`. The rigs'
+   sheets add a key light without shadows to the models' studio light, so the
+   forms of a body in flat colours show, and the face sheet closes the lids of
+   a skeleton with eyelids.
 
 Placing the joints puts every joint where the model has it: the hips from the
 crotch and the leg cut, the spine at fixed shares between the hips and the neck,
@@ -1193,10 +1216,19 @@ in place; the thigh takes the skin below a boundary that runs through the groin
 crease, over the hip, along the gluteal fold, and through the crotch, with wide
 blends over the buttock and the underwear line and a radial fade at the crotch,
 so a raised thigh leaves no notch; and the knee and elbow blend across the
-joint. The jaw takes the lower face, the eyes, the upper teeth, the lower teeth,
-and the tongue are rigid on their bones, and the weights are mirrored so both
-sides match exactly. Solving the weights again on an unchanged character gives
-the same weights.
+joint. The jaw takes the lower face, the eyelids' bones take the lids on a
+skeleton that has them, the eyes, the upper teeth, the lower teeth, and the
+tongue are rigid on their bones, and the weights are mirrored so both sides
+match exactly. Solving the weights again on an unchanged character gives the
+same weights. The tools tell a body's vertices apart by their places, and two
+vertices of one part at one place, such as the rebuilt bodies' lips where they
+meet, by their order.
+
+The test poses of the rig review turn the bones from the bind pose. Their upper
+arms were made for arms that hang about 68 degrees below the horizontal, as the
+current bodies' do; on a rig whose arms hang more than 10 degrees otherwise,
+such as the rebuilt bodies' at 45 degrees, a pose that turns the upper arms
+first turns them to that angle, so it shows the same arms on every body.
 
 ### Edit The Human Base Characters
 
@@ -1324,11 +1356,13 @@ and are written as assets of their own, `art/Characters/Human_Male_Next` and
 `art/Characters/Human_Female_Next`, beside the bodies the game uses. The
 reviewer approved their `model` stage on 2026-11-19, and again on 2026-11-20
 after their eyes were built again for lids that close, as the blinking of the
-next step needs; see the lids below. They are committed in review: their `rig`
-stage waits, so they have no export. Their rig, and the move
-of everything that is fitted to a body, the clips, the garment cage, the
-garments, the textures, and the paint layers, come next, and then the new bodies
-take the names `Human_Male` and `Human_Female`.
+next step needs; see the lids below. They are committed in review on the
+`Humanoid_Next` skeleton, which has eyelids: their `rig` stage waits for the
+reviewer, so they have no export; see
+[Rig The Rebuilt Bodies](#rig-the-rebuilt-bodies). The move of everything that
+is fitted to a body, the clips, the garment cage, the garments, the textures,
+and the paint layers, comes next, and then the new bodies take the names
+`Human_Male` and `Human_Female`.
 
 The reference is the bundle the bodies have always come from, the realistic
 male and female of Blender Studio's Human Base Meshes v1.4.1 (CC0), kept outside
@@ -1495,8 +1529,14 @@ What is built:
 Each new file follows the layout of a body file above, at the `model` stage: the
 root `<Label>` is an empty where the armature will be, the body parts are
 written from the source body as the sync writes them, the faces inside the head
-carry the hidden parts 7 and 8 of the face attribute `part`, and the reference
-mesh lies in the `Reference` collection, which renders leave out.
+carry the hidden parts 7 and 8 of the face attribute `part`, each eyeball's
+origin lies at its centre, and the reference mesh lies in the `Reference`
+collection, which renders leave out. The root carries the rig's landmarks as
+custom properties `lmw_<name>`, which `landmarks.py` writes from vertices that
+the build names: the keys of the current bodies, with as many points in the same
+order and with the same meaning, so paint layers made on those bodies pair them,
+and `shoulder_joint`, `finger_bases`, `finger_joints`, and `toe_ball`, by which
+the rig places the shoulders, the digits, and the toes.
 
 To build the bodies again, with Blender on `BLENDER_PATH`:
 
@@ -1532,6 +1572,60 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 | `assemble.py` | Writes both bodies' asset files from their work files: every quad cut from the corner that leaves the better triangles on the worse of the two bodies, after the faces that this cut would leave as slivers are evened out, and a bent quad cut along its side of the reference's skin, so a fold shows as a hollow and not as a ridge; the UV map, the body parts, the inner parts, and the reference. |
 | `surface.py`, `net.py` | The reference surface with its sections, rays, and nearest points, and the net: its faces, holds, islands, seams, subdivision, fitting, mirror image, its check for edges at which it is tucked into itself, and its checks for slivers and folds, which it mends without moving the lids' edge, the line between the lips, or a border between two body parts out of its plane. |
 | `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `eye.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the lids of the eyes, measured on the reference spoke by spoke; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
+| `landmarks.py` | The rig's landmarks from the vertices the cage names, through the subdivided net: the rings of each digit and of the wrist, the ball of the foot, the line between the lips, the lids' inner edge, and the points of the face's middle line, found as the furthest forward or back within heights set by the ones before them. |
+
+### Rig The Rebuilt Bodies
+
+`tools/art/Sync-HumanBase.ps1 -Rig -Next` rigs the rebuilt bodies on the
+`Humanoid_Next` skeleton with the steps and checks of the current bodies, the
+joints placed from the landmarks of their files, and the eyelids weighted by
+rule. The review of the models is left out, because its sheets show the painted
+skin that the rebuilt bodies do not have yet. The work files, review files,
+sheets, and report go to `artifacts/human-base-next`.
+
+- **Joints.** The search for the shoulder joint starts where the reference's arm
+  was turned, `shoulder_joint`. A finger's middle and end joints lie in the
+  middle of the rings around each, and its knuckle 2.2 cm inside the palm from
+  the middle of its ring at the web, along its first bone, where the build put
+  the palm's ring of knuckles; the thumb's joints lie at its web and between the
+  rings around its joint, and its base 0.4 of the way from the wrist to its web.
+  A digit's skin is what lies beyond the ring it grows from, `finger_bases`. The
+  toes bend at the middle of the ring over the ball of the foot, `toe_ball`.
+- **Eyelids.** The lids' inner edge is the line where their skin meets the pocket
+  behind them, with its corners nearest to and furthest from the nose. The lids
+  meet on a line a fifth of the way from the lower lid's edge to the upper
+  lid's, around the eyeball's centre, at each place across the eye. A turn about
+  the X axis keeps a vertex's place across, so each vertex of the edge takes the
+  weight at which the skin, which blends its place at rest and turned by the
+  closed angle in a straight line, reaches that line; the corners stay. The rings
+  of skin outward from the edge take the weight of their nearest vertex of the
+  edge times their ring's share, on the upper lid 1, 1, 1, 0.9, 0.55, and 0.15 out
+  to the brow, on the lower lid 1, 1, 1, 0.7, 0.35, and 0.1 out to the cheek, and
+  the pocket behind the edge follows the edge. The step reports how much of the
+  skeleton's closed turns each lid needs: the male's upper lids 45.9 of 46
+  degrees and his lower lids 10.9 of 11, the female's 41.7 and 10.4.
+- **The lips.** The rebuilt bodies' lips meet: the upper lip's vertices on the
+  line between them lie where the lower lip's do. The jaw takes a vertex by its
+  place, and the two lips' vertices at one place take the mean share of their
+  other neighbours, so the upper lip stays with the head and the lower lip opens
+  with the jaw.
+
+To rig the rebuilt bodies, write their files with the landmarks first, with the
+commands of [Rebuild The Human Base Characters](#rebuild-the-human-base-characters),
+then:
+
+```powershell
+.\tools\art\Sync-HumanBase.ps1 -Rig -Next
+```
+
+Expected result: a line per step with its time, and the script names the review
+file `artifacts/human-base-next/Human_Base_Rig.blend`, the sheets in
+`artifacts/human-base-next/review`, and the report, and says of each body that it
+was updated and that its `rig` stage needs an approval. The report gives each
+lid's closed turn and how far the closed lids lie apart. Look closest at
+`<Asset>_rig_face.png`, with the jaw opening and the lids closing,
+`<Asset>_rig_joints.png`, `<Asset>_rig_hands.png`, and the lids on
+`<Asset>_rig_weights.png`.
 
 ## Animation Libraries
 
@@ -2503,7 +2597,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | --- | --- |
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
-| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains. |
+| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, and the eyelids of `Humanoid_Next`. |
 | `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
@@ -2516,7 +2610,8 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the three files that need it are skipped and the run says `skipped=3`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -3231,9 +3326,9 @@ passes.
 | `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand: an ash recurve with a dark laminated back, a dark oak riser with a brass oak leaf, a cross-laced leather grip, a sight window with a shelf on the left, horn tips with a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip, 1,860 triangles, hand-painted on one UV layout. On the `Bow` skeleton with its clip `Draw`, 15 frames from brace to full draw. `holdClip` `HoldBow`, `attackClip` `BowShot`, released at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. |
 | `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. Flat material colors. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body and fitted to the male and the female, with a figure scale of 60 mm and the standard lines; see [Garment Cage](#garment-cage). |
-| `art/Characters/Human_Female_Next` | `skinned` | `Female` | The new female human base body, built by `tools/art/blender/human_build`; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, the same net as the male, 15,084 triangles with its eyeballs, teeth, and tongue, and an unmirrored UV map. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
+| `art/Characters/Human_Female_Next` | `skinned` | `Female` | The new female human base body, built by `tools/art/blender/human_build`; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, the same net as the male, 15,084 triangles with its eyeballs, teeth, and tongue, and an unmirrored UV map, on the `Humanoid_Next` skeleton. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
-| `art/Characters/Human_Male_Next` | `skinned` | `Male` | The new male human base body, built by `tools/art/blender/human_build`, 1.79 m, like `Human_Female_Next` in pose, net, and triangles. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
+| `art/Characters/Human_Male_Next` | `skinned` | `Male` | The new male human base body, built by `tools/art/blender/human_build`, 1.79 m, like `Human_Female_Next` in pose, net, triangles, and skeleton. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
 | `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (120 frames, breathing, looking about, an ear flick, and a tail sway), `Walk` (16 frames, a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (12 frames, a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (30 frames, a lunge with the bite at frame 8), and `Death` (60 frames, a fall onto its side that lies on the ground). The game shows it with `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`; see [Prefabs](#prefabs). |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. |
@@ -3271,7 +3366,9 @@ passes.
 
 ## Planned
 
-- Eyelid bones for blinking and forearm twist bones.
+- Blinking in the game: the client turns the eyelid bones of `Humanoid_Next` by
+  a share of their closed turns, and closes the eyes of the dead.
+- Forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso, where skin
   comes through close-fitting sleeves in motion, and of the female's bra straps,
   which are painted up her neck, above the collar of chest paint.

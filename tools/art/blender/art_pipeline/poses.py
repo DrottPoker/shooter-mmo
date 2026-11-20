@@ -3,7 +3,13 @@ base characters follow one convention (see human_base.rig.joints): every limb, d
 forward, or toward the palm, about its X axis; the arms raise sideways about Z, and the head and
 the spine twist about Y. A bone name ending in _s means both sides: the left side takes the same
 X turn and the opposite Y and Z turns, so the pose stays mirror symmetric. Both eyes share one set
-of axes (looking forward, Z up), so a gaze to one side names each eye with the same turns."""
+of axes (looking forward, Z up), so a gaze to one side names each eye with the same turns, and so do
+the eyelids, which close about X.
+
+The turns of the upper arms were made for arms that hang REST_ARM_DROP degrees below the horizontal
+in the bind pose, as the earlier bodies' arms do. On a rig whose arms hang otherwise, such as the
+rebuilt bodies' at 45 degrees, a pose that turns the upper arms first turns them to that angle, so
+it shows the same arms on every body."""
 
 import math
 
@@ -14,6 +20,11 @@ FINGERS = ("Index", "Middle", "Ring", "Little")
 # A pose with this key lowers the hips until the ankles are back at their height in the rest pose,
 # so bent legs keep the feet on the ground.
 PLANT_FEET = "plant_feet"
+# The upper arms' angle below the horizontal that the poses were made for, and how far from it a
+# rig's arms may hang and keep their own angle: the earlier bodies' arms, 67.6 and 72.7 degrees
+# below the horizontal, keep theirs, and the rebuilt bodies' arms, 45 degrees below it, turn.
+REST_ARM_DROP = 67.6
+ARM_TOLERANCE = 10.0
 
 
 def _fist(curl=1.0):
@@ -65,8 +76,27 @@ def _turns(name, turns, side):
     return q
 
 
+def arm_turn(head, tail):
+    """The turn about Z, in degrees, that brings a right upper arm from its head to its tail in the
+    bind pose to REST_ARM_DROP below the horizontal, or 0 within ARM_TOLERANCE of it."""
+    drop = math.degrees(math.atan2(head[2] - tail[2], tail[0] - head[0]))
+    turn = REST_ARM_DROP - drop
+    return 0.0 if abs(turn) < ARM_TOLERANCE else turn
+
+
+def eyelids(lids, share=1.0):
+    """A pose that closes the eyelids of a skeleton's eyelids section by a share."""
+    pose = {}
+    for _eye, upper, lower in lids.eyes:
+        pose[upper] = (("X", lids.upper_closed * share),)
+        pose[lower] = (("X", lids.lower_closed * share),)
+    return pose
+
+
 def apply(arm, pose):
     """Sets the armature to one pose; bones the pose does not name stay at rest."""
+    bones = arm.data.bones
+    turn = arm_turn(bones["UpperArm_R"].head_local, bones["UpperArm_R"].tail_local) if "UpperArm_R" in bones else 0.0
     for pb in arm.pose.bones:
         pb.rotation_mode = "QUATERNION"
         pb.rotation_quaternion = Quaternion()
@@ -74,6 +104,8 @@ def apply(arm, pose):
     for name, turns in pose.items():
         if name == PLANT_FEET:
             continue
+        if name == "UpperArm_s" and turn:
+            turns = (("Z", turn),) + tuple(turns)
         if name.endswith("_s"):
             for side in ("R", "L"):
                 arm.pose.bones[f"{name[:-2]}_{side}"].rotation_quaternion = _turns(name, turns, side)

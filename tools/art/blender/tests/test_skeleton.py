@@ -23,16 +23,58 @@ def humanoid():
 
 
 class SkeletonLoadTests(unittest.TestCase):
-    def _write(self, folder: str, bones: list[dict], name: str = "Test") -> str:
+    def _write(self, folder: str, bones: list[dict], name: str = "Test", **sections) -> str:
         path = pathlib.Path(folder) / f"{name}.json"
-        path.write_text(json.dumps({"schemaVersion": 1, "name": name, "bones": bones}), encoding="utf-8", newline="\n")
+        path.write_text(json.dumps({"schemaVersion": 1, "name": name, "bones": bones, **sections}), encoding="utf-8",
+                        newline="\n")
         return str(path)
 
-    def _error(self, bones: list[dict]) -> str:
+    def _error(self, bones: list[dict], **sections) -> str:
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(scene.ArtPipelineError) as raised:
-                skeleton.load(self._write(folder, bones))
+                skeleton.load(self._write(folder, bones, **sections))
         return str(raised.exception)
+
+    HEAD = [{"name": "Head", "parent": None, "deform": True},
+            {"name": "Eye_R", "parent": "Head", "human": "RightEye", "deform": True},
+            {"name": "LidUp_R", "parent": "Head", "deform": True},
+            {"name": "LidDown_R", "parent": "Head", "deform": True}]
+    LIDS = {"upperClosedDegrees": -40, "lowerClosedDegrees": 10,
+            "eyes": [{"eye": "Eye_R", "upper": "LidUp_R", "lower": "LidDown_R"}]}
+
+    def test_a_skeleton_without_eyelids_has_none(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(skeleton.load(self._write(folder, self.HEAD)).eyelids)
+
+    def test_the_eyelids_name_each_eyes_lid_bones_and_their_closed_turns(self):
+        with tempfile.TemporaryDirectory() as folder:
+            lids = skeleton.load(self._write(folder, self.HEAD, eyelids=self.LIDS)).eyelids
+        self.assertEqual(lids.eyes, (("Eye_R", "LidUp_R", "LidDown_R"),))
+        self.assertEqual(lids.bones, ["LidUp_R", "LidDown_R"])
+        self.assertEqual((lids.closed("upper"), lids.closed("lower")), (-40.0, 10.0))
+
+    def test_the_upper_lid_closes_downward_and_the_lower_upward(self):
+        for upper, lower in ((40, 10), (-40, -10), (0, 10)):
+            with self.subTest(upper=upper, lower=lower):
+                error = self._error(self.HEAD, eyelids=dict(self.LIDS, upperClosedDegrees=upper, lowerClosedDegrees=lower))
+                self.assertIn("negative turn", error)
+
+    def test_eyelids_without_their_angles_or_eyes_are_refused(self):
+        for missing in ("upperClosedDegrees", "lowerClosedDegrees", "eyes"):
+            with self.subTest(missing=missing):
+                lids = {key: value for key, value in self.LIDS.items() if key != missing}
+                self.assertIn("eyelids", self._error(self.HEAD, eyelids=lids))
+
+    def test_a_lid_bone_deforms_beside_its_eye_outside_the_avatar_the_sockets_and_the_chains(self):
+        for extra in ({"deform": False}, {"human": "Jaw"}, {"socket": "back", "deform": False}, {"chain": "hood"},
+                      {"parent": "Eye_R"}):
+            with self.subTest(extra=extra):
+                bones = self.HEAD[:3] + [dict(self.HEAD[3], **extra)]
+                self.assertIn('"LidDown_R"', self._error(bones, eyelids=self.LIDS))
+        eyes = [{"eye": "Eye_L", "upper": "LidUp_R", "lower": "LidDown_R"}]
+        self.assertIn('"Eye_L"', self._error(self.HEAD, eyelids=dict(self.LIDS, eyes=eyes)))
+        eyes = [{"eye": "Eye_R", "upper": "LidUp_R", "lower": "LidUp_R"}]
+        self.assertIn("twice", self._error(self.HEAD, eyelids=dict(self.LIDS, eyes=eyes)))
 
     def test_a_small_skeleton_keeps_its_bones_in_order_with_their_fields(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -86,10 +128,24 @@ class SkeletonLoadTests(unittest.TestCase):
 class SkeletonFileTests(unittest.TestCase):
     def test_every_skeleton_file_loads_and_is_named_after_its_file(self):
         files = sorted(SKELETONS.glob("*.json"))
-        self.assertEqual([f.stem for f in files], ["Bow", "Humanoid", "Quadruped"])
+        self.assertEqual([f.stem for f in files], ["Bow", "Humanoid", "Humanoid_Next", "Quadruped"])
         for file in files:
             with self.subTest(file=file.name):
                 self.assertEqual(skeleton.load(str(file)).name, file.stem)
+
+    def test_the_next_humanoid_is_the_humanoid_with_eyelids(self):
+        # The rebuilt bodies' skeleton until they replace the current bodies: the same bones and
+        # cloth, and per eye an upper and a lower lid bone beside it.
+        current = json.loads((SKELETONS / "Humanoid.json").read_text(encoding="utf-8"))
+        following = json.loads((SKELETONS / "Humanoid_Next.json").read_text(encoding="utf-8"))
+        lids = [f"Eyelid{lid}_{side}" for side in ("L", "R") for lid in ("Upper", "Lower")]
+        self.assertEqual([b for b in following["bones"] if b["name"] not in lids], current["bones"])
+        self.assertEqual(following["cloth"], current["cloth"])
+        loaded = skeleton.load(str(SKELETONS / "Humanoid_Next.json"))
+        self.assertEqual(loaded.eyelids.eyes, (("Eye_L", "EyelidUpper_L", "EyelidLower_L"),
+                                                ("Eye_R", "EyelidUpper_R", "EyelidLower_R")))
+        self.assertEqual(sorted(loaded.eyelids.bones), sorted(lids))
+        self.assertIsNone(humanoid().eyelids)
 
     def test_the_humanoid_maps_each_unity_avatar_bone_at_most_once(self):
         mapped = [b.human for b in humanoid().bones if b.human]

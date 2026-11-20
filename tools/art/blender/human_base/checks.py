@@ -13,7 +13,8 @@ report lines and the rules it found broken:
   of the paint UV map belongs to both sides of the body, so paint can differ between the sides.
 - rig: a character after a step against its file before the step: the source body, eyeballs, teeth
   and tongue are unchanged at rest, the body parts are what the source body gives, the art
-  pipeline's rig rules hold, and the weights are mirror symmetric.
+  pipeline's rig rules hold, the weights are mirror symmetric, and on a skeleton with eyelids the
+  closed lids meet edge to edge outside the eyeballs.
 - clips: in the Idle, Walk and Jog clips of an animation library, a foot on the ground keeps its
   place when the character moves at the clip's speed."""
 
@@ -48,6 +49,13 @@ REST_POSITION_TOLERANCE = 1e-6  # m, the rigged mesh at rest against the model
 GROUND = 0.004
 SLIP_TOLERANCE = 0.015
 HEEL_BEHIND = 0.045
+# Closed, the lids' inner edges meet: at each place across the eye they lie at most LID_SLIT apart
+# around the eyeball, and one lies at most LID_STEP nearer to the eye's axis than the other, which
+# blending a turn in straight lines gives the upper lid near the corners, where it moves half; and
+# no skin of a lid lies further than LID_DEPTH inside its eyeball (m).
+LID_SLIT = 0.0003
+LID_STEP = 0.0008
+LID_DEPTH = 0.0003
 
 
 # ------------------------------------------------------------------------------------- mesh
@@ -198,6 +206,9 @@ def _seam_differences(obj):
         if len(sides) != 2:
             continue
         a, b = key
+        # A body painted in flat colours until its skin is painted has no texture to compare.
+        if any(samplers[p.material_index] is None for p, _loops in sides):
+            continue
         for t in (0.15, 0.5, 0.85):
             cols = []
             for p, loops in sides:
@@ -217,6 +228,9 @@ def seams(male_path, female_path):
     lines = []
     for name in BODIES:
         diffs, worst = _seam_differences(bpy.data.objects[name])
+        if not len(diffs):
+            lines.append(f"{name}: no seam between textured faces")
+            continue
         lines.append(f"{name}: {len(diffs)} samples on seams, mean difference {diffs.mean():.1f}, "
                      f"95th percentile {np.percentile(diffs, 95):.1f}, max {worst[0]:.1f} at {worst[1]} (sRGB 0..255)")
     return lines, []
@@ -325,7 +339,8 @@ def _rest_meshes(label):
             co = np.array([o.matrix_world @ v.co for v in me.vertices])
             normals = np.empty(len(me.loops) * 3)
             me.corner_normals.foreach_get("vector", normals)
-            uv = np.empty(len(me.loops) * 2)
+            # A mesh without UVs, such as the rebuilt bodies' teeth, compares as zeros.
+            uv = np.zeros(len(me.loops) * 2)
             if me.uv_layers.active:
                 me.uv_layers.active.data.foreach_get("uv", uv)
             found[o.name] = (co, normals, uv, [tuple(p.vertices) for p in me.polygons])
@@ -377,12 +392,12 @@ def rig(model_path, rigged_path, label, skeleton_path):
             continue
         names = {g.index: g.name for g in o.vertex_groups}
         keyed = {}
-        for v in o.data.vertices:
+        for v, key in zip(o.data.vertices, bodies.place_keys([v.co for v in o.data.vertices])):
             w = {names[g.group]: g.weight for g in v.groups if g.weight > 0}
             influences[len(w)] = influences.get(len(w), 0) + 1
-            keyed[_key(v.co)] = w
+            keyed[key] = w
         for k, w in keyed.items():
-            m = keyed.get((-k[0], k[1], k[2]))
+            m = keyed.get(bodies.mirror_key(k))
             if m is None:
                 failures.append(f"{o.name}: a vertex has no mirror partner")
                 break
@@ -395,6 +410,73 @@ def rig(model_path, rigged_path, label, skeleton_path):
         failures.append(f"{label}: the weights are not mirror symmetric ({asymmetry:.2e})")
     bones = bpy.data.objects[label].data.bones
     lines.append(f"{label}: {len(bones)} bones, {sum(b.use_deform for b in bones)} deforming")
+    if skeleton.eyelids is not None:
+        found, broken = _lids_closed(label, skeleton.eyelids)
+        lines += found
+        failures += broken
+    return lines, failures
+
+
+def _lids_closed(label, lids):
+    """Closes the lids of a rigged character as its skeleton says and measures, per eye, how far
+    apart the lids' inner edges stay, each vertex from the other lid's edge at its place across the
+    eye, around the eyeball and toward the eye's axis, and how far the lids' skin lies inside the
+    eyeball, at the corners, the middle, and the edges' middles of every skin face the lids move, in
+    front of the eyeball's centre."""
+    from art_pipeline import poses
+
+    from . import lids as eyelids
+    from . import rig as rigging
+
+    arm = bpy.data.objects[label]
+    body = bodies.source_body(label)
+    rest = bodies.world_positions(body)
+    part = np.zeros(len(body.data.polygons), np.int32)
+    body.data.attributes["part"].data.foreach_get("value", part)
+    faces = [tuple(p.vertices) for p in body.data.polygons]
+    scale = float(rest[:, 2].max()) / rigging.REFERENCE_HEIGHT
+    poses.apply(arm, poses.eyelids(lids))
+    evaluated = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    me = evaluated.to_mesh()
+    try:
+        closed = np.array([tuple(body.matrix_world @ v.co) for v in me.vertices])
+    finally:
+        evaluated.to_mesh_clear()
+        poses.rest(arm)
+    moved = np.linalg.norm(closed - rest, axis=1) > 1e-7
+    lines, failures = [], []
+    for eye, _upper, _lower in lids.eyes:
+        ball = bodies.world_positions(bpy.data.objects[f"{label}_Eye_{eye[-1]}"])
+        centre = (ball.min(0) + ball.max(0)) / 2
+        radius = float(ball[:, 0].max() - ball[:, 0].min()) / 2
+        upper, lower = eyelids.lids(rest, eyelids.edge_cycle(rest, faces, part, centre, eyelids.REACH * scale))
+        slit = step = 0.0
+        for one, other in ((upper, lower), (lower, upper)):
+            # A turn about the X axis keeps a vertex's place across the eye.
+            across, _angles = eyelids.profile(rest, other, centre)
+            sign = 1.0 if rest[other[-1]][0] > rest[other[0]][0] else -1.0
+            for v in one[1:-1]:
+                there = np.array([np.interp(rest[v][0] * sign, across, closed[other, k]) for k in range(3)]) - centre
+                here = closed[v] - centre
+                near, far = float(np.hypot(here[1], here[2])), float(np.hypot(there[1], there[2]))
+                turn = abs(math.atan2(here[2], here[1]) - math.atan2(there[2], there[1]))
+                slit = max(slit, turn * min(near, far))
+                step = max(step, abs(near - far))
+        depth = 0.0
+        for face, kind in zip(faces, part):
+            if kind != 0 or not moved[list(face)].any() or np.linalg.norm(rest[face[0]] - centre) > eyelids.REACH * scale:
+                continue
+            corners = closed[list(face)]
+            for point in np.vstack([corners, corners.mean(0, keepdims=True), (corners + np.roll(corners, -1, 0)) / 2]):
+                if point[1] >= centre[1]:
+                    depth = max(depth, radius - float(np.linalg.norm(point - centre)))
+        lines.append(f"{label} {eye} closed: the lids' inner edges lie at most {slit * 1000:.2f} mm apart around the "
+                     f"eyeball and {step * 1000:.2f} mm toward its axis, their skin at most {depth * 1000:.2f} mm inside it")
+        for name, value, tolerance in (("apart around the eyeball", slit, LID_SLIT), ("apart toward its axis", step, LID_STEP),
+                                       ("inside the eyeball", depth, LID_DEPTH)):
+            if value > tolerance:
+                failures.append(f"{label} {eye}: the closed lids lie {value * 1000:.2f} mm {name} "
+                                f"(at most {tolerance * 1000:.1f})")
     return lines, failures
 
 

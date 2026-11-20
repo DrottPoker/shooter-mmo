@@ -25,8 +25,9 @@ except ImportError:
 cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS", numpy=True)
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
                numpy=True)
+bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
 rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "limit", "_move_excess", "_segment_distance",
-           "_smooth", "_around", "MIN_WEIGHT", "MAX_INFLUENCES", numpy=True)
+           "_smooth", "_around", "MIN_WEIGHT", "MAX_INFLUENCES", bodies=bodies, numpy=True)
 paint = load("art_pipeline/paint.py", "crop", "_turn", "_landmark_pairs", "CROP_BLOCK", "MIRROR_MARGIN", "LANDMARK_MERGE",
              numpy=True)
 texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", numpy=True)
@@ -225,6 +226,16 @@ class BodyWeightTests(unittest.TestCase):
     def test_a_vertex_without_a_mirror_is_an_error(self):
         with self.assertRaises(KeyError):
             rig._mirrored(np.array([(1.0, 2.0, 3.0), (-1.5, 2.0, 3.0)]), np.array([0]))
+
+    def test_vertices_at_one_place_mirror_in_their_order(self):
+        # The upper lip's vertex and the lower lip's at one place on each side, the upper first.
+        points = np.array([(1.0, 2.0, 3.0), (1.0, 2.0, 3.0), (-1.0, 2.0, 3.0), (-1.0, 2.0, 3.0)])
+        self.assertEqual(rig._mirrored(points, np.arange(4)).tolist(), [2, 3, 0, 1])
+
+    def test_a_place_key_counts_the_vertices_before_it_at_that_place(self):
+        keys = bodies.place_keys([(0.1, 0.2, 0.3), (0.1, 0.2, 0.3), (0.4, 0.5, 0.6)])
+        self.assertEqual(keys, [(10000, 20000, 30000, 0), (10000, 20000, 30000, 1), (40000, 50000, 60000, 0)])
+        self.assertEqual(bodies.mirror_key(keys[1]), (-10000, 20000, 30000, 1))
 
     def test_the_left_takes_the_mirrored_weights_of_the_right_and_the_middle_the_mean_of_both(self):
         points = np.array([(1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)])

@@ -308,6 +308,7 @@ def build_foot(net: Net, foot: Foot):
     for index, (name, toe) in enumerate(zip(TOES, foot.toes)):
         skin = f"toe_{name}"
         previous = [under[index], over[index], over[index + 1], under[index + 1]]
+        net.mark(f"foot_{name}_base", previous)
         for points in toe_rings[index][1:]:
             ring = net.add_ring(points)
             net.strip(previous, ring, zone, skin)
@@ -316,3 +317,8 @@ def build_foot(net: Net, foot: Foot):
         for k in range(4):
             net.face((previous[k], previous[(k + 1) % 4], tip), zone, skin)
         net.mark(f"{name}_toe_tip", [tip])
+        # The last ring's two corners over the toe, at its nail, and the two under it.
+        net.mark(f"foot_{name}_nail", previous[1:3])
+        net.mark(f"foot_{name}_pad", [previous[0], previous[3]])
+    # The ring behind the toes lies over and under the joints of the toes, at the ball of the foot.
+    net.mark("foot_ball", ball)

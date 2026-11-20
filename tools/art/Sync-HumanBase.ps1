@@ -5,7 +5,9 @@
 # the joints the files have, and -Rig places the joints again from the models first. Then it checks
 # both characters, replaces a committed file only when its content changed, and writes review
 # files, review sheets, and a quality report. A changed file needs a new review and approval with
-# Approve-ArtAsset.ps1. See docs/ART_PIPELINE.md.
+# Approve-ArtAsset.ps1. -Next does all of it for the rebuilt bodies Human_Male_Next and
+# Human_Female_Next on the Humanoid_Next skeleton, whose first rig is -Rig -Next. See
+# docs/ART_PIPELINE.md.
 [CmdletBinding(DefaultParameterSetName = "Parts")]
 param(
     # Solves the skin weights again from the joints of the rigs.
@@ -15,7 +17,11 @@ param(
     # animation libraries keyed on the old rig then need a new sync and review.
     [Parameter(ParameterSetName = "Rig")]
     [switch]$Rig,
-    # Work files, review files, sheets, and report. Defaults to artifacts/human-base, which Git ignores.
+    # The rebuilt bodies instead of the current ones. Their skin is not painted yet, so the review
+    # of the models, which shows the painted faces and eyes, is left out.
+    [switch]$Next,
+    # Work files, review files, sheets, and report. Defaults to artifacts/human-base, or
+    # artifacts/human-base-next with -Next, which Git ignores.
     [string]$WorkDirectory,
     [string]$BlenderPath
 )
@@ -24,14 +30,15 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
 
 $cli = Join-Path $PSScriptRoot "blender/human_base_cli.py"
+$suffix = if ($Next) { "_Next" } else { "" }
 $characters = @(
-    [pscustomobject]@{ Label = "Male"; Asset = "Human_Male" },
-    [pscustomobject]@{ Label = "Female"; Asset = "Human_Female" })
-$skeleton = Join-Path $script:ArtSkeletonFolder "Humanoid.json"
+    [pscustomobject]@{ Label = "Male"; Asset = "Human_Male$suffix" },
+    [pscustomobject]@{ Label = "Female"; Asset = "Human_Female$suffix" })
+$skeleton = Join-Path $script:ArtSkeletonFolder "Humanoid$suffix.json"
 $step = if ($Rig) { "rig" } elseif ($Weights) { "weights" } else { "sync" }
 
 if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
-    $WorkDirectory = Join-Path $script:ArtRepositoryRoot "artifacts/human-base"
+    $WorkDirectory = Join-Path $script:ArtRepositoryRoot ("artifacts/human-base" + $suffix.ToLowerInvariant().Replace("_", "-"))
 }
 
 $work = [System.IO.Path]::GetFullPath($WorkDirectory)
@@ -118,18 +125,23 @@ foreach ($character in $characters) {
 
 $reviewSheets = Join-Path $work "review"
 $modelReview = Join-Path $work "Human_Base.blend"
-$null = Invoke-HumanBaseStep "review-file" @($characters[0].Source, $characters[1].Source, $modelReview)
-$null = Invoke-HumanBaseStep "review" @($modelReview, $reviewSheets, "Human_Base")
+if (-not $Next) {
+    $null = Invoke-HumanBaseStep "review-file" @($characters[0].Source, $characters[1].Source, $modelReview)
+    $null = Invoke-HumanBaseStep "review" @($modelReview, $reviewSheets, "Human_Base")
+}
+
 foreach ($character in $characters) {
-    $null = Invoke-HumanBaseStep "review-rig" @($character.Source, $character.Label, $reviewSheets, $character.Asset) "review_rig_$($character.Label)"
+    $null = Invoke-HumanBaseStep "review-rig" @($character.Source, $character.Label, $skeleton, $reviewSheets, $character.Asset) "review_rig_$($character.Label)"
 }
 
 $rigReview = Join-Path $work "Human_Base_Rig.blend"
-$null = Invoke-HumanBaseStep "rig-review-file" @($characters[0].Source, $characters[1].Source, $rigReview)
+$null = Invoke-HumanBaseStep "rig-review-file" @($characters[0].Source, $characters[1].Source, $skeleton, $rigReview)
 $reportPath = Join-Path $work "report.txt"
 [System.IO.File]::WriteAllLines($reportPath, [string[]]$report)
 
-Write-Host "Review file of the models: $modelReview"
+if (-not $Next) {
+    Write-Host "Review file of the models: $modelReview"
+}
 Write-Host "Review file of the rigs, with the test poses as an animation: $rigReview"
 Write-Host "Review sheets: $reviewSheets"
 Write-Host "Quality report: $reportPath"
@@ -151,6 +163,7 @@ if ($toReview -gt 0) {
     Write-Host "Review the sheets and the review files, then record the approvals with tools/art/Approve-ArtAsset.ps1."
 }
 
-if ($Rig -and @($characters | Where-Object { $_.Changed }).Count -gt 0) {
+# No animation library is keyed on the rebuilt bodies yet.
+if ($Rig -and -not $Next -and @($characters | Where-Object { $_.Changed }).Count -gt 0) {
     Write-Host "The rigs changed: update the animation libraries keyed on them with tools/art/Sync-AnimationLibrary.ps1 and review their clips again."
 }

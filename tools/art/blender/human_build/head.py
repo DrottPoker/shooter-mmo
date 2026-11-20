@@ -546,6 +546,9 @@ def build_head(net: Net, head: Head):
     skip = set(NECK_FACES) | set(EYE_FACES) | set(band) | set(NOSTRIL_FACES) | set(head.ear_cut)
     net.mark("ear_hole", [vertex[v] for v in head.ear_hole])
     net.mark("eye_hole", [vertex[v] for v in hole])
+    # The line between the lips from the middle to the mouth's corner, along each lip.
+    net.mark("lip_upper", [vertex[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
+    net.mark("lip_lower", [lower[v] for v in LIP_LINE] + [vertex[LIP_CORNER]])
     for index, corners in enumerate(head.faces):
         if index in skip or any(v not in vertex for v in corners):
             continue

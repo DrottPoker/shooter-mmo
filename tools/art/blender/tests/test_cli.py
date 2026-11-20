@@ -316,11 +316,11 @@ class HumanBaseDispatchTests(unittest.TestCase):
     def test_a_review_names_every_sheet_it_wrote(self):
         self.assertEqual(self._run("review", "r.blend", "out", "Prefix"),
                          (0, ["HUMAN_BASE_REPORT review sheet a.png", "HUMAN_BASE_REPORT review sheet b.png"]))
-        self.assertEqual(self._run("review-rig", "a.blend", "Male", "out", "Prefix"), (0, ["HUMAN_BASE_REPORT review sheet r.png"]))
+        self.assertEqual(self._run("review-rig", "a.blend", "Male", "s.json", "out", "Prefix"), (0, ["HUMAN_BASE_REPORT review sheet r.png"]))
 
     def test_the_rig_review_file_is_named(self):
-        self.assertEqual(self._run("rig-review-file", "m", "f", "out.blend"), (0, ["HUMAN_BASE_REPORT review file rr.blend"]))
-        self.assertEqual(self._run("rig-review-file", "m"), (2, ["HUMAN_BASE_FAILED rig-review-file takes 3 arguments"]))
+        self.assertEqual(self._run("rig-review-file", "m", "f", "s.json", "out.blend"), (0, ["HUMAN_BASE_REPORT review file rr.blend"]))
+        self.assertEqual(self._run("rig-review-file", "m"), (2, ["HUMAN_BASE_FAILED rig-review-file takes 4 arguments"]))
 
     def test_an_imported_clip_prints_its_report_and_its_motion_numbers(self):
         arguments = ("lib.blend", "Humanoid", "src.glb", "map.json", "A+B", "Block", "R", "s.json")
@@ -339,13 +339,13 @@ class HumanBaseDispatchTests(unittest.TestCase):
         listed = {name: len(re.findall(r"<[^>]+>", rest)) for name, rest in re.findall(r"^    ([a-z-]+) ?(.*)$", steps, re.MULTILINE)}
         tables = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS, self.cli.IMPORTS)
                   for name, (count, _run) in table.items()}
-        tables["rig-review-file"] = 3
+        tables["rig-review-file"] = 4
         self.assertEqual(listed, tables)
 
     def test_every_step_the_scripts_start_exists_with_the_arguments_it_takes(self):
         counts = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS, self.cli.IMPORTS)
                   for name, (count, _run) in table.items()}
-        counts["rig-review-file"] = 3
+        counts["rig-review-file"] = 4
         text = powershell("Sync-HumanBase.ps1")
         started = {}
         for name, arguments in re.findall(r'Invoke-HumanBaseStep (?:"([a-z-]+)"|\$step) @\(([^)]*)\)', text):

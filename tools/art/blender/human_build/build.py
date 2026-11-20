@@ -17,7 +17,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from human_build import body, foot as feet, hand as hands, head as heads, islands  # noqa: E402
+from human_build import body, foot as feet, hand as hands, head as heads, islands, landmarks  # noqa: E402
 from human_build.net import MIRROR, PINNED, RIGID, Net  # noqa: E402
 from human_build.surface import Surface  # noqa: E402
 
@@ -45,6 +45,8 @@ def _object(name, net, collection, distances=None):
     if distances is not None:
         layer = mesh.attributes.new("distance", "FLOAT", "POINT")
         layer.data.foreach_set("value", np.asarray(distances, np.float32))
+        # The named vertices of the right half, which the assembly writes the rig's landmarks from.
+        mesh["marks"] = {name: [int(v) for v in vertices] for name, vertices in net.marks.items()}
     for polygon in mesh.polygons:
         polygon.use_smooth = True
     old = bpy.data.objects.get(name)
@@ -109,6 +111,7 @@ def build(label, out_path, parts):
         heads.graft_eye(fine, net, head)
         for problem in fine.check():
             print("HUMAN_BUILD_FAILED", problem)
+    landmarks.trace(fine)
     skins = dict(measures.skins())
     if hand is not None:
         skins.update(hand.skins())
