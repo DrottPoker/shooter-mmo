@@ -20,7 +20,8 @@ bodies_of = load("art_pipeline/bodies.py", "body_name")
 cage = load("art_pipeline/cage.py", "DIGITS")
 poses = load("art_pipeline/poses.py", "POSES", "PLANT_FEET", "FINGERS", "_fist", "rest")
 rig = load("human_base/rig.py", "ZONE_BONES", "RULE_BONES", "HINGES", "DIGITS", "SEGMENTS", "SPINE_SHARES", "SPINE_INSETS",
-           "HIP_BOUNDARY", "SKIRT_CHAINS", "SKIRT_BONES", "CLOAK_CHAINS", "CLOAK_BONES", "HOOD_STEPS", "SIDES",
+           "HIP_BOUNDARY", "HIP_BOUNDARY_REBUILT", "HIP_ABOVE_CROTCH", "HIP_ABOVE_CROTCH_REBUILT", "SHOULDER_PASSAGE",
+           "SHOULDER_IN_BALL", "SKIRT_CHAINS", "SKIRT_BONES", "CLOAK_CHAINS", "CLOAK_BONES", "HOOD_STEPS", "SIDES",
            "MAX_INFLUENCES", "MIN_WEIGHT", "FINGER_LAYERS", "THUMB_LAYERS", "RING_SIZE", bodies=bodies)
 animate = load("human_base/animate.py", "Gait", "WALK", "JOG", "CLIPS", "WALK_SPEED", "JOG_SPEED", "IDLE_FRAMES", "FPS",
                "RELAXED_FINGERS", "RELAXED_THUMB", "SEGMENTS", "SIDES", "_ease", "_lift", "_hermite", "_soft_min",
@@ -140,8 +141,27 @@ class RigTableTests(unittest.TestCase):
         self.assertEqual([BONES[n]["parent"] for n in ("Spine", "Chest", "UpperChest")], ["Hips", "Spine", "Chest"])
 
     def test_the_hip_boundary_goes_round_the_thigh_in_quarter_turns(self):
-        self.assertEqual([angle for angle, _below, _blend in rig.HIP_BOUNDARY], [0, 90, 180, 270])
-        self.assertTrue(all(blend > 0 for _angle, _below, blend in rig.HIP_BOUNDARY))
+        for boundary in (rig.HIP_BOUNDARY, rig.HIP_BOUNDARY_REBUILT):
+            self.assertEqual([angle for angle, _below, _blend in boundary], [0, 90, 180, 270])
+            self.assertTrue(all(blend > 0 for _angle, _below, blend in boundary))
+
+    def test_the_rebuilt_bodies_hip_above_its_joint_is_whole_in_front_and_at_the_side(self):
+        # The joint lies higher, and where the leg folds against the trunk the blend reaches above
+        # it by no more than a finger's width: skin of the hip above the joint that followed the
+        # thigh would sink into a pit. The buttock, which stretches, may reach higher.
+        self.assertGreater(rig.HIP_ABOVE_CROTCH_REBUILT, rig.HIP_ABOVE_CROTCH)
+        for angle, below, blend in rig.HIP_BOUNDARY_REBUILT:
+            if angle in (0, 90):
+                self.assertGreaterEqual(below - blend, -0.03)
+
+    def test_the_shoulders_passage_lies_on_the_arms_side_of_the_ring_and_is_short_in_the_armpit(self):
+        self.assertEqual([place for place, _middle, _half in rig.SHOULDER_PASSAGE], [0, 90, 180, 270])
+        for _place, middle, half in rig.SHOULDER_PASSAGE:
+            self.assertGreater(half, 0.0)
+            self.assertGreaterEqual(middle - half, -0.015)
+        reach = {place: middle + half for place, middle, half in rig.SHOULDER_PASSAGE}
+        self.assertLess(reach[180], min(reach[0], reach[90], reach[270]))
+        self.assertTrue(all(step >= 0.0 for step in rig.SHOULDER_IN_BALL))
 
     def test_a_vertex_has_at_most_as_many_influences_as_every_rule_allows(self):
         self.assertEqual(rig.MAX_INFLUENCES, skinned.MAX_INFLUENCES)

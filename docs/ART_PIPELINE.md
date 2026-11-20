@@ -1233,9 +1233,10 @@ arms were made for arms that hang about 68 degrees below the horizontal, as the
 current bodies' do; on a rig whose arms hang more than 10 degrees otherwise,
 such as the rebuilt bodies' at 45 degrees, a pose that turns the upper arms
 first turns them to that angle, so it shows the same arms on every body. With
-the arms overhead the collarbones rise 38 degrees, about a third of the way, as
-a shoulder girdle does; with them low, the arms would rise out of a flat shelf
-beside the neck.
+the arms overhead the collarbones rise 30 degrees, which lifts the shoulder
+joints about 10 cm, as a shoulder blade that turns up carries them. With the
+collarbones lower the arms rise out of a flat shelf beside the neck, and with
+them higher the armpits are drawn far up the trunk.
 
 ### Edit The Human Base Characters
 
@@ -1590,27 +1591,50 @@ rule. The review of the models is left out, because its sheets show the painted
 skin that the rebuilt bodies do not have yet. The work files, review files,
 sheets, and report go to `artifacts/human-base-next`.
 
-- **Joints.** The shoulder joint lies where the reference's arm was turned,
-  `shoulder_joint`: the ray casts that find it on the current bodies look for
-  the joint of a hanging arm and land 4 cm below it and 2 cm outside it on an
-  arm turned out to 45 degrees. A finger's middle and end joints lie in the
+- **Joints.** The shoulder joint lies 2.5 cm below the point the reference's arm
+  was turned about, `shoulder_joint`, about 5 cm under the top of the shoulder
+  and as far behind its front: in the middle of the round of the shoulder, so
+  the round turns in place. The ray casts that find the joint on the current
+  bodies look for the joint of a hanging arm and land too low and too far out
+  on an arm turned out to 45 degrees. The hip joint lies 9 cm above the crotch,
+  where the joint is, level with the top of the thigh bone at the side of the
+  hip; the current bodies' lies 4.5 cm above it, and about a joint that low the
+  skin of the hip above it follows the thigh and sinks into a pit when the leg
+  swings out or forward. A finger's middle and end joints lie in the
   middle of the rings around each, and its knuckle 2.2 cm inside the palm from
   the middle of its ring at the web, along its first bone, where the build put
   the palm's ring of knuckles; the thumb's joints lie at its web and between the
   rings around its joint, and its base 0.4 of the way from the wrist to its web.
   A digit's skin is what lies beyond the ring it grows from, `finger_bases`. The
   toes bend at the middle of the ring over the ball of the foot, `toe_ball`.
-- **Shoulders.** The arm takes the skin by the shares the build turned the arms
-  out with, seen in the pose the body is bound in. The round of the shoulder,
-  more than 6 cm outside the joint with the arm hanging, and the arm from 6 cm
-  below the armpit turn whole with the arm. The trunk more than 8 cm inside the
-  joint at its height, and 9 cm at the armpit's, and the side of the chest from
-  4 cm below the armpit stay. Between them the share evens out along the edges
-  and eases in and out. The arm's bones take a vertex by this share, in the
-  shares bone heat gave them among themselves, and the other bones keep the
-  rest in theirs, so an arm raised to the side continues the line of the
-  shoulder and an arm that reaches forward does not fold its skin over the
-  chest's. Lengths are at 1.785 m and follow the body's height.
+- **Shoulders.** The arm takes the skin across the ring where it joins the
+  trunk, the cut between the trunk's and the upper arm's parts, in a passage
+  that lies on the arm's side of that ring. A vertex lies as far from the ring
+  as the shortest way to it along the edges, and the arm's share eases from
+  none to all across the passage: over the top of the shoulder from 1 cm before
+  the ring to 10 cm beyond it, in front and behind from 1 cm before it to 9 cm
+  beyond it, and in the armpit from the ring to 4.5 cm beyond it, with the
+  places between them in between. So the trunk is whole up to the arm, the
+  round of the shoulder folds as a whole, the upper arm below it is whole, and
+  the hollow of the armpit stays with the trunk. Each of the other ways has its
+  fault. With the trunk in the passage, a raised arm draws the side of the
+  chest out into a web, and the skin beside the joint sinks into a pit. With
+  the upper arm in it, the arm swells when it turns and seems to begin far out.
+  With a passage narrower than the round of the shoulder, an arm that reaches
+  forward cuts through the shoulder along a torn edge. The arm's bones take a
+  vertex by this share, in the shares bone heat gave them among themselves, and
+  the other bones keep the rest in theirs. Lengths are at 1.785 m and follow
+  the body's height.
+- **Hips.** The thigh takes the skin below a boundary that lies under the joint
+  all around, so the hip above the joint is whole. In front the blend runs from
+  1.5 cm above the joint to 7.5 cm below it, from the groin crease down the top
+  of the thigh, where the leg folds against the trunk. At the side it runs from
+  2.5 cm above the joint to 12.5 cm below it, so a leg that swings out rounds
+  the hip and does not push a corner out of it. Down the buttock, which
+  stretches when the thigh rises, it is 18 cm wide, and the inner thigh begins
+  below the crotch. A fold where the limb presses against the trunk is a crease,
+  and at a right angle the thigh cuts a little into the belly; neither is a
+  pit.
 - **Eyelids.** The lids' inner edge is the line where their skin meets the pocket
   behind them, with its corners nearest to and furthest from the nose. The lids
   meet on a line a fifth of the way from the lower lid's edge to the upper

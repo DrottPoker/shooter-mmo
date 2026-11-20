@@ -44,9 +44,11 @@ def _fist(curl=1.0):
 POSES = (
     ("rest", "Bind pose (A-pose)", {}),
     ("t_pose", "Arms raised to the side", {"UpperArm_s": (("Z", -62),), "Shoulder_s": (("X", 6),)}),
-    # The shoulder girdle gives about a third of the way overhead: with the collarbones low, the
-    # arms would rise out of a flat shelf beside the neck.
-    ("arms_up", "Arms overhead", {"UpperArm_s": (("Z", -109),), "Shoulder_s": (("X", 38),),
+    # The shoulder girdle gives a part of the way overhead: the collarbones rise until the shoulder
+    # joints stand about 10 cm higher, as a shoulder blade that turns up carries them. With the
+    # collarbones lower the arms rise out of a flat shelf beside the neck, and with them higher
+    # the armpits are drawn far up the trunk.
+    ("arms_up", "Arms overhead", {"UpperArm_s": (("Z", -117),), "Shoulder_s": (("X", 30),),
                                   "LowerArm_s": (("X", 15),)}),
     ("arms_forward", "Arms forward, elbows bent", {"UpperArm_s": (("X", 80), ("Z", -10)),
                                                    "LowerArm_s": (("X", 70),)}),
