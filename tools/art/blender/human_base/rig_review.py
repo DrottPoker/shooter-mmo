@@ -1,8 +1,14 @@
 """Review sheets of a rigged base character, lit like the model review: the skeleton seen through
-the body, the shoulders with their bones, the hips, knees and elbows bending with the wireframe, the
-test poses of poses.POSES in full figure, close-ups of the joints in those poses, the hands opened
-and closed, the jaw, the eyes, and the eyelids closing when the skeleton has them, and the weights
-of the bones where the limbs meet the body and of the eyelids."""
+the body, the shoulders with their bones, the shoulders and the hips through their reach, the hips,
+knees and elbows bending with the wireframe, the test poses of poses.POSES in full figure, close-ups
+of the other joints in those poses, the hands opened and closed, the jaw, the eyes, and the eyelids
+closing when the skeleton has them, and the weights of the bones where the limbs meet the body and
+of the eyelids.
+
+The sheets show the whole body, the mesh a person edits, with the eyes and the teeth. Blender
+shades the parts of a posed body with a seam at every cut between two parts, because it keeps their
+custom normals relative to each part's own surface, and the game, which turns the normals with the
+bones, shows none."""
 
 import math
 import os
@@ -21,10 +27,13 @@ from . import files, review
 # Bone colours of the skeleton sheet: the character's right, left, centre, and the sockets.
 BONE_COLOURS = {"R": (0.95, 0.30, 0.25), "L": (0.25, 0.55, 0.95), "C": (0.95, 0.80, 0.25), "S": (0.25, 0.90, 0.40)}
 XRAY = 0.85
-# A key light over the model review's light: from above, in front, and to the character's right,
-# without shadows. The studio light alone lights a body painted in flat colours so evenly that its
-# forms, such as the lids, do not show.
-KEY_LIGHT = ((0.45, 1.0, 0.9), 3.5)
+# The hips sheet turns the thigh this far out to the side, in degrees about the thigh bone's Z axis.
+HIP_OUT = 35
+# A key light over the model review's light, without shadows: the studio light alone lights a body
+# painted in flat colours so evenly that its forms, such as the lids, do not show. The light follows
+# the camera, so the body is lit alike from every side: it comes from where the camera stands, from
+# the camera's left, and from above, by these shares, with this strength.
+KEY_LIGHT = ((1.0, 0.45, 0.9), 3.5)
 
 
 def _setup(size):
@@ -34,15 +43,41 @@ def _setup(size):
     if key is None:
         key = bpy.data.objects.new("RigKeyLight", bpy.data.lights.new("RigKeyLight", "SUN"))
         scene.collection.objects.link(key)
-    way, energy = KEY_LIGHT
-    key.rotation_euler = Vector(way).normalized().to_track_quat("Z", "Y").to_euler()
-    key.data.energy = energy
+    key.data.energy = KEY_LIGHT[1]
     key.data.use_shadow = False
+    _light(0.0)
     return scene
+
+
+def _light(yaw):
+    """Turns the key light to a camera at this yaw."""
+    (toward, aside, above), _energy = KEY_LIGHT
+    yaw = math.radians(yaw)
+    way = (Vector((math.sin(yaw), math.cos(yaw), 0.0)) * toward + Vector((math.cos(yaw), -math.sin(yaw), 0.0)) * aside
+           + Vector((0.0, 0.0, above)))
+    bpy.data.objects["RigKeyLight"].rotation_euler = way.normalized().to_track_quat("Z", "Y").to_euler()
+
+
+def _aim(cam, target, yaw, pitch, distance):
+    """Aims the camera as review.aim does, with the key light."""
+    review.aim(cam, target, yaw, pitch, distance)
+    _light(yaw)
 
 
 def _pose(name):
     return next(p for n, _d, p in poses.POSES if n == name)
+
+
+def _show_whole_body(arm):
+    """Has renders show the armature's whole body in place of its parts."""
+    bodies.source_body(arm.name).hide_render = False
+    for part in bodies.parts_of(arm.name):
+        part.hide_render = True
+
+
+def _shown(arm):
+    """The armature's meshes that a render shows."""
+    return [o for o in arm.children if o.type == "MESH" and not o.hide_render]
 
 
 def _joint(arm, bone, t=0.0):
@@ -129,7 +164,7 @@ def _grid(cells, columns, output):
 def _xray(arm, path, overlay, strength=XRAY):
     """Renders the body, then the bones alone, and lays the bones over the body."""
     scene = bpy.context.scene
-    meshes = [o for o in arm.children if o.type == "MESH" and not bodies.is_source_body(o)]
+    meshes = _shown(arm)
     overlay.hide_render = True
     body = _render(path + "_body.png")
     overlay.hide_render = False
@@ -158,7 +193,7 @@ def shoulders_sheet(arm, out, cam):
             poses.apply(arm, _pose(pose))
             overlay = bone_overlay(arm)
             c = _joint(arm, "UpperChest")
-            review.aim(cam, Vector((0, c.y, c.z + 0.08)), yaw, pitch, 1.6)
+            _aim(cam, Vector((0, c.y, c.z + 0.08)), yaw, pitch, 1.6)
             try:
                 return _xray(arm, path, overlay, 0.6)
             finally:
@@ -184,7 +219,7 @@ def skeleton(arm, out, cam):
         def draw(path):
             target, yaw, pitch, dist, lens = view
             cam.data.lens = lens
-            review.aim(cam, target, yaw, pitch, dist)
+            _aim(cam, target, yaw, pitch, dist)
             return _xray(arm, path, overlay)
         return draw
 
@@ -207,7 +242,7 @@ def chains_sheet(arm, out, cam):
         def draw(path):
             target, yaw, pitch, dist, lens = view
             cam.data.lens = lens
-            review.aim(cam, target, yaw, pitch, dist)
+            _aim(cam, target, yaw, pitch, dist)
             return _xray(arm, path, overlay)
         return draw
 
@@ -217,14 +252,54 @@ def chains_sheet(arm, out, cam):
 
 
 def _shots(arm, cam, views):
+    """Cells of views: the pose, the bone to look at and how far along it, the yaw, the pitch, the
+    distance and, when a view names one, how far from the bone to look, in metres."""
     def cell(view):
         def draw(path):
-            pose, bone, t, yaw, pitch, dist = view
+            pose, bone, t, yaw, pitch, dist, *offset = view
             poses.apply(arm, _pose(pose) if isinstance(pose, str) else pose)
-            review.aim(cam, _joint(arm, bone, t), yaw, pitch, dist)
+            _aim(cam, _joint(arm, bone, t) + Vector(offset[0] if offset else (0.0, 0.0, 0.0)), yaw, pitch, dist)
             return _render(path + ".png")
         return draw
     return [cell(v) for v in views]
+
+
+def arms_sheet(arm, out, cam):
+    """The right shoulder through its reach, without the bones: the bind pose, the arms raised to
+    the side and overhead, an arm hanging at the side, drawn back, and reaching forward."""
+    _setup((560, 560))
+    cam.data.lens = 85
+    near, wide = (-0.02, 0.0, 0.02), (-0.07, 0.0, 0.10)
+
+    def arms(*turns):
+        return {"UpperArm_s": turns}
+
+    views = [("rest", 0, 5, 1.15, near), ("t_pose", 0, 5, 1.15, near), ("t_pose", 180, 10, 1.15, near),
+             ("t_pose", 35, 10, 1.15, near), ("arms_up", 0, 5, 1.5, wide), ("arms_up", 180, 10, 1.5, wide),
+             (arms(("Z", 14)), 0, 5, 1.15, near), (arms(("X", -40)), 180, 10, 1.15, near),
+             (arms(("X", 45)), 35, 25, 1.15, near), (arms(("X", 90)), 35, 25, 1.15, near),
+             (arms(("X", 90)), 90, 5, 1.15, near), ("arms_forward", 35, 10, 1.15, near)]
+    return _grid(_shots(arm, cam, [(pose, "UpperArm_R", 0.0, yaw, pitch, dist, offset)
+                                   for pose, yaw, pitch, dist, offset in views]), 4, out)
+
+
+def hips_sheet(arm, out, cam):
+    """The right hip through its reach, without the wireframe and with the arms raised out of the
+    way: the thigh raised halfway, raised and bent, and out to the side, sitting, and the long
+    stride."""
+    _setup((560, 560))
+    cam.data.lens = 85
+    groin = (-0.04, 0.0, 0.02)
+
+    def leg(hip, knee=0, out=0):
+        return {"UpperArm_s": (("Z", -70),), "UpperLeg_R": (("X", hip), ("Z", -out)), "LowerLeg_R": (("X", -knee),)}
+
+    views = [(leg(45), 0, 0), (leg(45), 40, 10), (leg(45), 90, 0), (leg(45), 180, 0),
+             (leg(90, 90), 0, 0), (leg(90, 90), 40, 10), (leg(90, 90), 90, 0), (leg(90, 90), 160, 5),
+             (leg(0, 0, HIP_OUT), 0, 0), (leg(0, 0, HIP_OUT), 180, 0)]
+    shots = [(pose, "UpperLeg_R", 0.0, yaw, pitch, 1.0, groin) for pose, yaw, pitch in views]
+    shots += [("sit", "Hips", 0.0, 30, 10, 1.4), ("stride", "Hips", 0.0, 90, 0, 1.6)]
+    return _grid(_shots(arm, cam, shots), 4, out)
 
 
 def pose_sheet(arm, out, cam):
@@ -238,31 +313,29 @@ def pose_sheet(arm, out, cam):
 
 
 def joints_sheet(arm, out, cam):
-    """Close-ups of the joints in the test poses, right side."""
-    _setup((420, 420))
+    """Close-ups of the armpit, the elbows, the knees, the feet, the trunk and the neck in the test
+    poses; the shoulders and the hips have their own sheets."""
+    _setup((520, 520))
     cam.data.lens = 85
     views = [
-        ("t_pose", "UpperArm_R", 0.0, 20, 5, 0.95), ("t_pose", "UpperArm_R", 0.0, 160, 5, 0.95),
-        ("arms_up", "UpperArm_R", 0.0, 25, 0, 0.95), ("arms_up", "UpperArm_R", 0.0, 155, 5, 0.95),
-        ("arms_forward", "UpperArm_R", 0.0, 90, 5, 0.95), ("rest", "UpperArm_R", 0.0, 60, -5, 0.8),
-        ("elbows", "LowerArm_R", 0.0, 90, 0, 0.75), ("elbows", "LowerArm_R", 0.0, 160, 5, 0.75),
-        ("stride", "UpperLeg_R", 0.0, 90, 0, 1.15), ("stride", "Hips", 0.0, 180, 5, 1.2),
-        ("sit", "UpperLeg_R", 0.0, 30, 15, 1.2), ("sit", "Hips", 0.0, 200, 10, 1.2),
+        ("rest", "UpperArm_R", 0.0, 60, -5, 0.8), ("elbows", "LowerArm_R", 0.0, 90, 0, 0.75),
+        ("elbows", "LowerArm_R", 0.0, 160, 5, 0.75), ("stride", "Hips", 0.0, 180, 5, 1.2),
         ("sit", "LowerLeg_R", 0.0, 90, 5, 0.9), ("stride", "LowerLeg_L", 0.0, -90, 0, 0.9),
         ("stride", "Toes_L", 0.0, -70, 10, 0.6), ("rest", "Foot_R", 0.5, 60, 15, 0.6),
         ("torso", "Chest", 0.0, 15, 5, 1.3), ("torso", "Neck", 0.0, 70, 5, 0.8),
+        ("sit", "Hips", 0.0, 200, 10, 1.2), ("torso", "Chest", 0.0, 165, 5, 1.3),
     ]
-    return _grid(_shots(arm, cam, views), 6, out)
+    return _grid(_shots(arm, cam, views), 4, out)
 
 
 def legs_sheet(arm, out, cam):
     """The hips, knees and elbows bending, with the wireframe and the arms raised out of the way:
     the thigh raised and bent, the knee bent, the leg stretched back, sitting, the long stride, and
     a bent elbow."""
-    _setup((340, 340))
+    _setup((420, 420))
     cam.data.lens = 85
     wires = []
-    for o in [o for o in arm.children if o.type == "MESH" and "zone" in o]:
+    for o in [o for o in _shown(arm) if bodies.is_source_body(o) or "zone" in o]:
         wire = review.wire_overlay(o, 0.0006)
         md = wire.modifiers.new("Armature", "ARMATURE")
         md.object = arm
@@ -383,7 +456,7 @@ def weights_sheet(arm, out, cam, lids=None):
         views += [(bone, "Eye_R", yaw, pitch, 0.16) for bone in right for yaw, pitch in LID_WEIGHT_VIEWS]
     cam.data.lens = 85
     poses.rest(arm)
-    meshes = [o for o in arm.children if o.type == "MESH" and not bodies.is_source_body(o)]
+    meshes = _shown(arm)
     mat = bpy.data.materials.new("RigWeights")
     mat.use_nodes = True
     nt = mat.node_tree
@@ -414,7 +487,7 @@ def weights_sheet(arm, out, cam, lids=None):
         def draw(path):
             bone, target, yaw, pitch, distance = view
             show(bone)
-            review.aim(cam, _joint(arm, target), yaw, pitch, distance)
+            _aim(cam, _joint(arm, target), yaw, pitch, distance)
             return _render(path + ".png")
         return draw
 
@@ -432,8 +505,9 @@ def weights_sheet(arm, out, cam, lids=None):
         bpy.data.materials.remove(mat)
 
 
-SHEETS = {"skeleton": skeleton, "chains": chains_sheet, "shoulders": shoulders_sheet, "legs": legs_sheet, "poses": pose_sheet,
-          "joints": joints_sheet, "hands": hands_sheet, "face": face_sheet, "weights": weights_sheet}
+SHEETS = {"skeleton": skeleton, "chains": chains_sheet, "shoulders": shoulders_sheet, "arms": arms_sheet,
+          "hips": hips_sheet, "legs": legs_sheet, "poses": pose_sheet, "joints": joints_sheet, "hands": hands_sheet,
+          "face": face_sheet, "weights": weights_sheet}
 
 
 def render(path, label, skeleton_path, out_dir, prefix):
@@ -443,6 +517,7 @@ def render(path, label, skeleton_path, out_dir, prefix):
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     arm = bpy.data.objects[label]
+    _show_whole_body(arm)
     cam = review.add_camera(lens=50)
     written = []
     for sheet, draw in SHEETS.items():

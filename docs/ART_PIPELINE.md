@@ -1197,10 +1197,14 @@ one Blender process per step:
    `Human_Base_Rig.blend`, with the test poses as an animation that ends by
    closing the eyes on a skeleton with eyelids, and the review
    sheets of the models, such as the faces sheet `Human_Base_faces.png`, and of
-   the rigs, such as the cloth chains on `<Asset>_rig_chains.png`. The rigs'
-   sheets add a key light without shadows to the models' studio light, so the
-   forms of a body in flat colours show, and the face sheet closes the lids of
-   a skeleton with eyelids.
+   the rigs, such as the cloth chains on `<Asset>_rig_chains.png`, the
+   shoulders through their reach on `<Asset>_rig_arms.png`, and the hips
+   through theirs on `<Asset>_rig_hips.png`. The rigs' sheets add a key light
+   without shadows to the models' studio light, so the forms of a body in flat
+   colours show; the light follows the camera, so every side is lit alike. They
+   show the whole body, the mesh a person edits: Blender shades the parts of a
+   posed body with a seam at every cut between two parts, which the game does
+   not show. The face sheet closes the lids of a skeleton with eyelids.
 
 Placing the joints puts every joint where the model has it: the hips from the
 crotch and the leg cut, the spine at fixed shares between the hips and the neck,
@@ -1228,7 +1232,10 @@ The test poses of the rig review turn the bones from the bind pose. Their upper
 arms were made for arms that hang about 68 degrees below the horizontal, as the
 current bodies' do; on a rig whose arms hang more than 10 degrees otherwise,
 such as the rebuilt bodies' at 45 degrees, a pose that turns the upper arms
-first turns them to that angle, so it shows the same arms on every body.
+first turns them to that angle, so it shows the same arms on every body. With
+the arms overhead the collarbones rise 38 degrees, about a third of the way, as
+a shoulder girdle does; with them low, the arms would rise out of a flat shelf
+beside the neck.
 
 ### Edit The Human Base Characters
 
@@ -1583,14 +1590,27 @@ rule. The review of the models is left out, because its sheets show the painted
 skin that the rebuilt bodies do not have yet. The work files, review files,
 sheets, and report go to `artifacts/human-base-next`.
 
-- **Joints.** The search for the shoulder joint starts where the reference's arm
-  was turned, `shoulder_joint`. A finger's middle and end joints lie in the
+- **Joints.** The shoulder joint lies where the reference's arm was turned,
+  `shoulder_joint`: the ray casts that find it on the current bodies look for
+  the joint of a hanging arm and land 4 cm below it and 2 cm outside it on an
+  arm turned out to 45 degrees. A finger's middle and end joints lie in the
   middle of the rings around each, and its knuckle 2.2 cm inside the palm from
   the middle of its ring at the web, along its first bone, where the build put
   the palm's ring of knuckles; the thumb's joints lie at its web and between the
   rings around its joint, and its base 0.4 of the way from the wrist to its web.
   A digit's skin is what lies beyond the ring it grows from, `finger_bases`. The
   toes bend at the middle of the ring over the ball of the foot, `toe_ball`.
+- **Shoulders.** The arm takes the skin by the shares the build turned the arms
+  out with, seen in the pose the body is bound in. The round of the shoulder,
+  more than 6 cm outside the joint with the arm hanging, and the arm from 6 cm
+  below the armpit turn whole with the arm. The trunk more than 8 cm inside the
+  joint at its height, and 9 cm at the armpit's, and the side of the chest from
+  4 cm below the armpit stay. Between them the share evens out along the edges
+  and eases in and out. The arm's bones take a vertex by this share, in the
+  shares bone heat gave them among themselves, and the other bones keep the
+  rest in theirs, so an arm raised to the side continues the line of the
+  shoulder and an arm that reaches forward does not fold its skin over the
+  chest's. Lengths are at 1.785 m and follow the body's height.
 - **Eyelids.** The lids' inner edge is the line where their skin meets the pocket
   behind them, with its corners nearest to and furthest from the nose. The lids
   meet on a line a fifth of the way from the lower lid's edge to the upper
@@ -1624,8 +1644,8 @@ file `artifacts/human-base-next/Human_Base_Rig.blend`, the sheets in
 was updated and that its `rig` stage needs an approval. The report gives each
 lid's closed turn and how far the closed lids lie apart. Look closest at
 `<Asset>_rig_face.png`, with the jaw opening and the lids closing,
-`<Asset>_rig_joints.png`, `<Asset>_rig_hands.png`, and the lids on
-`<Asset>_rig_weights.png`.
+`<Asset>_rig_arms.png`, `<Asset>_rig_hips.png`, `<Asset>_rig_hands.png`, and
+the lids on `<Asset>_rig_weights.png`.
 
 ## Animation Libraries
 
@@ -2610,7 +2630,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
-| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the shares and weights of the shoulders, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
