@@ -22,14 +22,14 @@ except ImportError:
 sys.path.insert(0, str(BLENDER_ROOT))
 
 from human_build import islands  # noqa: E402
-from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net  # noqa: E402
+from human_build.net import FIXED, MIRROR, PINNED, RIGID, Net, evened  # noqa: E402
 
 assemble = load("human_build/assemble.py", "lay_out", "cut_faces", "mend", "_cut_score", "_smallest_corner", "LABELS",
                 "SLIVER_ANGLE", numpy=True)
 reference = load("human_build/reference.py", "_along_skin", "HEAD_CHIN_STEP", "_to_line", "_rim", "ear_patch", "without_tiny",
-                 "_thin", "band", "EAR_MARGIN", "evened", "arm_shares", "turned_out", "passage_evened", "_similarity",
+                 "_thin", "band", "EAR_MARGIN", "arm_shares", "turned_out", "passage_evened", "_similarity",
                  "groin_smoothed", "GROIN_KEEP", "_grown_about_line", "fuller", "FULLER", "shape_female", "BUST_FORWARD",
-                 "BUST_ROUND", numpy=True)
+                 "BUST_ROUND", evened=evened, numpy=True)
 head = load("human_build/head.py", "outline", "with_room", "eye_hole", numpy=True)
 eye = load("human_build/eye.py", "first_on_lid", "crease_angle", "lid_end", "evened_widths", "lid_rings", "corner_share",
            "merged", "band", "filled", "outline_at", "evened_edges", "stations", "SPOKE_STEPS", "LID_LEAST", numpy=True)
@@ -352,15 +352,15 @@ class PoseTests(unittest.TestCase):
     def test_values_even_out_between_the_fixed_ends_of_a_line(self):
         edges = [(0, 1), (1, 2), (2, 3), (3, 4)]
         fixed = [True, False, False, False, True]
-        out = reference.evened(5, edges, [1.0] * 4, fixed, [0.0, 9.0, 9.0, 9.0, 1.0])
+        out = evened(5, edges, [1.0] * 4, fixed, [0.0, 9.0, 9.0, 9.0, 1.0])
         np.testing.assert_allclose(out, [0.0, 0.25, 0.5, 0.75, 1.0], atol=1e-9)
 
     def test_a_vertex_lies_nearer_to_the_value_of_the_neighbour_its_edge_weighs_more_for(self):
-        out = reference.evened(3, [(0, 1), (1, 2)], [1.0, 3.0], [True, False, True], [0.0, 0.0, 1.0])
+        out = evened(3, [(0, 1), (1, 2)], [1.0, 3.0], [True, False, True], [0.0, 0.0, 1.0])
         np.testing.assert_allclose(out, [0.0, 0.75, 1.0], atol=1e-9)
 
     def test_a_net_that_is_fixed_everywhere_keeps_its_values(self):
-        np.testing.assert_allclose(reference.evened(2, [(0, 1)], [1.0], [True, True], [0.25, 0.5]), [0.25, 0.5])
+        np.testing.assert_allclose(evened(2, [(0, 1)], [1.0], [True, True], [0.25, 0.5]), [0.25, 0.5])
 
     JOINT = np.array([0.20, 0.0, 1.43])
     ARMPIT = 1.30

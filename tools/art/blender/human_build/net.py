@@ -29,6 +29,45 @@ def _unit(v):
     return v / max(np.linalg.norm(v), 1e-12)
 
 
+def evened(count, edges, weights, fixed, values, rounds=4000, exact=1e-10):
+    """A value for every vertex of a net: the given value where it is fixed, and elsewhere the
+    value that is the weighted middle of its neighbours', each edge with its weight. edges holds
+    pairs of vertices, fixed says which vertices are fixed, and values holds their values."""
+    edges, weights = np.asarray(edges, np.int64), np.asarray(weights, float)
+    a, b = edges[:, 0], edges[:, 1]
+    fixed = np.asarray(fixed, bool)
+    out = np.where(fixed, np.asarray(values, float), 0.0)
+    free = ~fixed
+    if not free.any():
+        return out
+    total = np.bincount(a, weights, count) + np.bincount(b, weights, count)
+
+    def across(x):
+        """What the net's edges make of the free vertices' values, the fixed ones at zero."""
+        return (total * x - np.bincount(a, weights * x[b], count) - np.bincount(b, weights * x[a], count)) * free
+
+    # The fixed neighbours' part, and from there by conjugate gradients.
+    goal = (np.bincount(a, weights * out[b], count) + np.bincount(b, weights * out[a], count)) * free
+    x = np.zeros(count)
+    rest = goal.copy()
+    way = rest.copy()
+    size = float(rest @ rest)
+    start = size
+    for _ in range(rounds):
+        if size <= exact * exact * max(start, 1e-300):
+            break
+        through = across(way)
+        step = size / float(way @ through)
+        x += step * way
+        rest -= step * through
+        fresh = float(rest @ rest)
+        way = rest + (fresh / size) * way
+        size = fresh
+    else:
+        raise RuntimeError("the values do not even out along the net")
+    return out + x * free
+
+
 class Net:
     def __init__(self):
         self.points = []

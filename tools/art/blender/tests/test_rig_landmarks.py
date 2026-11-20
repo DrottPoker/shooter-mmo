@@ -1,8 +1,8 @@
 """The logic of the rebuilt bodies' rig that needs numpy but not Blender: the landmarks the assembly
 writes from the build's named vertices (human_build/landmarks.py), the eyelids' weights
-(human_base/lids.py), and the turn that brings an arm of another bind pose to the one the test
-poses were made for, on small nets and lines whose answers follow from the input. Without numpy
-this file is skipped."""
+(human_base/lids.py), the shares and weights of the shoulders (human_base/rig.py), and the turn
+that brings an arm of another bind pose to the one the test poses were made for, on small nets and
+lines whose answers follow from the input. Without numpy this file is skipped."""
 
 import math
 import pathlib
@@ -22,10 +22,11 @@ sys.path.insert(0, str(BLENDER_ROOT))
 
 from human_base import lids  # noqa: E402
 from human_build import landmarks  # noqa: E402
-from human_build.net import Net  # noqa: E402
+from human_build.net import Net, evened  # noqa: E402
 
 poses = load("art_pipeline/poses.py", "arm_turn", "eyelids", "REST_ARM_DROP", "ARM_TOLERANCE")
-rig = load("human_base/rig.py", "_lips_apart", numpy=True)
+rig = load("human_base/rig.py", "_lips_apart", "arm_shares", "shared_out", "SHOULDER_CAP", "SHOULDER_BELOW",
+           "SHOULDER_FLANK", "SHOULDER_ROOT", "SHOULDER_TOP", evened=evened, numpy=True)
 
 
 class LipTests(unittest.TestCase):
@@ -53,6 +54,85 @@ class LipTests(unittest.TestCase):
         share = np.array([0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 1.0, 1.0, 0.0])
         apart = rig._lips_apart(self.POINTS, self.FACES, rows, share)
         self.assertEqual(apart.tolist(), [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0])
+
+
+class ShoulderTests(unittest.TestCase):
+    """The arm's share of the skin around the shoulder of a body of 1.785 m whose right shoulder
+    joint lies at JOINT and whose armpit at the height ARMPIT."""
+
+    JOINT = np.array([0.20, 0.0, 1.43])
+    ARMPIT = 1.30
+
+    def shares(self, points, edges, in_arm, turned=0.0, scale=1.0):
+        return rig.arm_shares(points, edges, in_arm, self.JOINT * scale, self.ARMPIT * scale, turned, scale)
+
+    def over_the_top(self):
+        """A line of four vertices over the top of each shoulder: one on the trunk well inside the
+        joint, two over the joint, and one on the round of the shoulder outside it. The left side
+        is the mirror image."""
+        right = np.array([(0.05, 0.0, 1.40), (0.185, 0.0, 1.47), (0.205, 0.0, 1.47), (0.27, 0.0, 1.40)])
+        return np.concatenate([right, right * (-1.0, 1.0, 1.0)]), [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7)]
+
+    def test_the_round_of_the_shoulder_turns_whole_and_the_trunk_not_and_the_top_eases_between(self):
+        points, edges = self.over_the_top()
+        shares = self.shares(points, edges, np.zeros(8, bool))
+        self.assertEqual((shares[0], shares[3]), (0.0, 1.0))
+        # Along one line the share grows with the way gone along it, eased in and out.
+        steps = np.linalg.norm(np.diff(points[:4], axis=0), axis=1)
+        gone = np.cumsum(steps)[:2] / steps.sum()
+        np.testing.assert_allclose(shares[1:3], gone * gone * (3.0 - 2.0 * gone), atol=1e-9)
+        np.testing.assert_allclose(shares[4:], shares[:4], atol=1e-12)
+
+    def test_the_share_leaves_the_trunk_and_reaches_the_arm_without_a_kink(self):
+        # A long even line from the trunk to the round of the shoulder: the share's first and last
+        # steps are the smallest, and it grows all the way.
+        x = np.linspace(0.05, 0.27, 12)
+        points = np.stack([x, np.zeros(12), np.full(12, 1.45)], axis=1)
+        shares = self.shares(points, [(i, i + 1) for i in range(11)], np.zeros(12, bool))
+        free = shares[(shares > 0.0) & (shares < 1.0)]
+        steps = np.diff(np.concatenate([[0.0], free, [1.0]]))
+        self.assertTrue((steps > 0.0).all())
+        self.assertLess(max(steps[0], steps[-1]), steps[1:-1].min())
+
+    def test_the_arm_turns_whole_from_below_the_armpit_and_the_side_of_the_chest_stays(self):
+        # From the side of the chest under the armpit, over the hollow, to the arm: the chest's
+        # vertex stays, the arm's first vertex below the armpit is not yet turned whole, and the
+        # next one is.
+        points = np.array([(0.15, 0.0, 1.25), (0.17, 0.0, 1.30), (0.19, 0.0, 1.28), (0.21, 0.0, 1.22)])
+        shares = self.shares(points, [(0, 1), (1, 2), (2, 3)], np.array([False, False, True, True]))
+        self.assertEqual((shares[0], shares[3]), (0.0, 1.0))
+        self.assertTrue(0.0 < shares[1] < shares[2] < 1.0)
+
+    def test_the_round_of_the_shoulder_is_told_where_it_lay_with_the_arm_hanging(self):
+        # A vertex above the joint and the trunk's next to it. With the arms bound where they hang
+        # it is no part of the round of the shoulder, and with only the trunk to follow it stays.
+        # On a body bound with its arms turned out by 45 degrees it lay outside the joint before
+        # the turn, so it turns whole.
+        points = self.JOINT + np.array([(-0.15, 0.0, -0.03), (0.02, 0.0, 0.07)])
+        self.assertEqual(self.shares(points, [(0, 1)], np.zeros(2, bool)).tolist(), [0.0, 0.0])
+        self.assertEqual(self.shares(points, [(0, 1)], np.zeros(2, bool), turned=45.0).tolist(), [0.0, 1.0])
+
+    def test_a_hip_as_wide_as_the_shoulder_stays(self):
+        # Only above the armpit does what lies outside the joint belong to the shoulder.
+        points = np.array([(0.27, 0.0, 0.95), (0.27, 0.0, 1.40)])
+        np.testing.assert_allclose(self.shares(points, [(0, 1)], np.zeros(2, bool)), [0.0, 1.0])
+
+    def test_a_smaller_body_has_the_same_shares(self):
+        points, edges = self.over_the_top()
+        np.testing.assert_allclose(self.shares(points * 0.9, edges, np.zeros(8, bool), scale=0.9),
+                                   self.shares(points, edges, np.zeros(8, bool)), atol=1e-9)
+
+    def test_an_arms_bones_take_its_share_and_the_others_the_rest_each_in_their_own_shares(self):
+        # Columns: the chest, the clavicle, the upper arm, the lower arm.
+        weights = np.array([[0.5, 0.3, 0.15, 0.05], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.5, 0.5], [0.2, 0.2, 0.6, 0.0]])
+        out = rig.shared_out(weights, [0.6, 0.25, 0.4, 0.0], [2, 3], 2, 1)
+        np.testing.assert_allclose(out.sum(axis=1), 1.0, atol=1e-12)
+        # The chest and the clavicle keep 5 to 3, the upper and the lower arm 3 to 1.
+        np.testing.assert_allclose(out[0], [0.25, 0.15, 0.45, 0.15], atol=1e-12)
+        # Without a bone of the arm the share goes to the upper arm, without another to the clavicle.
+        np.testing.assert_allclose(out[1], [0.75, 0.0, 0.25, 0.0], atol=1e-12)
+        np.testing.assert_allclose(out[2], [0.0, 0.6, 0.2, 0.2], atol=1e-12)
+        np.testing.assert_allclose(out[3], [0.5, 0.5, 0.0, 0.0], atol=1e-12)
 
 
 class TraceTests(unittest.TestCase):
