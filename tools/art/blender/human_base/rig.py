@@ -505,7 +505,9 @@ def _chain_bones(label, s, hip_y, hip_z, knee, ankle, neck_base, head, eye_z):
         top = _hit(label, hips, centre, out, name) + out * (SKIRT_GAP * s)
         for i, bone in enumerate(_hanging(top, ankle.z, SKIRT_BONES, out), 1):
             bones[f"{name}{i}{suffix}"] = bone
-    back = _surface_tree(label, ("Torso",))
+    # The back of the shoulder belongs to the upper arms where the border between the two parts
+    # lies inside the shoulder joint, as it does on a body whose armpit was opened.
+    back = _surface_tree(label, ("Torso", "UpperArms"))
     z = neck_base.z - CLOAK_BELOW_NECK * s
     calf = knee.z + (ankle.z - knee.z) * CLOAK_DOWN_THE_SHIN
     for name, x, suffix in CLOAK_CHAINS:
