@@ -18,7 +18,10 @@ out on that body first, each with its mirror image.
 The UV map is unwrapped island by island along the seams the cage names, never projected. Every
 island is turned upright, brought to one texel density, and laid out by hand-written rules: the
 skin of the body on an image twice as wide as high, the head on a square image of its own. No two
-islands share texels and no island is mirrored, so paint can differ between the sides."""
+islands share texels and no island is mirrored, so paint can differ between the sides.
+
+The root carries the rig's landmarks (landmarks.py), and each eyeball's origin lies at its centre,
+which it turns about."""
 
 import math
 import os
@@ -27,7 +30,7 @@ import sys
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 sys.dont_write_bytecode = True
@@ -35,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from art_pipeline import bodies  # noqa: E402
 from art_pipeline.scene import EXPORT_COLLECTION  # noqa: E402
+from human_build import landmarks  # noqa: E402
 
 LABELS = ("Male", "Female")
 # A triangle with a corner under this many degrees is a sliver, as the body checks count them.
@@ -106,9 +110,12 @@ def _net(path, label):
     # Every vertex's mirror image, itself on the mirror plane: the net is an exact mirror image.
     place = {tuple(np.round(p, 7)): v for v, p in enumerate(points)}
     twin = np.array([place[tuple(np.round(p * (-1.0, 1.0, 1.0), 7))] for p in points])
+    if "marks" not in mesh:
+        raise RuntimeError(f"{path} has no named vertices for the landmarks; build the body again")
+    marks = {name: [int(v) for v in vertices] for name, vertices in mesh["marks"].items()}
     return {"points": points, "faces": faces, "zone": values["zone"], "part": values["part"],
             "island": [names[i] for i in values["island"]], "seams": seams, "pinned": pinned, "twin": twin,
-            "skin": lambda point: tree.find_nearest(Vector(point))[3]}
+            "marks": marks, "skin": lambda point: tree.find_nearest(Vector(point))[3]}
 
 
 def _smallest_corner(points, a, b, c):
@@ -408,7 +415,18 @@ def write(label, net, faces, work, out_path):
         obj.parent = root
         obj.data.materials.clear()
         obj.data.materials.append(materials[part])
+        if part == "Eye":
+            # An eyeball turns about its centre: its origin lies there, its vertices where they were.
+            co = np.array([tuple(v.co) for v in obj.data.vertices])
+            centre = Vector(tuple((co.min(0) + co.max(0)) / 2))
+            obj.data.transform(Matrix.Translation(-centre))
+            obj.location = centre
     reference = _load(os.path.join(work, "reference.blend"), [f"Reference_{label}"])[f"Reference_{label}"]
+    eye = np.array(extras[f"{label}_Eye_R"].location)
+    found = landmarks.of_net(points, net["marks"], faces, net["zone"], net["part"], HEAD_ZONE, eye,
+                             np.array(reference.data["shoulder_joint"]))
+    for name, values in found.items():
+        root[f"lmw_{name}"] = [float(c) for point in values for c in point]
     collections[REFERENCE_COLLECTION].objects.link(reference)
     reference.hide_render = True
     reference.hide_select = True

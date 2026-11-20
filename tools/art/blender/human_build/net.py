@@ -169,6 +169,15 @@ class Net:
         fine.face_point = face_point
         return fine
 
+    def path(self, vertices, closed=False):
+        """In a subdivided net, the line through vertices of the net it was subdivided from: each of
+        them and the middle of each edge between two of them, around a ring when closed."""
+        ends = list(vertices[1:]) + (list(vertices[:1]) if closed else [])
+        out = []
+        for a, b in zip(vertices, ends):
+            out += [a, self.edge_point[(a, b) if a < b else (b, a)]]
+        return out if closed else out + [vertices[-1]]
+
     # ------------------------------------------------------------------ geometry
 
     def array(self):

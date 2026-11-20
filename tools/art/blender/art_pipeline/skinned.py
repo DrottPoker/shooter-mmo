@@ -191,15 +191,20 @@ def _weight_errors(obj: bpy.types.Object, deform: set[str]) -> tuple[list[str], 
 
 
 def _cut_errors(meshes: list[bpy.types.Object], weights: dict[str, list[dict[str, float]]]) -> list[str]:
-    """Vertices of different meshes at the same place must move together, or the cut opens."""
-    seen: dict[tuple[int, int, int], tuple[str, dict[str, float]]] = {}
+    """Vertices of different meshes at the same place must move together, or the cut opens. Vertices
+    of one mesh at one place, such as the lips of the rebuilt bodies where they meet, are told apart
+    by their order, as bodies.place_keys does."""
+    seen: dict[tuple[int, int, int, int], tuple[str, dict[str, float]]] = {}
     opened: dict[tuple[str, str], int] = {}
     for obj in meshes:
         if obj.name not in weights:
             continue
         m = obj.matrix_world
+        here: dict[tuple[int, int, int], int] = {}
         for v, w in zip(obj.data.vertices, weights[obj.name]):
-            key = _key(m @ v.co)
+            place = _key(m @ v.co)
+            key = (*place, here.get(place, 0))
+            here[place] = here.get(place, 0) + 1
             other = seen.setdefault(key, (obj.name, w))
             if other[0] == obj.name:
                 continue

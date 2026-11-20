@@ -317,7 +317,7 @@ class HumanBaseTableTests(unittest.TestCase):
         self.assertEqual(len(set(checks.HIDDEN_PARTS)), len(checks.HIDDEN_PARTS))
 
     def test_the_bones_the_weights_sheet_looks_at_are_bones_of_the_humanoid(self):
-        for bone, target, _yaw, _pitch in rig_review.WEIGHT_VIEWS:
+        for bone, target, _yaw, _pitch, _distance in rig_review.WEIGHT_VIEWS:
             self.assertIn(bone, BONES)
             self.assertIn(target, BONES)
 

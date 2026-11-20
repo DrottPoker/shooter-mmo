@@ -106,6 +106,19 @@ def _tip(net, ring, digit, zone, skin, name):
     net.mark(f"{name}_tip", [tip])
 
 
+def _mark_digit(net, name, base, first, second, end, palmar):
+    """Names a digit's rings for the rig's landmarks: the ring it grows from, the rings around each
+    of its two joints, its last ring, and of that the two corners on the nail's side, the back of
+    the hand's, and the two on the pad's."""
+    net.mark(f"hand_{name}_base", base)
+    net.mark(f"hand_{name}_first", first)
+    net.mark(f"hand_{name}_second", second)
+    net.mark(f"hand_{name}_end", end)
+    order = sorted(end, key=lambda v: float(np.asarray(net.points[v]) @ palmar))
+    net.mark(f"hand_{name}_nail", order[:2])
+    net.mark(f"hand_{name}_pad", order[2:])
+
+
 def build_hand(net: Net, hand: Hand):
     s = hand.scale
     zone = ZONE["Hands"]
@@ -183,20 +196,28 @@ def build_hand(net: Net, hand: Hand):
     for index, (name, digit, rings) in enumerate(zip(FINGERS, hand.fingers, finger_rings)):
         skin = f"digit_{name}"
         previous = [front[index + 1], front[index], back[index], back[index + 1]]
-        marks = {}
-        for step, points in enumerate(rings[1:], start=1):
+        made = [previous]
+        for points in rings[1:]:
             ring = net.add_ring(points)
             net.strip(previous, ring, zone, skin)
+            made.append(ring)
             previous = ring
         _tip(net, previous, digit, zone, skin, name)
+        # The rings at the web, on both sides of the middle and the end joint, and before the tip.
+        _mark_digit(net, name, made[0], made[1] + made[2], made[3] + made[4], made[5], palmar)
 
     # The thumb, from the hole between the two palm rings at the thumb's side.
     hole = [middle[2], middle[3], knuckles[3], knuckles[2]]
     peak = thumb.girth_peak(*THUMB_JOINT[1])
     joint = peak if THUMB_JOINT[1][0] + 0.01 < peak < THUMB_JOINT[1][1] - 0.01 else THUMB_JOINT[0]
     previous = hole
+    made = [hole]
     for share in (WEB_RING, joint + JOINT_HALF, joint - JOINT_HALF, TIP_RING):
         ring = net.add_ring(_thumb_ring(thumb, share, thumb_start))
         net.strip(previous, ring, zone, "digit_Thumb")
+        made.append(ring)
         previous = ring
     _tip(net, previous, thumb, zone, "digit_Thumb", "Thumb")
+    # The thumb grows from the palm's hole; its first joint lies at its web, its second between
+    # the two rings around it.
+    _mark_digit(net, "Thumb", made[0], made[1], made[2] + made[3], made[4], palmar)

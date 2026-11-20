@@ -6,7 +6,7 @@
         "Female"
     ],
     "triangleBudget": 15400,
-    "skeleton": "Humanoid",
+    "skeleton": "Humanoid_Next",
     "approvals": {
         "model": {
             "date": "2026-11-20",

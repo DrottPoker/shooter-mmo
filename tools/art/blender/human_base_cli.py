@@ -15,8 +15,8 @@ Steps:
     compare <a.blend> <b.blend>
     review-file <male.blend> <female.blend> <review.blend>
     review <review.blend> <output dir> <prefix>
-    review-rig <asset.blend> <Male|Female> <output dir> <prefix>
-    rig-review-file <male.blend> <female.blend> <review.blend>
+    review-rig <asset.blend> <Male|Female> <skeleton.json> <output dir> <prefix>
+    rig-review-file <male.blend> <female.blend> <skeleton.json> <review.blend>
     generate-clips <library.blend> <armature> <Idle,Walk,Jog> <skeleton.json>
     check-clips <library.blend> <armature>
     import-clip <library.blend> <armature> <source file> <map.json> <Clip+Clip> <Name> <-|L|R|LR> <skeleton.json>
@@ -54,7 +54,7 @@ CHECKS = {
 }
 RENDERS = {
     "review": (3, review.render),
-    "review-rig": (4, rig_review.render),
+    "review-rig": (5, rig_review.render),
 }
 # Steps that add to a file and report on what they added.
 IMPORTS = {
@@ -113,7 +113,7 @@ def main(argv: list[str]) -> int:
             print(f"HUMAN_BASE_FAILED {failure}")
         return 1 if failures else 0
     if step == "rig-review-file":
-        if not _count(step, args, 3):
+        if not _count(step, args, 4):
             return 2
         print(f"HUMAN_BASE_REPORT review file {rig_review.review_file(*args)}")
         return 0

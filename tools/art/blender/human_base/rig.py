@@ -1,26 +1,28 @@
-"""The rig of a base character: an armature with the shared Humanoid skeleton
-(art/Skeletons/Humanoid.json) with its joints placed from the character's own geometry, and every
-body part, eyeball, tooth row and the tongue bound to it. The character's file is the source: rig
-places the joints again and solves the weights, weights only solves the weights from the joints the
-file has, and sync only writes the body parts from the source body (art_pipeline.bodies). Each of
-them writes the weights into the source body and its parts.
+"""The rig of a base character: an armature with the shared skeleton of its bodies, Humanoid
+(art/Skeletons/Humanoid.json) or, for the rebuilt bodies, Humanoid_Next, with its joints placed
+from the character's own geometry, and every body part, eyeball, tooth row and the tongue bound to
+it. The character's file is the source: rig places the joints again and solves the weights, weights
+only solves the weights from the joints the file has, and sync only writes the body parts from the
+source body (art_pipeline.bodies). Each of them writes the weights into the source body and its
+parts. A rebuilt body's file has no armature before its first rig: its root is an empty with the
+landmarks that the build wrote (human_build.landmarks).
 
 The character faces +Y, so its right side is +X: the bones ending in _R sit at +X.
 
-Joints come from the cuts between the body parts and the landmarks the armature carries: the
-elbow, wrist, knee and ankle from the rings where two body parts meet, the shoulder joint at the
-centre of the shoulder's round cap, the joints of the fingers, the thumb and the toes from the rings
-of each digit, the jaw hinge in front of the ears where the model review's mouth preview put it, and
-the spine at fixed shares of the torso between the hip joints and the base of the neck.
+Joints come from the cuts between the body parts and the landmarks the root carries: the elbow,
+wrist, knee and ankle from the rings where two body parts meet, the shoulder joint at the centre of
+the shoulder's round cap, the joints of the fingers, the thumb and the toes from the rings of each
+digit, the jaw hinge in front of the ears where the model review's mouth preview put it, the eyes
+and the eyelids at the eyeballs' centres, and the spine at fixed shares of the torso between the hip
+joints and the base of the neck.
 
 Skin weights are solved once on the whole body, the parts joined at their cuts, by Blender's bone
 heat. They are then limited per zone and per digit and shaped where the arms meet the torso; the
-hips, knees and elbows get weights by rule from their anatomy, the jaw takes the lower face, and
-every vertex
-keeps at most four bones with weights that add up to one. Each part takes the weights of its
-vertices from the whole body, so both sides of a cut carry the same weights and the cuts never
-open. Eyeballs follow their eye bone, the upper teeth the head, and the lower teeth and the tongue
-the jaw."""
+hips, knees and elbows get weights by rule from their anatomy, the jaw takes the lower face, the
+eyelids take the lids (lids.py), and every vertex keeps at most four bones with weights that add up
+to one. Each part takes the weights of its vertices from the whole body, so both sides of a cut
+carry the same weights and the cuts never open. Eyeballs follow their eye bone, the upper teeth the
+head, and the lower teeth and the tongue the jaw."""
 
 import math
 from collections import deque
@@ -33,6 +35,8 @@ from mathutils.bvhtree import BVHTree
 from art_pipeline import bodies
 from art_pipeline import skeleton as skeleton_definition
 
+from . import lids as eyelids
+
 ZONES = bodies.ZONES
 SIDES = (("R", 1.0), ("L", -1.0))
 # The landmark digits from the little finger to the index finger, then the thumb.
@@ -44,6 +48,21 @@ FINGER_LAYERS = {"dip": 4, "pip": 6, "base": 8}
 THUMB_LAYERS = {"ip": 6, "mcp": 10}
 TOE_BASE_LAYER = 6
 RING_SIZE = 8
+# The rebuilt bodies name each digit's rings by landmarks: the ring it grows from (finger_bases) and
+# the middles of the rings around its two joints (finger_joints). A finger's knuckle lies this far
+# inside the palm from the middle of its ring at the web, along its first bone, where the build put
+# the palm's ring of knuckles. The thumb's base joint lies this share of the way from the wrist to
+# its joint at the web, as on the earlier bodies.
+KNUCKLE_BEHIND_WEB = 0.022
+THUMB_BASE = 0.4
+# The eye bones and the eyelids' bones point forward from the eyeballs' centres, this long.
+EYE_BONE = 0.025
+LID_BONES = {"Upper": 0.02, "Lower": 0.015}
+# The eyelids' weights (lids.py): where the lids meet, as a share of the way from the lower lid's
+# edge to the upper lid's, and each lid's share per ring of skin outward from its edge: the margin,
+# the lid, the crease, and the skin beyond it that a closing lid pulls along.
+LID_MEET = 0.2
+LID_RINGS = {"upper": (1.0, 1.0, 1.0, 0.9, 0.55, 0.15), "lower": (1.0, 1.0, 1.0, 0.7, 0.35, 0.1)}
 # Offsets are given for the male body (1.785 m) and scale with the body's height.
 REFERENCE_HEIGHT = 1.785
 # The hip joint sits this far above the crotch, near the groin crease, so the thigh swings out of
@@ -71,7 +90,8 @@ ZONE_BONES = {
     "Shins": ("UpperLeg_s", "LowerLeg_s", "Foot_s"),
     "Feet": ("LowerLeg_s", "Foot_s", "Toes_s"),
 }
-# Bones that the bone heat leaves out: their weights are set by rule.
+# Bones that the bone heat leaves out: their weights are set by rule, and so are the eyelids' bones
+# of a skeleton that has them.
 RULE_BONES = ("Jaw", "Eye_L", "Eye_R")
 # Shaping of the bone heat where limbs meet the body, so raising an arm or a leg does not drag the
 # torso or the buttock along. Distances are measured to the cut where the two parts meet.
@@ -216,6 +236,40 @@ def _mirror(v):
     return Vector((-v.x, v.y, v.z))
 
 
+def eye_centre(obj):
+    """The centre of an eyeball, the middle of its mesh in world space, whatever its origin."""
+    co = _world(obj)
+    return Vector((co.min(0) + co.max(0)) / 2)
+
+
+def _nearest_vertex(co, point, what):
+    distances = np.linalg.norm(co - np.asarray(point), axis=1)
+    found = int(np.argmin(distances))
+    if distances[found] > 1e-5:
+        raise RuntimeError(f"{what}: no vertex at the landmark {tuple(np.round(point, 4))}")
+    return found
+
+
+def _digit_vertices(obj, tip, ring, adj, what):
+    """The vertices of a digit of the rebuilt bodies: those reached from its tip without passing its
+    ring at the base, the ring with them."""
+    co = _world(obj)
+    border = {_nearest_vertex(co, p, what) for p in ring}
+    start = _nearest_vertex(co, tip, what)
+    seen, queue = {start}, deque([start])
+    while queue:
+        v = queue.popleft()
+        if v in border:
+            continue
+        for w in adj[v]:
+            if w not in seen:
+                seen.add(w)
+                queue.append(w)
+    if not border <= seen or len(seen) > len(co) // 4:
+        raise RuntimeError(f"{what}: the ring at its base does not part it from the hand")
+    return sorted(seen)
+
+
 def _shoulder_joint(label, guess, s):
     """Centre of the ball of the right shoulder joint: SHOULDER_DEPTH below the top of the shoulder
     and inside the outer side of the deltoid, halfway between the front and the back, found from
@@ -277,16 +331,17 @@ def joints(label, shoulder_guess):
         bones[name] = (a, b, fwd)
     bones["Head"] = (head, Vector((0.0, head.y, height)), fwd)
 
-    # Jaw hinge in front of the ears, as in the model review's mouth preview; eyes at the
-    # eyeball centres, looking forward.
-    eyes = {side: o for o in root.children if "_Eye_" in o.name
-            for side, sx in SIDES if o.matrix_world.translation.x * sx > 0}
-    eye_y = sum(o.matrix_world.translation.y for o in eyes.values()) / 2
+    # Jaw hinge in front of the ears, as in the model review's mouth preview; eyes and eyelids at
+    # the eyeball centres, looking forward.
+    eyes = {side: eye_centre(o) for o in root.children if "_Eye_" in o.name
+            for side, sx in SIDES if eye_centre(o).x * sx > 0}
+    eye_y = sum(c.y for c in eyes.values()) / 2
     hinge = Vector((0.0, eye_y - 0.068, mouth.z + 0.028))
     bones["Jaw"] = (hinge, Vector(root["lmw_chin_front"][:3]), up)
-    for side, eye in eyes.items():
-        c = eye.matrix_world.translation.copy()
-        bones[f"Eye_{side}"] = (c, c + fwd * 0.025, up)
+    for side, c in eyes.items():
+        bones[f"Eye_{side}"] = (c, c + fwd * EYE_BONE, up)
+        for lid, length in LID_BONES.items():
+            bones[f"Eyelid{lid}_{side}"] = (c.copy(), c + fwd * length, up)
 
     # Right arm and leg; the left side mirrors them.
     shoulder = _shoulder_joint(label, Vector(shoulder_guess), s)
@@ -301,22 +356,37 @@ def joints(label, shoulder_guess):
     tips = _points(root, "finger_tips")[:5]
     digit_verts = {}
     finger_joints = {}
-    for digit, tip in zip(DIGITS, tips):
-        last = (THUMB_LAYERS["mcp"] if digit == "Thumb" else FINGER_LAYERS["base"]) + 1
-        layers, co = _layers(hands, tip, last, adj)
-        digit_verts[digit] = sorted(v for layer in layers for v in layer)
-        tip_point = Vector(co[layers[0][0]])
-        if digit == "Thumb":
-            ip = _ring_centre(layers, co, THUMB_LAYERS["ip"], f"{label} thumb")
-            mcp = _ring_centre(layers, co, THUMB_LAYERS["mcp"], f"{label} thumb")
-            cmc = wrist.lerp(mcp, 0.4)
-            finger_joints[digit] = (cmc, mcp, ip, tip_point)
-        else:
-            dip = _ring_centre(layers, co, FINGER_LAYERS["dip"], f"{label} {digit}")
-            pip = _ring_centre(layers, co, FINGER_LAYERS["pip"], f"{label} {digit}")
-            base = _ring_centre(layers, co, FINGER_LAYERS["base"], f"{label} {digit}")
-            mcp = base + (base - pip) * 0.55
-            finger_joints[digit] = (mcp, pip, dip, tip_point)
+    if "lmw_finger_bases" in root:
+        # The rebuilt bodies: each digit's rings by the build's landmarks.
+        bases = _points(root, "finger_bases")
+        middles = _points(root, "finger_joints")
+        for k, (digit, tip) in enumerate(zip(DIGITS, tips)):
+            ring = bases[RING_SIZE * k:RING_SIZE * (k + 1)]
+            first, second = middles[2 * k], middles[2 * k + 1]
+            digit_verts[digit] = _digit_vertices(hands, tip, ring, adj, f"{label} {digit}")
+            if digit == "Thumb":
+                finger_joints[digit] = (wrist.lerp(first, THUMB_BASE), first, second, tip)
+            else:
+                web = sum(ring, Vector()) / RING_SIZE
+                finger_joints[digit] = (web + (web - first).normalized() * (KNUCKLE_BEHIND_WEB * s), first, second, tip)
+    else:
+        # The earlier bodies: rings of eight counted from each digit's tip.
+        for digit, tip in zip(DIGITS, tips):
+            last = (THUMB_LAYERS["mcp"] if digit == "Thumb" else FINGER_LAYERS["base"]) + 1
+            layers, co = _layers(hands, tip, last, adj)
+            digit_verts[digit] = sorted(v for layer in layers for v in layer)
+            tip_point = Vector(co[layers[0][0]])
+            if digit == "Thumb":
+                ip = _ring_centre(layers, co, THUMB_LAYERS["ip"], f"{label} thumb")
+                mcp = _ring_centre(layers, co, THUMB_LAYERS["mcp"], f"{label} thumb")
+                cmc = wrist.lerp(mcp, THUMB_BASE)
+                finger_joints[digit] = (cmc, mcp, ip, tip_point)
+            else:
+                dip = _ring_centre(layers, co, FINGER_LAYERS["dip"], f"{label} {digit}")
+                pip = _ring_centre(layers, co, FINGER_LAYERS["pip"], f"{label} {digit}")
+                base = _ring_centre(layers, co, FINGER_LAYERS["base"], f"{label} {digit}")
+                mcp = base + (base - pip) * 0.55
+                finger_joints[digit] = (mcp, pip, dip, tip_point)
     knuckles = [finger_joints[d][0] for d in ("Little", "Ring", "Middle", "Index")]
     along = (finger_joints["Middle"][0] - wrist).normalized()
     radial = (knuckles[3] - knuckles[0]).normalized()
@@ -338,16 +408,21 @@ def joints(label, shoulder_guess):
     hip = Vector((lateral / 2, hip_y, hip_z))
     knee = _cut(label, "Thighs", "Shins", 1.0)
     ankle = _cut(label, "Shins", "Feet", 1.0) - up * (0.03 * s)
-    feet = _part(label, "Feet")
-    adj = _adjacency(feet)
-    bases, toe_tips = [], []
-    for tip in _points(root, "toe_tips")[:5]:
-        layers, co = _layers(feet, tip, TOE_BASE_LAYER + 1, adj)
-        bases.append(_ring_centre(layers, co, TOE_BASE_LAYER, f"{label} toe"))
-        toe_tips.append(Vector(co[layers[0][0]]))
-    ball = sum(bases, Vector()) / 5
-    toe_dir = Vector(((ball - ankle).x, (ball - ankle).y, 0.0)).normalized()
-    ball = ball - toe_dir * (0.012 * s)
+    if "lmw_toe_ball" in root:
+        # The rebuilt bodies: the toes bend at the ring over the ball of the foot.
+        ball = _points(root, "toe_ball")[0]
+        toe_tips = _points(root, "toe_tips")[:5]
+    else:
+        feet = _part(label, "Feet")
+        adj = _adjacency(feet)
+        bases, toe_tips = [], []
+        for tip in _points(root, "toe_tips")[:5]:
+            layers, co = _layers(feet, tip, TOE_BASE_LAYER + 1, adj)
+            bases.append(_ring_centre(layers, co, TOE_BASE_LAYER, f"{label} toe"))
+            toe_tips.append(Vector(co[layers[0][0]]))
+        ball = sum(bases, Vector()) / 5
+        toe_dir = Vector(((ball - ankle).x, (ball - ankle).y, 0.0)).normalized()
+        ball = ball - toe_dir * (0.012 * s)
     toes_end = sum(toe_tips, Vector()) / 5
     toes_end.z = ball.z
     right.update({"UpperLeg": (hip, knee, fwd), "LowerLeg": (knee, ankle, fwd), "Foot": (ankle, ball, up),
@@ -449,7 +524,7 @@ def normalize(label):
     for o in eyes:
         o.name = o.data.name = f"{o.name}_tmp"
     for o in eyes:
-        o.name = o.data.name = f"{label}_Eye_{'R' if o.matrix_world.translation.x > 0 else 'L'}"
+        o.name = o.data.name = f"{label}_Eye_{'R' if eye_centre(o).x > 0 else 'L'}"
 
 
 def strip(label):
@@ -596,20 +671,18 @@ def place_rule_bones(label, skeleton):
 
 def _whole_body(label):
     """The body parts joined at their cuts: positions, faces, and per part the index of each of
-    its vertices in the whole body."""
+    its vertices in the whole body. Vertices of one part at one place, such as the lips' where they
+    meet, stay apart (bodies.place_keys)."""
     keys, points, faces, index = {}, [], [], {}
     for zone in ZONES:
         obj = _part(label, zone)
         co = _world(obj)
         local = []
-        for p in co:
-            k = _key(p)
+        for p, k in zip(co, bodies.place_keys(co)):
             if k not in keys:
                 keys[k] = len(points)
                 points.append(p)
             local.append(keys[k])
-        if len(set(local)) != len(local):
-            raise RuntimeError(f"{obj.name} has vertices at the same place")
         index[zone] = np.array(local)
         faces += [tuple(local[v] for v in poly.vertices) for poly in obj.data.polygons]
     return np.array(points), faces, index
@@ -798,6 +871,33 @@ def _jaw_share(label, points):
             * smooth(hinge_y - 0.015, hinge_y + 0.02, points[:, 1]))
 
 
+def _lips_apart(points, faces, rows, share):
+    """The jaw's shares of the whole body's vertices of the given rows, where two vertices at one
+    place, such as the rebuilt bodies' lips where they meet, take the mean share of their other
+    neighbours: a place gives both lips the share of the line between them, and each lip follows
+    its own side instead, the upper lip the head and the lower lip the jaw."""
+    places = {}
+    for v in np.unique(rows):
+        places.setdefault(_key(points[v]), []).append(int(v))
+    doubled = {v for found in places.values() if len(found) > 1 for v in found}
+    if not doubled:
+        return share
+    value = {}
+    for v, s in zip(rows, share):
+        value.setdefault(int(v), float(s))
+    beside = {v: set() for v in doubled}
+    for face in faces:
+        for i, v in enumerate(face):
+            if v in beside:
+                beside[v].update((face[i - 1], face[(i + 1) % len(face)]))
+    fixed = {}
+    for v in doubled:
+        others = [value[w] for w in beside[v] if w in value and w not in doubled]
+        if others:
+            fixed[v] = float(np.mean(others))
+    return np.array([fixed.get(int(v), s) for v, s in zip(rows, share)])
+
+
 def solve_weights(label, arm, skeleton, digit_verts):
     """Weights of every whole-body vertex as an (N, bones) array over the skeleton's deform bones,
     and the whole body's index of every part's vertices."""
@@ -809,8 +909,9 @@ def solve_weights(label, arm, skeleton, digit_verts):
     temp = bpy.data.objects.new(f"{label}_weights", mesh)
     bpy.context.scene.collection.objects.link(temp)
     # The cloth chains move garments only, never the body.
+    rules = set(RULE_BONES) | set(skeleton.eyelids.bones if skeleton.eyelids is not None else ())
     for bone in arm.data.bones:
-        bone.use_deform = (bone.name in column and bone.name not in RULE_BONES
+        bone.use_deform = (bone.name in column and bone.name not in rules
                            and bone.name not in skeleton.chain_bones)
     _select_only(arm, temp)
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
@@ -867,16 +968,50 @@ def solve_weights(label, arm, skeleton, digit_verts):
     weights = hip_weights(points, faces, index, weights, column, arm, scale)
     weights = hinge_weights(points, index, weights, column, arm, scale)
     head_idx = np.concatenate([index["Head"], index["Neck"]])
-    share = _jaw_share(label, points[head_idx]) * weights[head_idx, column["Head"]]
+    share = _lips_apart(points, faces, head_idx, _jaw_share(label, points[head_idx]))
+    share = share * weights[head_idx, column["Head"]]
     weights[head_idx, column["Jaw"]] += share
     weights[head_idx, column["Head"]] -= share
+    if skeleton.eyelids is not None:
+        weights = lid_weights(label, skeleton.eyelids, points, weights, column, scale)
     return limit(symmetrize(points, weights, names), names), index
+
+
+def lid_weights(label, lids, points, weights, column, s):
+    """The eyelids take the skin of the lids by the rule of lids.py, on the source body, whose face
+    attribute "part" names the pocket behind them; the bones there keep the rest in their shares."""
+    body = bodies.source_body(label)
+    if body is None or "part" not in body.data.attributes:
+        raise RuntimeError(f'{label}: the eyelids need the source body with the face attribute "part"')
+    co = _world(body)
+    part = np.zeros(len(body.data.polygons), np.int32)
+    body.data.attributes["part"].data.foreach_get("value", part)
+    faces = [tuple(p.vertices) for p in body.data.polygons]
+    lookup = {key: i for i, key in enumerate(bodies.place_keys(points))}
+    whole = np.array([lookup[key] for key in bodies.place_keys(co)])
+    closed = {lid: lids.closed(lid) for lid in skeleton_definition.LIDS}
+    for eye, upper, lower in lids.eyes:
+        ball = _world(bpy.data.objects[f"{label}_Eye_{eye[-1]}"])
+        centre = (ball.min(0) + ball.max(0)) / 2
+        radius = float(ball[:, 0].max() - ball[:, 0].min()) / 2
+        found, largest = eyelids.weights(co, faces, part, centre, radius, closed, LID_MEET, LID_RINGS,
+                                         eyelids.REACH * s)
+        print(f"HUMAN_BASE_REPORT {label} {eye}: the upper lid needs {largest['upper']:.1f} of its "
+              f"{abs(closed['upper']):.1f} degrees to close, the lower lid {largest['lower']:.1f} of "
+              f"{abs(closed['lower']):.1f}")
+        for lid, bone in (("upper", upper), ("lower", lower)):
+            for v, w in found[lid].items():
+                row = whole[v]
+                weights[row] *= 1.0 - w
+                weights[row, column[bone]] += w
+    return weights
 
 
 def _mirrored(points, idx):
     """The whole-body vertices that mirror the given ones across x = 0."""
-    lookup = {_key(p): i for i, p in enumerate(points)}
-    return np.array([lookup[_key((-points[i][0], points[i][1], points[i][2]))] for i in idx])
+    keys = bodies.place_keys(points)
+    lookup = {key: i for i, key in enumerate(keys)}
+    return np.array([lookup[bodies.mirror_key(keys[i])] for i in idx])
 
 
 def _mirror_columns(names):
@@ -981,14 +1116,20 @@ def weights(path, label, skeleton_path, out):
 
 def rig(path, label, skeleton_path, out):
     """Places the joints of a character again from its model, starting the shoulder's search where
-    the rig had it, solves the skin weights, writes them into its source body and its parts, and
-    saves the file. The clips of animation libraries keyed on the old rig need a new review."""
+    the rig had it, or for a model never rigged where its landmarks say the arm was turned, solves
+    the skin weights, writes them into its source body and its parts, and saves the file. The clips
+    of animation libraries keyed on the old rig need a new review."""
     bpy.ops.wm.open_mainfile(filepath=path)
     skeleton = skeleton_definition.load(skeleton_path)
     names = skeleton.deform_bones
     normalize(label)
-    shoulder_guess = bpy.data.objects[label].data.bones["UpperArm_R"].head_local.copy()
-    bodies.write_parts(label, names)
+    root = bpy.data.objects[label]
+    if root.type == "ARMATURE":
+        shoulder_guess = root.data.bones["UpperArm_R"].head_local.copy()
+        bodies.write_parts(label, names)
+    else:
+        # The parts of a model never rigged are as the assembly wrote them from its source body.
+        shoulder_guess = Vector(root["lmw_shoulder_joint"][:3])
     strip(label)
     bones, digit_verts = joints(label, shoulder_guess)
     arm = make_armature(label, skeleton, bones)
