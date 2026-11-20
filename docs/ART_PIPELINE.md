@@ -1322,12 +1322,10 @@ The human base bodies are being built again from scratch, with the method of the
 `tools/art/blender/human_build`, which place every vertex and face on purpose,
 and are written as assets of their own, `art/Characters/Human_Male_Next` and
 `art/Characters/Human_Female_Next`, beside the bodies the game uses. The
-reviewer approved their `model` stage on 2026-11-19, and they are committed in
-review: their `rig` stage waits, so they have no export. Their eyes were then
-built again for lids that close, as the next step's blinking needs, which the
-reviewer allowed; see the lids below. The new eyes need the `model` stage
-approved again, and until then the committed bodies are the ones approved
-before them. Their rig, and the move
+reviewer approved their `model` stage on 2026-11-19, and again on 2026-11-20
+after their eyes were built again for lids that close, as the blinking of the
+next step needs; see the lids below. They are committed in review: their `rig`
+stage waits, so they have no export. Their rig, and the move
 of everything that is fitted to a body, the clips, the garment cage, the
 garments, the textures, and the paint layers, come next, and then the new bodies
 take the names `Human_Male` and `Human_Female`.
@@ -3233,7 +3231,7 @@ passes.
 | `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand: an ash recurve with a dark laminated back, a dark oak riser with a brass oak leaf, a cross-laced leather grip, a sight window with a shelf on the left, horn tips with a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip, 1,860 triangles, hand-painted on one UV layout. On the `Bow` skeleton with its clip `Draw`, 15 frames from brace to full draw. `holdClip` `HoldBow`, `attackClip` `BowShot`, released at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. |
 | `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. Flat material colors. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body and fitted to the male and the female, with a figure scale of 60 mm and the standard lines; see [Garment Cage](#garment-cage). |
-| `art/Characters/Human_Female_Next` | `skinned` | `Female` | The new female human base body, built by `tools/art/blender/human_build`; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, the same net as the male, 14,780 triangles with its eyeballs, teeth, and tongue, and an unmirrored UV map. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
+| `art/Characters/Human_Female_Next` | `skinned` | `Female` | The new female human base body, built by `tools/art/blender/human_build`; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, the same net as the male, 15,084 triangles with its eyeballs, teeth, and tongue, and an unmirrored UV map. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
 | `art/Characters/Human_Male_Next` | `skinned` | `Male` | The new male human base body, built by `tools/art/blender/human_build`, 1.79 m, like `Human_Female_Next` in pose, net, and triangles. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
