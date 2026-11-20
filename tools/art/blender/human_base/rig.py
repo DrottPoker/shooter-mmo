@@ -34,7 +34,6 @@ from mathutils.bvhtree import BVHTree
 
 from art_pipeline import bodies
 from art_pipeline import skeleton as skeleton_definition
-from human_build.net import evened
 
 from . import lids as eyelids
 
@@ -43,8 +42,6 @@ SIDES = (("R", 1.0), ("L", -1.0))
 # The landmark digits from the little finger to the index finger, then the thumb.
 DIGITS = ("Little", "Ring", "Middle", "Index", "Thumb")
 SEGMENTS = ("Proximal", "Intermediate", "Distal")
-# The bones of an arm below its clavicle, without their side.
-ARM_BONES = ("UpperArm", "LowerArm", "Hand") + tuple(f"{digit}{segment}" for digit in DIGITS for segment in SEGMENTS)
 # Rings of eight vertices counted from a digit's tip: the distal and proximal finger joints and
 # the base ring at the web; the thumb's end joint and its base in the palm; the toes' base ring.
 FINGER_LAYERS = {"dip": 4, "pip": 6, "base": 8}
@@ -58,19 +55,6 @@ RING_SIZE = 8
 # its joint at the web, as on the earlier bodies.
 KNUCKLE_BEHIND_WEB = 0.022
 THUMB_BASE = 0.4
-# The rebuilt bodies' shoulders. The build turned the arms out to their pose from where the
-# bundle's arms hang, ARM_HANGS degrees from straight down, about the shoulder joints
-# (human_build.reference), and the arm takes the skin by the same shares, seen in the pose the body
-# is bound in: the round of the shoulder, which lies more than SHOULDER_CAP outside the joint when
-# the arm hangs, and the arm from SHOULDER_BELOW below the armpit turn whole with the arm; the trunk
-# inside the joint, SHOULDER_TOP inside it at its height and SHOULDER_ROOT inside it at the armpit's,
-# and the side of the chest from SHOULDER_FLANK below the armpit stay; the passage between them
-# evens out along the net. The passage is this wide for the arm that reaches forward: with less of
-# the front of the shoulder in it, the arm's skin folds over the chest's into an edge. Lengths at
-# 1.785 m.
-ARM_HANGS = 19.0
-SHOULDER_CAP, SHOULDER_BELOW = 0.06, 0.06
-SHOULDER_FLANK, SHOULDER_ROOT, SHOULDER_TOP = 0.04, 0.09, 0.08
 # The eye bones and the eyelids' bones point forward from the eyeballs' centres, this long.
 EYE_BONE = 0.025
 LID_BONES = {"Upper": 0.02, "Lower": 0.015}
@@ -112,6 +96,9 @@ RULE_BONES = ("Jaw", "Eye_L", "Eye_R")
 # Shaping of the bone heat where limbs meet the body, so raising an arm or a leg does not drag the
 # torso or the buttock along. Distances are measured to the cut where the two parts meet.
 # The upper arm keeps at most this share of the torso at the armpit cut, fading out over this distance.
+# The rebuilt bodies take the same shaping, from their cut 3 to 4 cm inside the shoulder joint: their
+# armpit is a hollow of its own in the model, so the arm needs no rule of its own to leave the side
+# of the chest in place.
 UPPER_ARM_ON_TORSO = (0.5, 0.06)
 # The clavicle moves the skin over the collarbone and, at the back, over the shoulder blade: its
 # share fades out from the first to the second distance below the line of the collarbone.
@@ -867,73 +854,6 @@ def shape_weights(label, arm, points, faces, index, weights, allowed, column):
     return weights
 
 
-def arm_shares(points, edges, in_arm, joint, armpit_z, turned, scale):
-    """The share of its side's arm in every vertex of a body whose arms were turned out by turned
-    degrees from where they hang, about the shoulder joints: joint is the right arm's, in_arm says
-    which vertices lie beyond the cut between the trunk and an arm, and armpit_z is the armpit's
-    height. What turns whole is told where the vertices lay with the arms hanging, had they
-    turned whole; what stays, where they lie. Between them the share evens out along the edges and
-    eases in and out, so it leaves what stays and reaches what turns without a kink, which would
-    fold the skin there."""
-    points, in_arm = np.asarray(points, float), np.asarray(in_arm, bool)
-    side, z = np.abs(points[:, 0]), points[:, 2]
-    angle = math.radians(turned)
-    out, up = side - joint[0], z - joint[2]
-    hung_out = out * math.cos(angle) + up * math.sin(angle)
-    hung_z = joint[2] - out * math.sin(angle) + up * math.cos(angle)
-    turns = (in_arm & (hung_z < armpit_z - SHOULDER_BELOW * scale)) | ((hung_out > SHOULDER_CAP * scale) & (hung_z > armpit_z))
-    rise = np.clip((z - armpit_z) / (joint[2] - armpit_z), 0.0, 1.0)
-    inside = (SHOULDER_ROOT + (SHOULDER_TOP - SHOULDER_ROOT) * rise) * scale
-    stays = (side < joint[0] - inside) | (~in_arm & (z < armpit_z - SHOULDER_FLANK * scale))
-    stays &= ~turns
-    edges = np.asarray(edges, np.int64)
-    lengths = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1)
-    share = evened(len(points), edges, 1.0 / np.maximum(lengths, 1e-9), turns | stays, turns.astype(float))
-    return share * share * (3.0 - 2.0 * share)
-
-
-def shared_out(weights, share, own, first_own, first_other):
-    """The weights with every row's columns own summing to the row's share, in the shares they held
-    among themselves, and its other columns summing to the rest, in theirs. A row without a weight
-    in own puts its share on the column first_own, and one without a weight elsewhere puts the
-    rest on first_other."""
-    weights, share = np.asarray(weights, float), np.asarray(share, float)[:, None]
-    held = weights[:, own]
-    total = held.sum(1, keepdims=True)
-    first = np.zeros_like(held)
-    first[:, own.index(first_own)] = 1.0
-    held = np.where(total > 1e-9, held / np.maximum(total, 1e-9), first) * share
-    rest = weights.copy()
-    rest[:, own] = 0.0
-    total = rest.sum(1, keepdims=True)
-    first = np.zeros_like(rest)
-    first[:, first_other] = 1.0
-    rest = np.where(total > 1e-9, rest / np.maximum(total, 1e-9), first) * (1.0 - share)
-    rest[:, own] = held
-    return rest
-
-
-def shoulder_weights(label, arm, points, faces, index, weights, column, s):
-    """The rebuilt bodies' shoulders: each arm's bones take a vertex by its share of the arm's turn
-    (arm_shares), in the shares the bone heat gave them among themselves, and the other bones keep
-    the rest in theirs. A vertex of an arm's share without a bone of the arm takes the upper arm,
-    and one without another bone takes the clavicle."""
-    bones = arm.data.bones
-    joint, wrist = np.array(bones["UpperArm_R"].head_local), np.array(bones["Hand_R"].head_local)
-    turned = math.degrees(math.atan2(wrist[0] - joint[0], joint[2] - wrist[2])) - ARM_HANGS
-    armpit_z = float(_ring(label, "Torso", "UpperArms", 1.0)[:, 2].min())
-    in_arm = np.zeros(len(points), bool)
-    for zone in ("UpperArms", "Forearms", "Hands"):
-        in_arm[index[zone]] = True
-    edges = sorted({(a, b) if a < b else (b, a) for face in faces for a, b in zip(face, face[1:] + face[:1])})
-    share = arm_shares(points, edges, in_arm, joint, armpit_z, turned, s)
-    for side, sx in SIDES:
-        own = [i for name, i in column.items() if name.endswith(f"_{side}") and name[:-2] in ARM_BONES]
-        rows = np.where(points[:, 0] * sx > 1e-6)[0]
-        weights[rows] = shared_out(weights[rows], share[rows], own, column[f"UpperArm_{side}"], column[f"Shoulder_{side}"])
-    return weights
-
-
 def _segment_distance(points, a, b):
     ab = b - a
     t = np.clip(((points - a) @ ab) / max(ab @ ab, 1e-12), 0.0, 1.0)
@@ -1057,9 +977,6 @@ def solve_weights(label, arm, skeleton, digit_verts):
 
     weights /= weights.sum(1, keepdims=True)
     weights = shape_weights(label, arm, points, faces, index, weights, allowed, column)
-    if "lmw_shoulder_joint" in bpy.data.objects[label]:
-        weights = shoulder_weights(label, arm, points, faces, index, weights, column,
-                                   float(points[:, 2].max()) / REFERENCE_HEIGHT)
     scale = float(points[:, 2].max()) / REFERENCE_HEIGHT
     weights = hip_weights(points, faces, index, weights, column, arm, scale)
     weights = hinge_weights(points, index, weights, column, arm, scale)
