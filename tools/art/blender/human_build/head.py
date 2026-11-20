@@ -95,10 +95,18 @@ MOUTH_ROWS = ((0.022, 0.027, 0.014, 0.016), (0.054, 0.026, 0.012, 0.014))
 # cage's vertices. They leave the cage with the faces that touch that ring, which the reference
 # tool names, for the ear of the body's own control cage and the skin around it.
 EAR_FACES = (265, 266, 267, 271, 272, 273, 274, 275, 276, 298, 299, 303, 304, 305, 306, 307)
-# The teeth and the tongue behind the lips, at 1.79 m.
-TEETH_BEHIND_LIPS, TEETH_HALF_WIDTH, TEETH_DEPTH, TEETH_THICKNESS = 0.008, 0.024, 0.040, 0.005
-UPPER_TEETH_HEIGHT, LOWER_TEETH_HEIGHT = 0.009, 0.008
-TONGUE_BEHIND_LIPS, TONGUE_BELOW_LIPS, TONGUE_LENGTH, TONGUE_HALF_WIDTH, TONGUE_THICKNESS = 0.014, 0.007, 0.042, 0.016, 0.006
+# The teeth and the tongue behind the lips, at 1.79 m. A row of teeth is a band as thick as
+# TEETH_THICKNESS at the gums and as TEETH_EDGE at its biting edge. The upper row stands right
+# behind the inner lips, its edge UPPER_TEETH_BELOW under the line between the lips, so the teeth
+# show under the upper lip when the mouth opens. The lower row's edge lies LOWER_TEETH_BELOW
+# under the line, just under the lower lip's, and the row LOWER_TEETH_BEHIND inside the upper row
+# all the way around, as the lower teeth bite behind the upper ones without touching them.
+TEETH_BEHIND_LIPS, TEETH_HALF_WIDTH, TEETH_DEPTH, TEETH_THICKNESS, TEETH_EDGE = 0.006, 0.024, 0.040, 0.006, 0.0025
+UPPER_TEETH_HEIGHT, UPPER_TEETH_BELOW = 0.0105, 0.003
+LOWER_TEETH_HEIGHT, LOWER_TEETH_BELOW, LOWER_TEETH_BEHIND = 0.0105, 0.001, 0.0035
+# The tongue fills the lower row of teeth: its rounded tip lies behind the lower front teeth, its
+# top a little under their edges, and its back end before the back of the mouth.
+TONGUE_BEHIND_LIPS, TONGUE_BELOW_LIPS, TONGUE_LENGTH, TONGUE_HALF_WIDTH, TONGUE_THICKNESS = 0.015, 0.007, 0.038, 0.0145, 0.006
 
 
 class Head:
@@ -436,11 +444,13 @@ class Head:
             points, faces, uvs = parts.eyeball(centre, self.eye_radius)
             out.append((f"Eye_{side}", points, faces, uvs))
         front = lips - Y * (TEETH_BEHIND_LIPS * s)
-        points, faces = parts.teeth(front - Z * (0.0015 * s), TEETH_HALF_WIDTH * s, TEETH_DEPTH * s,
-                                    UPPER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, upper=True)
+        points, faces = parts.teeth(front - Z * (UPPER_TEETH_BELOW * s), TEETH_HALF_WIDTH * s, TEETH_DEPTH * s,
+                                    UPPER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, TEETH_EDGE * s, upper=True)
         out.append(("Teeth_Upper", points, faces, None))
-        points, faces = parts.teeth(front - Y * (0.0015 * s) - Z * (0.001 * s), (TEETH_HALF_WIDTH - 0.001) * s,
-                                    (TEETH_DEPTH - 0.001) * s, LOWER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, upper=False)
+        # Inside the upper row as that row's own inner face lies inside its outer one.
+        points, faces = parts.teeth(front - Y * (LOWER_TEETH_BEHIND * s) - Z * (LOWER_TEETH_BELOW * s),
+                                    (TEETH_HALF_WIDTH - LOWER_TEETH_BEHIND) * s, (TEETH_DEPTH - LOWER_TEETH_BEHIND * 0.4) * s,
+                                    LOWER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, TEETH_EDGE * s, upper=False)
         out.append(("Teeth_Lower", points, faces, None))
         tip = lips - Y * (TONGUE_BEHIND_LIPS * s) - Z * (TONGUE_BELOW_LIPS * s)
         points, faces = parts.tongue(tip, TONGUE_LENGTH * s, TONGUE_HALF_WIDTH * s, TONGUE_THICKNESS * s)

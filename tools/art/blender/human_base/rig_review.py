@@ -29,39 +29,6 @@ BONE_COLOURS = {"R": (0.95, 0.30, 0.25), "L": (0.25, 0.55, 0.95), "C": (0.95, 0.
 XRAY = 0.85
 # The hips sheet turns the thigh this far out to the side, in degrees about the thigh bone's Z axis.
 HIP_OUT = 35
-# A key light over the model review's light, without shadows: the studio light alone lights a body
-# painted in flat colours so evenly that its forms, such as the lids, do not show. The light follows
-# the camera, so the body is lit alike from every side: it comes from where the camera stands, from
-# the camera's left, and from above, by these shares, with this strength.
-KEY_LIGHT = ((1.0, 0.45, 0.9), 3.5)
-
-
-def _setup(size):
-    """The model review's scene with the key light."""
-    scene = review.setup(size)
-    key = bpy.data.objects.get("RigKeyLight")
-    if key is None:
-        key = bpy.data.objects.new("RigKeyLight", bpy.data.lights.new("RigKeyLight", "SUN"))
-        scene.collection.objects.link(key)
-    key.data.energy = KEY_LIGHT[1]
-    key.data.use_shadow = False
-    _light(0.0)
-    return scene
-
-
-def _light(yaw):
-    """Turns the key light to a camera at this yaw."""
-    (toward, aside, above), _energy = KEY_LIGHT
-    yaw = math.radians(yaw)
-    way = (Vector((math.sin(yaw), math.cos(yaw), 0.0)) * toward + Vector((math.cos(yaw), -math.sin(yaw), 0.0)) * aside
-           + Vector((0.0, 0.0, above)))
-    bpy.data.objects["RigKeyLight"].rotation_euler = way.normalized().to_track_quat("Z", "Y").to_euler()
-
-
-def _aim(cam, target, yaw, pitch, distance):
-    """Aims the camera as review.aim does, with the key light."""
-    review.aim(cam, target, yaw, pitch, distance)
-    _light(yaw)
 
 
 def _pose(name):
@@ -182,7 +149,7 @@ def _xray(arm, path, overlay, strength=XRAY):
 def shoulders_sheet(arm, out, cam):
     """The shoulders with their bones in the bind pose and with the arms raised, from the front
     and the back."""
-    _setup((440, 440))
+    review.setup((440, 440))
     cam.data.lens = 85
     views = (("rest", 0, 5), ("t_pose", 0, 5), ("arms_up", 0, 5), ("t_pose", 150, 10), ("arms_up", 160, 5),
              ("arms_forward", 60, 5))
@@ -193,7 +160,7 @@ def shoulders_sheet(arm, out, cam):
             poses.apply(arm, _pose(pose))
             overlay = bone_overlay(arm)
             c = _joint(arm, "UpperChest")
-            _aim(cam, Vector((0, c.y, c.z + 0.08)), yaw, pitch, 1.6)
+            review.aim(cam, Vector((0, c.y, c.z + 0.08)), yaw, pitch, 1.6)
             try:
                 return _xray(arm, path, overlay, 0.6)
             finally:
@@ -206,7 +173,7 @@ def shoulders_sheet(arm, out, cam):
 def skeleton(arm, out, cam):
     """The skeleton in the bind pose, seen through the body, and close-ups of the hand, the head,
     the foot and the back socket."""
-    _setup((520, 700))
+    review.setup((520, 700))
     poses.rest(arm)
     overlay = bone_overlay(arm)
     mid = Vector((0, 0, _joint(arm, "Hips").z + 0.05))
@@ -219,7 +186,7 @@ def skeleton(arm, out, cam):
         def draw(path):
             target, yaw, pitch, dist, lens = view
             cam.data.lens = lens
-            _aim(cam, target, yaw, pitch, dist)
+            review.aim(cam, target, yaw, pitch, dist)
             return _xray(arm, path, overlay)
         return draw
 
@@ -231,7 +198,7 @@ def skeleton(arm, out, cam):
 def chains_sheet(arm, out, cam):
     """The cloth chains in the bind pose, seen through the body from four sides and from above the
     hips: the skirt ring hanging to the ankles, the cloak columns down the back, and the hood."""
-    _setup((520, 700))
+    review.setup((520, 700))
     poses.rest(arm)
     overlay = bone_overlay(arm, chains=True)
     mid = Vector((0, 0, _joint(arm, "Hips").z + 0.05))
@@ -242,7 +209,7 @@ def chains_sheet(arm, out, cam):
         def draw(path):
             target, yaw, pitch, dist, lens = view
             cam.data.lens = lens
-            _aim(cam, target, yaw, pitch, dist)
+            review.aim(cam, target, yaw, pitch, dist)
             return _xray(arm, path, overlay)
         return draw
 
@@ -258,7 +225,7 @@ def _shots(arm, cam, views):
         def draw(path):
             pose, bone, t, yaw, pitch, dist, *offset = view
             poses.apply(arm, _pose(pose) if isinstance(pose, str) else pose)
-            _aim(cam, _joint(arm, bone, t) + Vector(offset[0] if offset else (0.0, 0.0, 0.0)), yaw, pitch, dist)
+            review.aim(cam, _joint(arm, bone, t) + Vector(offset[0] if offset else (0.0, 0.0, 0.0)), yaw, pitch, dist)
             return _render(path + ".png")
         return draw
     return [cell(v) for v in views]
@@ -267,7 +234,7 @@ def _shots(arm, cam, views):
 def arms_sheet(arm, out, cam):
     """The right shoulder through its reach, without the bones: the bind pose, the arms raised to
     the side and overhead, an arm hanging at the side, drawn back, and reaching forward."""
-    _setup((560, 560))
+    review.setup((560, 560))
     cam.data.lens = 85
     near, wide = (-0.02, 0.0, 0.02), (-0.07, 0.0, 0.10)
 
@@ -287,7 +254,7 @@ def hips_sheet(arm, out, cam):
     """The right hip through its reach, without the wireframe and with the arms raised out of the
     way: the thigh raised halfway, raised and bent, and out to the side, sitting, and the long
     stride."""
-    _setup((560, 560))
+    review.setup((560, 560))
     cam.data.lens = 85
     groin = (-0.04, 0.0, 0.02)
 
@@ -304,7 +271,7 @@ def hips_sheet(arm, out, cam):
 
 def pose_sheet(arm, out, cam):
     """Every test pose in full figure, from the front and the back three-quarter."""
-    _setup((360, 500))
+    review.setup((360, 500))
     cam.data.lens = 50
     views = []
     for name, _description, _pose_turns in poses.POSES:
@@ -315,7 +282,7 @@ def pose_sheet(arm, out, cam):
 def joints_sheet(arm, out, cam):
     """Close-ups of the armpit, the elbows, the knees, the feet, the trunk and the neck in the test
     poses; the shoulders and the hips have their own sheets."""
-    _setup((520, 520))
+    review.setup((520, 520))
     cam.data.lens = 85
     views = [
         ("rest", "UpperArm_R", 0.0, 60, -5, 0.8), ("elbows", "LowerArm_R", 0.0, 90, 0, 0.75),
@@ -332,7 +299,7 @@ def legs_sheet(arm, out, cam):
     """The hips, knees and elbows bending, with the wireframe and the arms raised out of the way:
     the thigh raised and bent, the knee bent, the leg stretched back, sitting, the long stride, and
     a bent elbow."""
-    _setup((420, 420))
+    review.setup((420, 420))
     cam.data.lens = 85
     wires = []
     for o in [o for o in _shown(arm) if bodies.is_source_body(o) or "zone" in o]:
@@ -364,7 +331,7 @@ def legs_sheet(arm, out, cam):
 
 def hands_sheet(arm, out, cam):
     """The right hand open and closed to a fist, from the back, the palm and the front."""
-    _setup((420, 420))
+    review.setup((420, 420))
     cam.data.lens = 85
     views = []
     for pose in ("rest", "fist"):
@@ -374,10 +341,11 @@ def hands_sheet(arm, out, cam):
 
 
 def face_sheet(arm, out, cam, lids=None):
-    """The jaw opening and the gaze: the eyeballs turn inside the lids. With eyelids, the lids half
-    and fully closed from in front, the closed lids up close from the side, and closed with the jaw
-    open."""
-    _setup((420, 420))
+    """The jaw opening, the gaze, with the eyeballs turning inside the lids, and the head turned,
+    nodded, and leaned back on the neck, where the face must stay on the skull. With eyelids, the
+    lids half and fully closed from in front, the closed lids up close from the side, and closed
+    with the jaw open."""
+    review.setup((420, 420))
     cam.data.lens = 85
     views = []
     for degrees in (0, 6, 12, 18):
@@ -386,6 +354,9 @@ def face_sheet(arm, out, cam, lids=None):
     for gaze in ((("Z", -22),), (("Z", 22),), (("X", 16),), (("X", -12),)):
         turns = tuple((axis, degrees) for axis, degrees in gaze)
         views.append(({"Eye_R": turns, "Eye_L": turns}, "Eyes", 0.0, 0, 0, 0.36))
+    views += [({"Head": (("Y", 40),)}, "Head", 0.2, 0, 0, 0.6), ({"Head": (("Y", 40),)}, "Head", 0.2, 60, 0, 0.6),
+              ({"Head": (("X", 25),)}, "Head", 0.2, 0, 0, 0.6), ({"Head": (("X", -25),)}, "Head", 0.2, 0, 0, 0.6),
+              ({"Head": (("X", -25),)}, "Head", 0.2, 80, 0, 0.6)]
     if lids is not None:
         closed = poses.eyelids(lids)
         views += [(poses.eyelids(lids, 0.5), "Eyes", 0.0, 0, 0, 0.36), (closed, "Eyes", 0.0, 0, 0, 0.36),
@@ -395,8 +366,10 @@ def face_sheet(arm, out, cam, lids=None):
 
 
 # The review file's test animation: every test pose for POSE_FRAMES, with the rest pose between.
+# The characters stand this far left and right of the centre, clear of each other's hands also with
+# the arms straight out.
 POSE_FRAMES = 24
-REVIEW_OFFSET = 0.5
+REVIEW_OFFSET = 1.0
 
 
 def review_file(male_path, female_path, skeleton_path, out):
@@ -449,7 +422,7 @@ def _weight_colours(w):
 
 def weights_sheet(arm, out, cam, lids=None):
     """How much a bone moves the skin, in the bind pose: blue none, yellow half, red all."""
-    _setup((420, 420))
+    review.setup((420, 420))
     views = list(WEIGHT_VIEWS)
     if lids is not None:
         right = next((upper, lower) for eye, upper, lower in lids.eyes if eye.endswith("_R"))
@@ -487,7 +460,7 @@ def weights_sheet(arm, out, cam, lids=None):
         def draw(path):
             bone, target, yaw, pitch, distance = view
             show(bone)
-            _aim(cam, _joint(arm, target), yaw, pitch, distance)
+            review.aim(cam, _joint(arm, target), yaw, pitch, distance)
             return _render(path + ".png")
         return draw
 

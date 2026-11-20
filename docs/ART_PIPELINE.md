@@ -1178,7 +1178,9 @@ one Blender process per step:
    closes the lids by the skeleton's turns: at each place across the eye the
    lids' inner edges lie at most 0.3 mm apart around the eyeball and 0.8 mm
    toward its axis, and no skin of a lid lies more than 0.3 mm inside its
-   eyeball.
+   eyeball. It turns the head 40 degrees, nods it 25, and leans it back 25 on
+   the neck: the skin at the face's landmarks, from the forehead over the eyes'
+   rims and the lips to the chin, moves at most 0.3 mm against the skull.
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
    symmetry, identical topology of both bodies and of every part, at most 15,400
@@ -1199,12 +1201,16 @@ one Blender process per step:
    sheets of the models, such as the faces sheet `Human_Base_faces.png`, and of
    the rigs, such as the cloth chains on `<Asset>_rig_chains.png`, the
    shoulders through their reach on `<Asset>_rig_arms.png`, and the hips
-   through theirs on `<Asset>_rig_hips.png`. The rigs' sheets add a key light
-   without shadows to the models' studio light, so the forms of a body in flat
-   colours show; the light follows the camera, so every side is lit alike. They
-   show the whole body, the mesh a person edits: Blender shades the parts of a
-   posed body with a seam at every cut between two parts, which the game does
-   not show. The face sheet closes the lids of a skeleton with eyelids.
+   through theirs on `<Asset>_rig_hips.png`. All sheets are lit by an even sky
+   and a key light without shadows, so the forms of a body in one colour show;
+   the light follows the camera, so every side is lit alike. The models' sheets
+   stand the two characters 0.8 m to each side of the middle and show one alone
+   in every close-up, and their mouth sheet opens the mouth by the jaw bone, a
+   little, well open from three sides, and wide open. The rigs' sheets show the
+   whole body, the mesh a person edits: Blender shades the parts of a posed body
+   with a seam at every cut between two parts, which the game does not show. The
+   face sheet opens the jaw, turns the eyes, turns, nods, and leans back the
+   head on the neck, and closes the lids of a skeleton with eyelids.
 
 Placing the joints puts every joint where the model has it: the hips from the
 crotch and the leg cut, the spine at fixed shares between the hips and the neck,
@@ -1583,7 +1589,17 @@ What is built:
   and its band, the band around each eye's lids, and each eye's pocket are the
   parts of the net with faces of three corners.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
-  reference's eyeball per eye, a band of teeth per jaw, and a tongue.
+  reference's eyeball per eye, a band of teeth per jaw, and a tongue. A band of
+  teeth is 6 mm thick at the gums and 2.5 mm at its biting edge and 10.5 mm
+  high. The upper row stands right behind the inner lips, 6 mm behind the lips'
+  front, with its edge 3 mm under the line between the lips, so the teeth show
+  under the upper lip when the mouth opens. The lower row's edge lies 1 mm
+  under that line, just under the lower lip's, and the row 3.5 mm inside the
+  upper row all the way around, so the two pass without touching. The tongue
+  fills the lower row: its rounded tip lies behind the lower front teeth and
+  its top a little under their edges, so an open mouth shows the edges of the
+  lower teeth and the tongue, never the inside of the row. Lengths are at
+  1.79 m and follow the body's height.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
   projected: the trunk's front and back, the neck opened down the nape, each arm
   and leg opened along its inner line, each hand as a back and a palm, each foot
@@ -1593,8 +1609,17 @@ What is built:
   `UVMap_Paint` is `UVMap`. The body's islands lie on an image twice as wide as
   high at one texel density, about 1,600 texels per metre at 4096 x 2048, and
   the head's on a square image of its own, the image of `M_Face_<Label>`, at
-  about 4,000 texels per metre at 2048 x 2048. The materials are flat colours
-  until the skin is painted.
+  about 4,000 texels per metre at 2048 x 2048.
+- **Plain skin until it is painted.** `skin.py` makes the images of the skin and
+  the eyes, and the assembly packs them into the file: `T_Body_<Label>` and one
+  `T_Face_<Label>_<Face>` per face the game offers, all in one skin colour, and
+  one `T_Eye_<Label>_<Colour>` per eye colour the game offers, an eyeball seen
+  from in front with an iris of that colour and a pupil. On every face the
+  inside of the mouth, the island `mouth` with the inner lips and the cavity, is
+  red, 4 texels past the island's edge. Each material shows the first of its
+  images, and the others lie in the file as its variants, by the names
+  `content/characters/appearance.json` offers, which a test compares. The teeth
+  and the tongue are flat colours.
 
 Each new file follows the layout of a body file above, at the `model` stage: the
 root `<Label>` is an empty where the armature will be, the body parts are
@@ -1719,11 +1744,28 @@ sheets, and report go to `artifacts/human-base-next`.
   the pocket behind the edge follows the edge. The step reports how much of the
   skeleton's closed turns each lid needs: the male's upper lids 45.9 of 46
   degrees and his lower lids 10.9 of 11, the female's 41.7 and 10.4.
-- **The lips.** The rebuilt bodies' lips meet: the upper lip's vertices on the
-  line between them lie where the lower lip's do. The jaw takes a vertex by its
-  place, and the two lips' vertices at one place take the mean share of their
-  other neighbours, so the upper lip stays with the head and the lower lip opens
-  with the jaw.
+- **The face on the skull.** The face and the skull are rigid on the head: the
+  head's skin follows the neck only near the cut between the two parts, as much
+  as bone heat gave it within 5 mm of the cut and not at all from 35 mm on.
+  Bone heat alone leaves a third of the chin, a quarter of the mouth, and a
+  tenth of the skin around the eyes to the neck. A head that turns or nods on
+  the neck then twists the face, pushes the eyeballs through the lids, and
+  opens the lips, and an opening jaw leaves the lower lip behind the lower
+  teeth.
+- **The mouth.** The jaw opens the mouth to an oval, measured from the middle
+  of the mouth to its corner, the landmark `mouth_corner`. The corner follows
+  the jaw by 0.4, less than half, so the upper lip stays nearly level and the
+  lower lip rounds the opening. The lower lip follows the jaw wholly in the
+  middle and by less toward the corner, and the upper lip not at all in the
+  middle and by more toward the corner, so the two part by `(1 - x * x) ** 0.6`
+  of the opening at `x` of the way to the corner, between an ellipse and two
+  arcs that meet in a point. Above and below the line between the lips the skin
+  passes from the head to the jaw over a band: 0.6 mm in the middle of the
+  mouth, 12 mm more at its corner, so the lips and the cheek round the corner,
+  and 0.6 mm more for every millimetre beyond the corner, so the cheeks
+  stretch. The rebuilt bodies' lips meet: the upper lip's vertices on the line
+  between them lie where the lower lip's do, and each follows its own lip, which
+  the side its other neighbours lie on names.
 
 To rig the rebuilt bodies, write their files with the landmarks first, with the
 commands of [Rebuild The Human Base Characters](#rebuild-the-human-base-characters),
@@ -1785,6 +1827,26 @@ older export of its rig; exporting it again is enough when the rig itself did no
 change. For a library on the `Humanoid` skeleton the sync then reports how far a
 foot on the ground slides in `Idle`, `Walk`, and `Jog` when the game moves the
 body at their speeds, and stops when one slides more than 15 mm.
+
+A rig whose joints moved rests in another pose, and a clip's keys, which turn
+each bone from its rest, would then show another motion. `-Refit` moves every
+clip to the new rig at the sync that replaces the armature: on every frame each
+deforming bone of the new rig turns from its rest as the old rig's bone turns
+from its rest, in world space, the way a clip of
+[another skeleton](#start-a-clip-from-another-skeleton) is moved. The arms and
+the fingers are aligned to the old rest pose, each hand
+takes the old hand's frame, the hips move as far as before for the legs'
+length, and the legs are solved again so each ankle is where it was. A foot
+keeps its turn from the ground, and a bone that deforms nothing, such as a
+socket, keeps its own turn. A clip keys the bones it keyed, now on every frame,
+loops if it looped, and keeps its name; the step reports per clip its lowest
+point and how low the hips sink, before and after. The clips named in
+`-Generate` are not moved: the gait model makes them again on the new rig, with
+strides for its legs. The library as it was is kept in
+`artifacts/animation-libraries/<Name>_before_refit.blend`. A rig that rests as
+before, such as one with new weights only, leaves the clips as they are. No
+clip keys the cloth chains, which the runtime cloth solver moves, or the
+eyelids, which the game closes.
 
 A clip is made by hand in the library file, in the reviewer's Blender, through
 the [Blender MCP server](#set-up-the-blender-mcp-server) or the reviewer's own
@@ -2725,7 +2787,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | --- | --- |
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
-| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, and the eyelids of `Humanoid_Next`. |
+| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid_Next`, and the bones no clip keys. |
 | `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
@@ -2735,10 +2797,11 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
-| `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
+| `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
-| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_skin.py` | The plain skin of the rebuilt bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the

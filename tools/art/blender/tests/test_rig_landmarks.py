@@ -25,7 +25,8 @@ from human_build import landmarks  # noqa: E402
 from human_build.net import Net  # noqa: E402
 
 poses = load("art_pipeline/poses.py", "arm_turn", "eyelids", "REST_ARM_DROP", "ARM_TOLERANCE")
-rig = load("human_base/rig.py", "_lips_apart", numpy=True)
+rig = load("human_base/rig.py", "lip_sides", "mouth_share", "skull_shares", "JAW_CORNER", "JAW_OVAL", "JAW_LIP_BAND",
+           "JAW_CORNER_BAND", "JAW_CHEEK_BAND", "JAW_LIP_REACH", "SKULL_BAND", numpy=True)
 
 
 class LipTests(unittest.TestCase):
@@ -35,24 +36,116 @@ class LipTests(unittest.TestCase):
                        [0.0, 0, 0.01], [0.01, 0, 0.01], [0.0, 0, -0.01], [0.01, 0, -0.01]])
     FACES = [(0, 1, 5, 4), (2, 6, 7, 3)]
 
-    def test_each_lip_at_the_line_where_they_meet_follows_its_own_side(self):
-        # By place the line takes half the jaw's turn; each lip's edge takes its own lip's share.
-        share = np.array([0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 1.0, 1.0])
-        apart = rig._lips_apart(self.POINTS, self.FACES, np.arange(8), share)
-        self.assertEqual(apart.tolist(), [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0])
+    def test_each_lip_at_the_line_where_they_meet_is_named_by_the_side_its_neighbours_lie_on(self):
+        self.assertEqual(rig.lip_sides(self.POINTS, self.FACES, np.arange(8)).tolist(), [1, 1, -1, -1, 0, 0, 0, 0])
 
-    def test_a_body_without_vertices_at_one_place_keeps_its_shares(self):
+    def test_a_body_without_vertices_at_one_place_names_no_lip(self):
         points = self.POINTS[[0, 1, 4, 5, 6, 7]]
-        share = np.array([0.5, 0.4, 0.0, 0.1, 1.0, 0.9])
-        apart = rig._lips_apart(points, [(0, 1, 3, 2), (0, 4, 5, 1)], np.arange(6), share)
-        self.assertEqual(apart.tolist(), share.tolist())
+        self.assertEqual(rig.lip_sides(points, [(0, 1, 3, 2), (0, 4, 5, 1)], np.arange(6)).tolist(), [0] * 6)
 
-    def test_a_row_given_twice_takes_its_share_once(self):
+    def test_a_row_given_twice_is_named_each_time(self):
         # The rows of the head and the neck name the vertices of their cut twice.
-        rows = np.array([0, 1, 2, 3, 4, 5, 6, 7, 4])
-        share = np.array([0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 1.0, 1.0, 0.0])
-        apart = rig._lips_apart(self.POINTS, self.FACES, rows, share)
-        self.assertEqual(apart.tolist(), [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0])
+        rows = np.array([0, 1, 2, 3, 4, 5, 6, 7, 2])
+        self.assertEqual(rig.lip_sides(self.POINTS, self.FACES, rows).tolist(), [1, 1, -1, -1, 0, 0, 0, 0, -1])
+
+
+class MouthShareTests(unittest.TestCase):
+    """How much of the jaw's turn the skin at the mouth takes, for a mouth whose corner lies 25 mm
+    from its middle."""
+    CORNER = 0.025
+
+    def share(self, height, across, lips=None):
+        return float(rig.mouth_share(np.array([height]), np.array([across]), self.CORNER,
+                                     None if lips is None else np.array([lips]))[0])
+
+    def test_in_the_middle_the_lower_lip_follows_the_jaw_and_the_upper_lip_the_head(self):
+        self.assertAlmostEqual(self.share(0.0, 0.0, lips=-1), 1.0)
+        self.assertAlmostEqual(self.share(0.0, 0.0, lips=1), 0.0)
+        self.assertAlmostEqual(self.share(-0.001, 0.0), 1.0)
+        self.assertAlmostEqual(self.share(0.001, 0.0), 0.0)
+
+    def test_the_corner_follows_the_jaw_by_its_share_whichever_lip_names_it(self):
+        for lips in (None, 1, -1):
+            self.assertAlmostEqual(self.share(0.0, self.CORNER, lips), rig.JAW_CORNER)
+        # Less than half, so the upper lip stays nearly level.
+        self.assertTrue(0.0 < rig.JAW_CORNER < 0.5)
+
+    def test_the_lips_part_by_the_height_of_the_oval(self):
+        for across in (0.0, 0.2, 0.5, 0.8, 0.95, 1.0):
+            x = across * self.CORNER
+            oval = (1.0 - across * across) ** rig.JAW_OVAL
+            with self.subTest(across=across):
+                self.assertAlmostEqual(self.share(0.0, x, lips=-1) - self.share(0.0, x, lips=1), oval)
+                # Each lip covers its share of the way to the corner's share.
+                self.assertAlmostEqual(self.share(0.0, x, lips=1), rig.JAW_CORNER * (1.0 - oval))
+                self.assertAlmostEqual(self.share(0.0, x, lips=-1), 1.0 - (1.0 - rig.JAW_CORNER) * (1.0 - oval))
+
+    def test_the_oval_lies_between_an_ellipse_and_two_arcs(self):
+        self.assertTrue(0.5 <= rig.JAW_OVAL <= 1.0)
+
+    def test_a_lip_follows_the_jaw_by_more_toward_the_lower_lips_middle(self):
+        lower = [self.share(0.0, x * self.CORNER, lips=-1) for x in (0.0, 0.3, 0.6, 0.9, 1.0)]
+        upper = [self.share(0.0, x * self.CORNER, lips=1) for x in (0.0, 0.3, 0.6, 0.9, 1.0)]
+        self.assertEqual(lower, sorted(lower, reverse=True))
+        self.assertEqual(upper, sorted(upper))
+
+    def test_a_point_on_the_line_that_names_no_lip_takes_the_mean_of_the_two(self):
+        x = 0.6 * self.CORNER
+        mean = (self.share(0.0, x, lips=1) + self.share(0.0, x, lips=-1)) / 2.0
+        self.assertAlmostEqual(self.share(0.0, x), mean)
+        self.assertAlmostEqual(self.share(0.0, x, lips=0), mean)
+
+    def test_a_named_lip_counts_only_near_the_line(self):
+        # A vertex that shares its place far from the line is skin above or below it like any other.
+        above = rig.JAW_LIP_REACH * 2
+        self.assertAlmostEqual(self.share(above, 0.0, lips=-1), self.share(above, 0.0))
+        self.assertAlmostEqual(self.share(-above, 0.0, lips=1), self.share(-above, 0.0))
+
+    def test_the_skin_passes_from_the_head_to_the_jaw_over_the_band_at_the_corner_and_beyond_it(self):
+        band = rig.JAW_LIP_BAND + rig.JAW_CORNER_BAND
+        self.assertAlmostEqual(self.share(band, self.CORNER), 0.0)
+        self.assertAlmostEqual(self.share(-band, self.CORNER), 1.0)
+        self.assertGreater(self.share(band / 2, self.CORNER), 0.0)
+        self.assertLess(self.share(band / 2, self.CORNER), rig.JAW_CORNER)
+        # Beyond the corner the band is wider, so the cheek stretches over more skin.
+        wide = band + 0.01 * rig.JAW_CHEEK_BAND
+        self.assertAlmostEqual(self.share(wide, self.CORNER + 0.01), 0.0)
+        self.assertGreater(self.share(band, self.CORNER + 0.01), 0.0)
+
+    def test_the_share_falls_steadily_from_below_the_line_to_above_it(self):
+        for across in (0.3, 0.7, 1.0, 1.4):
+            heights = np.linspace(-0.02, 0.02, 81)
+            shares = rig.mouth_share(heights, np.full(81, across * self.CORNER), self.CORNER)
+            with self.subTest(across=across):
+                self.assertTrue((np.diff(shares) <= 1e-12).all())
+                self.assertTrue(((shares >= 0.0) & (shares <= 1.0)).all())
+
+
+class SkullTests(unittest.TestCase):
+    """How much of its weight on the neck the head's skin keeps, by its distance from the cut."""
+    CUT = np.array([[0.0, 0.0, 0.0], [0.02, 0.0, 0.0]])
+    BAND = (0.005, 0.035)
+
+    def keeps(self, *point):
+        return float(rig.skull_shares(np.array([point]), self.CUT, self.BAND)[0])
+
+    def test_the_skin_at_the_cut_keeps_its_weight_and_the_face_keeps_none(self):
+        self.assertAlmostEqual(self.keeps(0.0, 0.0, 0.0), 1.0)
+        self.assertAlmostEqual(self.keeps(0.02, 0.003, 0.004), 1.0)
+        self.assertAlmostEqual(self.keeps(0.0, 0.0, 0.035), 0.0)
+        self.assertAlmostEqual(self.keeps(0.0, 0.08, 0.06), 0.0)
+
+    def test_the_distance_is_to_the_nearest_point_of_the_cut(self):
+        self.assertAlmostEqual(self.keeps(0.02, 0.0, 0.02), self.keeps(0.0, 0.0, 0.02))
+        self.assertAlmostEqual(self.keeps(0.0, 0.0, 0.02), 0.5)
+
+    def test_the_weight_falls_steadily_with_the_distance(self):
+        kept = [self.keeps(0.0, 0.0, z) for z in np.linspace(0.0, 0.05, 26)]
+        self.assertEqual(kept, sorted(kept, reverse=True))
+
+    def test_the_band_ends_well_before_the_chin(self):
+        # The chin lies some 7 cm from the cut under the jaw, the mouth further.
+        self.assertTrue(0.0 < rig.SKULL_BAND[0] < rig.SKULL_BAND[1] <= 0.04)
 
 
 class TraceTests(unittest.TestCase):

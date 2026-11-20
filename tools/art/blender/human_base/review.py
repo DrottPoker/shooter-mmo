@@ -1,4 +1,4 @@
-"""Review sheets of the base characters, lit like Blender's Material Preview (studio HDRI):
+"""Review sheets of the base characters, lit by an even sky and a key light that follows the camera:
 overview, parts, faces, eyes, mouth, hands, feet, seams and wireframe. Each character is an
 armature (Male, Female) whose children are its source body, the body parts written from it,
 eyeballs, teeth and tongue; landmarks are custom properties of the armature. Renders show the body
@@ -10,9 +10,9 @@ import tempfile
 
 import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
-from art_pipeline import bodies
+from art_pipeline import bodies, poses
 
 from . import files
 
@@ -33,8 +33,7 @@ def flat_material(name, srgb, roughness=0.8):
     return mat
 
 
-def setup_scene(size=(800, 800), engine="EEVEE", samples=32, background=(0.42, 0.47, 0.55), hdri=None,
-                hdri_strength=1.0):
+def setup_scene(size=(800, 800), engine="EEVEE", samples=32, background=(0.42, 0.47, 0.55)):
     scene = bpy.context.scene
     if engine == "EEVEE":
         for name in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
@@ -59,16 +58,9 @@ def setup_scene(size=(800, 800), engine="EEVEE", samples=32, background=(0.42, 0
     world = bpy.data.worlds.get("ReviewWorld") or bpy.data.worlds.new("ReviewWorld")
     if world.node_tree is None:
         world.use_nodes = True
-    nodes, links = world.node_tree.nodes, world.node_tree.links
-    bg = next(n for n in nodes if n.type == "BACKGROUND")
-    if hdri:
-        env = nodes.new("ShaderNodeTexEnvironment")
-        env.image = bpy.data.images.load(hdri, check_existing=True)
-        links.new(env.outputs["Color"], bg.inputs["Color"])
-        bg.inputs["Strength"].default_value = hdri_strength
-    else:
-        bg.inputs["Color"].default_value = tuple(srgb_to_linear(c) for c in background) + (1.0,)
-        bg.inputs["Strength"].default_value = 1.0
+    bg = next(n for n in world.node_tree.nodes if n.type == "BACKGROUND")
+    bg.inputs["Color"].default_value = tuple(srgb_to_linear(c) for c in background) + (1.0,)
+    bg.inputs["Strength"].default_value = 1.0
     scene.world = world
     return scene
 
@@ -87,11 +79,18 @@ def add_camera(name="ReviewCamera", lens=50.0, ortho=None):
 
 
 def aim(cam, target, yaw_deg, pitch_deg, distance):
-    """Yaw 0 looks at the front of an asset that faces +Y (camera on +Y); yaw 90 from +X."""
+    """Yaw 0 looks at the front of an asset that faces +Y (camera on +Y); yaw 90 from +X. The key
+    light of setup turns with the camera."""
     yaw, pitch = math.radians(yaw_deg), math.radians(pitch_deg)
     direction = Vector((math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)))
     cam.location = Vector(target) + direction * distance
     cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    key = bpy.data.objects.get(KEY_LIGHT_NAME)
+    if key is not None:
+        (toward, aside, above), _energy = KEY_LIGHT
+        way = (Vector((math.sin(yaw), math.cos(yaw), 0.0)) * toward + Vector((math.cos(yaw), -math.sin(yaw), 0.0)) * aside
+               + Vector((0.0, 0.0, above)))
+        key.rotation_euler = way.normalized().to_track_quat("Z", "Y").to_euler()
 
 
 def wire_overlay(obj, thickness=0.0012, srgb=(0.05, 0.05, 0.06)):
@@ -156,8 +155,16 @@ def render_grid(shots, columns, output):
     return output
 
 
-# The studio light Material Preview uses.
-HDRI = bpy.utils.system_resource("DATAFILES", path="studiolights/world/forest.exr")
+# A key light over the even light of the sky, without shadows: the sky alone lights a body of one
+# colour so evenly that its forms do not show. The light follows the camera, so a body is lit alike
+# from every side: it comes from where the camera stands, from the camera's left, and from above,
+# by these shares, with this strength.
+KEY_LIGHT = ((1.0, 0.45, 0.9), 3.5)
+KEY_LIGHT_NAME = "ReviewKeyLight"
+# The characters stand this far left and right of the centre, clear of each other's hands, and the
+# sheets of the whole figures show both in cells of this size from this far.
+REVIEW_OFFSET = 0.8
+FIGURE_SIZE, FIGURE_DISTANCE = (1050, 700), 4.6
 BODIES = ("Male", "Female")
 PART_COLOURS = {"Head": (0.85, 0.72, 0.62), "Neck": (0.95, 0.85, 0.35), "Torso": (0.85, 0.45, 0.35),
                 "Pelvis": (0.45, 0.55, 0.85), "UpperArms": (0.45, 0.80, 0.45), "Forearms": (0.25, 0.60, 0.40),
@@ -166,15 +173,17 @@ PART_COLOURS = {"Head": (0.85, 0.72, 0.62), "Neck": (0.95, 0.85, 0.35), "Torso":
 
 
 def setup(size):
-    scene = setup_scene(size, samples=48, hdri=HDRI if os.path.exists(HDRI) else None, hdri_strength=1.0)
+    scene = setup_scene(size, samples=48)
     scene.view_settings.view_transform = "Standard"
     scene.render.film_transparent = False
-    # Like Material Preview: no shadow from the sun EEVEE extracts from the HDRI (its shadow map
-    # draws jagged dark patches, for example below the ears).
+    key = bpy.data.objects.get(KEY_LIGHT_NAME)
+    if key is None:
+        key = bpy.data.objects.new(KEY_LIGHT_NAME, bpy.data.lights.new(KEY_LIGHT_NAME, "SUN"))
+        scene.collection.objects.link(key)
+    key.data.energy = KEY_LIGHT[1]
+    key.data.use_shadow = False
+    # Plain backdrop behind the characters (the sky still lights them).
     world = scene.world
-    if hasattr(world, "use_sun_shadow"):
-        world.use_sun_shadow = False
-    # Plain backdrop behind the characters (the HDRI still lights them).
     nt = world.node_tree
     bg = next(n for n in nt.nodes if n.type == "BACKGROUND")
     light_path = nt.nodes.new("ShaderNodeLightPath")
@@ -206,6 +215,24 @@ def extras(body):
 def parts(body):
     """The body parts of a character."""
     return [o for o in bpy.data.objects[body].children if o.type == "MESH" and "zone" in o]
+
+
+def joint(obj, bone):
+    """Where a bone of the character begins, in world space."""
+    return obj.matrix_world @ obj.data.bones[bone].head_local
+
+
+# Whether a render hid each object before show_only hid any.
+_HIDDEN = {}
+
+
+def show_only(body=None):
+    """Has renders show one character alone, so the other does not stand behind it in a close-up,
+    or both again without a name."""
+    for label in BODIES:
+        for o in bpy.data.objects[label].children:
+            hidden = _HIDDEN.setdefault(o.name, o.hide_render)
+            o.hide_render = hidden or (body is not None and label != body)
 
 
 def eye_objects(body):
@@ -250,7 +277,7 @@ def set_texture(mat_name, image_name):
 
 def parts_sheet(out, cam):
     """The body parts in colours (front, three-quarter, side, back)."""
-    setup((700, 1050))
+    setup(FIGURE_SIZE)
     saved = {}
     for body in BODIES:
         for o in parts(body):
@@ -262,16 +289,16 @@ def parts_sheet(out, cam):
                 p.material_index = 0
     shots = []
     for yaw in (0, 35, 90, 180):
-        shots.append(lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, 3.7))
+        shots.append(lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, FIGURE_DISTANCE))
     path = render_grid(shots, 4, out)
     return path, saved
 
 
 def overview(out, cam):
-    setup((700, 1050))
+    setup(FIGURE_SIZE)
     shots = []
     for yaw in (0, 35, 90, 180):
-        shots.append(lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, 3.7))
+        shots.append(lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, FIGURE_DISTANCE))
     return render_grid(shots, 4, out)
 
 
@@ -284,11 +311,13 @@ def faces(out, cam):
         label = body
         for yaw, pitch in ((0, 2), (30, 4), (75, 2)):
             def shot(obj=obj, label=label, face_img=face_img, eye_img=eye_img, yaw=yaw, pitch=pitch):
+                show_only(label)
                 set_texture(f"M_Face_{label}", face_img)
                 set_texture(f"M_Eye_{label}", eye_img)
                 aim(cam, head_target(obj), yaw, pitch, 0.62)
             shots.append(shot)
     path = render_grid(shots, 3, out)
+    show_only()
     for label in BODIES:
         set_texture(f"M_Face_{label}", next(f for b, f, _e in sets if b == label))
         set_texture(f"M_Eye_{label}", next(e for b, _f, e in sets if b == label))
@@ -310,100 +339,36 @@ def eyes(out, cam):
         for yaw, pitch, dist, gaze in ((0, 0, 0.30, (0, 0)), (35, 5, 0.30, (0, 0)), (0, 0, 0.30, (22, 0)),
                                        (0, 0, 0.30, (-22, 0)), (0, 0, 0.30, (0, 16)), (0, 0, 0.30, (0, -12))):
             def shot(body=body, c=c, yaw=yaw, pitch=pitch, dist=dist, gaze=gaze):
+                show_only(body)
                 look(body, *gaze)
                 aim(cam, c, yaw, pitch, dist)
             shots.append(shot)
     path = render_grid(shots, 6, out)
+    show_only()
     for body in BODIES:
         look(body, 0, 0)
     return path
 
 
-def open_jaw(body, angle_deg):
-    """A preview of the jaw opening (no rig yet): the lower lip, chin and jaw turn about a hinge
-    in front of the ears with smooth weights, the lower teeth and tongue with them. Returns a
-    function that restores the meshes."""
-    obj = bpy.data.objects[body]
-    mw, inv = obj.matrix_world, obj.matrix_world.inverted()
-    meshes = [o.data for o in parts(body)]
-    saved = [[v.co.copy() for v in me.vertices] for me in meshes]
-    mouth = Vector(obj["lmw_mouth_centre"][:3])
-    chin = Vector(obj["lmw_chin_bottom"][:3])
-    eye = inv @ eye_centre(body)
-    hinge = Vector((0.0, eye.y - 0.068, mouth.z + 0.028))
-    rot = Matrix.Rotation(-math.radians(angle_deg), 3, "X")  # chin down and back
-
-    def smooth(e0, e1, x):
-        t = min(max((x - e0) / (e1 - e0), 0.0), 1.0)
-        return t * t * (3 - 2 * t)
-
-    # The split between upper and lower face follows the line between the lips, and widens
-    # into a soft band beyond the mouth corners so the cheeks stretch instead of tearing.
-    up = obj["lmw_upper_lip_line"]
-    lo = obj["lmw_lower_lip_line"]
-    line = sorted((abs(up[i]), (up[i + 2] + lo[i + 2]) / 2) for i in range(0, len(up), 3))
-    corner_x = line[-1][0]
-
-    def line_z(ax):
-        if ax >= corner_x:
-            return line[-1][1]
-        for (x0, z0), (x1, z1) in zip(line, line[1:]):
-            if x0 <= ax <= x1:
-                return z0 + (z1 - z0) * (ax - x0) / max(x1 - x0, 1e-9)
-        return line[0][1]
-
-    for v in (v for me in meshes for v in me.vertices):
-        p = v.co
-        zl = line_z(abs(p.x))
-        band = 0.0006 + max(abs(p.x) - corner_x, 0.0) * 0.6
-        w = smooth(zl + band, zl - band, p.z) * smooth(chin.z - 0.045, chin.z - 0.012, p.z)
-        w *= smooth(hinge.y - 0.015, hinge.y + 0.02, p.y)
-        if w > 0:
-            q = hinge + rot @ (p - hinge)
-            v.co = p.lerp(q, w)
-    moved = []
-    for o in extras(body):
-        if "Lower" in o.name or "Tongue" in o.name:
-            moved.append((o, [v.co.copy() for v in o.data.vertices]))
-            for v in o.data.vertices:
-                p = inv @ (o.matrix_world @ v.co)
-                v.co = o.matrix_world.inverted() @ (mw @ (hinge + rot @ (p - hinge)))
-            o.data.update()
-    for me in meshes:
-        me.update()
-
-    def restore():
-        for me, cos in zip(meshes, saved):
-            for v, p in zip(me.vertices, cos):
-                v.co = p
-            me.update()
-        for o, cos in moved:
-            for v, p in zip(o.data.vertices, cos):
-                v.co = p
-            o.data.update()
-    return restore
-
-
 def mouth(out, cam):
-    """The mouth closed, then opened as a jaw would open it (front, three-quarter, low)."""
+    """The mouth closed, then opened by the jaw bone: a little, well open from the front, from
+    three quarters and from below, and wide open."""
     setup((560, 480))
     shots = []
-    state = {"restore": None}
+    views = ((0, 0, 2), (0, 40, 0), (8, 0, 2), (16, 0, 2), (16, 40, 0), (16, 0, -25), (26, 0, 2))
     for body in BODIES:
         obj = bpy.data.objects[body]
         c = landmark(obj, "mouth_centre") + Vector((0.0, -0.01, -0.012))
-        for angle, yaw, pitch in ((0, 0, 2), (0, 40, 0), (16, 0, 2), (16, 40, 0), (16, 0, -25)):
-            def shot(body=body, c=c, angle=angle, yaw=yaw, pitch=pitch):
-                if state["restore"]:
-                    state["restore"]()
-                    state["restore"] = None
-                if angle:
-                    state["restore"] = open_jaw(body, angle)
+        for angle, yaw, pitch in views:
+            def shot(obj=obj, c=c, angle=angle, yaw=yaw, pitch=pitch):
+                show_only(obj.name)
+                poses.apply(obj, {"Jaw": (("X", -angle),)} if angle else {})
                 aim(cam, c, yaw, pitch, 0.26)
             shots.append(shot)
-    path = render_grid(shots, 5, out)
-    if state["restore"]:
-        state["restore"]()
+    path = render_grid(shots, len(views), out)
+    show_only()
+    for body in BODIES:
+        poses.rest(bpy.data.objects[body])
     return path
 
 
@@ -415,8 +380,13 @@ def hands(out, cam):
         tip = landmark(obj, "finger_tips", 2)
         c = (tip + landmark(obj, "wrist")) / 2
         for yaw, pitch in ((80, 10), (10, 15), (150, 10)):
-            shots.append(lambda c=c, yaw=yaw, pitch=pitch: aim(cam, c, yaw, pitch, 0.42))
-    return render_grid(shots, 3, out)
+            def shot(name=name, c=c, yaw=yaw, pitch=pitch):
+                show_only(name)
+                aim(cam, c, yaw, pitch, 0.42)
+            shots.append(shot)
+    path = render_grid(shots, 3, out)
+    show_only()
+    return path
 
 
 def feet(out, cam):
@@ -427,18 +397,23 @@ def feet(out, cam):
         toe = landmark(obj, "toe_tips", 1)
         c = Vector((toe.x - 0.02 * (1 if toe.x > obj.matrix_world.translation.x else -1), toe.y - 0.09, 0.05))
         for yaw, pitch, dist in ((20, 35, 0.5), (90, 5, 0.45), (-40, 15, 0.45)):
-            shots.append(lambda c=c, yaw=yaw, pitch=pitch, dist=dist: aim(cam, c, yaw, pitch, dist))
-    return render_grid(shots, 3, out)
+            def shot(name=name, c=c, yaw=yaw, pitch=pitch, dist=dist):
+                show_only(name)
+                aim(cam, c, yaw, pitch, dist)
+            shots.append(shot)
+    path = render_grid(shots, 3, out)
+    show_only()
+    return path
 
 
 def wire(out, cam):
-    setup((700, 1050))
+    setup(FIGURE_SIZE)
     for name in BODIES:
         for o in parts(name):
             wire_overlay(o, 0.0007)
         for o in extras(name):
             wire_overlay(o, 0.0003)
-    shots = [lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, 3.7) for yaw in (0, 35, 180)]
+    shots = [lambda yaw=yaw: aim(cam, Vector((0, 0, 0.92)), yaw, 3, FIGURE_DISTANCE) for yaw in (0, 35, 180)]
     obj = bpy.data.objects["Male"]
     shots.append(lambda: aim(cam, head_target(obj) + Vector((0, 0, -0.05)), 30, 5, 1.0))
     return render_grid(shots, 4, out)
@@ -450,26 +425,26 @@ def seams(out, cam):
     shots = []
     for name in BODIES:
         obj = bpy.data.objects[name]
-        x0 = obj.matrix_world.translation.x
         head = head_target(obj)
-        wrist = landmark(obj, "wrist")
-        z_knee = 0.50 if name == "Male" else 0.48
         views = [
             (head + Vector((0, -0.02, -0.08)), 100, 0, 0.55),        # neck from the side
             (head + Vector((0.07, -0.03, 0.0)), 70, 10, 0.45),        # temple: face and head textures meet
-            (Vector((x0 + 0.20, 0.0, head.z - 0.30)), 0, 35, 0.55),   # shoulder top and armpit
-            (wrist + (Vector((x0, 0, 1.06)) - wrist) * 0.55 + Vector((0, 0.02, 0)), 20, 5, 0.6),  # elbow, inner arm
-            (wrist, -60, 5, 0.45),                                     # wrist seam
-            (Vector((x0 + 0.12, 0.02, z_knee)), -25, 5, 0.75),        # knee, inner leg seam
+            (joint(obj, "UpperArm_R"), 0, 35, 0.55),                  # shoulder top and armpit
+            (joint(obj, "LowerArm_R"), 20, 5, 0.6),                   # elbow, inner arm
+            (landmark(obj, "wrist"), -60, 5, 0.45),                   # wrist seam
+            (joint(obj, "LowerLeg_R"), -25, 5, 0.75),                 # knee, inner leg seam
         ]
         for c, yaw, pitch, dist in views:
-            shots.append(lambda c=c, yaw=yaw, pitch=pitch, dist=dist: aim(cam, c, yaw, pitch, dist))
-    return render_grid(shots, 6, out)
+            def shot(name=name, c=c, yaw=yaw, pitch=pitch, dist=dist):
+                show_only(name)
+                aim(cam, c, yaw, pitch, dist)
+            shots.append(shot)
+    path = render_grid(shots, 6, out)
+    show_only()
+    return path
 
 
 SHEETS = ("overview", "parts", "faces", "eyes", "mouth", "hands", "feet", "seams", "wire")
-# The characters stand this far left and right of the centre.
-REVIEW_OFFSET = 0.5
 
 
 def review_file(male_path, female_path, out):

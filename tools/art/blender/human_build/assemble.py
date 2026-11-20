@@ -20,6 +20,11 @@ island is turned upright, brought to one texel density, and laid out by hand-wri
 skin of the body on an image twice as wide as high, the head on a square image of its own. No two
 islands share texels and no island is mirrored, so paint can differ between the sides.
 
+The skin and the eyes show images packed into the file (skin.py): plain until the skin is painted,
+the body's and every face in one colour with the inside of the mouth in red, every eye with an iris
+and a pupil. The faces and the eye colours the game offers beside the materials' own lie in the
+file as its variants.
+
 The root carries the rig's landmarks (landmarks.py), and each eyeball's origin lies at its centre,
 which it turns about."""
 
@@ -36,9 +41,9 @@ from mathutils.bvhtree import BVHTree
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from art_pipeline import bodies  # noqa: E402
+from art_pipeline import bodies, paint  # noqa: E402
 from art_pipeline.scene import EXPORT_COLLECTION  # noqa: E402
-from human_build import landmarks  # noqa: E402
+from human_build import head, landmarks, skin  # noqa: E402
 
 LABELS = ("Male", "Female")
 # A triangle with a corner under this many degrees is a sliver, as the body checks count them.
@@ -57,8 +62,10 @@ HEAD_ZONE = bodies.ZONES.index("Head")
 BODY_ASPECT, HEAD_ASPECT = 2.0, 1.0
 # Islands lie this far apart, as a share of the image's height, and this far from its edge.
 GAP = 0.006
-# The flat colours of the materials until the skin is painted, as sRGB, and their roughness.
-MATERIALS = {"Body": ("#C9A084", 0.62), "Face": ("#C9A084", 0.55), "Eye": ("#E9E6E0", 0.12),
+# The materials' roughness, and the flat colour of those that have no image. The skin and the
+# eyes show an image (skin.py), plain until the skin is painted, over white, so a colour may tint
+# them later.
+MATERIALS = {"Body": ("#FFFFFF", 0.62), "Face": ("#FFFFFF", 0.55), "Eye": ("#FFFFFF", 0.12),
              "Teeth": ("#DBD1B8", 0.35), "Tongue": ("#9E4C4F", 0.45)}
 EXTRAS = (("Eye_R", "Eye"), ("Eye_L", "Eye"), ("Teeth_Upper", "Teeth"), ("Teeth_Lower", "Teeth"), ("Tongue", "Tongue"))
 # Which way is up on the image for an island, by the start of its name: the body's height, the
@@ -74,7 +81,23 @@ def _linear(hex_colour):
     return (*out, 1.0)
 
 
+def _images(label, mouth):
+    """The body's skin images, packed into the file, with the inside of the mouth, its faces as
+    polygons on the face's image, in its own colour. Those no material shows are its variants,
+    which stay in the file for the export."""
+    made = {}
+    for name, pixels in skin.images(label, mouth).items():
+        height, width = pixels.shape[:2]
+        image = bpy.data.images.new(name, width, height, alpha=False)
+        paint.store(image, pixels)
+        image.use_fake_user = True
+        made[name] = image
+    return made
+
+
 def _material(part, label):
+    """A material of the body. One that shows an image has the node for it, which takes its image
+    when the UV map is laid out."""
     colour, roughness = MATERIALS[part]
     material = bpy.data.materials.new(f"M_{part}_{label}")
     material.use_nodes = True
@@ -82,6 +105,10 @@ def _material(part, label):
     bsdf.inputs["Base Color"].default_value = _linear(colour)
     bsdf.inputs["Roughness"].default_value = roughness
     bsdf.inputs["Metallic"].default_value = 0.0
+    if skin.own_image(part, label) is not None:
+        node = material.node_tree.nodes.new("ShaderNodeTexImage")
+        node.location = (bsdf.location[0] - 320, bsdf.location[1])
+        material.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
     return material
 
 
@@ -396,6 +423,19 @@ def write(label, net, faces, work, out_path):
     collections[bodies.SOURCE_COLLECTION].objects.link(body)
     body.parent = root
     scales = unwrap(body, points, faces, islands, head_islands)
+
+    # The images, now that the map says where the inside of the mouth lies on the face's.
+    uv = np.empty(len(mesh.loops) * 2)
+    mesh.uv_layers[bodies.SKIN_UV].data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    mouth = [uv[p.loop_start:p.loop_start + p.loop_total] for p, island in zip(mesh.polygons, islands) if island == head.MOUTH]
+    if not mouth:
+        raise RuntimeError(f"the body has no island {head.MOUTH} for the inside of the mouth")
+    images = _images(label, mouth)
+    for part, material in materials.items():
+        own = skin.own_image(part, label)
+        if own is not None:
+            next(n for n in material.node_tree.nodes if n.type == "TEX_IMAGE").image = images[own]
 
     # The body parts, as the pipeline writes them from the editable body.
     normals = bodies.corner_normals(mesh)

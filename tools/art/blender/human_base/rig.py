@@ -945,13 +945,72 @@ def _segment_distance(points, a, b):
     return np.linalg.norm(points - (a + t[:, None] * ab), axis=1)
 
 
-def _jaw_share(label, points):
-    """How much of the head each point gives to the jaw: below the line between the lips (with a
-    soft band beyond the mouth corners so the cheeks stretch), above the throat, and in front of
-    the hinge. The same rule as the model review's mouth preview."""
+# The face and the skull are rigid on the head: the head's skin follows the neck only near the cut
+# between the two parts, as much as bone heat gave it within the first length of SKULL_BAND from
+# the cut and not at all from the second on, at 1.79 m. Bone heat alone leaves a third of the chin
+# and a quarter of the mouth to the neck: a turn of the head then twists the face and slides the
+# lids over the eyeballs, and an opening jaw leaves the lower lip behind the lower teeth.
+SKULL_BAND = (0.005, 0.035)
+# The jaw opens the mouth to an oval. The corner of the mouth follows the jaw by JAW_CORNER, less
+# than half, so the upper lip stays nearly level and the lower lip rounds the opening. The lower
+# lip follows the jaw wholly in the middle and by less toward the corner, and the upper lip not
+# at all in the middle and by more toward the corner, so the two part by the height of an oval:
+# (1 - x * x) ** JAW_OVAL of the opening at x of the way from the middle to the corner, an ellipse
+# at 0.5 and two arcs that meet in a point at 1. The skin above and below the line between the
+# lips passes from the head to the jaw over a band: JAW_LIP_BAND in the middle of the mouth,
+# JAW_CORNER_BAND more at its corner, so the lips and the cheek round the corner, and
+# JAW_CHEEK_BAND more for every metre beyond the corner, so the cheeks stretch. A point within
+# JAW_ON_LINE of the line lies on it. Two lips that meet share their vertices' places on the line:
+# within JAW_LIP_REACH of it, each such vertex follows its own lip.
+JAW_CORNER, JAW_OVAL = 0.4, 0.6
+JAW_LIP_BAND, JAW_CORNER_BAND, JAW_CHEEK_BAND = 0.0006, 0.012, 0.6
+JAW_ON_LINE, JAW_LIP_REACH = 1e-5, 0.002
+
+
+def skull_shares(points, cut, band):
+    """How much of its weight on the neck each of the head's points keeps: all of it within
+    band[0] of the nearest point of the cut between the head and the neck, and none of it from
+    band[1] on."""
+    points, cut = np.asarray(points, float), np.asarray(cut, float)
+    distance = np.min(np.linalg.norm(points[:, None, :] - cut[None, :, :], axis=2), axis=1)
+    t = np.clip((distance - band[0]) / (band[1] - band[0]), 0.0, 1.0)
+    return 1.0 - t * t * (3.0 - 2.0 * t)
+
+
+def mouth_share(height, across, corner, lips=None):
+    """How much of the jaw's turn the skin at the mouth takes, before the chin and the hinge limit
+    it: height is how far a point lies above the line between the lips, across how far it lies
+    from the middle of the mouth, and corner how far the mouth's corner does. lips, where it is
+    given, says of a point on the line which lip it belongs to: 1 the upper, -1 the lower, and 0
+    neither."""
+    height, across = np.asarray(height, float), np.asarray(across, float)
+    oval = np.clip(1.0 - (across / corner) ** 2, 0.0, 1.0) ** JAW_OVAL
+    band = JAW_LIP_BAND + (1.0 - oval) * JAW_CORNER_BAND + np.maximum(across - corner, 0.0) * JAW_CHEEK_BAND
+    t = np.clip((band - height) / (2.0 * band), 0.0, 1.0)
+    # From 0 above the band over a half on the line to 1 below the band.
+    passing = t * t * (3.0 - 2.0 * t)
+    # On the line the upper lip takes JAW_CORNER less its share of the oval and the lower lip
+    # JAW_CORNER and its share of the rest; above and below, the skin passes on to 0 and to 1.
+    upper = 2.0 * JAW_CORNER * (1.0 - oval) * passing
+    lower = 1.0 - 2.0 * (1.0 - JAW_CORNER) * (1.0 - oval) * (1.0 - passing)
+    side = np.where(np.abs(height) <= JAW_ON_LINE, 0.0, np.sign(height))
+    if lips is not None:
+        lips = np.asarray(lips, float)
+        side = np.where((lips != 0.0) & (np.abs(height) <= JAW_LIP_REACH), lips, side)
+    return np.where(side > 0.0, upper, np.where(side < 0.0, lower, (upper + lower) / 2.0))
+
+
+def _jaw_share(label, points, lips=None):
+    """How much of the head each point gives to the jaw: the mouth's share of it (mouth_share),
+    above the throat, and in front of the hinge. lips names the lip of the points that share a
+    place on the line between the lips."""
     root = bpy.data.objects[label]
     up, lo = root["lmw_upper_lip_line"], root["lmw_lower_lip_line"]
     line = sorted((abs(up[i]), (up[i + 2] + lo[i + 2]) / 2) for i in range(0, len(up), 3))
+    # The line of the landmarks may end before the mouth's corner, which has a landmark of its own.
+    corner = root.get("lmw_mouth_corner")
+    if corner is not None and abs(corner[0]) > line[-1][0]:
+        line.append((abs(corner[0]), corner[2]))
     xs = np.array([x for x, _z in line])
     zs = np.array([z for _x, z in line])
     corner_x = xs[-1]
@@ -964,36 +1023,30 @@ def _jaw_share(label, points):
 
     ax = np.abs(points[:, 0])
     line_z = np.interp(np.minimum(ax, corner_x), xs, zs)
-    band = 0.0006 + np.maximum(ax - corner_x, 0.0) * 0.6
-    return (smooth(line_z + band, line_z - band, points[:, 2]) * smooth(chin_z - 0.045, chin_z - 0.012, points[:, 2])
+    return (mouth_share(points[:, 2] - line_z, ax, corner_x, lips) * smooth(chin_z - 0.045, chin_z - 0.012, points[:, 2])
             * smooth(hinge_y - 0.015, hinge_y + 0.02, points[:, 1]))
 
 
-def _lips_apart(points, faces, rows, share):
-    """The jaw's shares of the whole body's vertices of the given rows, where two vertices at one
-    place, such as the rebuilt bodies' lips where they meet, take the mean share of their other
-    neighbours: a place gives both lips the share of the line between them, and each lip follows
-    its own side instead, the upper lip the head and the lower lip the jaw."""
+def lip_sides(points, faces, rows):
+    """The lip of each of the whole body's vertices of the given rows that shares its place with
+    another, as the rebuilt bodies' lips do where they meet: 1 for the upper lip, whose other
+    neighbours lie above it, -1 for the lower lip, whose lie below it, and 0 for every vertex
+    that has its place to itself."""
     places = {}
     for v in np.unique(rows):
         places.setdefault(_key(points[v]), []).append(int(v))
     doubled = {v for found in places.values() if len(found) > 1 for v in found}
-    if not doubled:
-        return share
-    value = {}
-    for v, s in zip(rows, share):
-        value.setdefault(int(v), float(s))
     beside = {v: set() for v in doubled}
     for face in faces:
         for i, v in enumerate(face):
             if v in beside:
                 beside[v].update((face[i - 1], face[(i + 1) % len(face)]))
-    fixed = {}
+    side = {}
     for v in doubled:
-        others = [value[w] for w in beside[v] if w in value and w not in doubled]
+        others = [points[w][2] for w in beside[v] if w not in doubled]
         if others:
-            fixed[v] = float(np.mean(others))
-    return np.array([fixed.get(int(v), s) for v, s in zip(rows, share)])
+            side[v] = 1 if float(np.mean(others)) > points[v][2] else -1
+    return np.array([side.get(int(v), 0) for v in rows])
 
 
 def solve_weights(label, arm, skeleton, digit_verts):
@@ -1069,8 +1122,15 @@ def solve_weights(label, arm, skeleton, digit_verts):
     else:
         weights = hip_weights(points, faces, index, weights, column, arm, scale)
     weights = hinge_weights(points, index, weights, column, arm, scale)
+    # The face stays on the head: what bone heat gave the neck beyond the cut goes to the head.
+    skull = index["Head"]
+    cut = np.intersect1d(skull, index["Neck"])
+    kept = skull_shares(points[skull], points[cut], (SKULL_BAND[0] * scale, SKULL_BAND[1] * scale))
+    freed = weights[skull, column["Neck"]] * (1.0 - kept)
+    weights[skull, column["Neck"]] -= freed
+    weights[skull, column["Head"]] += freed
     head_idx = np.concatenate([index["Head"], index["Neck"]])
-    share = _lips_apart(points, faces, head_idx, _jaw_share(label, points[head_idx]))
+    share = _jaw_share(label, points[head_idx], lip_sides(points, faces, head_idx))
     share = share * weights[head_idx, column["Head"]]
     weights[head_idx, column["Jaw"]] += share
     weights[head_idx, column["Head"]] -= share

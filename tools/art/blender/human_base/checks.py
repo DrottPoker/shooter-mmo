@@ -56,6 +56,13 @@ HEEL_BEHIND = 0.045
 LID_SLIT = 0.0003
 LID_STEP = 0.0008
 LID_DEPTH = 0.0003
+# The face is rigid on the head: with the head turned, nodded, and leaned back on the neck by
+# FACE_TURNS, the skin at the face's landmarks moves at most FACE_SLIP against the skull, in
+# metres. Skin that follows the neck there slides the lids over the eyeballs and parts the lips.
+FACE_TURNS = ((("Y", 40),), (("X", 25),), (("X", -25),))
+FACE_SLIP = 0.0003
+FACE_LANDMARKS = ("forehead", "sellion", "eye_rim", "nose_tip", "subnasale", "upper_lip_line", "lower_lip_line",
+                  "mouth_corner", "chin_front")
 
 
 # ------------------------------------------------------------------------------------- mesh
@@ -414,7 +421,45 @@ def rig(model_path, rigged_path, label, skeleton_path):
         found, broken = _lids_closed(label, skeleton.eyelids)
         lines += found
         failures += broken
+    slip = _face_on_skull(label)
+    lines.append(f"{label}: with the head turned and nodded on the neck, the face moves at most {slip * 1000:.2f} mm "
+                 "against the skull")
+    if slip > FACE_SLIP:
+        failures.append(f"{label}: the face moves {slip * 1000:.2f} mm against the skull when the head turns on the neck "
+                        f"(at most {FACE_SLIP * 1000:.1f}): its skin follows the neck")
     return lines, failures
+
+
+def _face_on_skull(label):
+    """Turns, nods, and leans back the head of a rigged character on its neck and measures how far
+    the skin at the face's landmarks moves against the skull, which the head bone carries."""
+    from art_pipeline import poses
+
+    arm = bpy.data.objects[label]
+    body = bodies.source_body(label)
+    rest = bodies.world_positions(body)
+    world = np.array(arm.matrix_world)
+    marks = np.array([point for key in FACE_LANDMARKS if f"lmw_{key}" in arm
+                      for point in np.array(arm[f"lmw_{key}"], float).reshape(-1, 3)])
+    marks = marks @ world[:3, :3].T + world[:3, 3]
+    rows = np.unique([int(np.argmin(np.linalg.norm(rest - mark, axis=1))) for mark in marks])
+    head = arm.pose.bones["Head"]
+    worst = 0.0
+    try:
+        for turns in FACE_TURNS:
+            poses.apply(arm, {"Head": turns})
+            evaluated = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            me = evaluated.to_mesh()
+            try:
+                posed = np.array([tuple(body.matrix_world @ me.vertices[int(v)].co) for v in rows])
+            finally:
+                evaluated.to_mesh_clear()
+            skull = np.array(arm.matrix_world @ head.matrix @ head.bone.matrix_local.inverted() @ arm.matrix_world.inverted())
+            carried = rest[rows] @ skull[:3, :3].T + skull[:3, 3]
+            worst = max(worst, float(np.linalg.norm(posed - carried, axis=1).max()))
+    finally:
+        poses.rest(arm)
+    return worst
 
 
 def _lids_closed(label, lids):
