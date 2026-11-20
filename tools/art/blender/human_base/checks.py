@@ -527,10 +527,31 @@ def _lids_closed(label, lids):
 
 # ------------------------------------------------------------------------------------ clips
 
+def _grip(arm):
+    """How the fingers of the library's hand pose Grip lie around the handle on its body's hand."""
+    from bpy_extras import anim_utils
+    from mathutils import Quaternion
+
+    from . import grip
+
+    action = bpy.data.actions.get(grip.CLIP)
+    if action is None or not action.slots:
+        return [], []
+    turned = {}
+    for fc in anim_utils.action_get_channelbag_for_slot(action, action.slots[0]).fcurves:
+        bone = fc.data_path.split('"')[1]
+        if fc.data_path.endswith("rotation_quaternion") and bone.endswith("_R"):
+            turned.setdefault(bone[:-2], [1.0, 0.0, 0.0, 0.0])[fc.array_index] = fc.evaluate(0.0)
+    turns = {bone: np.array(Quaternion(q).normalized().to_matrix()) for bone, q in turned.items()}
+    measured = grip.measure(grip.read_hand(arm), turns)
+    return grip.report(measured), grip.problems(measured)
+
+
 def clips(path, label):
     """Checks that a foot on the ground keeps its place in the Idle, Walk and Jog clips of an
-    animation library on the armature label, when the character moves at the clip's speed. The art
-    pipeline checks the rules of every clip at its approval."""
+    animation library on the armature label, when the character moves at the clip's speed, and
+    that the fingers of its hand pose Grip lie on the handle and not in it. The art pipeline checks
+    the rules of every clip at its approval."""
     from mathutils import Vector
 
     from . import animate
@@ -538,6 +559,9 @@ def clips(path, label):
     bpy.ops.wm.open_mainfile(filepath=path)
     lines, failures = [], []
     arm = bpy.data.objects[label]
+    found, broken = _grip(arm)
+    lines += found
+    failures += broken
     scene = bpy.context.scene
     arm.animation_data_create()
     heels, ground = {}, {}

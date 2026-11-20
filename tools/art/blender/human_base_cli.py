@@ -17,7 +17,7 @@ Steps:
     review <review.blend> <output dir> <prefix>
     review-rig <asset.blend> <Male|Female> <skeleton.json> <output dir> <prefix>
     rig-review-file <male.blend> <female.blend> <skeleton.json> <review.blend>
-    generate-clips <library.blend> <armature> <Idle,Walk,Jog> <skeleton.json>
+    generate-clips <library.blend> <armature> <Idle,Walk,Jog,Grip> <skeleton.json>
     check-clips <library.blend> <armature>
     import-clip <library.blend> <armature> <source file> <map.json> <Clip+Clip> <Name> <-|L|R|LR> <skeleton.json>
     refit-clips <library.blend> <armature> <library before.blend> <skeleton.json> <Clip,Clip|->

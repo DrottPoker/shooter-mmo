@@ -416,12 +416,15 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
 
 
 def generate(path, label, names, skeleton_path):
-    """Adds the named clips of the gait model (Idle, Walk, Jog) to an animation library on its
-    armature label, as starting points to edit by hand, and saves it. A clip the library already
-    has is kept as it is, so handmade keys are never replaced."""
-    unknown = [name for name in names if name not in CLIPS]
+    """Adds the named clips of the gait model (Idle, Walk, Jog) and the hand pose Grip, fitted to
+    the hand of the library's body, to an animation library on its armature label, as starting
+    points to edit by hand, and saves it. A clip the library already has is kept as it is, so
+    handmade keys are never replaced."""
+    from . import grip
+
+    unknown = [name for name in names if name not in CLIPS and name != grip.CLIP]
     if unknown:
-        raise RuntimeError(f"The gait model makes the clips {list(CLIPS)}, not {unknown}.")
+        raise RuntimeError(f"The gait model makes the clips {list(CLIPS)} and the hand pose {grip.CLIP}, not {unknown}.")
     from art_pipeline import skeleton as skeleton_definition
 
     skip = frozenset(skeleton_definition.load(skeleton_path).unkeyed_bones)
@@ -437,7 +440,19 @@ def generate(path, label, names, skeleton_path):
         if name in bpy.data.actions:
             print(f"KEPT {name}: the library has the clip already")
             continue
-        if name == "Idle":
+        if name == grip.CLIP:
+            hand = grip.read_hand(arm)
+            angles, across = grip.fit(hand)
+            measured = grip.measure(hand, grip.finger_turns(angles, across))
+            for line in grip.report(measured, angles, across):
+                print(f"HUMAN_BASE_REPORT {line}")
+            faults = grip.problems(measured)
+            if faults:
+                raise RuntimeError("; ".join(faults))
+            # A hand pose keys the fingers only, so it plays over any other clip.
+            others = frozenset(b.name for b in arm.data.bones if b.name not in grip.keyed_bones())
+            bake(arm, name, 1, lambda f, angles=angles, across=across: grip.frame(angles, across), others | skip)
+        elif name == "Idle":
             bake(arm, name, IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f), skip)
         else:
             gait = WALK if name == "Walk" else JOG

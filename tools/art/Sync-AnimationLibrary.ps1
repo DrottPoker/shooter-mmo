@@ -6,10 +6,11 @@
 # so the file changes and needs a new review and approval. -Refit also moves every clip from the
 # rest pose of the old rig to the new rig's, for a rig whose joints moved, so the clips look as
 # they did, and keeps the library as it was below artifacts/animation-libraries. -Generate adds
-# clips of the human gait model that the library lacks, as starting points to edit by hand, and
-# never replaces a clip; with -Refit the gait model makes the clips it names again on the new rig.
-# A library on the Humanoid skeleton then gets a report of how far a foot on the ground slides in
-# its Idle, Walk, and Jog clips. See docs/ART_PIPELINE.md.
+# clips of the human gait model, and the hand pose Grip fitted to the body's hand, that the library
+# lacks, as starting points to edit by hand, and never replaces a clip; with -Refit they are made
+# again on the new rig. A library on the Humanoid skeleton then gets a report of how far a foot on
+# the ground slides in its Idle, Walk, and Jog clips and of how its Grip lies on the handle. See
+# docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -18,7 +19,8 @@ param(
     # Moves every clip to the new rig's rest pose when the sync replaces the armature. The clips
     # named in -Generate are made again by the gait model instead.
     [switch]$Refit,
-    # Clips of the gait model to add when the library lacks them: Idle, Walk, Jog.
+    # Clips of the gait model to add when the library lacks them, Idle, Walk, and Jog, and the hand
+    # pose Grip, fitted to the hand of the library's body.
     [string[]]$Generate = @(),
     [string]$BlenderPath
 )
@@ -132,6 +134,10 @@ else {
         $stepOutput = Invoke-HumanBaseLibraryStep @("generate-clips", $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","), $manifest.SkeletonPath)
         foreach ($line in @($stepOutput | Where-Object { $_ -like "KEPT *" })) {
             Write-Host $line.Substring("KEPT ".Length)
+        }
+
+        foreach ($line in @($stepOutput | Where-Object { $_ -like "HUMAN_BASE_REPORT *" })) {
+            Write-Host $line.Substring("HUMAN_BASE_REPORT ".Length)
         }
 
         $generated = @($Generate | Where-Object { $manifest.Clips -cnotcontains $_ })

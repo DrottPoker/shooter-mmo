@@ -1852,7 +1852,8 @@ A clip is made by hand in the library file, in the reviewer's Blender, through
 the [Blender MCP server](#set-up-the-blender-mcp-server) or the reviewer's own
 keys: key poses on `Humanoid`, smoothed by Blender's curves, as
 [Make A Clip](#make-a-clip) describes. A locomotion clip may start from the gait
-model instead: `Sync-AnimationLibrary.ps1 -Generate Walk` adds the model's
+model instead, and the hand pose `Grip` from the fit above:
+`Sync-AnimationLibrary.ps1 -Generate Walk` adds the model's
 `Walk` when the library lacks it, and the same for `Idle` and `Jog`, and never
 replaces a clip the library has.
 
@@ -1872,9 +1873,33 @@ speeds match the model's.
 A clip may key only some bones: `Grip` keys only the fingers and thumbs of both
 hands, closed around a handle of 29 mm on each hand's socket, and the game plays
 it over the other clips on the fingers of a hand that holds an
-[attachment](#attachments). Its finger angles were fitted so that every segment
-of every finger touches that handle without going into it, the distal joint bent
-by a share of the middle one, as a hand closes. A clip may also come from a
+[attachment](#attachments). `Sync-AnimationLibrary.ps1 -Generate Grip` fits it
+to the hand of the body the library shows, with
+`tools/art/blender/human_base/grip.py`:
+
+- The fingers of a hand at rest are spread and each turned a little about
+  itself. Every finger first turns at its knuckle, to the side and about itself,
+  until the axis it closes about lies along the handle, so it closes in a plane
+  across the handle, beside its neighbours.
+- A finger closes joint by joint from its knuckle outward: each joint turns
+  until the pad of its segment touches the handle, or as near to it as it
+  comes. A pad is the skin along the middle of the outer half of a segment's
+  palm side: the handle lies in the palm at the fingers' roots and presses into
+  the skin there.
+- The fingers beside the middle finger, and then the little finger beside the
+  ring finger, turn to the side until each lies against its neighbour, by at
+  most 20 degrees from where it closes across the handle, and the fingers close
+  again.
+- The thumb closes over the handle and the fingers: its base turns toward the
+  palm and to the side and its outer joints close until the pads of its two
+  outer segments lie on them and not in them.
+
+Both hands take the right hand's pose, mirrored. The step reports each joint's
+turn and how far each pad lies from the handle, and it stops when a pad lies more
+than 2 mm inside the handle or 4 mm off it, when two neighbouring fingers lie
+more than 3 mm apart or overlap by more than 2 mm, or when the thumb lies more
+than 1 mm inside the handle or a finger. Every later sync measures the library's
+`Grip` on its body's hand by the same rules. A clip may also come from a
 script that places every key on purpose: the tools' `Mine` and `Chop` follow the
 tool's grip frame through a swing in a plane, with both hands reaching its haft
 by analytic two-bone IK, and the weapons' hold and attack clips are keyed with
@@ -2802,6 +2827,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
 | `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the rebuilt bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
+| `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
 | `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
