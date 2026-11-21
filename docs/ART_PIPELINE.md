@@ -2186,14 +2186,16 @@ ways:
   the body's cage version as `Cage_<Label>`, and the export records the cage's
   file.
 
-The cage keeps the paint's place along the bones: an armband that a woman gets
-from a man's canvas through the cage lies at 0.42 to 0.61 of the way from the
-shoulder to the elbow, as on the man, where the shared topology puts it at 0.47
-to 0.65. Where one body has a form the other lacks, the cage spans it and the
-paint stretches: the rune emblem on the man's upper breastbone comes out 94 mm
-wide on the woman instead of 72, since her cleavage has no counterpart on the
-man. `tools/art/Test-PaintProjection.ps1` checks this move on subdivided copies
-of the bodies, another topology of the same surfaces: the canvas's own body must
+The cage keeps the paint's place along the bones: an armband that the woman
+would get from the man's canvas through the cage, as a body of another topology
+does, lies at 0.41 to 0.61 of the way from the shoulder to the elbow, where the
+man has it at 0.43 to 0.61 and the shared topology puts it on her at 0.42 to
+0.61. Where one body has a form the other lacks, the cage spans it and the paint
+stretches: the rune emblem, 91 mm wide on the man's upper breastbone, would come
+out 94 mm wide on the woman through the cage instead of the 73 mm that the shared
+topology gives her, since her cleavage has no counterpart on the man.
+`tools/art/Test-PaintProjection.ps1` checks this move on subdivided copies of
+the bodies, another topology of the same surfaces: the canvas's own body must
 take the paint within 0.5 mm (median) and 1 mm (95%) of its place, and for the
 other bodies the script reports how far the cage places the paint from where
 their shared topology does, or, for a body of another topology than the canvas,
@@ -2315,11 +2317,12 @@ describes.
    .\tools\art\Test-PaintProjection.ps1 -Asset art/Paint/Tattoo
    ```
 
-   Expected result: about `Male: through the cage 0.05 mm (median) and 0.48 mm
-   (95%) from the exact move ...` and `Female: through the cage 6.46 mm
-   (median) ...`, without an error: the canvas's own body takes the paint within
-   a millimeter of its place, and the woman shows how far the cage and the
-   landmarks place the paint from where the shared topology does.
+   Expected result: about `Male: through the cage 0.02 mm (median) and 0.23 mm
+   (95%) from the exact move ...` and `Female: through the cage 4.89 mm
+   (median) and 26.89 mm (95%) ...`, without an error: the canvas's own body
+   takes the paint within a millimeter of its place, and the woman shows how
+   far the cage and the landmarks place the paint from where the shared
+   topology does.
 5. To paint a layer on another body from then on, such as a new base model that
    joined its `bodies`, move its canvas there, review the paint on it, and touch
    it up on the canvas:
@@ -3705,7 +3708,7 @@ passes.
 | `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
 | `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,360 triangles per body. |
 | `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and stays stiff: the fitting's smooth field bends a thin bar that stands off the face, so the female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage. |
-| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,872 triangles per body, 384 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
+| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,872 triangles per body, 320 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,436 triangles per body, with seams along the inside of the legs. |

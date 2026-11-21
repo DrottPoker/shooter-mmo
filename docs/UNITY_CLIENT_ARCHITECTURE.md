@@ -2924,8 +2924,9 @@ again. The grace time covers the measured cases: a crowd that leaves goes in one
 or two frames, and the crowd measurement reads the memory 5 s after the last
 body left. The context's meshes keep no copy of their data once uploaded
 (`Mesh.UploadMeshData(true)`), since nothing reads them back: a combined mesh of
-6844 vertices and 9 submeshes keeps 717 KB on the CPU while it is readable, the
-same again on the GPU, and only the GPU's once it is not. The Editor keeps the
+8901 vertices and 9 submeshes, the man in a shirt, trousers, boots, and hair,
+keeps 852 KB of vertex and index data on the CPU while it is readable, the same
+again on the GPU, and only the GPU's once it is not. The Editor keeps the
 CPU copy of every mesh, so only a player shows the saving. A corpse bake reads
 its combined mesh back with `SkinnedMeshRenderer.BakeMesh`, so the context gives
 `PlayerCorpseBodies` a readable set of its own, whose meshes go by the same

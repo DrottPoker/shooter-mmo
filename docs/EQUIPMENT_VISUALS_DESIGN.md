@@ -939,41 +939,44 @@ how far the frame of a jump moves the chains:
 
 | Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
 | --- | --- | --- | --- | --- | --- | --- |
-| Idle | none | none | none | 17 m/s³ | never | |
-| Walk | 27 vertices, 23 mm | 6 mm | none | 2,375 m/s³ | never | |
-| Jog | 45, 62 mm | 18 mm | 2, 8 mm | 7,188 m/s³ | never | |
-| Zig-zag | 51, 56 mm | 18 mm | 6, 23 mm | 7,274 m/s³ | never | |
-| Network 15 Hz | 49, 63 mm | 16 mm | 6, 34 mm | 7,308 m/s³ | never | |
-| Turn 180 | 45, 58 mm | 18 mm | 10, 119 mm | 7,134 m/s³ | never | |
-| Spin 720 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
-| Spin 1440 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
-| Spin 2880 | none | none | 3, 8 mm | 17 m/s³ | never | flares 17.7 cm, settles in 0.6 s |
-| Jog stop jog | 45, 58 mm | 18 mm | 2, 4 mm | 5,959 m/s³ | never | settles in 0.6 s |
-| Death | 122, 98 mm | 98 mm | 6, 12 mm | 21,804 m/s³ | 9 frames | |
-| Teleport, snap 3 m | 48, 62 mm | 18 mm | 2, 52 mm | 7,192 m/s³ | never | the jump moves the chains 57 mm |
-| Snap 180 | none | none | none | 17 m/s³ | never | the jump moves the chains 2 mm |
+| Idle | 6 vertices, 6 mm | none | none | 14 m/s³ | never | |
+| Walk | none | none | none | 4,364 m/s³ | never | |
+| Jog | 13, 48 mm | 13 mm | none | 7,062 m/s³ | 5 frames | |
+| Zig-zag | 49, 63 mm | 14 mm | none | 6,964 m/s³ | 1 frame | |
+| Network 15 Hz | 49, 65 mm | 14 mm | none | 6,978 m/s³ | 3 frames | |
+| Turn 180 | 42, 52 mm | 15 mm | none | 7,012 m/s³ | 3 frames | |
+| Spin 720 | 12, 7 mm | none | none | 14 m/s³ | never | flares 16.6 cm, settles in 0.6 s |
+| Spin 1440 | 10, 6 mm | none | none | 14 m/s³ | never | flares 16.4 cm, settles in 0.6 s |
+| Spin 2880 | 11, 8 mm | none | none | 14 m/s³ | never | flares 17.6 cm, settles in 0.6 s |
+| Jog stop jog | 13, 48 mm | 13 mm | 2, 14 mm | 5,759 m/s³ | 3 frames | settles in 0.7 s |
+| Death | 287, 127 mm | 127 mm | 2, 14 mm | 22,437 m/s³ | 5 frames | |
+| Teleport, snap 3 m | 14, 48 mm | 13 mm | 2, 5 mm | 6,917 m/s³ | 3 frames | the jump moves the chains 121 mm |
+| Snap 180 | 6, 6 mm | none | none | 14 m/s³ | never | the jump moves the chains 2 mm |
 
 The legs come through the cloth no farther than in the target pose alone, since
 no bone of the springs lies nearer the body than it, and never through a cloak;
 `ClothStressMotionTests` holds the legs out of a cloak and within 25 mm of a
 robe while walking and jogging. What still comes through: an arm through a
 cloak's edge at the far end of its swing, after it lifted the edge 8 cm; the
-legs through the waist of a robe in `Death`, where the skirt's roots follow the
-hips while the thighs fold up 90 degrees; and a robe through a cloak where a
-knee lifts both, by up to 12 cm only in a turn of 180 degrees in a quarter of a
-second, where the robe flares out below the cloak's hem. The skirt's chains keep
-their order in every spin, a spin flares the hems out by 17 to 18 cm, where the
-target pose alone flares them 2 cm, and the cloth settles within 0.6 s of its
-end. A jump moves the cloth no more than the jog's own legs move it in that
-frame: `ClothSpringTests` holds the jump's frame and the next within a
-centimeter of the same motion without the jump.
+woman's arms through her robe by up to 8 mm while she stands, spins, or stops;
+the legs through the waist of a robe in `Death`, where the skirt's roots follow
+the hips while the thighs fold up 90 degrees; and a robe through a cloak by up
+to 14 mm, only in `Death`, in a jog that stops, and in a teleport. The skirt's
+chains keep their order in every spin and on the woman in every motion but
+`Death`; on the
+man under a cloak they cross for up to 5 frames while jogging, turning, and
+after a correction, and in the robe alone for a frame in a zig-zag. A spin
+flares the hems out by 16 to 18 cm, where the target pose alone flares them 2 cm,
+and the cloth settles within 0.7 s of its end. A jump moves the cloth no more
+than the jog's own legs move it in that frame: `ClothSpringTests` holds the
+jump's frame and the next within a centimeter of the same motion without the
+jump.
 
-The cloth jerks less than in the target pose alone while walking, 2,375 against
-3,545 m/s³, but as much while jogging and more while dying: where the legs push
-the cloth it goes with them, and the `Jog` clip's knee snaps straight at the toe
-off, its thighs turning up to 15 degrees in a frame where the gait model's leg
-is straight. The springs smooth everything the legs do not push. In about half
-of a jog's steady frames the legs push a cloak's lower half, by up to 15
+The cloth jerks up to 4,364 m/s³ while walking, 7,062 while jogging, and 22,437
+while dying: where the legs push the cloth it goes with them, and the `Jog`
+clip's knee snaps straight at the toe off, its thighs turning up to 15 degrees
+in a frame where the gait model's leg is straight. The springs smooth
+everything the legs do not push. In about half of a jog's steady frames the legs push a cloak's lower half, by up to 15
 degrees: the heel comes up behind nearly level in a jog and reaches a cloak to
 the middle of the calf however it hangs.
 
@@ -984,8 +987,8 @@ root moves:
 
 | Pose | 1/30 s | 1/60 s | 1/144 s | Jittery |
 | --- | --- | --- | --- | --- |
-| Clips | 22.7, 7.8 | 11.7, 3.7 | 10.8, 1.3 | 18.1, 5.8 |
-| Held | 4.3, 0.6 | 2.9, 0.4 | 3.5, 0.5 | 3.3, 0.7 |
+| Clips | 25.1, 8.2 | 19.9, 4.0 | 16.9, 2.7 | 24.3, 5.8 |
+| Held | 3.3, 0.6 | 3.0, 0.4 | 3.7, 0.5 | 3.9, 0.7 |
 
 Playing the clips, the target pose alone differs as much, since the Animator
 samples the clips differently at different frame times; with the pose held, the
