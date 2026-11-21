@@ -483,21 +483,22 @@ namespace Mmorpg.Client.Editor
             foreach (var renderer in model.GetComponentsInChildren<SkinnedMeshRenderer>(true).OrderBy(r => r.name, StringComparer.Ordinal))
             {
                 var where = body.UnityTargetPath + " " + renderer.name;
-                var sources = ArtTopologyMaps.VertexSources(PositionsIn(model.transform, renderer), topology);
-                if (sources.All(source => source < 0))
+                var candidates = ArtTopologyMaps.VertexCandidates(PositionsIn(model.transform, renderer), topology);
+                if (candidates.All(vertex => vertex.Length == 0))
                 {
                     continue;
                 }
 
-                if (sources.Any(source => source < 0))
+                if (candidates.Any(vertex => vertex.Length == 0))
                 {
                     throw new InvalidOperationException(where + " has vertices that are not in the editable mesh; export the body again.");
                 }
 
+                var faces = ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, candidates, topology, where);
                 parts.Add(new BodyAppearanceCatalog.Part(
                     renderer.name,
-                    ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, sources, topology, where),
-                    sources));
+                    faces,
+                    ArtTopologyMaps.VertexSources(renderer.sharedMesh, candidates, faces, topology)));
             }
 
             return parts.ToArray();

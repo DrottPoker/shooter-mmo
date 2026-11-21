@@ -49,16 +49,19 @@ def _arch(front, half_width, depth, count):
     return out
 
 
-def teeth(front, half_width, depth, height, thickness, upper, segments=10):
+def teeth(front, half_width, depth, height, thickness, edge, upper, segments=10):
     """A row of teeth as one band: its outer face, its biting edge, and its inner face, open
-    toward the gums. The front is the middle of the front teeth's biting edge."""
+    toward the gums. The front is the middle of the front teeth's biting edge. The band is as
+    thick as thickness at the gums and as edge at its biting edge, as a tooth narrows to its
+    edge."""
     front = np.asarray(front, float)
     outer = _arch(front, half_width, depth, segments)
+    biting = _arch(front - Y * edge, half_width - edge, depth - edge * 0.4, segments)
     inner = _arch(front - Y * thickness, half_width - thickness, depth - thickness * 0.4, segments)
     rise = Z * (height if upper else -height)
     points, faces = [], []
-    for o, i in zip(outer, inner):
-        points += [o + rise, o, i, i + rise]
+    for o, b, i in zip(outer, biting, inner):
+        points += [o + rise, o, b, i + rise]
     for k in range(segments):
         a, b = 4 * k, 4 * (k + 1)
         for step in range(3):
@@ -71,15 +74,19 @@ def teeth(front, half_width, depth, height, thickness, upper, segments=10):
     return np.array(points), faces
 
 
+# The tongue's tip is this share of its width wide.
+TONGUE_TIP = 0.12
+
+
 def tongue(tip, length, half_width, thickness, columns=4, rows=5):
-    """A tongue at rest on the floor of the mouth: a flat body with a rounded top, its tip behind
-    the lower front teeth, open underneath."""
+    """A tongue at rest in the lower row of teeth: a flat body with a rounded top and a rounded
+    tip behind the lower front teeth, open underneath."""
     tip = np.asarray(tip, float)
     points, faces = [], []
     for row in range(rows + 1):
         along = row / rows
-        # Narrow at the tip, widest two thirds back.
-        width = half_width * math.sin(math.pi * (0.18 + 0.52 * along) / 0.7 * 0.5) if along < 0.7 else half_width
+        # Rounded from the tip to its whole width two thirds back.
+        width = half_width * math.sin(math.pi / 2 * min(TONGUE_TIP + (1.0 - TONGUE_TIP) * along / 0.7, 1.0))
         for column in range(columns + 1):
             across = -1.0 + 2.0 * column / columns
             crown = thickness * (1.0 - across * across) * (0.55 + 0.45 * math.sin(math.pi * min(along * 1.4, 1.0)))

@@ -26,7 +26,10 @@ trunk, the arms, and the legs are fitted first, together:
    length, blended by the reference's weights.
 2. Every vertex is drawn to the skin of its region: to the nearest skin where it lies close to it,
    otherwise along the cage's normal, toward whichever side meets the skin first, or to the nearest
-   skin where no ray meets it at about the nearest skin's distance.
+   skin where no ray meets it at about the nearest skin's distance. Where a limb stands off the
+   trunk, as an arm does at the armpit, the border between the limb and the trunk then moves into
+   the fold where their skin meets, so the net runs along the limb on one side of the fold and
+   along the trunk on the other and no face hangs across the hollow like a web.
 3. A ball whose radius is the figure scale rolls over the skin of the region: a vertex where the
    ball does not fit, in a pit narrower than the ball, is lifted until it does, by at most a share of
    the radius. Larger forms, such as the waist, keep the ball touching the skin and are followed.
@@ -41,13 +44,30 @@ trunk, the arms, and the legs are fitted first, together:
    around the bone a vertex follows most, ends at a border between regions, and its tension fades
    in from the cage's open ends.
 5. The cage is faired, and no vertex or face centre stays inside the skin, nor does the skin come
-   out through a face between its corners, where a large face cuts across a curve of the skin.
+   out through a face between its corners, where a large face cuts across a curve of the skin, or
+   past an edge of an open end, such as an ankle ring, which a later stage hangs its faces from.
+   The fairing leaves the vertices in a fold where they are and fades in from them, since rounding
+   the net off would lift it out of the fold again.
+
+A body is the mirror image of itself across its middle plane, and its two halves face each other in
+its clefts, such as the crotch and the buttock cleft. A vertex that moved out along its normal there
+would cross to the other half, so the vertices of the neck and the trunk keep to their side of the
+plane: one in the plane stays in it, one beside it is drawn to the skin of its own half, and neither
+the ball nor the tension moves it toward the plane. Where the body and the reference are mirrored,
+the two sides are also evened out after every step, so a mirrored body gets a mirrored cage: what
+would differ comes from the order of the vertices and from points that lie as near to one face of
+the skin as to the next.
 
 The hands, the feet, and the head are fitted after them and keep the rings at the wrists, the
 ankles, and the top of the neck as they lie, so adding them changed nothing of the rest:
 
-- A hand's vertex is drawn to the nearest skin of its own finger or thumb and of the palm, so a
-  finger is never drawn to the next one, and the gaps between the fingers stay open.
+- A hand's net is drawn to the skin as a whole, each vertex toward the nearest skin of its own
+  finger or thumb and of the palm, so a finger is never drawn to the next one, and the gaps between
+  the fingers stay open. The moves are evened out between neighbors first and ever less, so the net
+  slides into place in one piece before every vertex takes its place on the skin: a hand of
+  another build than the reference's has its thumb and fingers at other angles, and vertices that
+  went to the nearest skin one by one would fold the net over itself. The vertices of the palm and
+  between the digits then spread evenly over the skin.
 - A foot is laid on the outline of its cross sections with their hollows spanned, their convex
   hulls: first half-planes that turn about an axis in front of the ankle, from the plane of the
   ankle ring down until they stand across the foot, so their rings run around the heel, then planes
@@ -131,6 +151,15 @@ CLEARANCE = 0.001
 # triangle to move.
 POKE_REACH = 0.02
 POKE_FREE_SHARE = 0.5
+# A vertex where a limb meets the trunk lies in the fold between their skin once the middle of an
+# edge from it into the trunk lies this far outside the skin, and part of the way there before.
+FOLD_SPAN = 0.01
+# A vertex that moved this far into a fold lies in it, and the fairing leaves it there.
+FOLD_HELD = 0.001
+# The points of an edge of an open end that are kept outside the skin, as shares of the edge.
+END_EDGE_SHARES = (0.25, 0.5, 0.75)
+# How far inside the skin a ray through the body starts, so it does not meet the skin it starts on.
+SKIN_DEPTH = 1e-5
 # How far along the cage's normal a vertex looks for the skin of its region, how close to the skin
 # it takes the nearest point instead, and how much farther than the nearest point a ray's hit may
 # lie, so a ray from the skin itself does not cross a limb to its far side.
@@ -162,6 +191,21 @@ ENDS_SETTLE_FACTOR = 4
 SETTLE_MARGIN = 0.0002
 # How far a fitted vertex may differ from what a sync gives before the file is stale.
 FIT_TOLERANCE = 1e-5
+# A vertex of the reference this close to the body's middle plane lies in it.
+MIDDLE = 1e-4
+# A point's mirror image across the body's middle plane. Two vertices of the reference are each
+# other's mirror images when they lie this close to them, and two of a body's skin this close.
+MIRROR = np.array((-1.0, 1.0, 1.0))
+TWIN_REACH = 1e-3
+SKIN_TWIN_REACH = 1e-5
+MIRROR_BLOCK = 256
+# A net is drawn to the skin in rounds: in each, every vertex's move to the skin is evened out with
+# its neighbors' this often before the net moves, so whole stretches of the net move together at
+# first, and the last round lays every vertex on the skin.
+DRAW_ROUNDS = (24, 12, 6, 3, 1, 0)
+# How often the vertices of a hand between its digits and on its palm move toward the middle of
+# their neighbors and back onto the skin.
+SPREAD_STEPS = 30
 
 
 def version_name(label: str) -> str:
@@ -299,6 +343,16 @@ class Part:
                 best[v] = max(best[v], region)
         return [(REGIONS[r], side_of(co[i][0]) if REGIONS[r] in SIDED else "") for i, r in enumerate(best)]
 
+    def limb_roots(self) -> np.ndarray:
+        """Whether each vertex lies where a limb meets the trunk: on the border between a region
+        with sides and the trunk."""
+        seen: dict[int, set[str]] = {}
+        for face, region in zip(self.faces, self.regions):
+            for v in face:
+                seen.setdefault(v, set()).add(REGIONS[region])
+        return np.array(["trunk" in seen.get(v, ()) and any(region in SIDED for region in seen.get(v, ()))
+                         for v in range(self.net.count)], bool)
+
     def borders(self) -> np.ndarray:
         """The vertices on an open end of the part or on a border between two of its regions."""
         seen: dict[int, set[int]] = {}
@@ -383,6 +437,9 @@ class Skin:
         # The skin's vertices with their normals and the body parts of the faces around them, for
         # finding skin that comes out through the cage between its corners.
         self.co = co
+        # A body is mirrored when every vertex of its skin has a mirror image; vertices may share a
+        # place, as the lips of a closed mouth do.
+        self.mirrored = bool(mirror_images(co)[1].max() <= SKIN_TWIN_REACH)
         normals = np.empty(len(body.data.vertices) * 3)
         body.data.vertex_normals.foreach_get("vector", normals)
         normals = normals.reshape(-1, 3) @ np.array(body.matrix_world.to_3x3()).T
@@ -391,12 +448,38 @@ class Skin:
         for polygon, zone in zip(polygons, zones):
             self.vertex_zones[list(polygon), zone] = True
         self.trees = {}
+        # A region without sides also has its skin per half of the body, each with the faces that
+        # reach the middle plane, for the vertices that keep to their side of it.
+        self.halves = {}
         for region in REGIONS:
             wanted = {bodies.ZONES.index(z) for z in SKIN_ZONES[region]}
             for side in (("L", "R") if region in SIDED else ("",)):
                 keep = [p for p, z, c in zip(polygons, zones, centres)
                         if z in wanted and (not side or side_of(c[0]) == side)]
                 self.trees[(region, side)] = BVHTree.FromPolygons([tuple(c) for c in co], keep)
+            if region in SIDED:
+                continue
+            for half in (1.0, -1.0):
+                keep = [p for p, z in zip(polygons, zones) if z in wanted and (co[list(p), 0] * half).max() > -MIDDLE]
+                self.halves[(region, half)] = BVHTree.FromPolygons([tuple(c) for c in co], keep)
+        # The folds where a limb's skin meets the trunk's, such as the armpit and the groin: per limb
+        # and side, the edges between a face of the limb and a face of the trunk.
+        around: dict[tuple[int, int], list[int]] = {}
+        for index, polygon in enumerate(polygons):
+            for i in range(len(polygon)):
+                around.setdefault(tuple(sorted((polygon[i], polygon[(i + 1) % len(polygon)]))), []).append(index)
+        trunk = {bodies.ZONES.index(z) for z in REGION_ZONES["trunk"]}
+        self.folds = {}
+        for region in STAGES[0]:
+            if region not in SIDED:
+                continue
+            limb = {bodies.ZONES.index(z) for z in REGION_ZONES[region]}
+            for side in ("L", "R"):
+                edges = [edge for edge, pair in around.items()
+                         if len(pair) == 2 and {zones[pair[0]] in limb, zones[pair[1]] in limb} == {True, False}
+                         and {zones[pair[0]] in trunk, zones[pair[1]] in trunk} == {True, False}
+                         and side_of((co[edge[0]][0] + co[edge[1]][0]) / 2.0) == side]
+                self.folds[(region, side)] = co[np.array(edges, np.int64).reshape(-1, 2)]
         hands, feet = bodies.ZONES.index("Hands"), bodies.ZONES.index("Feet")
         # A plane just above the neck's top ring may dip under it at its low side, so the head's
         # cross sections cut the neck's skin too.
@@ -422,6 +505,19 @@ class Skin:
             raise ArtPipelineError(f"The body has no skin of the cage region {key}.")
         return location, normal, (Vector(point) - location).dot(normal)
 
+    def thickness(self, point: Vector, normal: Vector, reach: float) -> float:
+        """How far a ray that goes in from a point of the skin, against its normal, runs through
+        the body before it comes out of it again, up to reach."""
+        # The ray starts just inside the skin, so the faces around the point itself do not stop it.
+        start = SKIN_DEPTH
+        hit = self.all.ray_cast(point - normal * start, -normal, max(reach - start, 0.0))
+        return reach if hit[0] is None else start + hit[3]
+
+    def tree_of(self, key: tuple[str, str], aside: float) -> BVHTree:
+        """The skin a vertex is drawn to: its region's, and for a vertex beside the middle plane
+        that keeps to its side of it, its region's skin on that side."""
+        return self.halves[(key[0], aside)] if aside in (1.0, -1.0) and (key[0], aside) in self.halves else self.trees[key]
+
     def vertices_of(self, regions) -> np.ndarray:
         """The skin vertices that a cage of these regions is kept from coming through: those of the
         body parts it is kept outside of, and of the extremities that hang from it, whose skin next
@@ -436,15 +532,17 @@ def poking(triangles: np.ndarray, x: np.ndarray, skin: Skin, vertices: np.ndarra
     """The skin vertices that come out through the cage between its corners, or come closer to it
     than the clearance from inside: per vertex, the cage triangle it meets, where, and how far that
     point of the triangle must move out. A ray goes in from the skin along its normal; where it meets
-    a face of the cage from outside, the face lies inside the skin. Every vertex and face centre of
-    the cage lies outside the skin, so only a face that cuts across a curve of the skin between its
+    a face of the cage from outside, before it leaves the body again, the face lies inside the skin.
+    Through a thin part, such as an ear or a finger, the ray leaves the body first, and the face it
+    meets then lies beyond the part's other side, not in it. Every vertex and face centre of the
+    cage lies outside the skin, so only a face that cuts across a curve of the skin between its
     corners can, by little: the ray looks no farther than POKE_REACH."""
     tree = BVHTree.FromPolygons([tuple(c) for c in x], [tuple(t) for t in triangles])
     found = []
     for vertex in vertices:
         point, normal = Vector(skin.co[vertex]), Vector(skin.normals[vertex])
         location, face_normal, triangle, distance = tree.ray_cast(point, -normal, POKE_REACH)
-        if location is not None and face_normal.dot(normal) > 0.0:
+        if location is not None and face_normal.dot(normal) > 0.0 and skin.thickness(point, normal, distance) >= distance:
             found.append((int(vertex), triangle, location, distance + clearance))
             continue
         if clearance <= 0.0:
@@ -478,6 +576,100 @@ def _lift_faces(triangles: np.ndarray, x: np.ndarray, found: list[tuple[int, int
             if step > lift[corner]:
                 lift[corner], direction[corner] = step, normal
     return x + direction * lift[:, None]
+
+
+def nearest_on_segments(point: np.ndarray, segments: np.ndarray) -> np.ndarray:
+    """The point nearest to a point on any of the segments, each a pair of end points."""
+    start, along = segments[:, 0], segments[:, 1] - segments[:, 0]
+    share = np.einsum("ij,ij->i", point - start, along) / np.maximum(np.einsum("ij,ij->i", along, along), 1e-18)
+    points = start + along * np.clip(share, 0.0, 1.0)[:, None]
+    return points[np.argmin(np.linalg.norm(points - point, axis=1))]
+
+
+def mirror_images(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per point, the point nearest to its mirror image across the body's middle plane, and how far
+    from that image it lies."""
+    points = np.asarray(points, float)
+    nearest = np.empty(len(points), np.int64)
+    squares = np.einsum("ij,ij->i", points, points)
+    # A block of points at a time, so the table of distances stays small. The table is good enough
+    # to tell which point is nearest, and the distance to that one is then measured exactly.
+    for start in range(0, len(points), MIRROR_BLOCK):
+        images = points[start:start + MIRROR_BLOCK] * MIRROR
+        nearest[start:start + len(images)] = np.argmin(squares[None, :] - 2.0 * images @ points.T, axis=1)
+    return nearest, np.linalg.norm(points * MIRROR - points[nearest], axis=1)
+
+
+def twins_of(points: np.ndarray, reach: float) -> np.ndarray | None:
+    """The mirror image of every point among the points, a point in the middle plane being its
+    own; None when some point has none within reach, or two share one."""
+    twins, distances = mirror_images(points)
+    if distances.max() > reach or (twins[twins] != np.arange(len(points))).any():
+        return None
+    return twins
+
+
+def evened(x: np.ndarray, twins: np.ndarray | None, moving: np.ndarray | None = None) -> np.ndarray:
+    """The two sides of a net evened out: every moving vertex halfway between where it lies and
+    the mirror image of its twin, and one that is its own twin in the middle plane. A body that is
+    the mirror image of itself gets a cage that is too; what differs between the sides after a step
+    comes from the order of the vertices and from points that lie as near to one face of the skin
+    as to the next."""
+    if twins is None:
+        return x
+    middle = (x + x[twins] * MIRROR) / 2.0
+    if moving is None:
+        return middle
+    x = x.copy()
+    x[moving] = middle[moving]
+    return x
+
+
+def middle_sides(keys: list[tuple[str, str]], reference: np.ndarray) -> np.ndarray:
+    """Where each vertex of the neck and the trunk lies in the reference: 1 beside the body's
+    middle plane on the body's right, -1 on its left, and 0 in the plane. A body is the mirror
+    image of itself across that plane, so such a vertex keeps to its side of it, and one in the
+    plane stays in it. A vertex of a limb has a side of its own and no such rule: nan."""
+    x = reference[:, 0]
+    aside = np.where(np.abs(x) < MIDDLE, 0.0, np.sign(x))
+    return np.where([key[0] in SIDED for key in keys], np.nan, aside)
+
+
+def keep_aside(x: np.ndarray, aside: np.ndarray) -> np.ndarray:
+    """The vertices with those that crossed the middle plane, or left it, back in it."""
+    x = x.copy()
+    ruled = ~np.isnan(aside)
+    x[ruled, 0] = aside[ruled] * np.maximum(aside[ruled] * x[ruled, 0], 0.0)
+    return x
+
+
+def away_from_middle(directions: np.ndarray, aside: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Directions without their parts toward the middle plane, and for a vertex in the plane
+    without any part across it: unit vectors, and how much of each direction is left. The two
+    halves of a body face each other in its clefts, such as the crotch and the buttock cleft, so a
+    vertex that moved out along its normal there would cross to the other half."""
+    directions = np.array(directions, float)
+    toward = (aside == 0.0) | (directions[:, 0] * aside < 0.0)
+    directions[toward, 0] = 0.0
+    left = np.linalg.norm(directions, axis=1)
+    return directions / np.maximum(left, 1e-12)[:, None], left
+
+
+def drawn(net: Net, x: np.ndarray, target, moving: np.ndarray, rounds: tuple[int, ...] = DRAW_ROUNDS) -> np.ndarray:
+    """A net drawn to the skin as a whole. target gives the place on the skin each vertex is drawn
+    to from where the net lies. A vertex that went there by itself would cross its neighbors where
+    the net lies askew over the skin, and two stretches of the net would land on the same skin, so
+    the moves are evened out between neighbors first: the net slides into place in one piece, then
+    in ever smaller stretches, and in the last round every moving vertex takes its place on the
+    skin. The others stay."""
+    x = x.copy()
+    for smoothing in rounds:
+        move = np.zeros_like(x)
+        move[moving] = target(x)[moving] - x[moving]
+        for _ in range(smoothing):
+            move[moving] = (move + 0.5 * (net.mean_of_neighbors(move) - move))[moving]
+        x += move
+    return x
 
 
 def _transfer(reference: np.ndarray, weights: np.ndarray, names: list[str], rig: bpy.types.Object,
@@ -525,25 +717,35 @@ def fit(label: str, figure: float) -> np.ndarray:
             continue
         held = placed[part.vertices]
         keys = part.keys(reference[part.vertices])
+        # A mirrored body's cage is fitted alike on both sides, where the reference is mirrored too.
+        twins = twins_of(reference[part.vertices], TWIN_REACH) if skin.mirrored else None
         if number == 0:
-            y = _fit_body(part, x[part.vertices], keys, weights[part.vertices], names, arm, skin, figure)
+            y = _fit_body(part, x[part.vertices], keys, middle_sides(keys, reference[part.vertices]), twins,
+                          weights[part.vertices], names, arm, skin, figure)
         else:
             chosen = [i for i, region in enumerate(regions) if REGIONS[region] in stage]
-            y = _fit_ends(part, x[part.vertices], keys, held, digits[chosen], rings[part.vertices],
+            y = _fit_ends(part, x[part.vertices], keys, held, twins, digits[chosen], rings[part.vertices],
                           columns[part.vertices], arm, skin)
         x[part.vertices[~held]] = y[~held]
         placed[part.vertices] = True
     return x
 
 
-def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: np.ndarray, names: list[str],
-              arm: bpy.types.Object, skin: Skin, figure: float) -> np.ndarray:
+def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], aside: np.ndarray, twins: np.ndarray | None,
+              weights: np.ndarray, names: list[str], arm: bpy.types.Object, skin: Skin, figure: float) -> np.ndarray:
     """The neck, the trunk, the arms, and the legs: drawn to the skin, lifted out of the pits by the
-    ball, drawn taut along their rings, faired, and kept outside the skin."""
+    ball, drawn taut along their rings, faired, and kept outside the skin. The vertices of the neck
+    and the trunk keep to their side of the body's middle plane all the way, and the two sides of a
+    mirrored body are evened out after every step."""
     net = part.net
+
+    def sided(y: np.ndarray) -> np.ndarray:
+        return keep_aside(evened(y, twins), aside)
+
+    x = sided(x)
     normals = net.normals(x)
     for i, key in enumerate(keys):
-        tree = skin.trees[key]
+        tree = skin.tree_of(key, aside[i])
         nearest, _normal, _index, distance = tree.find_nearest(Vector(x[i]))
         best = None
         if distance > NEAR:
@@ -552,17 +754,24 @@ def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: n
                 if hit[0] is not None and hit[3] <= distance + RAY_SLACK and (best is None or hit[3] < best[3]):
                     best = hit
         x[i] = np.array(best[0] if best is not None else nearest)
+    folded = _into_folds(part, x, keys, skin)
+    in_fold = np.linalg.norm(folded - x, axis=1) > FOLD_HELD
+    x = sided(folded)
 
     # The ball rolls over the skin along normals that point out of the pits.
     normals = net.smoothed_normals(x, NORMAL_SMOOTHING)
     fade = np.minimum(net.hops_from(part.borders(), LIFT_FADE) / LIFT_FADE, 1.0)
+    directions = normals.copy()
     for i, key in enumerate(keys):
-        if fade[i] <= 0.0:
+        if fade[i] > 0.0:
+            _location, skin_normal, _d = skin.nearest(key, x[i])
+            if Vector(normals[i]).dot(skin_normal) < NORMAL_AGREEMENT:
+                directions[i] = skin_normal
+    directions, left = away_from_middle(directions, aside)
+    for i, key in enumerate(keys):
+        if fade[i] <= 0.0 or left[i] <= 0.0:
             continue
-        _location, skin_normal, _d = skin.nearest(key, x[i])
-        direction = Vector(normals[i])
-        if direction.dot(skin_normal) < NORMAL_AGREEMENT:
-            direction = skin_normal
+        direction = Vector(directions[i])
         centre = Vector(x[i]) + direction * figure
         tree = skin.trees[key]
         for _ in range(LIFT_STEPS):
@@ -571,17 +780,48 @@ def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: n
                 break
             centre += direction * (figure - distance)
         lift = min((centre - Vector(x[i])).dot(direction) - figure, LIFT_SHARE * figure)
-        x[i] = x[i] + np.array(direction) * max(lift, 0.0) * fade[i]
+        x[i] = x[i] + directions[i] * max(lift, 0.0) * fade[i] * left[i]
+    x = sided(x)
 
     # A ring stops at a border between regions by itself, so the tension fades in from the open ends only.
     ends = np.minimum(net.hops_from(np.nonzero(net.on_border)[0], LIFT_FADE) / LIFT_FADE, 1.0)
-    x = _tension(net, x, keys, _axes(weights, keys, names, arm), ends)
-    x = net.faired(x, FAIRING)
-    return _settle(part, x, skin)
+    x = sided(_tension(net, x, keys, aside, _axes(weights, keys, names, arm), ends))
+    # The fairing rounds a net off, which would lift it out of a fold again, into a web between the
+    # arm and the trunk: the vertices that were moved into a fold stay, and the fairing fades in
+    # from them as the lift does from a border.
+    faired = net.faired(x, FAIRING)
+    if in_fold.any():
+        hold = np.minimum(net.hops_from(np.nonzero(in_fold)[0], LIFT_FADE) / LIFT_FADE, 1.0)
+        faired = x + (faired - x) * hold[:, None]
+    x = sided(faired)
+    return _settle(part, x, skin, aside=aside, twins=twins)
 
 
-def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.ndarray, digits: np.ndarray,
-              rings: np.ndarray, columns: np.ndarray, arm: bpy.types.Object, skin: Skin) -> np.ndarray:
+def _into_folds(part: Part, x: np.ndarray, keys: list[tuple[str, str]], skin: Skin) -> np.ndarray:
+    """The net with its borders between a limb and the trunk moved into the folds where their skin
+    meets, wherever it would span a hollow. A vertex of such a border lies on the limb's skin and
+    its neighbors in the trunk on the trunk's; where the limb stands off the trunk, as an arm does
+    at the armpit, the edges between them pass through the air of the hollow, and the faces would
+    hang there like a web between the arm and the trunk. The vertex moves toward the nearest point
+    of the fold by the share of FOLD_SPAN that the middle of such an edge lies outside the skin, so
+    the net runs along the limb on one side of the fold and along the trunk on the other. Over a
+    shoulder or a hip, where the skin does not fold, the border stays where the rig carried it."""
+    roots = part.limb_roots()
+    span = np.zeros(part.net.count)
+    for a, b in part.net.edges:
+        for root, other in ((a, b), (b, a)):
+            if roots[root] and not roots[other] and keys[other][0] == "trunk":
+                span[root] = max(span[root], skin.nearest(None, (x[root] + x[other]) / 2.0)[2])
+    x = x.copy()
+    for i in np.nonzero(span > 0.0)[0]:
+        fold = skin.folds.get(keys[i], ())
+        if len(fold):
+            x[i] += (nearest_on_segments(x[i], fold) - x[i]) * min(span[i] / FOLD_SPAN, 1.0)
+    return x
+
+
+def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.ndarray, twins: np.ndarray | None,
+              digits: np.ndarray, rings: np.ndarray, columns: np.ndarray, arm: bpy.types.Object, skin: Skin) -> np.ndarray:
     """The hands, the feet, and the head, from the rings they share with the limbs and the neck,
     which stay: a hand's vertices drawn to the skin of their own digit and the palm, a foot and the
     head laid on their rings, and all faired and kept outside the skin."""
@@ -592,13 +832,25 @@ def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.n
     for face, digit in zip(part.faces, digits):
         for v in face:
             around.setdefault(v, set()).add(int(digit))
-    for i, key in enumerate(keys):
-        if held[i] or key[0] != "hands":
-            continue
+    hands = np.array([not held[i] and key[0] == "hands" for i, key in enumerate(keys)])
+    trees = {}
+    for i in np.nonzero(hands)[0]:
         own = around.get(i, {0})
-        tree = skin.trees[("hands", key[1], next(iter(own)))] if len(own) == 1 and 0 not in own else skin.trees[key]
-        location, _normal, _index, _distance = tree.find_nearest(Vector(x[i]))
-        x[i] = np.array(location)
+        trees[i] = skin.trees[("hands", keys[i][1], next(iter(own)))] if len(own) == 1 and 0 not in own else skin.trees[keys[i]]
+
+    def on_skin(y: np.ndarray) -> np.ndarray:
+        found = y.copy()
+        for i, tree in trees.items():
+            found[i] = tree.find_nearest(Vector(y[i]))[0]
+        return found
+
+    x = drawn(part.net, x, on_skin, hands)
+    # The palm and the webs between the digits differ most from hand to hand: their vertices spread
+    # evenly over the skin between the digits, which lie on theirs, and the wrist ring.
+    between = np.array([hands[i] and (len(around.get(i, {0})) > 1 or 0 in around.get(i, {0})) for i in range(len(x))])
+    for _ in range(SPREAD_STEPS):
+        x[between] = on_skin(x + 0.5 * (part.net.mean_of_neighbors(x) - x))[between]
+    x = evened(x, twins, ~held)
     for side in ("L", "R"):
         members = np.array([i for i, key in enumerate(keys) if key == ("feet", side)], np.int64)
         if not len(members):
@@ -627,8 +879,9 @@ def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.n
                 x[i] = pole if r == len(HEAD_RINGS) + 1 else laid[r - 1][c]
     # The feet and the head are faired, which spreads the feet's rings where they crowd at the front
     # of the ankle; the hands lie on their skin already, and fairing would only draw in the fingertips.
+    x = evened(x, twins, ~held)
     x = part.net.faired(x, FAIRING, held | np.array([key[0] not in ("feet", "head") for key in keys]))
-    return _settle(part, x, skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR)
+    return _settle(part, evened(x, twins, ~held), skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR, twins=twins)
 
 
 def hull(points: np.ndarray) -> np.ndarray:
@@ -843,11 +1096,13 @@ def _axes(weights: np.ndarray, keys: list[tuple[str, str]], names: list[str], ar
     return axes
 
 
-def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], axes: np.ndarray, fade: np.ndarray) -> np.ndarray:
+def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], aside: np.ndarray, axes: np.ndarray,
+             fade: np.ndarray) -> np.ndarray:
     """The rings drawn taut over the cage, outward only, each vertex along the part of its smoothed
-    normal across its ring's axis. A band pulls in its own plane, so a vertex at the bottom of the
-    buttock cleft, whose normal points down, still moves back across the cleft, and one whose
-    normal points along the axis, such as the top of a shoulder, hardly moves."""
+    normal across its ring's axis and not toward the body's middle plane. A band pulls in its own
+    plane, so a vertex at the bottom of the buttock cleft, whose normal points down, still moves
+    back across the cleft, and one whose normal points along the axis, such as the top of a
+    shoulder, hardly moves."""
     a, b = net.edges[:, 0], net.edges[:, 1]
     along = x[b] - x[a]
     along /= np.maximum(np.linalg.norm(along, axis=1, keepdims=True), 1e-12)
@@ -859,9 +1114,7 @@ def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], axes: np.ndar
     total = np.bincount(targets, weights, minlength=net.count)
     strength = np.where(total >= RING_WEIGHT, fade, 0.0)
     normals = net.smoothed_normals(x, NORMAL_SMOOTHING)
-    across = normals - np.einsum("ij,ij->i", normals, axes)[:, None] * axes
-    size = np.linalg.norm(across, axis=1)
-    normals = across / np.maximum(size, 1e-12)[:, None]
+    normals, size = away_from_middle(normals - np.einsum("ij,ij->i", normals, axes)[:, None] * axes, aside)
     strength = strength * size
     offset = np.zeros(net.count)
     for _ in range(TENSION_STEPS):
@@ -874,32 +1127,54 @@ def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], axes: np.ndar
     return x + normals * offset[:, None]
 
 
-def _settle(part: Part, x: np.ndarray, skin: Skin, held: np.ndarray | None = None, passes: int = SETTLE_PASSES) -> np.ndarray:
-    """Every vertex, and the corners of every face whose centre, lies inside the skin or closer
-    than the clearance moved out along the skin's normal, and every face that the skin of the part's
-    body parts comes out through between its corners moved out along its own, a few times over,
-    because moving one face moves the corners it shares. Held vertices stay where they are."""
+def _settle(part: Part, x: np.ndarray, skin: Skin, held: np.ndarray | None = None, passes: int = SETTLE_PASSES,
+            aside: np.ndarray | None = None, twins: np.ndarray | None = None) -> np.ndarray:
+    """The part kept outside the skin. Every vertex that lies inside the skin or closer than the
+    clearance moves out along the skin's normal, and so do the corners of every face whose centre
+    does and of every edge of an open end whose middle or quarter points do: an edge of an open
+    end, such as an ankle ring, cuts across the curve of the skin like a face does, and skin that
+    came out past it would come out through the faces a later stage hangs from it. Every face that
+    the skin of the part's body parts comes out through between its corners moves out along its
+    own normal. This is done a few times over, because moving one face moves the corners it
+    shares. In each pass all moves are found first and every vertex takes the largest one asked of
+    it, so the result does not depend on the order of the vertices. With twins, a vertex also takes
+    its twin's move, mirrored, when that is the larger one: skin in the middle plane comes out
+    between two faces, and the ray that finds it names one of them. Held vertices stay where they
+    are, and the vertices of the neck and the trunk keep to their side of the middle plane."""
     net = part.net
     x = x.copy()
-    points = [(i,) for i in range(net.count)] + net.faces
+    aside = np.full(net.count, np.nan) if aside is None else aside
+    # The points kept outside the skin, each by its corners and their shares of it.
+    points = [((i,), (1.0,)) for i in range(net.count)] + [(face, (1.0 / len(face),) * len(face)) for face in net.faces]
+    points += [((int(a), int(b)), (share, 1.0 - share)) for a, b in net.border_edges for share in END_EDGE_SHARES]
     vertices = skin.vertices_of({REGIONS[r] for r in part.regions})
     for _ in range(passes):
-        settled = True
-        for corners in points:
-            corners = list(corners)
-            centre = x[corners].mean(axis=0)
-            _location, normal, distance = skin.nearest(None, centre)
-            if distance < CLEARANCE:
-                moving = corners if held is None else [c for c in corners if not held[c]]
-                if not moving:
-                    continue
-                x[moving] += np.array(normal) * (CLEARANCE + SETTLE_MARGIN - distance)
-                settled = False
+        before = x.copy()
+        size = np.zeros(net.count)
+        move = np.zeros_like(x)
+        for corners, shares in points:
+            _location, normal, distance = skin.nearest(None, np.array(shares) @ x[list(corners)])
+            if distance >= CLEARANCE:
+                continue
+            step = CLEARANCE + SETTLE_MARGIN - distance
+            for corner in corners:
+                if (held is None or not held[corner]) and step > size[corner]:
+                    size[corner], move[corner] = step, np.array(normal) * step
+        settled = not size.any()
+        x += move
         found = poking(net.triangles, x, skin, vertices, CLEARANCE)
         if found:
             lifted = _lift_faces(net.triangles, x, found, held)
             settled = settled and np.array_equal(lifted, x)
             x = lifted
+        if twins is not None:
+            moved = x - before
+            mirrored = moved[twins] * MIRROR
+            larger = np.linalg.norm(mirrored, axis=1) > np.linalg.norm(moved, axis=1)
+            moved[larger] = mirrored[larger]
+            # A vertex in the middle plane is its own twin and keeps the part of its move in the plane.
+            x = evened(before + moved, twins, None if held is None else ~held)
+        x = keep_aside(x, aside)
         if settled:
             break
     return x

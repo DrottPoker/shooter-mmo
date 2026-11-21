@@ -11,8 +11,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
-retarget = load("human_base/retarget.py", "map_errors", "aligned_pairs", "hand_sides", "REQUIRED", "LIMBS", "FINGERS",
-                "SEGMENTS", "HAND_FRAME", "GRIPS", "SOURCE_TYPES")
+retarget = load("human_base/retarget.py", "map_errors", "aligned_pairs", "hand_sides", "keyed", "distinct_frames", "REQUIRED",
+                "LIMBS", "REFIT_LIMBS", "FINGERS", "SEGMENTS", "HAND_FRAME", "GRIPS", "SOURCE_TYPES")
 MAPS = REPOSITORY_ROOT / "tools" / "art" / "retarget"
 HUMANOID = json.loads((REPOSITORY_ROOT / "art" / "Skeletons" / "Humanoid.json").read_text(encoding="utf-8"))
 HUMANOID_BONES = {bone["name"] for bone in HUMANOID["bones"]}
@@ -84,6 +84,42 @@ class AlignmentTests(unittest.TestCase):
         names = set(retarget.REQUIRED) | {f"{bone}_{side}" for bone in sided for side in "LR"}
         self.assertEqual(sorted(names - HUMANOID_BONES), [])
         self.assertEqual(sorted(names & CHAIN_BONES), [])
+
+
+class RefitTests(unittest.TestCase):
+    """What a refit reads from a clip, and which bones it aligns to the old rig's rest pose."""
+
+    def test_a_refit_aligns_the_arms_and_the_legs_and_leaves_the_feet_to_the_ground(self):
+        bones = {bone: bone for bone in HUMANOID_BONES - CHAIN_BONES}
+        pairs = retarget.aligned_pairs(bones, retarget.REFIT_LIMBS)
+        self.assertIn(("UpperArm_R", "LowerArm_R"), pairs)
+        self.assertIn(("LowerLeg_L", "Foot_L"), pairs)
+        self.assertEqual([pair for pair in pairs if pair[0].startswith("Foot_")], [])
+        # An imported clip aligns the feet too.
+        self.assertEqual(set(retarget.aligned_pairs(bones)) - set(pairs), {("Foot_L", "Toes_L"), ("Foot_R", "Toes_R")})
+
+    def test_a_clip_keys_the_bones_it_turns_and_the_hips_it_moves(self):
+        paths = ['pose.bones["Hips"].rotation_quaternion', 'pose.bones["Hips"].location',
+                 'pose.bones["IndexDistal_L"].rotation_quaternion', 'pose.bones["IndexDistal_L"].rotation_quaternion']
+        self.assertEqual(retarget.keyed(paths), ({"Hips", "IndexDistal_L"}, True, []))
+        self.assertEqual(retarget.keyed(['pose.bones["ThumbDistal_R"].rotation_quaternion']), ({"ThumbDistal_R"}, False, []))
+        self.assertEqual(retarget.keyed([]), (set(), False, []))
+
+    def test_curves_a_refit_cannot_move_are_named_once_each(self):
+        paths = ['pose.bones["Hand_L"].location', 'pose.bones["Hand_L"].location', 'pose.bones["Head"].scale',
+                 'pose.bones["Spine"].rotation_euler', "location", 'pose.bones["Spine"].rotation_quaternion']
+        bones, hips, other = retarget.keyed(paths)
+        self.assertEqual((bones, hips), ({"Spine"}, False))
+        self.assertEqual(other, ["location", 'pose.bones["Hand_L"].location', 'pose.bones["Head"].scale',
+                                 'pose.bones["Spine"].rotation_euler'])
+
+    def test_a_looping_clip_plays_one_frame_less_than_it_keys(self):
+        # As the gait model keys: a loop's last key is its first again, one frame later.
+        self.assertEqual(retarget.distinct_frames(0, 28, True), 28)
+        self.assertEqual(retarget.distinct_frames(0, 1, True), 1)
+        self.assertEqual(retarget.distinct_frames(0, 60, False), 61)
+        self.assertEqual(retarget.distinct_frames(0, 0, False), 1)
+        self.assertEqual(retarget.distinct_frames(0, 0, True), 0)
 
 
 class ShippedMapTests(unittest.TestCase):

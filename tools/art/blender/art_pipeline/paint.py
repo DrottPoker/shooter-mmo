@@ -190,7 +190,10 @@ def _load_body(path: str, root: str, collection: bpy.types.Collection, name: str
     arm = next(o for o in loaded if o.name == root)
     if arm.type != "ARMATURE":
         raise ArtPipelineError(f'"{root}" in {path} is not an armature.')
-    meshes = [o for o in loaded if o.type == "MESH" and not bodies.is_source_body(o)]
+    # The body is the armature's own meshes: its file may hold others, such as the reference the
+    # model was made after.
+    own = set(arm.children_recursive)
+    meshes = [o for o in loaded if o.type == "MESH" and o in own and not bodies.is_source_body(o)]
     body = join(arm, meshes, root, name)
     for obj in loaded:
         if obj not in meshes:
@@ -294,15 +297,15 @@ def _positions(mesh: bpy.types.Mesh) -> np.ndarray:
 
 
 class Texels:
-    """The texels of a material's faces in a mesh's paint UV map, at the image size: each texel's
-    place in the image, the triangle of _loop_triangles it lies on, and its barycentric
-    coordinates there. A texel on an edge belongs to one triangle."""
+    """The texels of a material's faces, or of every face, in a mesh's paint UV map, or in the one
+    named, at the image size: each texel's place in the image, the triangle of _loop_triangles it
+    lies on, and its barycentric coordinates there. A texel on an edge belongs to one triangle."""
 
-    def __init__(self, mesh: bpy.types.Mesh, index: int, size: tuple[int, int]):
+    def __init__(self, mesh: bpy.types.Mesh, index: int | None, size: tuple[int, int], uv_map: str | None = bodies.PAINT_UV):
         width, height = size
         self.size = size
         self.faces, self.loops = _loop_triangles(mesh, index)
-        uv = bodies._uvs(mesh, bodies.PAINT_UV) * (width, height)
+        uv = bodies._uvs(mesh, uv_map) * (width, height)
         taken = np.zeros(width * height, bool)
         places, triangles, weights = [], [], []
         for t, (a, b, c) in enumerate(uv[self.loops]):

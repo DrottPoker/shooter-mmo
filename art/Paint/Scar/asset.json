@@ -7,30 +7,30 @@
     "layer": 100,
     "approvals": {
         "paint": {
-            "date": "2026-10-25",
-            "sourceSha256": "4f57281f5adeb73f8c8dc4f0ee205589b246c99040df61b48098f994a8cc46d7"
+            "date": "2026-11-21",
+            "sourceSha256": "28a7eba09b3cff87a97680f3c13307dc7f337c9ea592843e7b761b5271672afa"
         }
     },
     "export": {
-        "sourceSha256": "4f57281f5adeb73f8c8dc4f0ee205589b246c99040df61b48098f994a8cc46d7",
+        "sourceSha256": "28a7eba09b3cff87a97680f3c13307dc7f337c9ea592843e7b761b5271672afa",
         "textures": [
             {
                 "name": "T_Paint_Scar_Male",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Male.png",
-                "sha256": "927f0fdbca92a16fa6c2210fcb36488bf618d3e338358048aad40646b3ea38ff",
-                "layout": [1024, 1024],
-                "rect": [284, 492, 84, 324],
+                "sha256": "76d2f4506684e058379b9f50d8e215d5e1249a7900bbe8c3890de13274d96d62",
+                "layout": [2048, 2048],
+                "rect": [632, 508, 276, 1132],
                 "move": "topology",
-                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
+                "bodyPaintSha256": "88c93ba7167c782563a117215d6df7a89ce65a5703e1660b9d384c9e026f3b99"
             },
             {
                 "name": "T_Paint_Scar_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Female.png",
-                "sha256": "8061d5f5e1c4dd9156ae88c0dd4aea2d5cb4c2b7b3268961b605aa59a82a9954",
-                "layout": [1024, 1024],
-                "rect": [284, 492, 84, 340],
+                "sha256": "32c72346cca6dcb827b4f763b5d5fa33923f594a4954e76429eb1765c92ca8a7",
+                "layout": [2048, 2048],
+                "rect": [648, 504, 260, 1144],
                 "move": "topology",
-                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
+                "bodyPaintSha256": "f00f5c95af5757d9ae83772139ebe5d2d76f0da55d8519456c1fa9fd66c1a339"
             }
         ],
         "smoothness": 0.5,

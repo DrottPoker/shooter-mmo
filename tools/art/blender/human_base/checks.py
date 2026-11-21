@@ -56,6 +56,13 @@ HEEL_BEHIND = 0.045
 LID_SLIT = 0.0003
 LID_STEP = 0.0008
 LID_DEPTH = 0.0003
+# The face is rigid on the head: with the head turned, nodded, and leaned back on the neck by
+# FACE_TURNS, the skin at the face's landmarks moves at most FACE_SLIP against the skull, in
+# metres. Skin that follows the neck there slides the lids over the eyeballs and parts the lips.
+FACE_TURNS = ((("Y", 40),), (("X", 25),), (("X", -25),))
+FACE_SLIP = 0.0003
+FACE_LANDMARKS = ("forehead", "sellion", "eye_rim", "nose_tip", "subnasale", "upper_lip_line", "lower_lip_line",
+                  "mouth_corner", "chin_front")
 
 
 # ------------------------------------------------------------------------------------- mesh
@@ -414,7 +421,45 @@ def rig(model_path, rigged_path, label, skeleton_path):
         found, broken = _lids_closed(label, skeleton.eyelids)
         lines += found
         failures += broken
+    slip = _face_on_skull(label)
+    lines.append(f"{label}: with the head turned and nodded on the neck, the face moves at most {slip * 1000:.2f} mm "
+                 "against the skull")
+    if slip > FACE_SLIP:
+        failures.append(f"{label}: the face moves {slip * 1000:.2f} mm against the skull when the head turns on the neck "
+                        f"(at most {FACE_SLIP * 1000:.1f}): its skin follows the neck")
     return lines, failures
+
+
+def _face_on_skull(label):
+    """Turns, nods, and leans back the head of a rigged character on its neck and measures how far
+    the skin at the face's landmarks moves against the skull, which the head bone carries."""
+    from art_pipeline import poses
+
+    arm = bpy.data.objects[label]
+    body = bodies.source_body(label)
+    rest = bodies.world_positions(body)
+    world = np.array(arm.matrix_world)
+    marks = np.array([point for key in FACE_LANDMARKS if f"lmw_{key}" in arm
+                      for point in np.array(arm[f"lmw_{key}"], float).reshape(-1, 3)])
+    marks = marks @ world[:3, :3].T + world[:3, 3]
+    rows = np.unique([int(np.argmin(np.linalg.norm(rest - mark, axis=1))) for mark in marks])
+    head = arm.pose.bones["Head"]
+    worst = 0.0
+    try:
+        for turns in FACE_TURNS:
+            poses.apply(arm, {"Head": turns})
+            evaluated = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            me = evaluated.to_mesh()
+            try:
+                posed = np.array([tuple(body.matrix_world @ me.vertices[int(v)].co) for v in rows])
+            finally:
+                evaluated.to_mesh_clear()
+            skull = np.array(arm.matrix_world @ head.matrix @ head.bone.matrix_local.inverted() @ arm.matrix_world.inverted())
+            carried = rest[rows] @ skull[:3, :3].T + skull[:3, 3]
+            worst = max(worst, float(np.linalg.norm(posed - carried, axis=1).max()))
+    finally:
+        poses.rest(arm)
+    return worst
 
 
 def _lids_closed(label, lids):
@@ -482,10 +527,31 @@ def _lids_closed(label, lids):
 
 # ------------------------------------------------------------------------------------ clips
 
+def _grip(arm):
+    """How the fingers of the library's hand pose Grip lie around the handle on its body's hand."""
+    from bpy_extras import anim_utils
+    from mathutils import Quaternion
+
+    from . import grip
+
+    action = bpy.data.actions.get(grip.CLIP)
+    if action is None or not action.slots:
+        return [], []
+    turned = {}
+    for fc in anim_utils.action_get_channelbag_for_slot(action, action.slots[0]).fcurves:
+        bone = fc.data_path.split('"')[1]
+        if fc.data_path.endswith("rotation_quaternion") and bone.endswith("_R"):
+            turned.setdefault(bone[:-2], [1.0, 0.0, 0.0, 0.0])[fc.array_index] = fc.evaluate(0.0)
+    turns = {bone: np.array(Quaternion(q).normalized().to_matrix()) for bone, q in turned.items()}
+    measured = grip.measure(grip.read_hand(arm), turns)
+    return grip.report(measured), grip.problems(measured)
+
+
 def clips(path, label):
     """Checks that a foot on the ground keeps its place in the Idle, Walk and Jog clips of an
-    animation library on the armature label, when the character moves at the clip's speed. The art
-    pipeline checks the rules of every clip at its approval."""
+    animation library on the armature label, when the character moves at the clip's speed, and
+    that the fingers of its hand pose Grip lie on the handle and not in it. The art pipeline checks
+    the rules of every clip at its approval."""
     from mathutils import Vector
 
     from . import animate
@@ -493,6 +559,9 @@ def clips(path, label):
     bpy.ops.wm.open_mainfile(filepath=path)
     lines, failures = [], []
     arm = bpy.data.objects[label]
+    found, broken = _grip(arm)
+    lines += found
+    failures += broken
     scene = bpy.context.scene
     arm.animation_data_create()
     heels, ground = {}, {}

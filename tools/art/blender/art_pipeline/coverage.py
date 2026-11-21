@@ -119,10 +119,12 @@ class _Cloth:
 
     def __init__(self, obj: bpy.types.Object, positions: np.ndarray, alpha: np.ndarray | None, fixed: bool = False):
         mesh = obj.data
-        # Only the cloth that lies on the cage when fixed, as the cover mask takes it: loose parts
+        # Only the cloth that does not swing when fixed, as the cover mask takes it: loose parts
         # hang on the cloth chains, which the runtime solver moves, so what lies under them at rest
-        # need not lie under them in motion.
-        loose = _loose_faces(mesh) if fixed else np.zeros(len(mesh.polygons), bool)
+        # need not lie under them in motion. The top of a loose part above where its chains hang
+        # from, such as a skirt from the waist down to the hips, moves with the skin under it and
+        # covers it like the rest of the garment.
+        loose = hang.swinging_faces(obj, positions) if fixed else np.zeros(len(mesh.polygons), bool)
         self.triangles = []
         for polygon in mesh.polygons:
             if loose[polygon.index]:
@@ -136,6 +138,14 @@ class _Cloth:
             if not loose[polygon.index]:
                 for key in polygon.edge_keys:
                     counts[key] = counts.get(key, 0) + 1
+        # Where the top of a loose part ends and its swinging faces begin, the cloth goes on: that
+        # is no open edge, since the part does not swing off its own top.
+        parts = _loose_faces(mesh)
+        for polygon in mesh.polygons:
+            if loose[polygon.index]:
+                for key in polygon.edge_keys:
+                    if key in counts and any(parts[f] and not loose[f] for f in self._faces_at(mesh, key)):
+                        counts[key] += 1
         # The edges of only one face: the borders of the mesh, and of the fixed cloth where a loose
         # part hangs from it.
         self.border = {key for key, count in counts.items() if count == 1}
@@ -146,6 +156,15 @@ class _Cloth:
             self.uv = uv.reshape(-1, 2)
         self.alpha = alpha
         self.place(positions)
+
+    def _faces_at(self, mesh: bpy.types.Mesh, key: tuple[int, int]) -> list[int]:
+        """The faces of the mesh at an edge, by its two vertices."""
+        if not hasattr(self, "_edge_faces"):
+            self._edge_faces: dict[tuple[int, int], list[int]] = {}
+            for polygon in mesh.polygons:
+                for edge in polygon.edge_keys:
+                    self._edge_faces.setdefault(edge, []).append(polygon.index)
+        return self._edge_faces.get(key, [])
 
     def place(self, positions: np.ndarray) -> "_Cloth":
         """Moves the cloth to these positions of its vertices, as a pose does."""
@@ -341,8 +360,10 @@ def _edge_reach(edges, surface: "garment.Surface", band: str) -> np.ndarray:
 
 def compute(name: str, label: str, band: str, covers: bool = True) -> Coverage:
     """The cover mask, underlay, and pull-in of one version of the garment, at rest. Loose parts
-    cover nothing: they swing off what they hang over at rest, which would show as a hole, so the
-    skin and the inner garments under them stay drawn, and the line they hang from is an open edge.
+    cover nothing where they swing: they swing off what they hang over at rest, which would show as
+    a hole, so the skin and the inner garments under them stay drawn, and the line they hang from
+    is an open edge. The top of a loose part above where its chains hang from does not swing and
+    covers like the rest of the garment.
     A garment that covers nothing, such as a cloak that lies on top and may swing open, leaves its
     cover mask empty."""
     body = bodies.source_body(label)

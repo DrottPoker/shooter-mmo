@@ -62,6 +62,12 @@ class Skeleton:
         return {b.name for b in self.bones if b.chain}
 
     @property
+    def unkeyed_bones(self) -> set[str]:
+        """The bones no clip keys: the cloth chains, which the runtime cloth solver moves, and the
+        eyelids, which the game closes."""
+        return self.chain_bones | set(self.eyelids.bones if self.eyelids else ())
+
+    @property
     def root(self) -> SkeletonBone:
         return next(b for b in self.bones if b.parent is None)
 

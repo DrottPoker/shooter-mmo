@@ -6,9 +6,19 @@ The file holds the image T_Garment_<Name>, packed, with the custom properties ro
 metallic, and the mesh Preview, a copy of the template's first version with the material
 M_Garment_<Name> that shows the image, for painting in Texture Paint mode. Preview keeps the UVs the
 image is painted in, and the property template_uvs the fingerprint of the template's UVs then, so a
-template whose UVs change is noticed and its texture moved to the new UVs by projection from
-Preview. A texture may also start from the look of another mesh by projection, such as a garment
-made before templates.
+template whose faces or UVs change is noticed and its texture moved to the new UVs. The file also
+keeps Preview_Cage, the version of the garment cage that Preview lies on.
+
+The move goes by correspondence, not by rays: a body may come to rest in another pose, and a
+template built again from its recipe has other faces. Preview first follows the template: vertex by
+vertex when the template still has its faces, else with the cage from Preview_Cage to the template's
+cage as it is now, as a template's first version moves with its cage, and then by its feature
+curves, its open edges and the lines its loose parts hang from, each drawn onto the template's
+nearest curve of its kind with that move spread evenly over the cloth between, since the standard
+lines a template is cut at are measured on the bones and the cage's net may slide along the body by
+centimeters from one fit to the next. Every texel of the new UVs then takes the paint of the nearest
+point of the moved Preview on a face that faces its way. A texture may also start from the look of
+another mesh by projection, by rays, such as a garment made before templates.
 
 A texture with transparent parts, such as a laced V, shows the skin through them, so it has a cover
 mask, edges, and pull-in of its own per body, computed in the template's file with the texture on
@@ -26,17 +36,27 @@ import os
 
 import bpy
 import numpy as np
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+from mathutils.interpolate import poly_3d_calc
 
-from . import coverage, garment
+from . import bodies, cage, coverage, garment, hang, paint
 from .export import PNG_SIGNATURE
 from .scene import ArtPipelineError, relative_image_paths
 
 PREVIEW = "Preview"
+PREVIEW_CAGE = "Preview_Cage"
 TEMPLATE_UVS = "template_uvs"
 SIZES = (512, 1024, 2048)
 # A projection looks this far off the target's surface, both ways, for the source's surface.
 PROJECTION_REACH = 0.06
 BAKE_MARGIN = 8
+# How far a feature curve of the preview may lie from the template's, on average, to be drawn onto
+# it: the cage's net slides along the body by a few centimeters between two fits.
+CURVE_REACH = 0.10
+# How far beyond the nearest face a texel looks for one that faces its way, so the inside of a
+# turned edge, a few millimeters under the outside, never paints the outside.
+SIDE_REACH = 0.03
 ALPHA_CUT = 0.5
 DYE_SUFFIX = "_Dye"
 DYE_COLORS = "dye_colors"
@@ -134,6 +154,291 @@ def current_template_uvs(template_file: str, template: str, label: str) -> str:
         return uv_fingerprint(mesh)
     finally:
         bpy.data.meshes.remove(mesh)
+
+
+def _template_cage(template_file: str, label: str) -> bpy.types.Mesh | None:
+    """The cage's version on the template's first body as the template's file holds it now,
+    appended, or None for a file without one."""
+    wanted = cage.version_name(label)
+    with bpy.data.libraries.load(template_file, link=False) as (source, target):
+        if wanted not in source.meshes:
+            return None
+        target.meshes = [wanted]
+    return target.meshes[0]
+
+
+def _keep_cage(mesh: bpy.types.Mesh | None) -> None:
+    """Keeps the cage version the preview lies on in the file, hidden, in place of an earlier one."""
+    old = bpy.data.objects.get(PREVIEW_CAGE)
+    if old is not None:
+        old_mesh = old.data
+        bpy.data.objects.remove(old, do_unlink=True)
+        if old_mesh.users == 0:
+            bpy.data.meshes.remove(old_mesh)
+    if mesh is None:
+        return
+    mesh.name = PREVIEW_CAGE
+    obj = bpy.data.objects.new(PREVIEW_CAGE, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.hide_select = True
+    obj.hide_render = True
+    obj.hide_viewport = True
+
+
+def _faces(mesh: bpy.types.Mesh) -> list[tuple[int, ...]]:
+    return [tuple(p.vertices) for p in mesh.polygons]
+
+
+def open_loops(faces: list[tuple[int, ...]]) -> list[tuple[list[int], bool]]:
+    """The open edges of faces as chains of vertices in their order, and whether each closes."""
+    count: dict[tuple[int, int], int] = {}
+    for face in faces:
+        for i in range(len(face)):
+            key = (min(face[i], face[i - 1]), max(face[i], face[i - 1]))
+            count[key] = count.get(key, 0) + 1
+    around: dict[int, list[int]] = {}
+    for (a, b), n in sorted(count.items()):
+        if n == 1:
+            around.setdefault(a, []).append(b)
+            around.setdefault(b, []).append(a)
+    found, seen = [], set()
+    for start in sorted(around):
+        if start in seen:
+            continue
+        loop, current = [start], start
+        seen.add(start)
+        while True:
+            ahead = [n for n in around[current] if n not in seen]
+            if not ahead:
+                break
+            current = ahead[0]
+            loop.append(current)
+            seen.add(current)
+        found.append((loop, len(loop) > 2 and loop[0] in around[loop[-1]]))
+    return found
+
+
+def hang_lines(faces: list[tuple[int, ...]], loose: np.ndarray | None,
+               top: np.ndarray | None) -> list[tuple[list[int], bool]]:
+    """The edge every loose part hangs from, in its order along the edge, and whether it closes."""
+    if loose is None or top is None or not (loose < 0).any():
+        return []
+    edges = {(min(f[i], f[i - 1]), max(f[i], f[i - 1])) for f in faces for i in range(len(f))}
+    found = []
+    for value in sorted({int(v) for v in loose[loose < 0]}, reverse=True):
+        members = np.nonzero(loose == value)[0]
+        members = [int(m) for m in members[np.argsort(top[members], kind="stable")]]
+        found.append((members, len(members) > 2 and (min(members[0], members[-1]), max(members[0], members[-1])) in edges))
+    return found
+
+
+def nearest_on(points: np.ndarray, line: np.ndarray, closed: bool) -> tuple[np.ndarray, np.ndarray]:
+    """For each point the nearest point of a line through the given points, and its distance."""
+    a = line if closed else line[:-1]
+    b = np.roll(line, -1, axis=0) if closed else line[1:]
+    ab = b - a
+    lengths = np.maximum((ab ** 2).sum(axis=1), 1e-18)
+    out = np.empty_like(np.asarray(points, float))
+    far = np.empty(len(points))
+    for i, p in enumerate(points):
+        t = np.clip(((p - a) * ab).sum(axis=1) / lengths, 0.0, 1.0)
+        candidates = a + ab * t[:, None]
+        d = ((candidates - p) ** 2).sum(axis=1)
+        k = int(np.argmin(d))
+        out[i], far[i] = candidates[k], np.sqrt(d[k])
+    return out, far
+
+
+def spread(count: int, faces: list[tuple[int, ...]], fixed: np.ndarray, moves: np.ndarray) -> np.ndarray:
+    """The moves of the fixed vertices spread evenly over the others: every free vertex takes the
+    mean of its neighbours' moves, and one that no fixed vertex is joined to stays where it is."""
+    laplace = np.zeros((count, count))
+    for face in faces:
+        for i in range(len(face)):
+            a, b = face[i], face[i - 1]
+            if a != b:
+                laplace[a, b] = laplace[b, a] = -1.0
+    np.fill_diagonal(laplace, -laplace.sum(axis=1))
+    out = np.where(fixed[:, None], moves, 0.0)
+    free = ~fixed
+    if fixed.any() and free.any():
+        # The small term keeps the system solvable for a piece that no fixed vertex is joined to.
+        system = laplace[np.ix_(free, free)] + np.eye(int(free.sum())) * 1e-9
+        out[free] = np.linalg.solve(system, -laplace[np.ix_(free, fixed)] @ out[fixed])
+    return out
+
+
+def drawn(co: np.ndarray, faces: list[tuple[int, ...]], curves: list[tuple[str, list[int], bool]],
+          theirs: list[tuple[str, np.ndarray, bool]], reach: float = CURVE_REACH) -> tuple[np.ndarray, list[str]]:
+    """The positions with each feature curve, as its kind, its vertices, and whether it closes, drawn
+    onto the nearest curve of its kind among theirs, and that move spread evenly over the vertices
+    between the curves, with a note on each curve. An open edge goes before the line a loose part
+    hangs from where a vertex lies on both. A curve farther than the reach from every one of theirs,
+    on average, stays, and so does what it holds."""
+    fixed = np.zeros(len(co), bool)
+    moves = np.zeros_like(np.asarray(co, float))
+    notes = []
+    for kind, loop, _closed in sorted(curves, key=lambda c: c[0] != "hang"):
+        best = None
+        for other_kind, line, other_closed in theirs:
+            if other_kind != kind or len(line) < 2:
+                continue
+            onto, far = nearest_on(co[loop], line, other_closed)
+            if best is None or far.mean() < best[1].mean():
+                best = (onto, far)
+        if best is None or best[1].mean() > reach:
+            notes.append(f"one of its {kind} curves, of {len(loop)} vertices, finds none of the template within "
+                         f"{reach * 1000:.0f} mm and stays")
+            moves[loop] = 0.0
+            fixed[loop] = True
+            continue
+        notes.append(f"one of its {kind} curves, of {len(loop)} vertices, lay {best[1].mean() * 1000:.1f} mm from the "
+                     f"template's on average, at most {best[1].max() * 1000:.1f} mm")
+        moves[loop] = best[0] - co[loop]
+        fixed[loop] = True
+    return co + spread(len(co), faces, fixed, moves), notes
+
+
+def _curves(mesh: bpy.types.Mesh) -> list[tuple[str, list[int], bool]]:
+    """A template's feature curves: its open edges and the lines its loose parts hang from."""
+    faces = _faces(mesh)
+    lines = hang_lines(faces, garment._attribute(mesh, hang.HANG, "INT"), garment._attribute(mesh, hang.HANG_TOP, "INT"))
+    edges = [("edge", loop, closed) for loop, closed in open_loops(faces)]
+    return edges + [("hang", loop, closed) for loop, closed in lines]
+
+
+def followed(preview: bpy.types.Object, first: bpy.types.Mesh, recipe, cage_before: bpy.types.Object | None,
+             cage_now: bpy.types.Object | None) -> tuple[np.ndarray, list[str]]:
+    """Where the preview's vertices lie on the template as it is now, and notes on how they came
+    there: on the template's own vertices when it still has the preview's faces; else moved with
+    the cage, from the version the preview lay on to the version of now, cloth on the cage face by
+    face, a loose part as a whole with the edge it hangs from, and a modeled form with the cage's
+    smooth field, and then drawn onto the template's feature curves."""
+    points = bodies.world_positions(preview)
+    mesh = preview.data
+    target = paint._positions(first)
+    if _faces(mesh) == _faces(first):
+        return target.copy(), ["Its preview takes the template's shape vertex by vertex: the template has its faces."]
+    moved = points.copy()
+    notes = []
+    if cage_before is None or cage_now is None:
+        notes.append("The file has no record of the cage its preview lay on, so the preview is taken to lie on the "
+                     "template's cage as it is now.")
+    else:
+        before, now = bodies.world_positions(cage_before), bodies.world_positions(cage_now)
+        if len(before) != len(now) or _faces(cage_before.data) != _faces(cage_now.data):
+            notes.append("The cage its preview lay on has other faces than the template's cage, so the preview does not "
+                         "move with it.")
+        elif np.abs(before - now).max(initial=0.0) > garment.FIT_TOLERANCE:
+            if isinstance(recipe, dict):
+                regions = garment.recipe_regions(recipe)
+                old, new = garment.Surface(cage_before, [], regions), garment.Surface(cage_now, [], regions)
+                loose = garment._attribute(mesh, hang.HANG, "INT")
+                hanging = loose > 0 if loose is not None else np.zeros(len(points), bool)
+                for i in np.nonzero(~hanging)[0]:
+                    moved[i] = tuple(new.place(*old.bind(Vector(points[i]))))
+                for value in sorted({int(v) for v in loose[hanging]}) if hanging.any() else []:
+                    edge = loose == -value
+                    if edge.any():
+                        moved[loose == value] += (moved[edge] - points[edge]).mean(axis=0)
+            else:
+                moved = garment.field_place(before, now, points)
+            shift = np.linalg.norm(moved - points, axis=1)
+            notes.append(f"Its preview moved with the cage by {shift.mean() * 1000:.1f} mm on average, at most "
+                         f"{shift.max() * 1000:.1f} mm.")
+    theirs = [(kind, target[loop], closed) for kind, loop, closed in _curves(first)]
+    moved, curve_notes = drawn(moved, _faces(mesh), _curves(mesh), theirs)
+    return moved, notes + [f"Drawn onto the template: {note}." for note in curve_notes]
+
+
+def _sources(texels: paint.Texels, first: bpy.types.Mesh, old_mesh: bpy.types.Mesh,
+             old_co: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per texel of the template the UVs of the old mesh at the nearest point of its surface at the
+    given positions, and how far away that point lies: the nearest of the faces that face the
+    texel's way within SIDE_REACH beyond the nearest of all, else the nearest of all."""
+    def normals(co: np.ndarray, corners: np.ndarray) -> np.ndarray:
+        value = np.cross(co[corners[:, 1]] - co[corners[:, 0]], co[corners[:, 2]] - co[corners[:, 0]])
+        return value / np.maximum(np.linalg.norm(value, axis=1), 1e-18)[:, None]
+
+    _old_faces, old_loops = paint._loop_triangles(old_mesh)
+    old_uv = bodies._uvs(old_mesh)
+    old_corners = paint._loop_vertices(old_mesh)[old_loops]
+    old_normals = normals(old_co, old_corners)
+    tree = BVHTree.FromPolygons([tuple(p) for p in old_co], [tuple(int(v) for v in c) for c in old_corners])
+    co = paint._positions(first)
+    corners = paint._loop_vertices(first)[texels.loops]
+    ways = normals(co, corners)[texels.triangles]
+    points = (co[corners[texels.triangles]] * texels.weights[:, :, None]).sum(axis=1)
+    uv = np.zeros((len(points), 2))
+    far = np.zeros(len(points))
+    for i, point in enumerate(points):
+        vector = Vector(point)
+        location, _normal, index, distance = tree.find_nearest(vector)
+        if float(old_normals[index] @ ways[i]) <= 0.0:
+            facing = [(d, found, k) for found, _n, k, d in tree.find_nearest_range(vector, distance + SIDE_REACH)
+                      if float(old_normals[k] @ ways[i]) > 0.0]
+            if facing:
+                distance, location, index = min(facing, key=lambda item: item[0])
+        weights = poly_3d_calc([Vector(old_co[v]) for v in old_corners[index]], location)
+        uv[i] = (old_uv[old_loops[index]] * np.array(weights)[:, None]).sum(axis=0)
+        far[i] = distance
+    return uv, far
+
+
+def sampled(rgba: np.ndarray, uv: np.ndarray) -> np.ndarray:
+    """The image at the UVs, every channel filtered between its four nearest texels on its own, so
+    the color under a hole stays what it was painted and never darkens the hole's edge."""
+    height, width = rgba.shape[:2]
+    x = uv[:, 0] * width - 0.5
+    y = uv[:, 1] * height - 0.5
+    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
+    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+
+    def at(ix, iy):
+        return rgba[iy.clip(0, height - 1), ix.clip(0, width - 1)]
+
+    return (at(x0, y0) * (1 - fx) * (1 - fy) + at(x0 + 1, y0) * fx * (1 - fy)
+            + at(x0, y0 + 1) * (1 - fx) * fy + at(x0 + 1, y0 + 1) * fx * fy)
+
+
+def grown(rgba: np.ndarray, filled: np.ndarray, margin: int = BAKE_MARGIN) -> np.ndarray:
+    """The image with its filled texels grown over the empty ones around them by the margin, each
+    taking the mean of its filled neighbours, so filtering at a UV seam takes paint, and the texels
+    beyond the margin black and opaque, as a bake leaves them."""
+    out = np.array(rgba, np.float32)
+    known = filled.copy()
+    for _ in range(margin):
+        total = np.zeros_like(out)
+        number = np.zeros(out.shape[:2], np.float32)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy == 0 and dx == 0:
+                    continue
+                source = (slice(max(dy, 0), out.shape[0] + min(dy, 0)), slice(max(dx, 0), out.shape[1] + min(dx, 0)))
+                target = (slice(max(-dy, 0), out.shape[0] + min(-dy, 0)), slice(max(-dx, 0), out.shape[1] + min(-dx, 0)))
+                total[target] += out[source] * known[source][..., None]
+                number[target] += known[source]
+        grow = ~known & (number > 0)
+        if not grow.any():
+            break
+        out[grow] = total[grow] / number[grow][:, None]
+        known |= grow
+    out[~known] = (0.0, 0.0, 0.0, 1.0)
+    return out
+
+
+def _move_image(image: bpy.types.Image, texels: paint.Texels, uv: np.ndarray, opaque: bool) -> None:
+    """Writes the image again in the texels' UVs, each texel from the image at its old UVs."""
+    width, height = image.size
+    rgba = np.zeros((height * width, 4), np.float32)
+    filled = np.zeros(height * width, bool)
+    rgba[texels.places] = sampled(_pixels(image), uv)
+    filled[texels.places] = True
+    rgba = grown(rgba.reshape(height, width, 4), filled.reshape(height, width))
+    if opaque:
+        rgba[..., 3] = 1.0
+    image.pixels.foreach_set(rgba.clip(0.0, 1.0).reshape(-1))
+    image.update()
 
 
 def has_holes(image: bpy.types.Image) -> bool:
@@ -303,44 +608,6 @@ def _bake(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.I
     image.update()
 
 
-def _bake_dye(source: bpy.types.Object, target: bpy.types.Object, source_dye: bpy.types.Image,
-              dye: bpy.types.Image) -> None:
-    """The source's dye mask baked into the dye mask in the target's UVs, as its emission, the same
-    way as its alpha; a texel no ray reached is dyed by no channel."""
-    shown = bpy.data.materials.new("DyeShown")
-    shown.use_nodes = True
-    nodes = shown.node_tree.nodes
-    for node in list(nodes):
-        nodes.remove(node)
-    texture = nodes.new("ShaderNodeTexImage")
-    texture.image = source_dye
-    emission = nodes.new("ShaderNodeEmission")
-    output = nodes.new("ShaderNodeOutputMaterial")
-    shown.node_tree.links.new(texture.outputs["Color"], emission.inputs["Color"])
-    shown.node_tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    width, height = dye.size
-    baked = bpy.data.images.new("DyeBaked", width, height, alpha=True, float_buffer=True)
-    baked.colorspace_settings.name = "Non-Color"
-    kept = list(source.data.materials)
-    try:
-        for slot in range(len(source.data.materials)):
-            source.data.materials[slot] = shown
-        _bake_pass(source, target, baked, "DYE")
-    finally:
-        for slot, original in enumerate(kept):
-            source.data.materials[slot] = original
-        bpy.data.materials.remove(shown)
-    values = np.empty(width * height * 4, np.float32)
-    baked.pixels.foreach_get(values)
-    bpy.data.images.remove(baked)
-    values = values.reshape(-1, 4)
-    reached = values[:, 3:4] > 0.5
-    values[:, :3] = np.where(reached, np.clip(values[:, :3], 0.0, 1.0), 0.0)
-    values[:, 3] = 1.0
-    dye.pixels.foreach_set(values.ravel())
-    dye.update()
-
-
 def _set_linear(image: bpy.types.Image, color: np.ndarray, alpha: np.ndarray) -> None:
     """Stores linear colors in an sRGB image with its alpha."""
     pixels = np.concatenate([linear_to_srgb(color), alpha[..., None]], axis=2)
@@ -435,7 +702,8 @@ def set_dyes(file: str, name: str, regions_file: str | None, level: float) -> li
 def create(file: str, name: str, template_file: str, template: str, label: str, size: int,
            source_file: str | None, source_object: str | None) -> None:
     """Writes the first file of a texture: its image, a neutral light grey or the look of another
-    mesh moved over by projection, and the preview on the template's first version."""
+    mesh moved over by projection, the preview on the template's first version, and the cage
+    version the preview lies on."""
     if size not in SIZES:
         raise ArtPipelineError(f"A garment texture is {', '.join(str(s) for s in SIZES)} pixels square.")
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -447,6 +715,7 @@ def create(file: str, name: str, template_file: str, template: str, label: str, 
     mesh = _template_first(template_file, template, label)
     preview = _preview(name, mesh, image)
     preview[TEMPLATE_UVS] = uv_fingerprint(mesh)
+    _keep_cage(_template_cage(template_file, label))
     if source_file:
         with bpy.data.libraries.load(source_file, link=False) as (source, target):
             if source_object not in source.objects:
@@ -470,11 +739,12 @@ def create(file: str, name: str, template_file: str, template: str, label: str, 
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
 
 
-def sync(file: str, name: str, template_file: str, template: str, label: str) -> bool:
-    """Moves the texture to the template's UVs by projection from its preview when the template's
-    UVs changed, or when the preview's own faces or UVs were edited, so the image is always in the
-    UVs of the model Unity draws. Returns whether the file changed; an unchanged file is not saved,
-    so its approval stays valid."""
+def sync(file: str, name: str, template_file: str, template: str, label: str, recipe) -> tuple[bool, list[str]]:
+    """Moves the texture to the template's UVs when the template's faces or UVs changed, or when
+    the preview's own faces or UVs were edited, so the image is always in the UVs of the model Unity
+    draws: the preview follows the template, and every texel of the new UVs takes the paint of the
+    nearest point of the moved preview, the dye mask the same way. Returns whether the file changed,
+    and notes for the report; an unchanged file is not saved, so its approval stays valid."""
     bpy.ops.wm.open_mainfile(filepath=file)
     preview = bpy.data.objects.get(PREVIEW)
     image = bpy.data.images.get(image_name(name))
@@ -482,43 +752,32 @@ def sync(file: str, name: str, template_file: str, template: str, label: str) ->
         raise ArtPipelineError(f'The texture needs its image "{image_name(name)}" and its "{PREVIEW}".')
     current = current_template_uvs(template_file, template, label)
     if preview.get(TEMPLATE_UVS) == current and uv_fingerprint(preview.data) == current:
-        return False
+        return False, []
     dye = bpy.data.images.get(dye_image_name(name))
     colors = parse_dye_colors(dye.get(DYE_COLORS)) if dye is not None else None
-    old = preview
-    old.name = f"{PREVIEW}_old"
-    old_image = image.copy()
-    old_image.pack()
-    old_dye = None
+    first = _template_first(template_file, template, label)
+    cage_mesh = _template_cage(template_file, label)
+    cage_now = bpy.data.objects.new("TemplateCage", cage_mesh) if cage_mesh is not None else None
+    moved, notes = followed(preview, first, recipe, bpy.data.objects.get(PREVIEW_CAGE), cage_now)
+    if cage_now is not None:
+        bpy.data.objects.remove(cage_now)
+    texels = paint.Texels(first, None, tuple(image.size), None)
+    uv, far = _sources(texels, first, preview.data, moved)
+    notes.append(f"{len(texels.places)} texels lie on the template and took their paint from "
+                 f"{np.median(far) * 1000:.1f} mm away at the median, {np.percentile(far, 99) * 1000:.1f} mm at 99 %, at most {far.max() * 1000:.1f} mm.")
+    _move_image(image, texels, uv, not has_holes(image))
     if colors:
-        old_dye = dye.copy()
-        old_dye.pack()
-        old_dye[DYE_COLORS] = ";".join(colors)
-    # The old preview shows the texture dyed in its natural colors, so the bake moves its painted
-    # look, and the neutral image is divided again by the moved mask.
-    old.data.materials[0] = _material(f"{name}_old", old_image, old_dye)
-    mesh = _template_first(template_file, template, label)
-    new = _preview(name, mesh, image)
-    _bake(old, new, image)
-    if colors:
-        _bake_dye(old, new, old_dye, dye)
-        pixels = _pixels(image)
-        neutral = srgb_to_linear(pixels[..., :3]) / dye_factor(_pixels(dye)[..., :3], colors)
-        _set_linear(image, np.clip(neutral, 0.0, 1.0), pixels[..., 3])
+        # The image is the neutral cloth and the mask says where a dye reaches: each moves as it is.
+        _move_image(dye, texels, uv, True)
         dye.pack()
-        new.data.materials[0] = _material(name, image, dye)
+    new = _preview(name, first, image, dye if colors else None)
     new[TEMPLATE_UVS] = current
+    _keep_cage(cage_mesh)
     image.pack()
-    old_mesh = old.data
-    bpy.data.objects.remove(old, do_unlink=True)
-    bpy.data.meshes.remove(old_mesh)
-    bpy.data.images.remove(old_image)
-    if old_dye is not None:
-        bpy.data.images.remove(old_dye)
     bpy.data.orphans_purge(do_recursive=True)
     relative_image_paths()
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
-    return True
+    return True, notes
 
 
 def dye_errors(name: str, dyes: int) -> list[str]:

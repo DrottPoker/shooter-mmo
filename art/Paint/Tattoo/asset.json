@@ -7,30 +7,30 @@
     "layer": 200,
     "approvals": {
         "paint": {
-            "date": "2026-10-25",
-            "sourceSha256": "75207bc34665fe31f706791e72a73642d2f41570c46107b1646fff05bfd08fda"
+            "date": "2026-11-21",
+            "sourceSha256": "685787dfc5ee18382a4c07fa89a917b58caa372c90c7969c592272ada49ca613"
         }
     },
     "export": {
-        "sourceSha256": "75207bc34665fe31f706791e72a73642d2f41570c46107b1646fff05bfd08fda",
+        "sourceSha256": "685787dfc5ee18382a4c07fa89a917b58caa372c90c7969c592272ada49ca613",
         "textures": [
             {
                 "name": "T_Paint_Tattoo_Male",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Male.png",
-                "sha256": "5029c2402888eb12f743b64c3165f9955c5f8c46d9b3b17710bbffbafccb47f6",
+                "sha256": "9ab8cc770b38b325ae7e6bca945996523aaadd347ace0e2bdc3f6b633c96a5ba",
                 "layout": [4096, 2048],
-                "rect": [916, 0, 2980, 924],
+                "rect": [392, 1016, 3652, 760],
                 "move": "topology",
-                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
+                "bodyPaintSha256": "88c93ba7167c782563a117215d6df7a89ce65a5703e1660b9d384c9e026f3b99"
             },
             {
                 "name": "T_Paint_Tattoo_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Female.png",
-                "sha256": "68fd071de22a0ad28117f57330a4fdf25374b748c162d884972725bc6b7e2497",
+                "sha256": "be56ba1e04f737ba2d05232b3cf03dedfb8ca25ba55567b80dd2688f544f3b98",
                 "layout": [4096, 2048],
-                "rect": [1476, 0, 2604, 1744],
+                "rect": [1268, 516, 2808, 1104],
                 "move": "topology",
-                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
+                "bodyPaintSha256": "f00f5c95af5757d9ae83772139ebe5d2d76f0da55d8519456c1fa9fd66c1a339"
             }
         ],
         "smoothness": 0.4,

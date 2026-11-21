@@ -5,7 +5,7 @@
     "rootObjects": [
         "Male"
     ],
-    "triangleBudget": 10000,
+    "triangleBudget": 15400,
     "skeleton": "Humanoid",
     "variants": [
         { "material": "M_Eye_Male", "images": ["T_Eye_Male_Brown"] },
@@ -13,20 +13,20 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-25",
-            "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203"
+            "date": "2026-11-20",
+            "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a"
         },
         "rig": {
-            "date": "2026-10-25",
-            "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203"
+            "date": "2026-11-20",
+            "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a"
         }
     },
     "export": {
-        "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203",
-        "targetSha256": "4f66d3383afd6b1aed2665e7e092cb5fa4dc4c953a9857c294cd7755829a14b1",
-        "dataSha256": "bfea2e93621d75d7cde6bc9e1eefe3d4330a9a30e48bb27cce5322d7197f5f1b",
-        "fitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
-        "paintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57",
+        "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a",
+        "targetSha256": "8ad941757b06718fae8fbc9ecc35275ac04ea3b08ec800abfc1ceb144ec60d39",
+        "dataSha256": "f780c2fe6fdc7891ed7c018c2435948d2cc7295b73473cfd07443488fc1fdcdf",
+        "fitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
+        "paintSha256": "88c93ba7167c782563a117215d6df7a89ce65a5703e1660b9d384c9e026f3b99",
         "materials": [
             {
                 "name": "M_Body_Male",
@@ -66,27 +66,27 @@
             {
                 "name": "T_Body_Male",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Male.png",
-                "sha256": "87605fe79572a7e4cbf8ee7185bde3f746e80db0af928c32507c390fd8bb789d"
+                "sha256": "7ea35537008f1aa4ebe9f9aeca8013c4e34e997b5eee78531134e22cc06a0945"
             },
             {
                 "name": "T_Eye_Male_Teal",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Male_Teal.png",
-                "sha256": "0c612c3eada342c66958245b2b1c9d556a5aad128a0c237726d2a847aa4c27d2"
+                "sha256": "849cc2d59fd552ba651f7c441c5400856d6f8b926892f92b22a17472545233f0"
             },
             {
                 "name": "T_Face_Male_Stubble",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Stubble.png",
-                "sha256": "a7f35e1bf0d14dc8a690e39b7dcdfbec579f09bca6044ed374c01d9b88d8f997"
+                "sha256": "102a2da519dc52afb82b611f6cf9ef64340b4cc40a8382336d47c0cca376fbdc"
             },
             {
                 "name": "T_Eye_Male_Brown",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Male_Brown.png",
-                "sha256": "4fecb602a6dc15398569cf00613264e622d584e154a35e003548689494ca43fd"
+                "sha256": "dc1105ca8c531d8dbeb1f588e5c58873f9269df36c1a6c18f211188476ffa761"
             },
             {
                 "name": "T_Face_Male_Clean",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Clean.png",
-                "sha256": "055331fa322a29da7e200ba8706651913904c141de7d6f8799f19c9f6e1d9391"
+                "sha256": "102a2da519dc52afb82b611f6cf9ef64340b4cc40a8382336d47c0cca376fbdc"
             }
         ]
     }

@@ -22,21 +22,10 @@ namespace Mmorpg.Client.Editor
             return new Vector3(x, z, y);
         }
 
-        // The source vertex of each position, or -1 where none lies within the tolerance.
-        public static int[] VertexSources(IReadOnlyList<Vector3> positions, Topology topology)
-        {
-            var sources = new int[positions.Count];
-            for (var index = 0; index < positions.Count; index++)
-            {
-                sources[index] = topology.Nearest(positions[index]);
-            }
-
-            return sources;
-        }
-
         // Every source vertex within the tolerance of each position, nearest first. A garment made
-        // of pieces that meet, such as a hood's collar and the band turned down over it, has two
-        // vertices at one place, and only the face of a triangle tells which one a corner is.
+        // of pieces that meet, such as a hood's collar and the band turned down over it, or a body
+        // whose lips meet, has two vertices at one place, and only the face of a triangle tells
+        // which one a corner is.
         public static int[][] VertexCandidates(IReadOnlyList<Vector3> positions, Topology topology)
         {
             var candidates = new int[positions.Count][];
@@ -49,26 +38,16 @@ namespace Mmorpg.Client.Editor
         }
 
         // The source face of each triangle of the mesh, over its submeshes in order, from the
-        // source vertices of its corners: the one face that holds all three.
-        public static int[] TriangleFaces(Mesh mesh, IReadOnlyList<int> vertexSources, Topology topology, string where)
-        {
-            var candidates = new int[vertexSources.Count][];
-            for (var index = 0; index < candidates.Length; index++)
-            {
-                candidates[index] = vertexSources[index] >= 0 ? new[] { vertexSources[index] } : Array.Empty<int>();
-            }
-
-            return TriangleFaces(mesh, candidates, topology, where);
-        }
-
-        // The same from the source vertices each corner may be, nearest first: the one face that
-        // holds the nearest of each corner's, or where no face does, the one that holds one of each
-        // corner's. A turned edge's rim may lie on the edge it turns from, so the nearest decide
-        // where they can.
+        // source vertices each corner may be, nearest first: the one face that holds one of each
+        // corner's. Where several do, it is the one that faces the triangle's way, or else the one
+        // that holds the nearest of each corner's. Where lips meet, the faces on both sides of the
+        // closed slit hold the same places, and only their sides tell them apart; a turned edge's
+        // rim may lie on the edge it turns from.
         public static int[] TriangleFaces(Mesh mesh, IReadOnlyList<int[]> vertexCandidates, Topology topology, string where)
         {
             var faces = new List<int>();
             var triangles = new List<int>();
+            var holding = new List<int>();
             for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
             {
                 mesh.GetTriangles(triangles, submesh);
@@ -82,47 +61,121 @@ namespace Mmorpg.Client.Editor
                         throw new InvalidOperationException(where + ": triangle " + faces.Count + " has a corner outside the editable mesh.");
                     }
 
-                    var face = FaceHolding(topology, new[] { a[0] }, new[] { b[0] }, new[] { c[0] }, where, faces.Count);
-                    if (face < 0)
-                    {
-                        face = FaceHolding(topology, a, b, c, where, faces.Count);
-                    }
-
-                    if (face < 0)
+                    FacesHolding(topology, a, b, c, holding);
+                    if (holding.Count == 0)
                     {
                         throw new InvalidOperationException(where + ": triangle " + faces.Count + " lies in no face of the editable mesh.");
                     }
 
-                    faces.Add(face);
+                    faces.Add(holding.Count == 1 ? holding[0] : OneOf(topology, a, b, c, holding, where, faces.Count));
                 }
             }
 
             return faces.ToArray();
         }
 
-        // The one face that holds one vertex of each corner's, or -1.
-        private static int FaceHolding(Topology topology, int[] a, int[] b, int[] c, string where, int triangle)
+        // The source vertex of each vertex from the faces of its triangles: of the vertices within
+        // the tolerance, nearest first, the first that the face of one of its triangles holds, or
+        // the nearest for a vertex no triangle uses. A body whose lips meet has two vertices at one
+        // place, and only the faces tell which one a corner is.
+        public static int[] VertexSources(Mesh mesh, IReadOnlyList<int[]> vertexCandidates, IReadOnlyList<int> triangleFaces,
+            Topology topology)
         {
-            var face = -1;
+            var facesOfVertex = new List<int>[vertexCandidates.Count];
+            var triangles = new List<int>();
+            var triangle = 0;
+            for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
+            {
+                mesh.GetTriangles(triangles, submesh);
+                for (var corner = 0; corner < triangles.Count; corner++)
+                {
+                    var vertex = triangles[corner];
+                    (facesOfVertex[vertex] ??= new List<int>()).Add(triangleFaces[triangle + corner / 3]);
+                }
+
+                triangle += triangles.Count / 3;
+            }
+
+            var sources = new int[vertexCandidates.Count];
+            for (var vertex = 0; vertex < sources.Length; vertex++)
+            {
+                var candidates = vertexCandidates[vertex];
+                sources[vertex] = candidates.Length > 0 ? candidates[0] : -1;
+                if (candidates.Length < 2 || facesOfVertex[vertex] == null)
+                {
+                    continue;
+                }
+
+                foreach (var candidate in candidates)
+                {
+                    if (facesOfVertex[vertex].Exists(face => topology.FaceHolds(face, candidate)))
+                    {
+                        sources[vertex] = candidate;
+                        break;
+                    }
+                }
+            }
+
+            return sources;
+        }
+
+        // Every face that holds one vertex of each corner's.
+        private static void FacesHolding(Topology topology, int[] a, int[] b, int[] c, List<int> found)
+        {
+            found.Clear();
             foreach (var first in a)
             {
                 foreach (var candidate in topology.FacesOf(first))
                 {
-                    if (candidate == face || !HoldsAny(topology, candidate, b) || !HoldsAny(topology, candidate, c))
+                    if (!found.Contains(candidate) && HoldsAny(topology, candidate, b) && HoldsAny(topology, candidate, c))
                     {
-                        continue;
+                        found.Add(candidate);
                     }
+                }
+            }
+        }
 
-                    if (face >= 0)
-                    {
-                        throw new InvalidOperationException(where + ": triangle " + triangle + " lies in two faces.");
-                    }
-
-                    face = candidate;
+        // Of several faces that hold a triangle's corners, the one that faces its way, or else the
+        // one that holds the nearest vertex of each corner. Blender's (x, y, z) is Unity's
+        // (x, z, y), a mirror image, so in Unity's axes a face's corners in their Blender order go
+        // round the other way than the corners of the triangles Unity makes of it: the face of a
+        // triangle has a normal, in that order, that points against the triangle's.
+        private static int OneOf(Topology topology, int[] a, int[] b, int[] c, List<int> holding, string where, int triangle)
+        {
+            var corner = topology.PositionOf(a[0]);
+            var normal = Vector3.Cross(topology.PositionOf(b[0]) - corner, topology.PositionOf(c[0]) - corner);
+            var found = -1;
+            var count = 0;
+            foreach (var face in holding)
+            {
+                if (Vector3.Dot(normal, topology.NormalOf(face)) < 0f)
+                {
+                    found = face;
+                    count++;
                 }
             }
 
-            return face;
+            if (count == 1)
+            {
+                return found;
+            }
+
+            count = 0;
+            foreach (var face in holding)
+            {
+                if (topology.FaceHolds(face, a[0]) && topology.FaceHolds(face, b[0]) && topology.FaceHolds(face, c[0]))
+                {
+                    found = face;
+                    count++;
+                }
+            }
+
+            if (count == 1)
+            {
+                return found;
+            }
+
+            throw new InvalidOperationException(where + ": triangle " + triangle + " lies in two faces.");
         }
 
         private static bool HoldsAny(Topology topology, int face, int[] vertices)
@@ -211,6 +264,29 @@ namespace Mmorpg.Client.Editor
             public bool FaceHolds(int face, int vertex)
             {
                 return Array.IndexOf(faces[face], vertex) >= 0;
+            }
+
+            public Vector3 PositionOf(int vertex)
+            {
+                return vertices[vertex];
+            }
+
+            // The normal of a face from its corners in their order, by Newell's method, so a face
+            // that is not flat gets the normal of its mean plane; its length is twice the area.
+            public Vector3 NormalOf(int face)
+            {
+                var normal = Vector3.zero;
+                var corners = faces[face];
+                for (var corner = 0; corner < corners.Length; corner++)
+                {
+                    var from = vertices[corners[corner]];
+                    var to = vertices[corners[(corner + 1) % corners.Length]];
+                    normal.x += (from.y - to.y) * (from.z + to.z);
+                    normal.y += (from.z - to.z) * (from.x + to.x);
+                    normal.z += (from.x - to.x) * (from.y + to.y);
+                }
+
+                return normal;
             }
 
             // Every vertex within the tolerance of the position, the one Nearest gives first.

@@ -11,7 +11,11 @@ ratio of the leg lengths, and the legs are solved again with the gait model's tw
 ankle is where the source's is from the place its hips rest at, scaled, wherever the source stands in
 its file, the knee toward the retargeted leg's front. A hand that holds
 something may take the library's Grip clip on its fingers instead. The result is one clip that does
-not loop, keyed on every frame as the gait model keys, and nothing replaces a clip the library has."""
+not loop, keyed on every frame as the gait model keys, and nothing replaces a clip the library has.
+
+A refit moves the clips a library has the same way, from the rig they were keyed on to the library's
+new rig of the same skeleton, when the rig's joints moved: a clip looks as it did, although the rig
+rests in another pose. It replaces every clip with the same clip on the new rig."""
 
 import json
 import math
@@ -41,6 +45,13 @@ HAND_FRAME = ("MiddleProximal", "IndexProximal", "LittleProximal")
 GRIP_CLIP = "Grip"
 GRIPS = {"-": "", "L": "L", "R": "R", "LR": "LR"}
 SOURCE_TYPES = (".glb", ".gltf", ".fbx", ".bvh")
+# A refit aligns the limbs of LIMBS but the feet: both rigs rest with their soles on the ground, so
+# a foot keeps its turn from the ground and does not take the direction of the old rig's bone.
+REFIT_LIMBS = {bone: toward for bone, toward in LIMBS.items() if bone != "Foot"}
+# What a clip keys of a bone: its turn, and of the hips their place.
+ROTATION, LOCATION = "rotation_quaternion", "location"
+# Two rigs rest alike when no bone's rest matrix differs by more than this.
+SAME_REST = 1e-6
 
 
 def map_errors(data, target_bones, source_bones, skeleton="Humanoid") -> list[str]:
@@ -65,12 +76,12 @@ def map_errors(data, target_bones, source_bones, skeleton="Humanoid") -> list[st
     return errors
 
 
-def aligned_pairs(bones) -> list[tuple[str, str | None]]:
+def aligned_pairs(bones, limbs=LIMBS) -> list[tuple[str, str | None]]:
     """The Humanoid bones aligned along their length, each with the bone whose head it points to, or
-    None for its own tail, for the mapped bones of a map."""
+    None for its own tail, for the mapped bones of a map: the limbs of limbs, and the fingers."""
     pairs = []
     for side in SIDES:
-        for bone, toward in LIMBS.items():
+        for bone, toward in limbs.items():
             if f"{bone}_{side}" in bones and f"{toward}_{side}" in bones:
                 pairs.append((f"{bone}_{side}", f"{toward}_{side}"))
         for finger in FINGERS:
@@ -89,6 +100,28 @@ def hand_sides(bones) -> list[str]:
     """The sides whose hand takes the source hand's frame: the map names the hand and the finger
     bases of HAND_FRAME."""
     return [side for side in SIDES if all(f"{bone}_{side}" in bones for bone in ("Hand",) + HAND_FRAME)]
+
+
+def keyed(paths) -> tuple[set[str], bool, list[str]]:
+    """What a clip keys, from the data paths of its curves: the bones it turns, whether it moves
+    the hips, and the curves a refit cannot move, which are all but a bone's quaternion and the
+    hips' place."""
+    bones, hips, other = set(), False, set()
+    for path in paths:
+        match = re.fullmatch(r'pose\.bones\["([^"]+)"\]\.(\w+)', path)
+        if match and match.group(2) == ROTATION:
+            bones.add(match.group(1))
+        elif match and match.group(2) == LOCATION and match.group(1) == "Hips":
+            hips = True
+        else:
+            other.add(path)
+    return bones, hips, sorted(other)
+
+
+def distinct_frames(start: int, end: int, loop: bool) -> int:
+    """The frames a clip plays before it repeats or ends: a looping clip's last frame is its first
+    again."""
+    return end - start if loop else end - start + 1
 
 
 def _hand_frame(wrist, middle, index, little):
@@ -180,7 +213,7 @@ class Retarget:
     """The fixed parts of a retarget from a source armature to the Humanoid armature, from both
     rest poses and the map, and the pose of one frame."""
 
-    def __init__(self, target, source, bones, facing, skip):
+    def __init__(self, target, source, bones, facing, skip, limbs=LIMBS):
         self.target, self.bones, self.skip = target, bones, skip
         self.rig = animate.Rig(target)
         self.turn = Matrix.Rotation(math.radians(facing), 3, "Z")
@@ -193,7 +226,7 @@ class Retarget:
         self.head_s = {b.name: world @ b.head_local for b in source.data.bones}
         tail_s = {b.name: world @ b.tail_local for b in source.data.bones}
         self.align = {}
-        for bone, toward in aligned_pairs(bones):
+        for bone, toward in aligned_pairs(bones, limbs):
             d_t = (head_t[toward] if toward else tail_t[bone]) - head_t[bone]
             end_s = self.head_s[bones[toward]] if toward else tail_s[bones[bone]]
             d_s = self.turn @ (end_s - self.head_s[bones[bone]])
@@ -276,7 +309,7 @@ def import_clip(path, label, source_path, map_path, clips, name, grip, skeleton_
     except (OSError, ValueError) as error:
         return [], [f"Cannot read the map {map_path}: {error}"], None
     skeleton = skeleton_definition.load(skeleton_path)
-    skip = frozenset(skeleton.chain_bones)
+    skip = frozenset(skeleton.unkeyed_bones)
     bpy.ops.wm.open_mainfile(filepath=path)
     if name in bpy.data.actions:
         return [], [f"{name}: the library has the clip already, and a clip is never replaced."], None
@@ -328,3 +361,149 @@ def import_clip(path, label, source_path, map_path, clips, name, grip, skeleton_
              f"{len(bones)} bones mapped, {len(retarget.align)} aligned to the source's rest pose"
              + (f", the fingers of {' and '.join(GRIPS[grip])} in {GRIP_CLIP}" if GRIPS[grip] else "") + f" -> {path}"]
     return lines, [], motion
+
+
+def _sample_clip(scene, source, action, start, count, mapped, carried):
+    """Per frame of a clip played on the source: the world matrix of every mapped bone, and the
+    own turn of every carried bone."""
+    _play(source, action)
+    frames = []
+    for frame in range(start, start + count):
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        bones = source.pose.bones
+        frames.append(({name: source.matrix_world @ bones[name].matrix for name in mapped},
+                       {name: bones[name].rotation_quaternion.copy() for name in carried}))
+    _play(source, None)
+    return frames
+
+
+def _rest_difference(target, source, names):
+    """How far the rests of two armatures differ at most over the named bones: the largest
+    difference between two entries of their rest matrices."""
+    worst = 0.0
+    for name in names:
+        a, b = target.data.bones[name].matrix_local, source.data.bones[name].matrix_local
+        worst = max(worst, max(abs(a[row][column] - b[row][column]) for row in range(4) for column in range(4)))
+    return worst
+
+
+def refit(path, label, old_path, skeleton_path, leave):
+    """Moves the clips of the animation library at path from the rig they were keyed on to its
+    armature label, a new rig of the same skeleton, and saves the library. old_path is the library
+    as it was before its armature was replaced, which still has the old rig under the same name.
+
+    Every frame of a clip turns each deforming bone of the new rig from its rest as the old rig's
+    bone turns from its rest, in world space, as an imported clip is moved: the arms and the fingers
+    aligned to the old rest pose, each hand in the old hand's frame, the hips' movement scaled by
+    the legs' lengths, and the legs solved again so each ankle is where it was. A foot keeps its
+    turn from the ground, and a bone that deforms nothing, such as a socket, its own turn. A clip
+    keys the bones it keyed, on every frame, loops if it looped, and keeps its name.
+
+    The clips named in leave, joined by ",", or "-" for none, are removed instead, for the gait
+    model to make again on the new rig. Two rigs that rest alike leave the library as it is.
+    Returns the report lines, the broken rules, and no motion numbers."""
+    from art_pipeline import clip_video
+    from art_pipeline import skeleton as skeleton_definition
+
+    skeleton = skeleton_definition.load(skeleton_path)
+    skip = frozenset(skeleton.unkeyed_bones)
+    leave = [] if leave == "-" else [name for name in leave.split(",") if name]
+    bpy.ops.wm.open_mainfile(filepath=path)
+    target = bpy.data.objects.get(label)
+    if target is None or target.type != "ARMATURE":
+        return [], [f"{path} has no armature {label}."], None
+    clips = sorted(action.name for action in bpy.data.actions)
+    scene = bpy.context.scene
+    scene.render.fps, scene.render.fps_base = animate.FPS, 1.0
+
+    # The old rig, appended beside the new one; a clip it was showing comes along and is removed.
+    objects, actions = set(bpy.data.objects), set(bpy.data.actions)
+    with bpy.data.libraries.load(os.path.abspath(old_path), link=False) as (found, loaded):
+        if label not in found.objects:
+            return [], [f"{old_path} has no armature {label}."], None
+        loaded.objects = [label]
+    source = loaded.objects[0]
+    if source.type != "ARMATURE":
+        return [], [f"{label} in {old_path} is not an armature."], None
+    added = [o for o in bpy.data.objects if o not in objects]
+    scene.collection.objects.link(source)
+    if source.animation_data is not None:
+        for track in list(source.animation_data.nla_tracks):
+            source.animation_data.nla_tracks.remove(track)
+        source.animation_data.action = None
+    for action in [a for a in bpy.data.actions if a not in actions]:
+        bpy.data.actions.remove(action)
+
+    common = [b.name for b in target.data.bones if b.name in source.data.bones]
+    apart = _rest_difference(target, source, common)
+    if apart <= SAME_REST and not leave:
+        return [f"{label} rests as the rig its clips were keyed on: the clips stay as they are"], [], None
+    deform = set(skeleton.deform_bones)
+    bones = {name: name for name in common if name in deform and name not in skip}
+    carried = [name for name in common if name not in deform and name not in skip]
+    missing = [bone for bone in REQUIRED if bone not in bones]
+    if missing:
+        return [], [f"Both rigs need the bones {', '.join(missing)} for a refit."], None
+
+    plans, errors = [], []
+    for name in clips:
+        if name in leave:
+            continue
+        action = bpy.data.actions[name]
+        if not action.slots:
+            errors.append(f"{name}: the clip has no slot to play on the armature.")
+            continue
+        channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
+        turned, hips_move, other = keyed(fc.data_path for fc in channelbag.fcurves)
+        if other:
+            errors.append(f"{name}: a refit moves the turns of bones and the hips' place only, not {', '.join(other)}.")
+        if hips_move:
+            turned.add("Hips")
+        start, end = (int(round(v)) for v in action.frame_range)
+        loop = bool(action.get("loop", False))
+        if distinct_frames(start, end, loop) < 1:
+            errors.append(f"{name}: the clip has no frame.")
+        plans.append((name, action, turned, start, distinct_frames(start, end, loop), loop))
+    if errors:
+        return [], errors, None
+
+    moved = Retarget(target, source, bones, 0.0, skip, REFIT_LIMBS)
+    target.animation_data_create()
+    active = target.animation_data.action.name if target.animation_data.action is not None else None
+    present = {b.name for b in target.data.bones}
+    lines = [f"{label}: {len(plans)} clips moved to the new rig, {len(bones)} bones, {len(moved.align)} of them aligned to the "
+             f"old rest pose, the legs {moved.scale:.3f} times as long"]
+    for name, action, turned, start, count, loop in plans:
+        frames = _sample_clip(scene, source, action, start, count, set(bones.values()), carried)
+        before = clip_video.measure(source, action, skip)
+        # The old clip gives its name to the new one.
+        action.name = f"{name}.before"
+        clip_skip = frozenset(present - turned) | skip
+
+        def frame(index, frames=frames):
+            world, turns = frames[index]
+            local, hips_location = moved.frame(world, {})
+            local.update(turns)
+            return local, hips_location
+
+        made = animate.bake(target, name, count, frame, clip_skip, loop)
+        if made.name != name:
+            return [], [f"{name}: Blender named the new clip {made.name}."], None
+        after = clip_video.measure(target, made, skip)
+        bpy.data.actions.remove(action)
+        gone = sorted((turned - present) | (turned & skip))
+        lines.append(f"{name}: {after['frames']} frames, {'loops' if loop else 'ends'}, "
+                     f"{len(turned & present - skip)} bones keyed; lowest point {before['lowestPoint']:.3f} -> {after['lowestPoint']:.3f} m, hips at their lowest "
+                     f"{before['rootLowest']:.2f} -> {after['rootLowest']:.2f} of their rest height"
+                     + (f"; the keys of {', '.join(gone)} are dropped" if gone else ""))
+    for name in leave:
+        if name in bpy.data.actions:
+            bpy.data.actions.remove(bpy.data.actions[name])
+            lines.append(f"{name}: removed, for the gait model to make again")
+    _remove(added, [], [])
+    # The FBX export bakes every action as a take only for an object that has animation data.
+    target.animation_data.action = bpy.data.actions.get(active) if active else None
+    scene.frame_start, scene.frame_end = 0, max((int(a.frame_range[1]) for a in bpy.data.actions), default=60)
+    bpy.ops.wm.save_as_mainfile(filepath=path, compress=True, relative_remap=False)
+    return lines, [], None

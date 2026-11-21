@@ -25,40 +25,40 @@
     "triangleBudget": 1500,
     "approvals": {
         "model": {
-            "date": "2026-10-25",
-            "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7"
+            "date": "2026-11-21",
+            "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
         },
         "rig": {
-            "date": "2026-10-25",
-            "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7"
+            "date": "2026-11-21",
+            "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
         }
     },
     "export": {
-        "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7",
-        "cageSourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571",
+        "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845",
+        "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
-                "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
+                "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/Boots_Male.fbx",
-                "sha256": "e30cce4e0ac6ea8a5ab8f958f806d2f2b0d24a4f096de6a4a266dce6c7ee6c8f",
+                "sha256": "2016728b8b117ca664091954a9f16ade4ee89aa22ef72dc8a4b4f5c3b8a1f8ab",
                 "data": "src/Client/Assets/Art/Models/Garments/Boots_Male.json",
-                "dataSha256": "676583adab67a9c37f3b1418851d31c010533e0c3219d92bc6214a3e6397486c"
+                "dataSha256": "326dbb42dc7b7fa3877c733a42de3f8e507b0223c96dafe5891f7057e6d08e0a"
             },
             {
                 "body": "Female",
-                "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
+                "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/Boots_Female.fbx",
-                "sha256": "6168fe93669d7e2c33f7baad990c61437a22bccb52044e9758cd0ca1220092b9",
+                "sha256": "48f25607239a9d3237a5f18efbb715cd784625e831c960022710c09a54aad6ad",
                 "data": "src/Client/Assets/Art/Models/Garments/Boots_Female.json",
-                "dataSha256": "d187acd39e3bfbbd3f5f7c297a72cda2d2a3d5f3df009da664f2b5daca03ff9b"
+                "dataSha256": "6553e9d7dc7744bf44ed62be0e4e78f4401490959aa933148c574849e32af38b"
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "f184d6e2e9d924cd1475b1d713d066a0f58a424c90ed470fcd68fe234d45d8b2" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Trousers", "sourceSha256": "f9d96d304d8b4bce5b463b9f6cc83cdaef7d848b47a315cd54c56db80729572e" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465" }
         ],
         "materials": [
             {

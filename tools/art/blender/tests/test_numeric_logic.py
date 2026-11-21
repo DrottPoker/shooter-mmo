@@ -22,16 +22,32 @@ try:
 except ImportError:
     raise unittest.SkipTest("numpy is not installed; see requirements.txt") from None
 
-cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS", numpy=True)
+cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS",
+            "middle_sides", "keep_aside", "away_from_middle", "mirror_images", "twins_of", "evened", "drawn", "MIDDLE",
+            "nearest_on_segments", numpy=True)
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
-               numpy=True)
+               "cloth_normals", "hem_frames", "turned_mask", "limits", "BANDS", "hem_normal_error", "turned_weights",
+               "carried_moves", "HEM_ROOM", "ROUNDING", numpy=True)
+
+
+def _band_by_x(recipe, lines, label, points, band):
+    """A band that depends on where a point lies, as one over an inner garment does: it grows with x."""
+    x = np.asarray(points, float)[:, 0]
+    return 0.001 * x, 0.01 + 0.001 * x
+
+
+# limits with that band, so a test sees where it takes a point's band; the band over an inner
+# garment needs the cage in Blender.
+anchored = load("art_pipeline/garment.py", "limits", "HEM_ROOM", "ROUNDING", band_limits=_band_by_x, numpy=True)
 bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
 rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "limit", "_move_excess", "_segment_distance",
            "_smooth", "_around", "hip_boundary", "evened_out", "crotch_line", "line_distance", "HIP_BOUNDARY",
            "HIP_BOUNDARY_REBUILT", "MIN_WEIGHT", "MAX_INFLUENCES", bodies=bodies, numpy=True)
 paint = load("art_pipeline/paint.py", "crop", "_turn", "_landmark_pairs", "CROP_BLOCK", "MIRROR_MARGIN", "LANDMARK_MERGE",
              numpy=True)
-texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", numpy=True)
+texture = load("art_pipeline/texture.py", "srgb_to_linear", "linear_to_srgb", "color_linear", "_hex", "dye_factor", "open_loops",
+               "hang_lines", "nearest_on", "spread", "drawn", "sampled", "grown", "CURVE_REACH", "SIDE_REACH", "BAKE_MARGIN",
+               numpy=True)
 coverage = load("art_pipeline/coverage.py", "Coverage", "summary", garment=garment, numpy=True)
 
 # Three rows of three vertices, in four quads, counterclockwise seen from +Z:
@@ -123,6 +139,186 @@ class PartTests(unittest.TestCase):
         two = cage.Part(GRID, np.array([1, 1, 1, 2]), ("trunk", "arms"))
         self.assertEqual(two.borders().tolist(), list(range(9)))
 
+    def test_a_limb_meets_the_trunk_at_the_vertices_they_share_and_the_neck_does_not(self):
+        arm = cage.Part(GRID, np.array([1, 1, 2, 2]), ("trunk", "arms"))
+        self.assertEqual(np.nonzero(arm.limb_roots())[0].tolist(), [3, 4, 5])
+        neck = cage.Part(GRID, np.array([0, 0, 1, 1]), ("neck", "trunk"))
+        self.assertFalse(neck.limb_roots().any())
+        # A hand hangs from an arm, not from the trunk.
+        hand = cage.Part(GRID, np.array([2, 2, 4, 4]), ("arms", "hands"))
+        self.assertFalse(hand.limb_roots().any())
+
+
+class FoldTests(unittest.TestCase):
+    # Two edges of a fold that meet at a right angle at (1, 0, 0).
+    FOLD = np.array([[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [(1.0, 0.0, 0.0), (1.0, 2.0, 0.0)]])
+
+    def test_the_nearest_point_of_a_fold_lies_on_the_edge_beside_the_point(self):
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.25, 0.5, 3.0)), self.FOLD), (0.25, 0.0, 0.0))
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.9, 1.5, -1.0)), self.FOLD), (1.0, 1.5, 0.0))
+
+    def test_past_the_end_of_an_edge_the_end_is_nearest(self):
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((-2.0, -1.0, 0.0)), self.FOLD), (0.0, 0.0, 0.0))
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((3.0, 5.0, 0.0)), self.FOLD), (1.0, 2.0, 0.0))
+
+    def test_an_edge_without_length_is_its_point(self):
+        point = np.array([[(2.0, 2.0, 2.0), (2.0, 2.0, 2.0)]])
+        np.testing.assert_allclose(cage.nearest_on_segments(np.array((0.0, 0.0, 0.0)), point), (2.0, 2.0, 2.0))
+
+
+class MiddlePlaneTests(unittest.TestCase):
+    # A vertex of the trunk on the body's right, one on its left, one in the middle plane, and one
+    # of a leg, which has a side of its own.
+    KEYS = [("trunk", ""), ("trunk", ""), ("neck", ""), ("legs", "R")]
+    REFERENCE = np.array([(0.02, 0.0, 1.0), (-0.02, 0.0, 1.0), (0.0, 0.1, 1.5), (0.1, 0.0, 0.5)])
+
+    def setUp(self):
+        self.aside = cage.middle_sides(self.KEYS, self.REFERENCE)
+
+    def test_a_vertex_of_the_trunk_has_a_side_of_the_middle_plane_and_one_of_a_limb_none(self):
+        self.assertEqual(self.aside[:3].tolist(), [1.0, -1.0, 0.0])
+        self.assertTrue(np.isnan(self.aside[3]))
+        # A vertex closer to the plane than MIDDLE lies in it.
+        near = cage.middle_sides([("trunk", "")] * 2, np.array([(cage.MIDDLE / 2, 0, 0), (cage.MIDDLE * 2, 0, 0)]))
+        self.assertEqual(near.tolist(), [0.0, 1.0])
+
+    def test_a_vertex_that_crossed_the_plane_or_left_it_goes_back_into_it(self):
+        moved = np.array([(-0.004, 0.1, 1.0), (0.003, 0.2, 1.0), (0.005, 0.3, 1.5), (-0.2, 0.4, 0.5)])
+        kept = cage.keep_aside(moved, self.aside)
+        self.assertEqual(kept[:, 0].tolist(), [0.0, 0.0, 0.0, -0.2])
+        np.testing.assert_array_equal(kept[:, 1:], moved[:, 1:])
+        np.testing.assert_array_equal(moved[:, 0], [-0.004, 0.003, 0.005, -0.2])
+
+    def test_a_vertex_on_its_own_side_stays_where_it_is(self):
+        there = np.array([(0.03, 0.0, 1.0), (-0.01, 0.0, 1.0), (0.0, 0.0, 1.5), (0.1, 0.0, 0.5)])
+        np.testing.assert_array_equal(cage.keep_aside(there, self.aside), there)
+
+    def test_a_direction_loses_its_part_toward_the_plane_and_keeps_the_length_that_is_left(self):
+        directions = np.array([(-0.6, 0.0, -0.8), (-0.6, 0.0, -0.8), (0.6, 0.8, 0.0), (-1.0, 0.0, 0.0)])
+        unit, left = cage.away_from_middle(directions, self.aside)
+        # The right vertex was headed for the plane: straight down is left of its direction.
+        np.testing.assert_allclose(unit[0], (0.0, 0.0, -1.0))
+        self.assertAlmostEqual(left[0], 0.8)
+        # The left vertex was headed away from it and keeps its direction.
+        np.testing.assert_allclose(unit[1], (-0.6, 0.0, -0.8))
+        self.assertAlmostEqual(left[1], 1.0)
+        # A vertex in the plane moves in the plane only.
+        np.testing.assert_allclose(unit[2], (0.0, 1.0, 0.0))
+        self.assertAlmostEqual(left[2], 0.8)
+        # A limb has no such rule.
+        np.testing.assert_allclose(unit[3], (-1.0, 0.0, 0.0))
+
+    def test_a_direction_straight_at_the_plane_leaves_nothing(self):
+        unit, left = cage.away_from_middle(np.array([(-1.0, 0.0, 0.0)]), np.array([1.0]))
+        self.assertEqual(left[0], 0.0)
+        self.assertTrue(np.isfinite(unit).all())
+
+
+class MirrorTests(unittest.TestCase):
+    POINTS = np.array([(0.3, 1.0, 2.0), (0.0, 0.5, 0.5), (-0.3, 1.0, 2.0), (0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)])
+
+    def test_every_point_finds_its_mirror_image_and_one_in_the_plane_itself(self):
+        nearest, distances = cage.mirror_images(self.POINTS)
+        self.assertEqual(nearest.tolist(), [2, 1, 0, 4, 3])
+        np.testing.assert_allclose(distances, 0.0, atol=1e-12)
+        self.assertEqual(cage.twins_of(self.POINTS, 1e-6).tolist(), [2, 1, 0, 4, 3])
+
+    def test_the_distance_to_an_image_is_measured_exactly(self):
+        points = self.POINTS.copy()
+        points[2] += (0.0, 3e-6, 4e-6)
+        _nearest, distances = cage.mirror_images(points)
+        np.testing.assert_allclose(distances[[0, 2]], 5e-6, rtol=1e-6)
+        self.assertIsNone(cage.twins_of(points, 1e-6))
+        self.assertEqual(cage.twins_of(points, 1e-5).tolist(), [2, 1, 0, 4, 3])
+
+    def test_points_without_an_image_or_that_share_one_have_no_twins(self):
+        self.assertIsNone(cage.twins_of(self.POINTS[:4], 1e-3))
+        # Two points at one place, as the lips of a closed mouth, have images but are not twins of one.
+        shared = np.concatenate([self.POINTS, self.POINTS[:1]])
+        self.assertLess(cage.mirror_images(shared)[1].max(), 1e-12)
+        self.assertIsNone(cage.twins_of(shared, 1e-3))
+
+    def test_many_points_are_matched_block_by_block(self):
+        rng = np.random.default_rng(7)
+        half = rng.uniform(0.1, 1.0, (700, 3))
+        points = np.concatenate([half, half * (-1.0, 1.0, 1.0)])
+        twins = cage.twins_of(points, 1e-9)
+        self.assertEqual(twins.tolist(), list(range(700, 1400)) + list(range(700)))
+
+    def test_evening_out_lays_twins_alike_and_a_vertex_in_the_plane_into_it(self):
+        twins = cage.twins_of(self.POINTS, 1e-6)
+        fitted = self.POINTS + np.array([(0.02, 0.0, 0.0), (0.004, 0.01, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.06)])
+        even = cage.evened(fitted, twins)
+        np.testing.assert_allclose(even[0], (0.31, 1.0, 2.0))
+        np.testing.assert_allclose(even[2], (-0.31, 1.0, 2.0))
+        np.testing.assert_allclose(even[1], (0.0, 0.51, 0.5))
+        np.testing.assert_allclose(even[[3, 4], 2], 0.03)
+        np.testing.assert_allclose(even[twins] * (-1.0, 1.0, 1.0), even)
+
+    def test_evening_out_moves_only_the_moving_vertices_and_nothing_without_twins(self):
+        twins = cage.twins_of(self.POINTS, 1e-6)
+        fitted = self.POINTS + np.array([(0.02, 0.0, 0.0)] + [(0.0, 0.0, 0.0)] * 4)
+        even = cage.evened(fitted, twins, np.array([True, True, False, True, True]))
+        np.testing.assert_allclose(even[0], (0.31, 1.0, 2.0))
+        np.testing.assert_array_equal(even[2], fitted[2])
+        self.assertIs(cage.evened(fitted, None), fitted)
+
+
+class DrawTests(unittest.TestCase):
+    def setUp(self):
+        self.net = cage.Net(GRID, 9)
+        self.start = GRID_CO + (0.0, 0.0, 0.5)
+        self.all = np.ones(9, bool)
+
+    @staticmethod
+    def floor(x):
+        """The skin is the floor: every vertex is drawn straight down to it."""
+        return x * (1.0, 1.0, 0.0)
+
+    def test_the_last_round_lays_every_moving_vertex_on_the_skin(self):
+        drawn = cage.drawn(self.net, self.start, self.floor, self.all)
+        np.testing.assert_allclose(drawn, GRID_CO, atol=1e-12)
+        np.testing.assert_array_equal(self.start[:, 2], 0.5)
+
+    def test_a_held_vertex_stays_and_the_others_still_reach_the_skin(self):
+        moving = self.all.copy()
+        moving[4] = False
+        drawn = cage.drawn(self.net, self.start, self.floor, moving)
+        np.testing.assert_array_equal(drawn[4], self.start[4])
+        np.testing.assert_allclose(drawn[moving, 2], 0.0, atol=1e-12)
+
+    def test_without_evening_a_vertex_goes_to_the_skin_by_itself(self):
+        def aside(x):
+            target = x.copy()
+            target[4] = (5.0, 5.0, 0.0)
+            return target
+
+        np.testing.assert_array_equal(cage.drawn(self.net, self.start, aside, self.all, rounds=(0,)), aside(self.start))
+
+    def test_evening_carries_a_vertex_along_with_its_neighbors(self):
+        def all_but_the_middle(x):
+            target = x + (1.0, 0.0, 0.0)
+            target[4] = x[4]
+            return target
+
+        drawn = cage.drawn(self.net, self.start, all_but_the_middle, self.all, rounds=(4,))
+        # The middle vertex asked for no move of its own and takes most of its neighbors'.
+        self.assertGreater(drawn[4, 0] - self.start[4, 0], 0.5)
+        self.assertLess(drawn[4, 0] - self.start[4, 0], 1.0)
+        # The vertices of the open end even out along the end only, so they keep theirs.
+        np.testing.assert_allclose(np.delete(drawn[:, 0] - self.start[:, 0], 4), 1.0)
+
+    def test_a_round_evened_out_more_moves_the_net_more_alike(self):
+        def one_corner(x):
+            target = x.copy()
+            target[0, 0] += 1.0
+            return target
+
+        spreads = [np.ptp(cage.drawn(self.net, self.start, one_corner, self.all, rounds=(times,))[:, 0] - self.start[:, 0])
+                   for times in (0, 1, 6)]
+        self.assertGreater(spreads[0], spreads[1])
+        self.assertGreater(spreads[1], spreads[2])
+
 
 class PolygonTests(unittest.TestCase):
     SQUARE = np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
@@ -207,6 +403,210 @@ class GarmentWeightTests(unittest.TestCase):
 
     def test_at_most_four_influences(self):
         self.assertEqual(garment.MAX_INFLUENCES, 4)
+
+
+class TurnedEdgeFrameTests(unittest.TestCase):
+    """What a turned edge is laid from: the cloth's normals and the direction into it across its edge."""
+
+    def test_a_flat_cloth_faces_the_side_it_turns_counterclockwise_from(self):
+        np.testing.assert_allclose(garment.cloth_normals(GRID_CO, GRID), np.tile([0.0, 0.0, 1.0], (9, 1)), atol=1e-12)
+        np.testing.assert_allclose(garment.cloth_normals(GRID_CO, [p[::-1] for p in GRID]),
+                                   np.tile([0.0, 0.0, -1.0], (9, 1)), atol=1e-12)
+
+    def test_a_vertex_of_no_face_has_no_normal(self):
+        normals = garment.cloth_normals(GRID_CO, GRID[:1])
+        np.testing.assert_allclose(normals[[2, 5, 6, 7, 8]], np.zeros((5, 3)))
+
+    def test_a_ridge_between_two_slopes_faces_straight_up(self):
+        co = np.array([(0, -1, 0), (1, -1, 0), (1, 0, 1), (0, 0, 1), (1, 1, 0), (0, 1, 0)], float)
+        normals = garment.cloth_normals(co, [(0, 1, 2, 3), (3, 2, 4, 5)])
+        np.testing.assert_allclose(normals[[2, 3]], [(0, 0, 1), (0, 0, 1)], atol=1e-12)
+        np.testing.assert_allclose(normals[0], np.array([0, -1, 1]) / np.sqrt(2), atol=1e-12)
+
+    def test_each_face_counts_by_its_angle_at_the_vertex(self):
+        # A square with a right angle at the origin, facing up, and a triangle with 45 degrees there,
+        # facing along x.
+        co = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 1, 1), (0, 0, 1)], float)
+        normals = garment.cloth_normals(co, [(0, 1, 2, 3), (0, 4, 5)])
+        np.testing.assert_allclose(normals[0], np.array([1.0, 0.0, 2.0]) / np.sqrt(5.0), atol=1e-12)
+
+    def test_the_cloth_lies_inward_across_its_edge(self):
+        normals = garment.cloth_normals(GRID_CO, GRID)
+        hems = [0, 1, 2, 3, 5, 6, 7, 8]
+        inward = garment.hem_frames(GRID_CO, GRID, hems, normals)
+        diagonal = 1.0 / np.sqrt(2.0)
+        expected = [(diagonal, diagonal, 0), (0, 1, 0), (-diagonal, diagonal, 0), (1, 0, 0), (-1, 0, 0),
+                    (diagonal, -diagonal, 0), (0, -1, 0), (-diagonal, -diagonal, 0)]
+        np.testing.assert_allclose(inward, expected, atol=1e-12)
+
+    def test_the_direction_is_at_right_angles_to_the_normal_on_a_slope(self):
+        co = np.array([(0, -1, 0), (1, -1, 0), (1, 0, 1), (0, 0, 1)], float)
+        polygons = [(0, 1, 2, 3)]
+        normals = garment.cloth_normals(co, polygons)
+        inward = garment.hem_frames(co, polygons, [0, 1, 2, 3], normals)
+        np.testing.assert_allclose(np.einsum("ij,ij->i", inward, normals[[0, 1, 2, 3]]), np.zeros(4), atol=1e-12)
+        # Up the slope from the bottom edge's corners, toward the far corner.
+        self.assertGreater(inward[0] @ (co[2] - co[0]), 0.0)
+
+
+class HemNormalTests(unittest.TestCase):
+    """The normals at the outer edge of a hem: out of the cloth and out of the opening, never back."""
+
+    # The bottom hem of a front, cloth facing +y above it: two cloth vertices turned, each with two
+    # corners, the cloth's and the rim face's.
+    CO = np.array([(0.0, 0.0, 1.0), (0.1, 0.0, 1.0)])
+    TURNED = [(0, 2, 3), (1, 4, 5)]
+    INWARD = np.array([(0.0, 0.0, 1.0), (0.0, 0.0, 1.0)])
+    OUTWARD = np.array([(0.0, 1.0, 0.0), (0.0, 1.0, 0.0)] + [(0.0, 0.0, 0.0)] * 4)
+    LOOPS = np.array([0, 0, 1, 1])
+
+    def error(self, normals):
+        corner = np.array(normals, float)
+        corner /= np.linalg.norm(corner, axis=1, keepdims=True)
+        return garment.hem_normal_error("Shirt_Male", self.CO, self.TURNED, self.INWARD, self.OUTWARD, self.LOOPS, corner)
+
+    def test_down_and_out_at_a_bottom_hem_keeps_the_rule(self):
+        self.assertIsNone(self.error([(0, 1, -1), (0, 1, -1), (0, 2, -1), (0, 1, -2)]))
+
+    def test_a_normal_turned_up_into_the_garment_breaks_it(self):
+        error = self.error([(0, 1, -1), (0, 1, -1), (0, 0.32, 0.95), (0, 1, -1)])
+        self.assertTrue(error.startswith('1 hem vertex has a normal that leans back into "Shirt_Male"'))
+        self.assertIn("vertex 1 at (0.100, 0.000, 1.000) m", error)
+        self.assertIn(f"leans {-0.95 / np.hypot(0.32, 0.95):+.2f}", error)
+
+    def test_a_normal_into_the_body_breaks_it_too(self):
+        error = self.error([(0, -1, -1), (0, -1, -1), (0, 1, -1), (0, 1, -1)])
+        self.assertTrue(error.startswith("1 hem vertex has"))
+        self.assertIn("vertex 0 at", error)
+
+    def test_a_normal_in_the_cloth_s_plane_keeps_it_as_at_a_rim_without_depth_which_the_fold_rule_reports(self):
+        self.assertIsNone(self.error([(0, 1, 0), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+        self.assertIsNone(self.error([(0, 1, 1e-6), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+
+    def test_a_normal_that_leans_back_beyond_rounding_breaks_it(self):
+        self.assertIsNotNone(self.error([(0, 1, 0.01), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+
+
+class TurnedWeightTests(unittest.TestCase):
+    """A turned vertex takes its skin weights from its cloth, so a fold moves with it in every pose."""
+
+    # Cloth vertices 0 to 3 in one face, a turned edge from vertex 0: rim 4, flap 5.
+    WEIGHTS = np.array([(1.0, 0.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.5, 0.5, 0.0),
+                        (0.1, 0.1, 0.1, 0.1, 0.6), (0.0, 0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 0.0, 1.0)])
+    TURNED = [(0, 4, 5)]
+
+    def test_a_rim_takes_the_weights_of_the_vertex_it_is_turned_from(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [1.0, 0.0, 0.0, 0.0])])
+        np.testing.assert_array_equal(weights[4], self.WEIGHTS[0])
+        np.testing.assert_array_equal(weights[:4], self.WEIGHTS[:4])
+
+    def test_a_flap_takes_the_weights_of_the_cloth_over_it_as_vertex_groups_keep_them(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [0.5, 0.5, 0.0, 0.0])])
+        np.testing.assert_allclose(weights[5], [0.5, 0.5, 0.0, 0.0, 0.0])
+        self.assertEqual(weights[5].tolist(), garment._rounded_weights(weights[5]).tolist())
+
+    def test_a_flap_under_more_than_four_bones_keeps_the_four_largest(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [0.1, 0.2, 0.3, 0.4])])
+        mixed = 0.1 * self.WEIGHTS[0] + 0.2 * self.WEIGHTS[1] + 0.3 * self.WEIGHTS[2] + 0.4 * self.WEIGHTS[3]
+        self.assertEqual(int((weights[5] > 0.0).sum()), 4)
+        self.assertAlmostEqual(float(weights[5].sum()), 1.0, places=6)
+        np.testing.assert_allclose(weights[5], garment._rounded_weights(garment._limited(mixed)))
+
+    def test_the_weights_given_are_left_alone(self):
+        given = self.WEIGHTS.copy()
+        garment.turned_weights(given, self.TURNED, [((0, 1, 2, 3), [0.5, 0.5, 0.0, 0.0])])
+        np.testing.assert_array_equal(given, self.WEIGHTS)
+
+
+class CarryOverTests(unittest.TestCase):
+    """A rebuild carries a handmade shape over from the old cloth, never from old turned vertices."""
+
+    # Old cloth vertices 0 and 1, and an old turned vertex 2 that lies nearest the new point.
+    BUILT = np.array([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.1, 0.0, 0.0)])
+    SHAPED = BUILT + np.array([(0.0, 0.0, 0.01), (0.0, 0.0, 0.02), (0.0, 0.0, 5.0)])
+    POINTS = np.array([(0.09, 0.0, 0.0), (0.9, 0.0, 0.0)])
+
+    def test_a_point_takes_the_difference_of_the_nearest_cloth_vertex(self):
+        moves = garment.carried_moves(self.BUILT, self.SHAPED, self.POINTS, [0, 1])
+        np.testing.assert_allclose(moves, [(0.0, 0.0, 0.01), (0.0, 0.0, 0.02)])
+
+    def test_reading_the_turned_vertex_would_carry_its_difference(self):
+        moves = garment.carried_moves(self.BUILT, self.SHAPED, self.POINTS, [0, 1, 2])
+        np.testing.assert_allclose(moves[0], (0.0, 0.0, 5.0))
+
+
+class TurnedLimitTests(unittest.TestCase):
+    """The band of a template's turned edges: from the cage up, no higher than their cloth's."""
+
+    RECIPE = {"regions": ["trunk"], "cuts": [], "ease": 0, "hem": 0.002}
+    # A cloth quad with one turned edge along 0-1: rims 4 and 6, flaps 5 and 7.
+    POLYGONS = [(0, 1, 2, 3), (1, 0, 4, 6), (6, 4, 5, 7)]
+    TURNED = [(0, 4, 5), (1, 6, 7)]
+    CO = np.zeros((8, 3))
+
+    def test_a_turned_edge_may_come_down_to_the_cage_and_its_faces_under_it_by_less_than_the_hem(self):
+        low, high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool), self.TURNED,
+                                   0.002)
+        least, largest = garment.BANDS["mid"]
+        np.testing.assert_allclose(low, [least] * 4 + [0.0] * 4 + [least, -0.002, -0.002])
+        np.testing.assert_allclose(high, [largest] * 11)
+
+    def test_without_turned_edges_every_point_keeps_the_band(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool))
+        np.testing.assert_allclose(low, [garment.BANDS["mid"][0]] * 11)
+
+    def test_a_loose_part_is_free_of_the_band_also_where_its_edge_is_turned(self):
+        loose = np.zeros(8, bool)
+        loose[[1, 6, 7]] = True
+        low, high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", loose, self.TURNED, 0.002)
+        self.assertEqual(low.tolist()[:8], [0.005, -np.inf, 0.005, 0.005, 0.0, 0.0, -np.inf, -np.inf])
+        self.assertTrue(np.isinf(low[8:]).all() and np.isinf(high[8:]).all())
+
+    def test_the_rims_and_flaps_are_marked(self):
+        self.assertEqual(garment.turned_mask(8, self.TURNED).tolist(), [False] * 4 + [True] * 4)
+        self.assertEqual(garment.turned_mask(3, []).tolist(), [False] * 3)
+
+    def test_the_cloth_a_turned_edge_is_turned_from_keeps_its_room_off_the_cage(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool),
+                                    self.TURNED, 0.002)
+        room = garment.HEM_ROOM - garment.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.0, 0.0])
+
+    def test_a_settle_holds_the_cloth_it_is_given_off_the_cage_too(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool),
+                                    hems=[0, 1])
+        room = garment.HEM_ROOM - garment.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.0, 0.0])
+
+    def test_a_band_that_lets_the_cloth_lie_farther_off_keeps_it(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool), hems=[0, 1])
+        np.testing.assert_allclose(low[:4], [garment.BANDS["mid"][0]] * 4)
+
+
+class AnchoredLimitTests(unittest.TestCase):
+    """Where a band depends on where a point lies, a turned edge takes it where its cloth lies."""
+
+    POLYGONS = TurnedLimitTests.POLYGONS
+    TURNED = TurnedLimitTests.TURNED
+    # The cloth near x = 0, its rims and flaps far off along x, where the band would be wider.
+    CO = np.array([(0.1, 0.0, 0.0), (0.2, 0.0, 0.0), (3.0, 0.0, 0.0), (4.0, 0.0, 0.0),
+                   (10.0, 0.0, 0.0), (20.0, 0.0, 0.0), (30.0, 0.0, 0.0), (40.0, 0.0, 0.0)])
+
+    def test_a_turned_vertex_and_its_faces_take_the_band_of_the_cloth_they_are_turned_from(self):
+        low, high = anchored.limits({}, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool), self.TURNED, 0.002)
+        # Rim 4 and flap 5 from vertex 0, rim 6 and flap 7 from vertex 1.
+        np.testing.assert_allclose(high[4:8], [0.0101, 0.0101, 0.0102, 0.0102])
+        # The faces at the turned edge, between vertices 0 and 1 of the cloth.
+        np.testing.assert_allclose(high[9:], [0.01015, 0.01015])
+        np.testing.assert_allclose(low[4:8], [0.0] * 4)
+        np.testing.assert_allclose(low[9:], [-0.002, -0.002])
+
+    def test_the_cloth_keeps_its_own_band_and_its_hem_its_room(self):
+        low, high = anchored.limits({}, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool), self.TURNED, 0.002)
+        room = anchored.HEM_ROOM - anchored.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.003, 0.004])
+        np.testing.assert_allclose(high[:4], [0.0101, 0.0102, 0.013, 0.014])
+        np.testing.assert_allclose(high[8], 0.01 + 0.001 * self.CO[:4, 0].mean())
 
 
 class BodyWeightTests(unittest.TestCase):
@@ -487,6 +887,136 @@ class CoverageReportTests(unittest.TestCase):
                                                           pull_distances=np.array([0.001, 0.0024])))
         self.assertEqual(report, "Shirt_Male: covers 3 of 4 body faces, leaves 2 at its edges visible, and pulls in 2 "
                                  "visible vertices by at most 2.4 mm")
+
+
+class TextureMoveTests(unittest.TestCase):
+    """A texture follows a template that was built again: its preview's feature curves are drawn onto
+    the template's, and its texels take the paint of the old image where they lie."""
+
+    # A strip of four quads in a row, ten vertices: 0 to 4 along the bottom, 5 to 9 along the top.
+    STRIP = [(0, 1, 6, 5), (1, 2, 7, 6), (2, 3, 8, 7), (3, 4, 9, 8)]
+    STRIP_CO = np.array([(float(x), 0.0, 0.0) for x in range(5)] + [(float(x), 1.0, 0.0) for x in range(5)])
+    TUBE = [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+
+    def test_the_open_edges_of_a_sheet_are_one_closed_loop_in_order(self):
+        loops = texture.open_loops(self.STRIP)
+        self.assertEqual(len(loops), 1)
+        loop, closed = loops[0]
+        self.assertTrue(closed)
+        self.assertEqual(sorted(loop), list(range(10)))
+        edges = {tuple(sorted((a, b))) for face in self.STRIP for a, b in zip(face, face[1:] + face[:1])}
+        for a, b in zip(loop, loop[1:] + loop[:1]):
+            self.assertIn(tuple(sorted((a, b))), edges)
+
+    def test_a_tube_has_an_open_loop_at_each_end_and_a_closed_surface_none(self):
+        loops = texture.open_loops(self.TUBE)
+        self.assertEqual(sorted(sorted(loop) for loop, closed in loops if closed), [[0, 1, 2, 3], [4, 5, 6, 7]])
+        self.assertEqual(texture.open_loops(self.TUBE + [(0, 3, 2, 1), (4, 5, 6, 7)]), [])
+
+    def test_the_line_a_loose_part_hangs_from_is_read_in_its_order_along_the_edge(self):
+        loose = np.array([0, 0, 0, 0, 0, -1, -1, -1, -1, -1])
+        top = np.array([0, 0, 0, 0, 0, 4, 3, 2, 1, 0])
+        self.assertEqual(texture.hang_lines(self.STRIP, loose, top), [([9, 8, 7, 6, 5], False)])
+        self.assertEqual(texture.hang_lines(self.STRIP, None, None), [])
+        self.assertEqual(texture.hang_lines(self.STRIP, np.zeros(10, int), top), [])
+
+    def test_a_hang_line_all_around_closes(self):
+        loose = np.array([-1, -1, -1, -1, 1, 1, 1, 1])
+        self.assertEqual(texture.hang_lines(self.TUBE, loose, np.array([0, 1, 2, 3, 0, 1, 2, 3])), [([0, 1, 2, 3], True)])
+
+    def test_the_nearest_point_of_a_line_lies_on_its_segments(self):
+        line = np.array([(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 2.0, 0.0)])
+        points = np.array([(1.0, 1.0, 0.0), (3.0, 1.0, 0.0), (-1.0, 0.5, 0.0)])
+        onto, far = texture.nearest_on(points, line, False)
+        np.testing.assert_allclose(onto, [(1.0, 0.0, 0.0), (2.0, 1.0, 0.0), (0.0, 0.0, 0.0)])
+        np.testing.assert_allclose(far, [1.0, 1.0, np.sqrt(1.25)])
+        # A closed line also has the segment from its last point back to its first.
+        onto, _far = texture.nearest_on(np.array([(1.1, 1.0, 0.0)]), line, True)
+        np.testing.assert_allclose(onto, [(1.05, 1.05, 0.0)])
+
+    def test_a_move_spreads_evenly_between_the_fixed_vertices(self):
+        fixed = np.zeros(10, bool)
+        fixed[[0, 5, 4, 9]] = True
+        moves = np.zeros((10, 3))
+        moves[[4, 9]] = (0.0, 0.0, 4.0)
+        out = texture.spread(10, self.STRIP, fixed, moves)
+        np.testing.assert_allclose(out[:5, 2], [0.0, 1.0, 2.0, 3.0, 4.0], atol=1e-6)
+        np.testing.assert_allclose(out[5:, 2], [0.0, 1.0, 2.0, 3.0, 4.0], atol=1e-6)
+        np.testing.assert_allclose(out[:, :2], 0.0, atol=1e-9)
+
+    def test_a_piece_that_no_fixed_vertex_is_joined_to_stays(self):
+        faces = self.STRIP + [(10, 11, 12)]
+        fixed = np.zeros(13, bool)
+        fixed[[0, 5]] = True
+        moves = np.zeros((13, 3))
+        moves[[0, 5]] = (1.0, 0.0, 0.0)
+        out = texture.spread(13, faces, fixed, moves)
+        np.testing.assert_allclose(out[:10], np.tile((1.0, 0.0, 0.0), (10, 1)), atol=1e-5)
+        np.testing.assert_allclose(out[10:], 0.0, atol=1e-6)
+
+    def test_an_edge_is_drawn_onto_the_templates_and_the_cloth_between_follows(self):
+        # The template's sheet reaches half a unit farther at its right end; the left end stays.
+        curves = [("edge", [0, 5], False), ("edge", [4, 9], False)]
+        theirs = [("edge", np.array([(0.0, 0.0, 0.0), (0.0, 1.0, 0.0)]), False),
+                  ("edge", np.array([(4.5, 0.0, 0.0), (4.5, 1.0, 0.0)]), False)]
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, curves, theirs, reach=1.0)
+        np.testing.assert_allclose(out[:5, 0], [0.0, 1.125, 2.25, 3.375, 4.5], atol=1e-6)
+        np.testing.assert_allclose(out[5:, 0], [0.0, 1.125, 2.25, 3.375, 4.5], atol=1e-6)
+        np.testing.assert_allclose(out[:, 1:], self.STRIP_CO[:, 1:], atol=1e-9)
+        self.assertEqual(len(notes), 2)
+        self.assertIn("500.0 mm", notes[1])
+
+    def test_a_curve_out_of_reach_stays_and_holds_its_cloth(self):
+        far = [("edge", np.array([(0.0, 0.0, 9.0), (0.0, 1.0, 9.0)]), False)]
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, [("edge", [0, 5], False)], far, reach=0.1)
+        np.testing.assert_allclose(out, self.STRIP_CO, atol=1e-9)
+        self.assertIn("stays", notes[0])
+        # A curve only takes one of its own kind.
+        out, notes = texture.drawn(self.STRIP_CO, self.STRIP, [("hang", [0, 5], False)],
+                                   [("edge", np.array([(0.0, 0.0, 0.01), (0.0, 1.0, 0.01)]), False)])
+        np.testing.assert_allclose(out, self.STRIP_CO, atol=1e-9)
+        self.assertIn("stays", notes[0])
+
+    def test_an_open_edge_goes_before_a_hang_line_at_a_shared_vertex(self):
+        theirs = [("edge", np.array([(0.0, 0.0, 0.02), (0.0, 1.0, 0.02)]), False),
+                  ("hang", np.array([(0.0, 1.0, 0.05), (4.0, 1.0, 0.05)]), False)]
+        curves = [("edge", [0, 5], False), ("hang", [5, 6, 7, 8, 9], False)]
+        out, _notes = texture.drawn(self.STRIP_CO, self.STRIP, curves, theirs, reach=1.0)
+        self.assertAlmostEqual(out[5, 2], 0.02)
+        self.assertAlmostEqual(out[9, 2], 0.05)
+
+    def test_the_reaches_are_centimeters(self):
+        self.assertTrue(0.02 <= texture.CURVE_REACH <= 0.2)
+        self.assertTrue(0.005 <= texture.SIDE_REACH <= 0.05)
+
+    def test_a_texel_is_read_between_its_four_nearest_and_every_channel_on_its_own(self):
+        image = np.zeros((2, 2, 4))
+        image[0, 0] = (1.0, 0.0, 0.0, 1.0)
+        image[0, 1] = (0.0, 1.0, 0.0, 0.0)
+        image[1, 0] = (0.0, 0.0, 1.0, 1.0)
+        image[1, 1] = (1.0, 1.0, 1.0, 1.0)
+        centres = np.array([(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)])
+        np.testing.assert_allclose(texture.sampled(image, centres), image.reshape(4, 4))
+        # Halfway between a painted texel and a hole the color is the mean of the two colors: the
+        # hole's color counts, and the hole does not darken it.
+        np.testing.assert_allclose(texture.sampled(image, np.array([(0.5, 0.25)])), [(0.5, 0.5, 0.0, 0.5)])
+        # Beyond the image its edge texels hold.
+        np.testing.assert_allclose(texture.sampled(image, np.array([(-1.0, -1.0)])), [image[0, 0]])
+
+    def test_paint_grows_over_the_margin_and_the_rest_is_black_and_opaque(self):
+        image = np.zeros((9, 9, 4), np.float32)
+        filled = np.zeros((9, 9), bool)
+        image[4, 4] = (0.2, 0.4, 0.6, 0.5)
+        filled[4, 4] = True
+        out = texture.grown(image, filled, margin=2)
+        np.testing.assert_allclose(out[2:7, 2:7], np.tile((0.2, 0.4, 0.6, 0.5), (5, 5, 1)), atol=1e-6)
+        np.testing.assert_allclose(out[0, 0], (0.0, 0.0, 0.0, 1.0))
+        np.testing.assert_allclose(out[4, 7], (0.0, 0.0, 0.0, 1.0))
+        # Between two paints a texel takes the mean of its filled neighbours.
+        image[4, 6] = (1.0, 1.0, 1.0, 1.0)
+        filled[4, 6] = True
+        np.testing.assert_allclose(texture.grown(image, filled, margin=1)[4, 5], (0.6, 0.7, 0.8, 0.75), atol=1e-6)
+        self.assertGreaterEqual(texture.BAKE_MARGIN, 4)
 
 
 if __name__ == "__main__":

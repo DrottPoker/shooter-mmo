@@ -24,7 +24,8 @@ namespace Mmorpg.Client.Gameplay
     // drawing hand of a body that holds a bow draws its string. The models, garment materials,
     // clips, and images come from the PlayerBodyContent of the shared meshes or materials: the body
     // counts as a user of the content of the look it shows and wears only what of it is ready, so
-    // whoever shows a look waits for its content first.
+    // whoever shows a look waits for its content first. The lids of a combined body blink, and stay
+    // closed while it lies dead, through the one EyelidScheduler while the body is enabled in play.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -73,6 +74,7 @@ namespace Mmorpg.Client.Gameplay
         private BowRig.DrawingArm drawingArm;
         private bool stringHeld;
         private Animator bodyAnimator;
+        private BodyEyelids eyelids;
 
         public IReadOnlyList<Material> SkinMaterials
         {
@@ -106,6 +108,13 @@ namespace Mmorpg.Client.Gameplay
         public SkinnedMeshRenderer CombinedRenderer
         {
             get { return combinedRenderer; }
+        }
+
+        // The lids of the body, which blink and close in death, found when it is combined; null
+        // before CombineParts and for a body without lid bones.
+        public BodyEyelids Eyelids
+        {
+            get { return eyelids; }
         }
 
         // The garments the body wears, from the lowest layer up, as the look names them.
@@ -302,6 +311,15 @@ namespace Mmorpg.Client.Gameplay
                 animator.Rebind();
             }
 
+            // No clip keys the lids, so they rest after Rebind as the model has them.
+            eyelids = BodyEyelids.Find(transform, combinedRenderer);
+            var body = Locomotion;
+            if (body != null)
+            {
+                body.Eyelids = eyelids;
+            }
+
+            ShowEyelids();
             Grip();
         }
 
@@ -522,6 +540,22 @@ namespace Mmorpg.Client.Gameplay
         private void OnEnable()
         {
             gripPending = true;
+            ShowEyelids();
+        }
+
+        private void OnDisable()
+        {
+            EyelidScheduler.Unregister(eyelids);
+        }
+
+        // The lids of an enabled body blink in play, or stay closed while it lies dead.
+        private void ShowEyelids()
+        {
+            if (eyelids != null && isActiveAndEnabled)
+            {
+                var body = Locomotion;
+                EyelidScheduler.Register(eyelids, body != null && body.IsDead);
+            }
         }
 
         private void LateUpdate()

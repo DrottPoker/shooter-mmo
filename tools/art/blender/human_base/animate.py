@@ -372,7 +372,7 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
     """Writes one clip of the given number of frames as an action: every frame keyed, linear. A
     looping clip ends with its first frame again, one frame later; one that does not loop ends at
     its last frame. The bones in skip, such as the cloth chains that the runtime solver moves, get
-    no keys."""
+    no keys, and neither does the hips' place when the hips are among them."""
     keys = [frame_fn(f) for f in range(frames)]
     last = frames if loop else frames - 1
     action = bpy.data.actions.new(name)
@@ -397,9 +397,10 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
             previous[pb.name] = q
         if f == 0:
             first = dict(previous)
-        hips = arm.pose.bones["Hips"]
-        hips.location = hips_loc
-        hips.keyframe_insert("location", frame=f)
+        if "Hips" not in skip:
+            hips = arm.pose.bones["Hips"]
+            hips.location = hips_loc
+            hips.keyframe_insert("location", frame=f)
     channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
     for fc in channelbag.fcurves:
         for key in fc.keyframe_points:
@@ -415,15 +416,18 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
 
 
 def generate(path, label, names, skeleton_path):
-    """Adds the named clips of the gait model (Idle, Walk, Jog) to an animation library on its
-    armature label, as starting points to edit by hand, and saves it. A clip the library already
-    has is kept as it is, so handmade keys are never replaced."""
-    unknown = [name for name in names if name not in CLIPS]
+    """Adds the named clips of the gait model (Idle, Walk, Jog) and the hand pose Grip, fitted to
+    the hand of the library's body, to an animation library on its armature label, as starting
+    points to edit by hand, and saves it. A clip the library already has is kept as it is, so
+    handmade keys are never replaced."""
+    from . import grip
+
+    unknown = [name for name in names if name not in CLIPS and name != grip.CLIP]
     if unknown:
-        raise RuntimeError(f"The gait model makes the clips {list(CLIPS)}, not {unknown}.")
+        raise RuntimeError(f"The gait model makes the clips {list(CLIPS)} and the hand pose {grip.CLIP}, not {unknown}.")
     from art_pipeline import skeleton as skeleton_definition
 
-    skip = frozenset(skeleton_definition.load(skeleton_path).chain_bones)
+    skip = frozenset(skeleton_definition.load(skeleton_path).unkeyed_bones)
     bpy.ops.wm.open_mainfile(filepath=path)
     arm = bpy.data.objects[label]
     arm.animation_data_create()
@@ -436,7 +440,19 @@ def generate(path, label, names, skeleton_path):
         if name in bpy.data.actions:
             print(f"KEPT {name}: the library has the clip already")
             continue
-        if name == "Idle":
+        if name == grip.CLIP:
+            hand = grip.read_hand(arm)
+            angles, across = grip.fit(hand)
+            measured = grip.measure(hand, grip.finger_turns(angles, across))
+            for line in grip.report(measured, angles, across):
+                print(f"HUMAN_BASE_REPORT {line}")
+            faults = grip.problems(measured)
+            if faults:
+                raise RuntimeError("; ".join(faults))
+            # A hand pose keys the fingers only, so it plays over any other clip.
+            others = frozenset(b.name for b in arm.data.bones if b.name not in grip.keyed_bones())
+            bake(arm, name, 1, lambda f, angles=angles, across=across: grip.frame(angles, across), others | skip)
+        elif name == "Idle":
             bake(arm, name, IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f), skip)
         else:
             gait = WALK if name == "Walk" else JOG

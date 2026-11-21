@@ -224,14 +224,23 @@ namespace Mmorpg.Client.Gameplay
 
         public bool IsDead { get; private set; }
 
+        // The lids of the body, which its PlayerBodyAppearance finds when it is combined, or null.
+        internal BodyEyelids Eyelids { get; set; }
+
         // Shows the character's life state: a fall into Death when it dies in view, the end
         // pose of Death at once when the body first shows it dead, and Idle at once when it
-        // lives again.
+        // lives again. The eyes close as the body falls, are closed at once when it lies dead,
+        // and open at once when it stands up.
         public void ShowLifeState(bool dead)
         {
             var change = HumanLocomotion.LifeChangeFor(HasLifeState, IsDead, dead);
             HasLifeState = true;
             IsDead = dead;
+            if (change != HumanLocomotion.LifeChange.None)
+            {
+                EyelidScheduler.ShowLifeChange(Eyelids, change);
+            }
+
             if (change == HumanLocomotion.LifeChange.None || !HasController)
             {
                 return;

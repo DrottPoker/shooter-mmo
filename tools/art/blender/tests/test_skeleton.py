@@ -128,24 +128,33 @@ class SkeletonLoadTests(unittest.TestCase):
 class SkeletonFileTests(unittest.TestCase):
     def test_every_skeleton_file_loads_and_is_named_after_its_file(self):
         files = sorted(SKELETONS.glob("*.json"))
-        self.assertEqual([f.stem for f in files], ["Bow", "Humanoid", "Humanoid_Next", "Quadruped"])
+        self.assertEqual([f.stem for f in files], ["Bow", "Humanoid", "Quadruped"])
         for file in files:
             with self.subTest(file=file.name):
                 self.assertEqual(skeleton.load(str(file)).name, file.stem)
 
-    def test_the_next_humanoid_is_the_humanoid_with_eyelids(self):
-        # The rebuilt bodies' skeleton until they replace the current bodies: the same bones and
-        # cloth, and per eye an upper and a lower lid bone beside it.
-        current = json.loads((SKELETONS / "Humanoid.json").read_text(encoding="utf-8"))
-        following = json.loads((SKELETONS / "Humanoid_Next.json").read_text(encoding="utf-8"))
+    def test_the_humanoid_has_an_upper_and_a_lower_lid_bone_beside_each_eye(self):
         lids = [f"Eyelid{lid}_{side}" for side in ("L", "R") for lid in ("Upper", "Lower")]
-        self.assertEqual([b for b in following["bones"] if b["name"] not in lids], current["bones"])
-        self.assertEqual(following["cloth"], current["cloth"])
-        loaded = skeleton.load(str(SKELETONS / "Humanoid_Next.json"))
+        loaded = humanoid()
         self.assertEqual(loaded.eyelids.eyes, (("Eye_L", "EyelidUpper_L", "EyelidLower_L"),
                                                 ("Eye_R", "EyelidUpper_R", "EyelidLower_R")))
         self.assertEqual(sorted(loaded.eyelids.bones), sorted(lids))
-        self.assertIsNone(humanoid().eyelids)
+        for lid in lids:
+            self.assertEqual(loaded.bone(lid).parent, loaded.bone("Eye_L").parent)
+            self.assertIsNone(loaded.bone(lid).human)
+        # The upper lid closes downward by more than the lower lid closes upward.
+        self.assertLess(loaded.eyelids.closed("upper"), 0.0)
+        self.assertGreater(loaded.eyelids.closed("lower"), 0.0)
+        self.assertGreater(-loaded.eyelids.closed("upper"), loaded.eyelids.closed("lower"))
+
+    def test_no_clip_keys_the_cloth_chains_or_the_eyelids(self):
+        loaded = humanoid()
+        self.assertEqual(loaded.unkeyed_bones, loaded.chain_bones | set(loaded.eyelids.bones))
+        self.assertIn("EyelidUpper_L", loaded.unkeyed_bones)
+        self.assertIn("CloakCenter1", loaded.unkeyed_bones)
+        self.assertNotIn("Eye_L", loaded.unkeyed_bones)
+        quadruped = skeleton.load(str(SKELETONS / "Quadruped.json"))
+        self.assertEqual(quadruped.unkeyed_bones, quadruped.chain_bones)
 
     def test_the_humanoid_maps_each_unity_avatar_bone_at_most_once(self):
         mapped = [b.human for b in humanoid().bones if b.human]

@@ -118,7 +118,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Combat, Mobs, and their numbers | Provisional | |
 | Quests | Provisional | |
 | Economy, vendors, and gathering | Provisional | |
-| Character visuals: bodies, garments, cloth, and appearance | Provisional | |
+| Character visuals: bodies, garments, cloth, and appearance | Provisional | With the rebuilt human bodies, 400 bodies in view miss 60 frames per second at the 95th percentile and have arrival frames over 33.3 ms, and why `development` measured slower than on 2026-11-17 is not found, as [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance) records. A top lies within a millimeter of the trousers under it, whose waistband is drawn, so the trousers show through it in small triangles just above its hem. The cloth on the rebuilt bodies is not tuned: [Measuring The Cloth](EQUIPMENT_VISUALS_DESIGN.md#measuring-the-cloth) holds what it does now |
 | The art pipeline | Provisional | |
 | The content tools and the World Builder | Provisional | |
 | The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |

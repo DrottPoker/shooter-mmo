@@ -4,14 +4,14 @@
     "garment": "art/Garments/Gloves",
     "approvals": {
         "texture": {
-            "date": "2026-10-25",
-            "sourceSha256": "90af16497811e8584f39af1448dc72da49d1655e7bccb6bb7f157303ada0e6d1",
-            "garmentSourceSha256": "2af2c7601fa6f946c714f04697c2bedb941c808bce9d19c277169a9070c1af67"
+            "date": "2026-11-21",
+            "sourceSha256": "f0e3bce5e852b3ca767ca507fb58fe50870526ed4a13868bd7b50ffd02e76ee8",
+            "garmentSourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448"
         }
     },
     "export": {
-        "sourceSha256": "90af16497811e8584f39af1448dc72da49d1655e7bccb6bb7f157303ada0e6d1",
-        "garmentSourceSha256": "2af2c7601fa6f946c714f04697c2bedb941c808bce9d19c277169a9070c1af67",
+        "sourceSha256": "f0e3bce5e852b3ca767ca507fb58fe50870526ed4a13868bd7b50ffd02e76ee8",
+        "garmentSourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448",
         "materials": [
             {
                 "name": "M_Garment_LeatherGloves",
@@ -25,7 +25,7 @@
             {
                 "name": "T_Garment_LeatherGloves",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LeatherGloves.png",
-                "sha256": "506db2207b4918a9aee01d9faa765ebee4c23d996842ad69ecc0b002e51897dc"
+                "sha256": "27aca9c31115f29a010dbaa423202efbc0d74ac8f7fad288d9499a26cfe459b3"
             }
         ]
     }

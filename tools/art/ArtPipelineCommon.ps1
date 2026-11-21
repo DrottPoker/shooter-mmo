@@ -391,9 +391,8 @@ function Read-ArtSkeleton([string]$Name) {
 function Get-ArtSocket([string]$Socket) {
     # The skeleton and bone of a socket that its bone names, such as main_hand on Socket_MainHand of
     # the Humanoid skeleton, or $null when no skeleton definition has it. Where several skeletons
-    # have the socket, such as Humanoid and the rebuilt bodies' Humanoid_Next until they replace it,
-    # it is the first by the ordinal order of the file names, as Unity's SocketBones lists them; a
-    # culture's order puts Humanoid_Next.json first on Linux and Humanoid.json first on Windows.
+    # have the socket, it is the first by the ordinal order of the file names, as Unity's
+    # SocketBones lists them; a culture's order differs between Linux and Windows.
     $names = [string[]]@(Get-ChildItem -LiteralPath $script:ArtSkeletonFolder -Filter "*.json" -File | ForEach-Object { $_.Name })
     [Array]::Sort($names, [StringComparer]::Ordinal)
     foreach ($name in $names) {
@@ -1042,7 +1041,8 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
     # Loose parts that hang on the cloth chains from the template's open edge at a line of the trunk,
     # all around for a skirt or across the back for a cloak, widening by their flare toward the hem.
     # A part across the back may hang from a narrow top, which its yoke keeps to, and fan out to a
-    # width, both shares of how far the shoulder joints lie from the middle.
+    # width, both shares of how far the shoulder joints lie from the middle. A part may end at a line
+    # of the legs, its hem, instead of at the tips of its chains.
     $hang = New-Object System.Collections.Generic.List[object]
     $hangLines = New-Object System.Collections.Generic.HashSet[string]
     foreach ($entry in @($Recipe.hang | Where-Object { $null -ne $_ })) {
@@ -1073,6 +1073,15 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
 
         if ($part.Contains("top") -and $part.Contains("width") -and $part.width -lt $part.top) {
             return $null
+        }
+
+        if ($names -ccontains "to") {
+            $to = @($Cage.Lines | Where-Object { $_.name -ceq [string]$entry.to }) | Select-Object -First 1
+            if ($null -eq $to -or $to.region -cne "legs") {
+                return $null
+            }
+
+            $part["to"] = [string]$entry.to
         }
 
         $hang.Add($part)
@@ -1207,7 +1216,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
 
     $recipe = ConvertTo-ArtGarmentRecipe $Json.recipe $cage
     if ($null -ne $cage -and $null -eq $recipe) {
-        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, optionally its loose parts, each a line of the trunk it hangs from, its side ($($script:ArtGarmentHangSides -join ', ')), its chains ($($script:ArtGarmentHangChains -join ', ')), its flare from 0 to $script:ArtGarmentFlareLimit m, and across the back optionally its top and its width, no smaller than its top, both above 0 and up to $script:ArtGarmentHangShareLimit of the shoulders' half width, its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
+        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, optionally its loose parts, each a line of the trunk it hangs from, its side ($($script:ArtGarmentHangSides -join ', ')), its chains ($($script:ArtGarmentHangChains -join ', ')), its flare from 0 to $script:ArtGarmentFlareLimit m, across the back optionally its top and its width, no smaller than its top, both above 0 and up to $script:ArtGarmentHangShareLimit of the shoulders' half width, and optionally the line of the legs it ends at (to), its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
     }
 
     # The chains a loose part hangs on move only with the cloth profile that activates them.
@@ -1412,7 +1421,8 @@ function Add-ArtRecipeLines($Lines, $Recipe) {
             $comma = if ($i -lt $hang.Count - 1) { "," } else { "" }
             $shares = @("top", "width" | Where-Object { $null -ne $hang[$i].$_ } |
                     ForEach-Object { ", `"$_`": $(Format-ArtShare $hang[$i].$_)" })
-            $Lines.Add("            { `"line`": `"$($hang[$i].line)`", `"side`": `"$($hang[$i].side)`", `"chains`": `"$($hang[$i].chains)`", `"flare`": $(Format-ArtShare $hang[$i].flare)$($shares -join '') }$comma")
+            $to = if ($null -ne $hang[$i].to) { ", `"to`": `"$($hang[$i].to)`"" } else { "" }
+            $Lines.Add("            { `"line`": `"$($hang[$i].line)`", `"side`": `"$($hang[$i].side)`", `"chains`": `"$($hang[$i].chains)`", `"flare`": $(Format-ArtShare $hang[$i].flare)$($shares -join '')$to }$comma")
         }
         $Lines.Add('        ],')
     }

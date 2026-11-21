@@ -5,7 +5,7 @@
     "rootObjects": [
         "Female"
     ],
-    "triangleBudget": 10000,
+    "triangleBudget": 15400,
     "skeleton": "Humanoid",
     "variants": [
         { "material": "M_Eye_Female", "images": ["T_Eye_Female_Hazel"] },
@@ -13,20 +13,20 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-25",
-            "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606"
+            "date": "2026-11-20",
+            "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d"
         },
         "rig": {
-            "date": "2026-10-25",
-            "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606"
+            "date": "2026-11-20",
+            "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d"
         }
     },
     "export": {
-        "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606",
-        "targetSha256": "484e1d59bbe3743bc07d530ff1797ab6e3ede29b4e34ad2b28127ebf91a54c8f",
-        "dataSha256": "266ff259c4e0a3127f7c6d3e563c3e73c3861ee140b6d8df3562967385f61ae8",
-        "fitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
-        "paintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1",
+        "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d",
+        "targetSha256": "1774b99b351578adffe6f0a52eff7fae48450d6b2b857cfcf4112460c9d7fc50",
+        "dataSha256": "cecb0fb014832a71cb2e279a3464934e43c93ec893c024af7ab1c6ece9ef9782",
+        "fitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
+        "paintSha256": "f00f5c95af5757d9ae83772139ebe5d2d76f0da55d8519456c1fa9fd66c1a339",
         "materials": [
             {
                 "name": "M_Body_Female",
@@ -66,27 +66,27 @@
             {
                 "name": "T_Body_Female",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Female.png",
-                "sha256": "3dadf85467d5debe1da75f894a8034bc4359f276930f5d83cee0aaa6218b184c"
+                "sha256": "7ea35537008f1aa4ebe9f9aeca8013c4e34e997b5eee78531134e22cc06a0945"
             },
             {
                 "name": "T_Eye_Female_Teal",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Female_Teal.png",
-                "sha256": "db2fc79d8e8a62b6b3f62eee85674b672fc9ca13861231f4eadb0302f52a2ae1"
+                "sha256": "849cc2d59fd552ba651f7c441c5400856d6f8b926892f92b22a17472545233f0"
             },
             {
                 "name": "T_Face_Female_Blush",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Female_Blush.png",
-                "sha256": "b3869a11d16af5144f46f4cefece02a020f7858610f2f50aa13f504bbe09eca6"
+                "sha256": "2fcdc1545b2af11bef62070c0e997615a47034cd940af1ca9b123cdf81402adf"
             },
             {
                 "name": "T_Eye_Female_Hazel",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Female_Hazel.png",
-                "sha256": "faf50f954665ed53f3648c5bf9daee4bd674217817beb9659780425a37172dd8"
+                "sha256": "d8c0c6eae6077cb983e306e866abf30213c313b09bc6f2b37f8445dc45d27e7b"
             },
             {
                 "name": "T_Face_Female_Freckles",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Female_Freckles.png",
-                "sha256": "849bffd4326dda6d18bf9475f7aaa0ea487fc7abadca92c0f44888773a056cbd"
+                "sha256": "2fcdc1545b2af11bef62070c0e997615a47034cd940af1ca9b123cdf81402adf"
             }
         ]
     }

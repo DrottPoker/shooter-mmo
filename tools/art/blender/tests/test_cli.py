@@ -131,7 +131,7 @@ class ParserTests(unittest.TestCase):
                                   ("garment-sync", ["--file", "--garment", "--manifest", "--cage-manifest"]),
                                   ("garment-review-file", ["--file", "--garment", "--output"]),
                                   ("texture-create", ["--file", "--texture", "--garment-file", "--garment", "--label"]),
-                                  ("texture-sync", ["--file", "--texture", "--garment-file", "--garment", "--label"]),
+                                  ("texture-sync", ["--file", "--texture", "--garment-file", "--garment", "--label", "--manifest"]),
                                   ("texture-dyes", ["--file", "--texture"]), ("cage-create", ["--file", "--manifest"]),
                                   ("cage-sync", ["--file", "--manifest"]), ("paint-sync", ["--file", "--paint", "--part"]),
                                   ("paint-projection", ["--file", "--paint", "--part", "--roots", "--cage"]),
@@ -262,7 +262,8 @@ class HumanBaseDispatchTests(unittest.TestCase):
             "review": types.SimpleNamespace(review_file=runner("review-file"), render=runner("render", ["a.png", "b.png"])),
             "rig": types.SimpleNamespace(sync=runner("sync"), weights=runner("weights"), rig=runner("rig")),
             "rig_review": types.SimpleNamespace(render=runner("rig-render", ["r.png"]), review_file=runner("rig-review-file", "rr.blend")),
-            "retarget": types.SimpleNamespace(import_clip=lambda *args: record.append(("import", args)) or cls.imported),
+            "retarget": types.SimpleNamespace(import_clip=lambda *args: record.append(("import", args)) or cls.imported,
+                                              refit=lambda *args: record.append(("refit", args)) or cls.refitted),
         }
         cls.cli = load("human_base_cli.py", "main", "_count", "STEPS", "CHECKS", "RENDERS", "IMPORTS", **modules)
         cls.modules = modules
@@ -271,6 +272,7 @@ class HumanBaseDispatchTests(unittest.TestCase):
         self.calls.clear()
         type(self).compared = (["same content: a and b"], [])
         type(self).imported = (["Block: 37 frames"], [], {"clip": "Block", "frames": 37})
+        type(self).refitted = (["Humanoid: 2 clips moved to the new rig"], [], None)
 
     def _run(self, *argv: str) -> tuple[int, list[str]]:
         out = io.StringIO()
@@ -321,6 +323,15 @@ class HumanBaseDispatchTests(unittest.TestCase):
     def test_the_rig_review_file_is_named(self):
         self.assertEqual(self._run("rig-review-file", "m", "f", "s.json", "out.blend"), (0, ["HUMAN_BASE_REPORT review file rr.blend"]))
         self.assertEqual(self._run("rig-review-file", "m"), (2, ["HUMAN_BASE_FAILED rig-review-file takes 4 arguments"]))
+
+    def test_refitted_clips_print_their_report_and_no_motion_numbers(self):
+        arguments = ("lib.blend", "Humanoid", "before.blend", "s.json", "Idle,Walk")
+        self.assertEqual(self._run("refit-clips", *arguments), (0, ["HUMAN_BASE_REPORT Humanoid: 2 clips moved to the new rig"]))
+        self.assertEqual(self.calls, [("refit", arguments)])
+        type(self).refitted = ([], ["Grip: the clip has no slot to play on the armature."], None)
+        self.assertEqual(self._run("refit-clips", *arguments),
+                         (1, ["HUMAN_BASE_FAILED Grip: the clip has no slot to play on the armature."]))
+        self.assertEqual(self._run("refit-clips", "lib.blend"), (2, ["HUMAN_BASE_FAILED refit-clips takes 5 arguments"]))
 
     def test_an_imported_clip_prints_its_report_and_its_motion_numbers(self):
         arguments = ("lib.blend", "Humanoid", "src.glb", "map.json", "A+B", "Block", "R", "s.json")

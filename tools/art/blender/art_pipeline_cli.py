@@ -133,6 +133,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--garment-file", required=True, help="The .blend file of the texture's template.")
         command.add_argument("--garment", required=True, help="The name of the texture's template.")
         command.add_argument("--label", required=True, help="The armature of the template's first body.")
+        if name == "texture-sync":
+            command.add_argument("--manifest", required=True, help="The template's asset.json, with its recipe.")
         if name == "texture-create":
             command.add_argument("--size", type=int, default=1024)
             command.add_argument("--source-file", help="A .blend file whose mesh the texture's look is projected from.")
@@ -408,7 +410,7 @@ def main() -> int:
             print(f"ART_REFERENCE {json.dumps(result, separators=(',', ':'))}")
         return 0
     if args.command == "clips":
-        skip = skeleton_definition.load(args.skeleton).chain_bones if args.skeleton else set()
+        skip = skeleton_definition.load(args.skeleton).unkeyed_bones if args.skeleton else set()
         for result in clip_video.render_clips(os.path.abspath(args.output), args.armature, args.clip, args.speed, skip,
                                               _held_attachments(args)):
             print(f"ART_MOTION {json.dumps(result, separators=(',', ':'))}")
@@ -474,8 +476,12 @@ def main() -> int:
                            args.label, args.size, os.path.abspath(args.source_file) if args.source_file else None,
                            args.source_object)
         else:
-            moved = texture.sync(os.path.abspath(args.file), args.texture, os.path.abspath(args.garment_file), args.garment,
-                                 args.label)
+            with open(args.manifest, encoding="utf-8") as handle:
+                recipe = json.load(handle)["recipe"]
+            moved, notes = texture.sync(os.path.abspath(args.file), args.texture, os.path.abspath(args.garment_file),
+                                        args.garment, args.label, recipe)
+            for note in notes:
+                print(f"ART_TEXTURE_NOTE {note}")
             state = "synced" if moved else "up-to-date"
         print(f"ART_TEXTURE_FILE {state} {args.file}")
         return 0

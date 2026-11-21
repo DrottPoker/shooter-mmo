@@ -152,7 +152,7 @@ only you run Claude Code, and save your work before a live session.
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
-| `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
+| `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs, with the preview it is painted on and the cage version that preview lies on. |
 | `art/Attachments/<Name>/<Name>.blend` | An [attachment](#attachments): a static model below its root `Grip`, held on a socket, such as a sword or a shield, or a [skinned one](#skinned-attachments) whose armature is `Grip`, such as a bow. |
 | `art/Projectiles/<Name>/<Name>.blend` | A [projectile](#projectiles): a static model that flies, such as an arrow, its point at the origin. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
@@ -179,10 +179,10 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/Sync-CageAsset.ps1`, `tools/art/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
 | `tools/art/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
 | `tools/art/Sync-GarmentAsset.ps1`, `tools/art/blender/art_pipeline/garment.py`, `hang.py`, `coverage.py` | Builds a garment template from its recipe on the cage, with its loose parts on their scaffolds (`hang.py`), fits it to every body through the cage, gives every version the weights of its body, computes what it covers on every body (`coverage.py`), writes its review sheet and review file, and checks it. |
-| `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template's new UVs, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
+| `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template when the template's faces or UVs changed, by correspondence, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
 | `tools/art/Set-TextureDyes.ps1` | Makes a garment texture dyeable: its dye mask and the natural color of each channel, with its image divided so that it looks undyed as it was painted. |
 | `tools/art/Sync-HumanBase.ps1`, `tools/art/blender/human_base`, `tools/art/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
-| `tools/art/blender/human_build` | The scripts that build the next human base bodies from their reference, vertex by vertex; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). Their work files go to `artifacts/human-build`. |
+| `tools/art/blender/human_build` | The scripts that build the human base bodies from their reference, vertex by vertex; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). Their work files go to `artifacts/human-build`. |
 | `tools/art/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
 | `tools/art/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid in the target pose that every visible body in the game shows, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
 | `tools/art/blender/art_pipeline_cli.py` | Blender entry point for the scripts. |
@@ -441,9 +441,9 @@ reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
    `Male_Head` to `Male_Feet`, and the eyes, teeth, and tongue as its children,
    and the file has no actions. Select `Male_Torso`, open the UV Editor, and
    switch the UV map from `UVMap` to `UVMap_Paint` in the mesh data. Expected
-   result: in `UVMap` both halves of the chest lie on one island; in
-   `UVMap_Paint` the left half lies in the left half of the map and the right
-   half in the right half. Close Blender without saving.
+   result: both maps are the same: the chest is one island, the trunk's front,
+   with both of its halves side by side, and no island lies over another.
+   Close Blender without saving.
 
 ### Compare A Model With Its Reference Pictures
 
@@ -814,8 +814,9 @@ quality compression. The images of paint layers and garments, below
 mask, `T_Garment_<Name>_Dye`, imports without alpha and as linear data, not
 sRGB, because the shader reads how far each channel dyes as it is stored. A
 paint layer's image keeps its size, up to 4096 px and also when that is not a
-power of two, because it is cropped to its paint in a body's paint UV map, which
-is twice as wide as the skin texture of a mirrored body.
+power of two, because it is cropped to its paint in a body's paint layout: the
+size of the skin texture, 4096 by 2048 texels for the human bodies' `M_Body`, and
+twice as wide for a body that mirrors its skin texture.
 
 `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
 appearance catalog of every exported skinned model with `variants` or a paint
@@ -825,11 +826,15 @@ see [Appearance Layers](#appearance-layers). For a body with an editable mesh,
 the catalog maps every triangle of its parts to the face of the editable mesh it
 comes from, and every garment's triangles to their underlay: `ArtTopologyMaps`
 finds each Unity vertex at the position of a vertex of the exported topology,
-Blender's (x, y, z) being Unity's (x, z, y), and each triangle in the one face
-that holds its three corners, so the order of Unity's vertices and triangles
-does not matter. `ArtAppearanceCatalogTests` fails when a catalog differs from
-what the command writes from `asset.json`, or when a face of an editable body is
-not drawn by its size less two triangles.
+Blender's (x, y, z) being Unity's (x, z, y), and each triangle in the face that
+holds its three corners, so the order of Unity's vertices and triangles does not
+matter. Where several vertices lie at one place, such as where the lips meet or
+where a hood's collar meets the band turned down over it, the faces of a
+vertex's triangles tell which one it is. A triangle that several faces hold goes
+to the one that faces its way, or else to the one that holds the nearest vertex
+of each of its corners. `ArtAppearanceCatalogTests` fails when a catalog differs
+from what the command writes from `asset.json`, or when a face of an editable
+body is not drawn by its size less two triangles.
 
 A catalog holds data and addresses, not content, so a client loads only the looks
 in view; see [Body Content](UNITY_CLIENT_ARCHITECTURE.md#body-content). The same
@@ -1072,19 +1077,19 @@ lies over, what it collides with, the bone its frame is, and its chains with
 their angles around the hips. `ClothPoseTests` checks the client's constants
 against it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
 
-`Humanoid_Next` is the skeleton of the rebuilt bodies, see
-[Rebuild The Human Base Characters](#rebuild-the-human-base-characters), until
-they take the place of the current ones and it takes the name `Humanoid`: the
-bones and the `cloth` section of `Humanoid`, and four eyelid bones,
-`EyelidUpper_L`, `EyelidLower_L`, `EyelidUpper_R`, and `EyelidLower_R`,
-deforming children of `Head` beside the eyes and outside the Humanoid avatar.
-Each sits at its eyeball's centre and points forward with its Z axis up, as the
-eye bones do, so it turns its lid about the eye's centre around its X axis. The
-`eyelids` section names per eye its eye bone and its two lid bones, and the
-turns about X that close the lids, `upperClosedDegrees` -46 for the upper lids
-and `lowerClosedDegrees` 11 for the lower ones, just more than the rebuilt male's
-lids need: the rig weights each body's lids so they meet at these turns, and a
-share of them closes the eyes that far.
+`Humanoid` also has four eyelid bones, `EyelidUpper_L`, `EyelidLower_L`,
+`EyelidUpper_R`, and `EyelidLower_R`, deforming children of `Head` beside the
+eyes and outside the Humanoid avatar. Each sits at its eyeball's centre and
+points forward with its Z axis up, as the eye bones do, so it turns its lid
+about the eye's centre around its X axis. The `eyelids` section names per eye
+its eye bone and its two lid bones, and the turns about X that close the lids,
+`upperClosedDegrees` -46 for the upper lids and `lowerClosedDegrees` 11 for the
+lower ones, just more than the male's lids need: the rig weights each body's
+lids so they meet at these turns, and a share of them closes the eyes that far;
+see [Rig The Human Base Characters](#rig-the-human-base-characters).
+[Eyelids](UNITY_CLIENT_ARCHITECTURE.md#eyelids) describes how the client turns
+the lid bones, and `BodyEyelidsTests` holds the client's copy of the section to
+this file.
 
 `Quadruped` is the skeleton of four-legged creatures, such as the wolf: 30
 deforming bones outside any Unity avatar, so its assets import with a Generic
@@ -1115,9 +1120,11 @@ Hair, clothes, and equipment are [garments](#garments) and
 [attachments](#attachments) on top of them, and faces are painted on them. Both
 are built on the realistic bodies and the Generic Topology head of the
 [Human Base Meshes](https://www.blender.org/download/demo-files/) bundle v1.4.1
-by Blender Studio (CC0). Their files are the source: a person edits them in
-Blender, and `tools/art/Sync-HumanBase.ps1` keeps everything that follows from
-them up to date.
+by Blender Studio (CC0), by the scripts in `tools/art/blender/human_build`; see
+[Rebuild The Human Base Characters](#rebuild-the-human-base-characters). Their
+files are the source: a person edits them in Blender, and
+`tools/art/Sync-HumanBase.ps1` keeps everything that follows from them up to
+date.
 
 Each file holds one character:
 
@@ -1128,31 +1135,30 @@ Each file holds one character:
   layers may use.
 - The source body `<Label>_Body` in the `Source` collection, bound to the
   armature: the whole body as one mesh, the surface a person edits, with smooth
-  shading, the ear rims as sharp edges, the face attribute `zone` that names the
-  body part of every face, and the skin weights. It shows in the viewport, and
-  renders and the export leave it out.
+  shading, the face attribute `zone` that names the body part of every face, and
+  the skin weights. It shows in the viewport, and renders and the export leave
+  it out.
 - Ten body parts in the `Export` collection, named `<Label>_<Zone>`: `Head`,
   `Neck`, `Torso`, `Pelvis`, `UpperArms`, `Forearms`, `Hands`, `Thighs`,
   `Shins`, and `Feet`, so equipment can hide whole parts. The sync writes them
   from the source body, with its corner normals as custom normals, so they meet
   without visible seams, with its weights, and with the paint UV map
-  `UVMap_Paint`, the source body's `UVMap` with the body texture's faces laid out
-  twice as wide, the left side in the left half and the right side in the right
-  half, so [paint layers](#paint-layers) can differ between the sides. They are
-  hidden in the viewport and never edited by hand; the approval and the export
-  refuse parts that differ from the source body.
+  `UVMap_Paint`, the source body's `UVMap`: no island of the bodies is mirrored
+  and no two share texels, so [paint layers](#paint-layers) can differ between
+  the sides. They are hidden in the viewport and never edited by hand; the
+  approval and the export refuse parts that differ from the source body.
 - Two eyeballs (`<Label>_Eye_L` and `_R`) for gaze animation, and upper and lower
   teeth and a tongue inside a closed mouth cavity for jaw animation, edited where
   they are.
-- 9,202 triangles: 8,692 for the body and 510 for the eyeballs, teeth, and
-  tongue. Both bodies are exactly mirror symmetric and have identical topology,
-  so paint moves from one body to the other exactly, face by face.
-- Smooth shading, with hard edges only on the ear rims, and the form painted into
-  the textures: `M_Body_<Label>` uses the 2048 px body texture
-  `T_Body_<Label>`, plain skin under the underwear, which is paint of its own,
-  `M_Face_<Label>` a 1024 px face texture, `M_Eye_<Label>` a 512 px iris
-  texture, and `M_Teeth_<Label>` and `M_Tongue_<Label>` flat colors. The face
-  and eye variants for character creation are packed into the file and exported
+- 15,084 triangles with the eyeballs, teeth, and tongue. Both bodies are
+  exactly mirror symmetric and have identical topology, so paint moves from one
+  body to the other exactly, face by face.
+- Smooth shading and textures: `M_Body_<Label>` uses the 4096 x 2048 px body
+  texture `T_Body_<Label>`, plain skin under the underwear, which is paint of
+  its own, `M_Face_<Label>` a 2048 px face texture, `M_Eye_<Label>` a 512 px
+  iris texture, and `M_Teeth_<Label>` and `M_Tongue_<Label>` flat colors. The
+  skin is plain, in one colour, until it is painted. The face and eye variants
+  for character creation are packed into the file and exported
   as [variants](#appearance-layers): `T_Face_Male_Stubble`, `T_Face_Male_Clean`,
   `T_Eye_Male_Teal`, and `T_Eye_Male_Brown` for the male,
   `T_Face_Female_Blush`, `T_Face_Female_Freckles`, `T_Eye_Female_Teal`, and
@@ -1178,7 +1184,9 @@ one Blender process per step:
    closes the lids by the skeleton's turns: at each place across the eye the
    lids' inner edges lie at most 0.3 mm apart around the eyeball and 0.8 mm
    toward its axis, and no skin of a lid lies more than 0.3 mm inside its
-   eyeball.
+   eyeball. It turns the head 40 degrees, nods it 25, and leans it back 25 on
+   the neck: the skin at the face's landmarks, from the forehead over the eyes'
+   rims and the lips to the chin, moves at most 0.3 mm against the skull.
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
    symmetry, identical topology of both bodies and of every part, at most 15,400
@@ -1199,12 +1207,16 @@ one Blender process per step:
    sheets of the models, such as the faces sheet `Human_Base_faces.png`, and of
    the rigs, such as the cloth chains on `<Asset>_rig_chains.png`, the
    shoulders through their reach on `<Asset>_rig_arms.png`, and the hips
-   through theirs on `<Asset>_rig_hips.png`. The rigs' sheets add a key light
-   without shadows to the models' studio light, so the forms of a body in flat
-   colours show; the light follows the camera, so every side is lit alike. They
-   show the whole body, the mesh a person edits: Blender shades the parts of a
-   posed body with a seam at every cut between two parts, which the game does
-   not show. The face sheet closes the lids of a skeleton with eyelids.
+   through theirs on `<Asset>_rig_hips.png`. All sheets are lit by an even sky
+   and a key light without shadows, so the forms of a body in one colour show;
+   the light follows the camera, so every side is lit alike. The models' sheets
+   stand the two characters 0.8 m to each side of the middle and show one alone
+   in every close-up, and their mouth sheet opens the mouth by the jaw bone, a
+   little, well open from three sides, and wide open. The rigs' sheets show the
+   whole body, the mesh a person edits: Blender shades the parts of a posed body
+   with a seam at every cut between two parts, which the game does not show. The
+   face sheet opens the jaw, turns the eyes, turns, nods, and leans back the
+   head on the neck, and closes the lids of a skeleton with eyelids.
 
 Placing the joints puts every joint where the model has it: the hips from the
 crotch and the leg cut, the spine at fixed shares between the hips and the neck,
@@ -1225,14 +1237,15 @@ skeleton that has them, the eyes, the upper teeth, the lower teeth, and the
 tongue are rigid on their bones, and the weights are mirrored so both sides
 match exactly. Solving the weights again on an unchanged character gives the
 same weights. The tools tell a body's vertices apart by their places, and two
-vertices of one part at one place, such as the rebuilt bodies' lips where they
-meet, by their order.
+vertices of one part at one place, such as the bodies' lips where they meet, by
+their order.
 
 The test poses of the rig review turn the bones from the bind pose. Their upper
 arms were made for arms that hang about 68 degrees below the horizontal, as the
-current bodies' do; on a rig whose arms hang more than 10 degrees otherwise,
-such as the rebuilt bodies' at 45 degrees, a pose that turns the upper arms
-first turns them to that angle, so it shows the same arms on every body. With
+bodies before the rebuild had them; on a rig whose arms hang more than 10
+degrees otherwise, such as the bodies' at 45 degrees, a pose that turns the
+upper arms first turns them to that angle, so it shows the same arms on every
+body. With
 the arms overhead the collarbones rise 38 degrees, about a third of the way, as
 a shoulder girdle does; with them low, the arms would rise out of a flat shelf
 beside the neck.
@@ -1292,9 +1305,9 @@ beside the neck.
    .\tools\art\Verify-ArtAssets.ps1
    ```
 
-   Expected result: `Approved the 'model' stage of Human_Male (triangles=9202).`
+   Expected result: `Approved the 'model' stage of Human_Male (triangles=15084).`
    and the same for `rig` and `Human_Female`, `Exported Human_Male to
-   src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
+   src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=15084).` and
    the same for the female, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
    (clips=Death,Idle,Walk,...).`, and `Verified <n> art asset(s).` The library is
@@ -1356,22 +1369,13 @@ A face or an eye color is another image of a body's face or eye material; see
 
 ### Rebuild The Human Base Characters
 
-The human base bodies are being built again from scratch, with the method of the
-[Modeling Rules](#modeling-rules). The new bodies are built by the scripts in
-`tools/art/blender/human_build`, which place every vertex and face on purpose,
-and are written as assets of their own, `art/Characters/Human_Male_Next` and
-`art/Characters/Human_Female_Next`, beside the bodies the game uses. The
-reviewer approved their `model` stage on 2026-11-19, again on 2026-11-20 after
-their eyes were built again for lids that close, as the blinking of the next
-step needs, and once more that day after their armpits were opened, both had
-grown fuller, and the male's waist was filled; see the lids, the armpit, and
-the fuller bodies below. They are committed in review on the
-`Humanoid_Next` skeleton, which has eyelids: their `rig` stage waits for the
-reviewer, so they have no export; see
-[Rig The Rebuilt Bodies](#rig-the-rebuilt-bodies). The move of everything that
-is fitted to a body, the clips, the garment cage, the garments, the textures,
-and the paint layers, comes next, and then the new bodies take the names
-`Human_Male` and `Human_Female`.
+The human base bodies are built from scratch, with the method of the
+[Modeling Rules](#modeling-rules), by the scripts in
+`tools/art/blender/human_build`, which place every vertex and face on purpose.
+They write the files of `art/Characters/Human_Male` and
+`art/Characters/Human_Female` at the `model` stage, without a rig, and
+`Sync-HumanBase.ps1 -Rig` rigs them on the `Humanoid` skeleton; see
+[Rig The Human Base Characters](#rig-the-human-base-characters).
 
 The reference is the bundle the bodies have always come from, the realistic
 male and female of Blender Studio's Human Base Meshes v1.4.1 (CC0), kept outside
@@ -1583,7 +1587,17 @@ What is built:
   and its band, the band around each eye's lids, and each eye's pocket are the
   parts of the net with faces of three corners.
 - **Eyeballs, teeth, and tongue** of their own: a ball of the size of the
-  reference's eyeball per eye, a band of teeth per jaw, and a tongue.
+  reference's eyeball per eye, a band of teeth per jaw, and a tongue. A band of
+  teeth is 6 mm thick at the gums and 2.5 mm at its biting edge and 10.5 mm
+  high. The upper row stands right behind the inner lips, 6 mm behind the lips'
+  front, with its edge 3 mm under the line between the lips, so the teeth show
+  under the upper lip when the mouth opens. The lower row's edge lies 1 mm
+  under that line, just under the lower lip's, and the row 3.5 mm inside the
+  upper row all the way around, so the two pass without touching. The tongue
+  fills the lower row: its rounded tip lies behind the lower front teeth and
+  its top a little under their edges, so an open mouth shows the edges of the
+  lower teeth and the tongue, never the inside of the row. Lengths are at
+  1.79 m and follow the body's height.
 - **The UV map.** Unwrapped island by island along seams the cage names, never
   projected: the trunk's front and back, the neck opened down the nape, each arm
   and leg opened along its inner line, each hand as a back and a palm, each foot
@@ -1593,20 +1607,30 @@ What is built:
   `UVMap_Paint` is `UVMap`. The body's islands lie on an image twice as wide as
   high at one texel density, about 1,600 texels per metre at 4096 x 2048, and
   the head's on a square image of its own, the image of `M_Face_<Label>`, at
-  about 4,000 texels per metre at 2048 x 2048. The materials are flat colours
-  until the skin is painted.
+  about 4,000 texels per metre at 2048 x 2048.
+- **Plain skin until it is painted.** `skin.py` makes the images of the skin and
+  the eyes, and the assembly packs them into the file: `T_Body_<Label>` and one
+  `T_Face_<Label>_<Face>` per face the game offers, all in one skin colour, and
+  one `T_Eye_<Label>_<Colour>` per eye colour the game offers, an eyeball seen
+  from in front with an iris of that colour and a pupil. On every face the
+  inside of the mouth, the island `mouth` with the inner lips and the cavity, is
+  red, 4 texels past the island's edge. Each material shows the first of its
+  images, and the others lie in the file as its variants, by the names
+  `content/characters/appearance.json` offers, which a test compares. The teeth
+  and the tongue are flat colours.
 
-Each new file follows the layout of a body file above, at the `model` stage: the
-root `<Label>` is an empty where the armature will be, the body parts are
-written from the source body as the sync writes them, the faces inside the head
-carry the hidden parts 7 and 8 of the face attribute `part`, each eyeball's
-origin lies at its centre, and the reference mesh lies in the `Reference`
-collection, which renders leave out. The root carries the rig's landmarks as
-custom properties `lmw_<name>`, which `landmarks.py` writes from vertices that
-the build names: the keys of the current bodies, with as many points in the same
-order and with the same meaning, so paint layers made on those bodies pair them,
-and `shoulder_joint`, `finger_bases`, `finger_joints`, and `toe_ball`, by which
-the rig places the shoulders, the digits, and the toes.
+Each file that the build writes follows the layout of a body file above, at the
+`model` stage: the root `<Label>` is an empty where the armature will be, until
+the first rig puts the armature there, the body parts are written from the
+source body as the sync writes them, the faces inside the head carry the hidden
+parts 7 and 8 of the face attribute `part`, each eyeball's origin lies at its
+centre, and the reference mesh lies in the `Reference` collection, which
+renders leave out. The root carries the rig's landmarks as custom properties
+`lmw_<name>`, which `landmarks.py` writes from vertices that the build names:
+the keys that the bodies before the rebuild carried, with as many points in the
+same order and with the same meaning, so paint layers that were made on those
+bodies pair them, and `shoulder_joint`, `finger_bases`, `finger_joints`, and
+`toe_ball`, by which the rig places the shoulders, the digits, and the toes.
 
 To build the bodies again, with Blender on `BLENDER_PATH`:
 
@@ -1618,7 +1642,7 @@ $bundle = "<main checkout>/artifacts/art-reference/human-base-meshes-v1.4.1/huma
 foreach ($label in "Male", "Female") {
     & $blender --background --factory-startup --disable-autoexec "$work/reference.blend" --python tools/art/blender/human_build/build.py -- $label "$work/work_$label.blend"
 }
-& $blender --background --factory-startup --disable-autoexec --python tools/art/blender/human_build/assemble.py -- $work art/Characters _Next
+& $blender --background --factory-startup --disable-autoexec --python tools/art/blender/human_build/assemble.py -- $work art/Characters
 ```
 
 Expected result: `reference.py` prints the height of both references, how far
@@ -1636,7 +1660,9 @@ that is wound the wrong way, a sliver, a fold, or an edge at which the net is
 tucked into itself, as it is where a vertex has landed on skin inside the
 reference's head; and `assemble.py` prints the triangles of each body and how
 much of each image its islands fill, and writes both files. The same input
-gives the same bodies. A changed file needs its `model` stage approved again.
+gives the same bodies. The files replace the committed ones without a rig, so
+rig them next, as [Rig The Human Base Characters](#rig-the-human-base-characters)
+describes.
 
 | Script | What it does |
 | --- | --- |
@@ -1647,23 +1673,23 @@ gives the same bodies. A changed file needs its `model` stage approved again.
 | `body.py`, `hand.py`, `digits.py`, `foot.py`, `head.py`, `eye.py`, `parts.py`, `islands.py` | The cage of the trunk, the arms, the neck, and the legs, with the navel and the line over the chest; of the hand and its fingers; of the foot and its toes; of the head; the lids of the eyes, measured on the reference spoke by spoke; the eyeballs, teeth, and tongue; and the islands that follow from the net's shape, the hand's back and palm, the top and the sole of the toes, and the back of each ear. |
 | `landmarks.py` | The rig's landmarks from the vertices the cage names, through the subdivided net: the rings of each digit and of the wrist, the ball of the foot, the line between the lips, the lids' inner edge, and the points of the face's middle line, found as the furthest forward or back within heights set by the ones before them. |
 
-### Rig The Rebuilt Bodies
+### Rig The Human Base Characters
 
-`tools/art/Sync-HumanBase.ps1 -Rig -Next` rigs the rebuilt bodies on the
-`Humanoid_Next` skeleton with the steps and checks of the current bodies, the
-joints placed from the landmarks of their files, and the eyelids weighted by
-rule. The review of the models is left out, because its sheets show the painted
-skin that the rebuilt bodies do not have yet. The work files, review files,
-sheets, and report go to `artifacts/human-base-next`.
+`tools/art/Sync-HumanBase.ps1 -Rig` rigs the bodies on the `Humanoid` skeleton
+with the steps and checks of [Human Base Characters](#human-base-characters),
+the joints placed from the landmarks of their files, and the eyelids weighted
+by rule. A file that the build wrote has no armature yet, and `-Rig` gives it
+its first one.
 
 - **Joints.** The shoulder joint lies where the reference's arm was turned,
-  `shoulder_joint`: the ray casts that find it on the current bodies look for
-  the joint of a hanging arm and land 4 cm below it and 2 cm outside it on an
-  arm turned out to 45 degrees. The hip joint lies 9 cm above the crotch, where
-  the joint is, level with the roundest of the buttock; the current bodies' lies
-  4.5 cm above it. Only about a joint that high can the fold of the groin run
-  up toward the hip bone: about a low joint the skin under the hip bone would
-  have to swing far down and forward with the thigh, so the fold can only run
+  `shoulder_joint`: the ray casts that found it on the bodies before the
+  rebuild look for the joint of a hanging arm and would land 4 cm below it and
+  2 cm outside it on an arm turned out to 45 degrees. The hip joint lies 9 cm
+  above the crotch, where the joint is, level with the roundest of the buttock;
+  on the bodies before the rebuild it lay 4.5 cm above it. Only about a joint
+  that high can the fold of the groin run up toward the hip bone: about a low
+  joint the skin under the hip bone would have to swing far down and forward
+  with the thigh, so the fold can only run
   level, straight across the top of the thigh. The spine's joints keep their
   shares of the way from the hip joints to the neck, so they lie higher too. A
   finger's middle and end joints lie in the
@@ -1673,12 +1699,13 @@ sheets, and report go to `artifacts/human-base-next`.
   rings around its joint, and its base 0.4 of the way from the wrist to its web.
   A digit's skin is what lies beyond the ring it grows from, `finger_bases`. The
   toes bend at the middle of the ring over the ball of the foot, `toe_ball`.
-- **Shoulders.** The shoulders take the shaping of the current bodies. Of the
-  bone heat the upper arm keeps at most half on the torso at the cut between
-  the torso and the arm, fading out over 6 cm; the collarbone keeps the skin
-  over it and, at the back, over the shoulder blade; and the weights around the
-  cut are smoothed. The rebuilt bodies' cut lies 3 to 4 cm inside the shoulder
-  joint, and their armpit is a hollow of its own in the model, so an arm that
+- **Shoulders.** The shoulders take the shaping that the bodies before the
+  rebuild had. Of the bone heat the upper arm keeps at most half on the torso
+  at the cut between the torso and the arm, fading out over 6 cm; the
+  collarbone keeps the skin over it and, at the back, over the shoulder blade;
+  and the weights around the cut are smoothed. The bodies' cut lies 3 to 4 cm
+  inside the shoulder joint, and their armpit is a hollow of its own in the
+  model, so an arm that
   rises or hangs leaves the side of the chest in place without a rule of its
   own. A rule that gave the arm the shares the build turned the arms out with
   was tried on these bodies and left out: with the arms overhead it left the
@@ -1693,10 +1720,11 @@ sheets, and report go to `artifacts/human-base-next`.
   top. At the back the boundary lies just below the fold under the buttock,
   10 cm below the joint, with a blend of 24 cm: about the higher joint the
   underside of the buttock swings further with the thigh, and a boundary
-  halfway up the buttock, as the current bodies have it, draws that underside
-  in under the pelvis when the thigh rises. At the crotch it lies where the
-  current bodies' does. The crotch itself does not move when the legs do: the
-  thighs have no share within 1.5 cm of its middle line, which runs under the
+  halfway up the buttock, as the bodies before the rebuild had it, draws that
+  underside in under the pelvis when the thigh rises. At the crotch it lies
+  where it lay on the bodies before the rebuild. The crotch itself does not
+  move when the legs do: the thighs have no share within 1.5 cm of its middle
+  line, which runs under the
   trunk between the legs and up its front to the hip joints' height, and reach
   their full share 7 cm from it. With a share there, raised thighs push the
   skin above the crotch into a fold under the belly. The weights are then
@@ -1719,41 +1747,52 @@ sheets, and report go to `artifacts/human-base-next`.
   the pocket behind the edge follows the edge. The step reports how much of the
   skeleton's closed turns each lid needs: the male's upper lids 45.9 of 46
   degrees and his lower lids 10.9 of 11, the female's 41.7 and 10.4.
-- **The lips.** The rebuilt bodies' lips meet: the upper lip's vertices on the
-  line between them lie where the lower lip's do. The jaw takes a vertex by its
-  place, and the two lips' vertices at one place take the mean share of their
-  other neighbours, so the upper lip stays with the head and the lower lip opens
-  with the jaw.
+- **The face on the skull.** The face and the skull are rigid on the head: the
+  head's skin follows the neck only near the cut between the two parts, as much
+  as bone heat gave it within 5 mm of the cut and not at all from 35 mm on.
+  Bone heat alone leaves a third of the chin, a quarter of the mouth, and a
+  tenth of the skin around the eyes to the neck. A head that turns or nods on
+  the neck then twists the face, pushes the eyeballs through the lids, and
+  opens the lips, and an opening jaw leaves the lower lip behind the lower
+  teeth.
+- **The mouth.** The jaw opens the mouth to an oval, measured from the middle
+  of the mouth to its corner, the landmark `mouth_corner`. The corner follows
+  the jaw by 0.4, less than half, so the upper lip stays nearly level and the
+  lower lip rounds the opening. The lower lip follows the jaw wholly in the
+  middle and by less toward the corner, and the upper lip not at all in the
+  middle and by more toward the corner, so the two part by `(1 - x * x) ** 0.6`
+  of the opening at `x` of the way to the corner, between an ellipse and two
+  arcs that meet in a point. Above and below the line between the lips the skin
+  passes from the head to the jaw over a band: 0.6 mm in the middle of the
+  mouth, 12 mm more at its corner, so the lips and the cheek round the corner,
+  and 0.6 mm more for every millimetre beyond the corner, so the cheeks
+  stretch. The bodies' lips meet: the upper lip's vertices on the line
+  between them lie where the lower lip's do, and each follows its own lip, which
+  the side its other neighbours lie on names.
 
-To rig the rebuilt bodies, write their files with the landmarks first, with the
-commands of [Rebuild The Human Base Characters](#rebuild-the-human-base-characters),
-then:
+To rig the bodies after a build, write their files with the landmarks first,
+with the commands of
+[Rebuild The Human Base Characters](#rebuild-the-human-base-characters), then:
 
 ```powershell
-.\tools\art\Sync-HumanBase.ps1 -Rig -Next
+.\tools\art\Sync-HumanBase.ps1 -Rig
 ```
 
 Expected result: a line per step with its time, and the script names the review
-file `artifacts/human-base-next/Human_Base_Rig.blend`, the sheets in
-`artifacts/human-base-next/review`, and the report, and says of each body that it
-was updated and that its `rig` stage needs an approval. The report gives each
-lid's closed turn and how far the closed lids lie apart. Look closest at
-`<Asset>_rig_face.png`, with the jaw opening and the lids closing,
+file `artifacts/human-base/Human_Base_Rig.blend`, the sheets in
+`artifacts/human-base/review`, and the report, and says of each body that it
+was updated and that its file changed after its last approval, such as
+`Human_Male: updated; Human_Male.blend changed after the 'rig' approval.` The
+report gives each lid's closed turn and how far the closed lids lie apart. Look
+closest at `<Asset>_rig_face.png`, with the jaw opening and the lids closing,
 `<Asset>_rig_arms.png`, `<Asset>_rig_hips.png`, `<Asset>_rig_hands.png`, and
 the lids on `<Asset>_rig_weights.png`.
 
-The command writes the rigged bodies over the two model files. An approved
-`rig` stage is the last stage of a body, after which it needs its export, and
-the export belongs to the move of everything that is fitted to a body. Until
-then the rigged bodies stay out of the repository: copy them to
-`artifacts/human-base-next/rigged` and bring the approved model files back:
-
-```powershell
-git restore art/Characters/Human_Male_Next art/Characters/Human_Female_Next
-```
-
-Expected result: `tools/art/Verify-ArtAssets.ps1` passes again, because each
-model file is the one its `model` approval covers.
+The command writes the rigged bodies over the two model files. When the
+reviewer approves them, sync the animation library on the new rig, approve the
+`model` and `rig` stages, export the bodies with the library, and verify, as
+step 4 of [Edit The Human Base Characters](#edit-the-human-base-characters)
+describes.
 
 ## Animation Libraries
 
@@ -1786,11 +1825,32 @@ change. For a library on the `Humanoid` skeleton the sync then reports how far a
 foot on the ground slides in `Idle`, `Walk`, and `Jog` when the game moves the
 body at their speeds, and stops when one slides more than 15 mm.
 
+A rig whose joints moved rests in another pose, and a clip's keys, which turn
+each bone from its rest, would then show another motion. `-Refit` moves every
+clip to the new rig at the sync that replaces the armature: on every frame each
+deforming bone of the new rig turns from its rest as the old rig's bone turns
+from its rest, in world space, the way a clip of
+[another skeleton](#start-a-clip-from-another-skeleton) is moved. The arms and
+the fingers are aligned to the old rest pose, each hand
+takes the old hand's frame, the hips move as far as before for the legs'
+length, and the legs are solved again so each ankle is where it was. A foot
+keeps its turn from the ground, and a bone that deforms nothing, such as a
+socket, keeps its own turn. A clip keys the bones it keyed, now on every frame,
+loops if it looped, and keeps its name; the step reports per clip its lowest
+point and how low the hips sink, before and after. The clips named in
+`-Generate` are not moved: the gait model makes them again on the new rig, with
+strides for its legs. The library as it was is kept in
+`artifacts/animation-libraries/<Name>_before_refit.blend`. A rig that rests as
+before, such as one with new weights only, leaves the clips as they are. No
+clip keys the cloth chains, which the runtime cloth solver moves, or the
+eyelids, which the game closes.
+
 A clip is made by hand in the library file, in the reviewer's Blender, through
 the [Blender MCP server](#set-up-the-blender-mcp-server) or the reviewer's own
 keys: key poses on `Humanoid`, smoothed by Blender's curves, as
 [Make A Clip](#make-a-clip) describes. A locomotion clip may start from the gait
-model instead: `Sync-AnimationLibrary.ps1 -Generate Walk` adds the model's
+model instead, and the hand pose `Grip` from the fit above:
+`Sync-AnimationLibrary.ps1 -Generate Walk` adds the model's
 `Walk` when the library lacks it, and the same for `Idle` and `Jog`, and never
 replaces a clip the library has.
 
@@ -1810,9 +1870,33 @@ speeds match the model's.
 A clip may key only some bones: `Grip` keys only the fingers and thumbs of both
 hands, closed around a handle of 29 mm on each hand's socket, and the game plays
 it over the other clips on the fingers of a hand that holds an
-[attachment](#attachments). Its finger angles were fitted so that every segment
-of every finger touches that handle without going into it, the distal joint bent
-by a share of the middle one, as a hand closes. A clip may also come from a
+[attachment](#attachments). `Sync-AnimationLibrary.ps1 -Generate Grip` fits it
+to the hand of the body the library shows, with
+`tools/art/blender/human_base/grip.py`:
+
+- The fingers of a hand at rest are spread and each turned a little about
+  itself. Every finger first turns at its knuckle, to the side and about itself,
+  until the axis it closes about lies along the handle, so it closes in a plane
+  across the handle, beside its neighbours.
+- A finger closes joint by joint from its knuckle outward: each joint turns
+  until the pad of its segment touches the handle, or as near to it as it
+  comes. A pad is the skin along the middle of the outer half of a segment's
+  palm side: the handle lies in the palm at the fingers' roots and presses into
+  the skin there.
+- The fingers beside the middle finger, and then the little finger beside the
+  ring finger, turn to the side until each lies against its neighbour, by at
+  most 20 degrees from where it closes across the handle, and the fingers close
+  again.
+- The thumb closes over the handle and the fingers: its base turns toward the
+  palm and to the side and its outer joints close until the pads of its two
+  outer segments lie on them and not in them.
+
+Both hands take the right hand's pose, mirrored. The step reports each joint's
+turn and how far each pad lies from the handle, and it stops when a pad lies more
+than 2 mm inside the handle or 4 mm off it, when two neighbouring fingers lie
+more than 3 mm apart or overlap by more than 2 mm, or when the thumb lies more
+than 1 mm inside the handle or a finger. Every later sync measures the library's
+`Grip` on its body's hand by the same rules. A clip may also come from a
 script that places every key on purpose: the tools' `Mine` and `Chop` follow the
 tool's grip frame through a swing in a plane, with both hands reaching its haft
 by analytic two-bone IK, and the weapons' hold and attack clips are keyed with
@@ -2063,14 +2147,19 @@ body.
 The canvas is painted in its paint UV map, `UVMap_Paint`, which every body has
 next to the skin's `UVMap`: the skin's UVs, with every material whose faces share
 their texels with their mirror image laid out twice as wide, the left side in the
-left half and the right side in the right half. The human bodies' skin texture
-`T_Body_<Label>` is mirrored, so the paint of `M_Body` is twice as wide as the
-skin, 4096 by 2048 texels for both sides at the skin's own density, and paint on
-one side stays on that side, as the left forearm's runes of `ForearmRunes` do.
-The face texture `T_Face_<Label>` is not mirrored, so `M_Face`'s paint, such as
-the scar, keeps its UVs and its size. `Sync-HumanBase.ps1` writes `UVMap_Paint`
-on every body part from the source body's `UVMap`; a body of another base model
-brings a map of its own without mirroring, so its `UVMap_Paint` is its `UVMap`.
+left half and the right side in the right half. The human bodies mirror none of
+their skin: every island of their `UVMap` has texels of its own, the left
+forearm's apart from the right one's, so their `UVMap_Paint` is their `UVMap`,
+the paint of `M_Body` has the size of the body texture `T_Body_<Label>`, 4096 by
+2048 texels, and that of `M_Face`, such as the scar, the size of the face
+texture `T_Face_<Label>`. Paint on one side so stays on that side, as the left
+forearm's runes of `ForearmRunes` do: `check-parts` of `Sync-HumanBase.ps1`
+fails a body in which a texel of `UVMap_Paint` belongs to both sides, and
+`ArtAppearanceCatalogTests` holds the runes' crop within the paint UVs of the
+male's left forearm and apart from those of the right one.
+`Sync-HumanBase.ps1` writes `UVMap_Paint` on every body part from the source
+body's `UVMap`; a body of another base model brings a map of its own without
+mirroring, so its `UVMap_Paint` is its `UVMap`.
 
 ### Moving The Paint To The Bodies
 
@@ -2097,14 +2186,16 @@ ways:
   the body's cage version as `Cage_<Label>`, and the export records the cage's
   file.
 
-The cage keeps the paint's place along the bones: an armband that a woman gets
-from a man's canvas through the cage lies at 0.42 to 0.61 of the way from the
-shoulder to the elbow, as on the man, where the shared topology puts it at 0.47
-to 0.65. Where one body has a form the other lacks, the cage spans it and the
-paint stretches: the rune emblem on the man's upper breastbone comes out 94 mm
-wide on the woman instead of 72, since her cleavage has no counterpart on the
-man. `tools/art/Test-PaintProjection.ps1` checks this move on subdivided copies
-of the bodies, another topology of the same surfaces: the canvas's own body must
+The cage keeps the paint's place along the bones: an armband that the woman
+would get from the man's canvas through the cage, as a body of another topology
+does, lies at 0.41 to 0.61 of the way from the shoulder to the elbow, where the
+man has it at 0.43 to 0.61 and the shared topology puts it on her at 0.42 to
+0.61. Where one body has a form the other lacks, the cage spans it and the paint
+stretches: the rune emblem, 91 mm wide on the man's upper breastbone, would come
+out 94 mm wide on the woman through the cage instead of the 73 mm that the shared
+topology gives her, since her cleavage has no counterpart on the man.
+`tools/art/Test-PaintProjection.ps1` checks this move on subdivided copies of
+the bodies, another topology of the same surfaces: the canvas's own body must
 take the paint within 0.5 mm (median) and 1 mm (95%) of its place, and for the
 other bodies the script reports how far the cage places the paint from where
 their shared topology does, or, for a body of another topology than the canvas,
@@ -2226,11 +2317,12 @@ describes.
    .\tools\art\Test-PaintProjection.ps1 -Asset art/Paint/Tattoo
    ```
 
-   Expected result: about `Male: through the cage 0.05 mm (median) and 0.48 mm
-   (95%) from the exact move ...` and `Female: through the cage 6.46 mm
-   (median) ...`, without an error: the canvas's own body takes the paint within
-   a millimeter of its place, and the woman shows how far the cage and the
-   landmarks place the paint from where the shared topology does.
+   Expected result: about `Male: through the cage 0.02 mm (median) and 0.23 mm
+   (95%) from the exact move ...` and `Female: through the cage 4.89 mm
+   (median) and 26.89 mm (95%) ...`, without an error: the canvas's own body
+   takes the paint within a millimeter of its place, and the woman shows how
+   far the cage and the landmarks place the paint from where the shared
+   topology does.
 5. To paint a layer on another body from then on, such as a new base model that
    joined its `bodies`, move its canvas there, review the paint on it, and touch
    it up on the canvas:
@@ -2289,7 +2381,18 @@ body of any topology gets one, in the steps that
    bone with its length, blended by the reference's weights.
 2. Every vertex is drawn to the skin of its region: to the nearest skin within
    2 mm, otherwise along the cage's normal to whichever side meets the skin
-   first, within 80 mm and at most 10 mm farther than the nearest skin.
+   first, within 80 mm and at most 10 mm farther than the nearest skin. The
+   border between a limb and the trunk then moves into the fold where the
+   limb's skin meets the trunk's, the edges between a face of the limb and a
+   face of the trunk, wherever it would span a hollow: a vertex of the border
+   lies on the limb and its neighbors in the trunk lie on the trunk, and where
+   the limb stands off the trunk, as an arm does at the armpit, the edges
+   between them pass through the air and the faces would hang there like a web.
+   The vertex moves toward the nearest point of the fold by the share of 10 mm
+   that the middle of such an edge lies outside the skin, so the net runs along
+   the arm on one side of the armpit and along the chest on the other. Over a
+   shoulder or a hip, where the skin does not fold, the border stays where the
+   rig carried it.
 3. A ball whose radius is the figure scale rolls over the skin of the region
    along normals smoothed 25 times: a vertex where the ball does not fit is
    lifted until it does, by at most 0.6 of the radius. The waist and the small of
@@ -2301,23 +2404,59 @@ body of any topology gets one, in the steps that
    toward a ring by the fourth power of the sine of its angle to the ring's axis,
    which is up for the trunk and the bone a vertex follows most for the neck and
    the limbs. The tension fades in over three edges from the open ends.
-5. Eight Taubin steps fair the cage, and no vertex and no face centre stays
-   closer to the skin than 1 mm. A ray goes in from every skin vertex of the
-   net's body parts, and of the hands and feet next to the wrist and ankle
-   rings, along the skin's normal, up to 20 mm, and where it meets a face from
-   outside, or the skin lies closer to a face than 1 mm, the face moves out along
-   its normal, all its corners alike, until the skin lies 1 mm inside it.
+5. Eight Taubin steps fair the cage. A vertex that was moved more than 1 mm
+   into a fold stays where it is, and the fairing fades in over three edges from
+   it, since rounding the net off would lift it out of the fold again. No vertex
+   and no face centre stays closer to the skin than 1 mm, nor does the middle
+   or a quarter point of an edge of an open end, such as an ankle ring: skin
+   that came out past such an
+   edge would come out through the faces the second net hangs from it. A ray
+   goes in from every skin vertex of the net's body parts, and of the hands and
+   feet next to the wrist and ankle rings, along the skin's normal, up to 20 mm,
+   and where it meets a face from outside before it leaves the body again, or
+   the skin lies closer to a face than 1 mm, the face moves out along its
+   normal, all its corners alike, until the skin lies 1 mm inside it. Through a
+   thin part, such as an ear, the ray leaves the body first, and the face it
+   then meets lies beyond the part, not in it. In each of the four passes all
+   moves are found first and a vertex takes the largest one asked of it, so the
+   result does not depend on the order of the vertices.
+
+Two rules hold through all five steps:
+
+- A vertex of the neck or the trunk keeps to the side of the body's middle
+  plane that it has in the reference, and one in the plane stays in it. A
+  vertex beside the plane is drawn to the skin of its own half, and neither the
+  ball nor the tension moves a vertex toward the plane: the part of its
+  direction that points there is left out, and the vertex moves by what is left
+  of it. The two halves of a body face each other in the crotch and the buttock
+  cleft, so a vertex lifted out along its normal there would cross to the other
+  half, and the faces of the two halves would cut through each other.
+- Where every vertex of the body's skin has a mirror image within 0.01 mm and
+  every vertex of the net one within 1 mm in the reference, the two sides are
+  evened out after every step: a vertex and its mirror image move to the middle
+  of where they lie, and in the last step each takes the larger of their two
+  moves. A mirrored body so gets a mirrored cage; what would differ between the
+  sides comes from points that lie as near to one face of the skin as to the
+  next. A body that is not mirrored is fitted side by side.
 
 These steps fit the neck, the trunk, the arms, and the legs as one net. The
-hands and the feet are fitted after them as a second net that holds the wrist
-and ankle rings where the first left them, so the regions added to the cage
-changed none of its other vertices:
+hands, the feet, and the head are fitted after them as a second net that holds
+the wrist and ankle rings and the neck's top ring where the first left them, so
+the regions added to the cage changed none of its other vertices:
 
-- A hand's vertex moves with the rig like the rest, then to the nearest skin of
-  its own finger or thumb and the palm, the body's hand faces that the finger's
-  or thumb's bones move most, or of the whole hand where its faces belong to
-  more than one; the gaps between the fingers stay open, and the hands are not
-  faired.
+- A hand's net moves with the rig like the rest and is then drawn to the skin
+  as a whole, each vertex toward the nearest skin of its own finger or thumb
+  and the palm, the body's hand faces that the finger's or thumb's bones move
+  most, or of the whole hand where its faces belong to more than one. It is
+  drawn in six rounds: in each, every vertex's move to the skin is evened out
+  with its neighbors' moves, 24, 12, 6, 3, 1, and 0 times, before the net
+  moves, so the net slides into place in one piece, then in ever smaller
+  stretches, and in the last round every vertex takes its place on the skin. A
+  hand whose thumb and fingers stand at other angles than the reference's would
+  otherwise fold the net over itself. The vertices of the palm and between the
+  digits then spread over the skin, 30 times halfway toward the middle of their
+  neighbors and back onto the skin. The gaps between the fingers stay open, and
+  the hands are not faired.
 - A foot is laid on rings: half-planes that turn about an axis across the foot
   in the ankle ring's plane, 25 mm in front of the ankle, from that plane down
   in eight steps until they stand across the foot's forward direction, then
@@ -2457,8 +2596,8 @@ The recipe in `asset.json` says what the pipeline builds:
 | --- | --- |
 | `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and `head`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
-| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest, so a hem turned in at the border of the template's region, such as the cloak's neckline over a shirt's, keeps above the inner garment. |
-| `hang` | Optional: its [loose parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts), which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. A part across the back may also have a `top` and a `width`, shares above 0 and up to 1.5 of how far the shoulder joints lie from the middle: with a `top`, the template keeps only its middle within the top, cut straight down there, and its back only above the part's line, with a cut that need not be a cage line, and the part hangs from the template's open edge at its line behind the bone there; with a `width`, no smaller than the top, the part fans out to that width by the first joint of its chains. The robe hangs a skirt `all` around from `SkirtWaist` on the `skirt` chains with a flare of 0.08; the cloak hangs its back from `CloakNape` on the `cloak` chains with a flare of 0.03, a top of 0.72, and a width of 0.8. A template with loose parts names the matching `cloth` profile. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest. A [turned edge](#turned-edges) takes its band from the cloth it is turned from: it may lie under the inner garment's surface, down to the cage, inside its own cloth. |
+| `hang` | Optional: its [loose parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts), which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. A part across the back may also have a `top` and a `width`, shares above 0 and up to 1.5 of how far the shoulder joints lie from the middle: with a `top`, the template keeps only its middle within the top, cut straight down there, and its back only above the part's line, with a cut that need not be a cage line, and the part hangs from the template's open edge at its line behind the bone there; with a `width`, no smaller than the top, the part fans out to that width by the first joint of its chains. A part may name a line of the legs as `to`, its hem: it then hangs down to that line's height on every body, between the body's two sides, instead of to the tips of its chains, and the sync stops when that line lies below the tips. The robe hangs a skirt `all` around from `SkirtWaist` on the `skirt` chains with a flare of 0.04 down to `SkirtHem`; the cloak hangs its back from `CloakNape` on the `cloak` chains with a flare of 0.03, a top of 0.72, and a width of 0.8. A template with loose parts names the matching `cloth` profile. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, up to 0.03, fading out over 60 mm. The templates have none; see [Templates](EQUIPMENT_VISUALS_DESIGN.md#templates). |
 | `hem` | How deep every open edge is turned inward, in meters, up to 0.01, such as `0.002`. |
 
@@ -2493,10 +2632,13 @@ the point attribute `fitted_under_headwear`.
   them; an offset from the cage into the band, 10 mm for `mid` and 20 mm for
   `outer` and `loose`, and for `tight` as close as
   [Layer Bands](EQUIPMENT_VISUALS_DESIGN.md#layer-bands) says, and more where
-  `over` lifts it over an inner garment; the ease; every open edge turned inward
-  by the `hem` depth with a 12 mm flap, whose faces take the look of the edge in
-  the texture; and every vertex and face centre settled into the band from the
-  cage, the band taken again where a point ends up until it holds. Its loose
+  `over` lifts it over an inner garment; the ease; every vertex and face centre
+  settled into the band from the cage, the band taken again where a point ends up
+  until it holds; and every open edge turned inward with a 12 mm flap, whose faces
+  take the look of the edge in the texture, laid from the settled cloth as
+  [Turned Edges](#turned-edges) describes. The build goes over the cage's
+  vertices, edges, and faces by their indices, so building a recipe again gives
+  every vertex, face, and corner the same order. Its loose
   parts hang in rings from the open edge at their line down to the tips of their
   chains, on the scaffold and with the weights that
   [Loose Parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts) describes, and a cloak
@@ -2505,8 +2647,9 @@ the point attribute `fitted_under_headwear`.
   `hang_ring` their column and ring, and the face attribute `hang_face` its
   faces; every other version places them on its own body's scaffold. The point
   attribute `built` holds the shape the recipe gave, so a rebuild carries a
-  shape made by hand over: each new vertex takes the difference at its place on
-  the cage.
+  shape made by hand over: each new vertex takes the difference at the nearest
+  vertex of the old cloth; the old turned edges carry none, since they are laid
+  from their cloth.
 - Every other version is fitted from the first through the cage, as
   [Fitting Every Body Type](EQUIPMENT_VISUALS_DESIGN.md#fitting-every-body-type)
   describes: each vertex is bound to a triangle of the first body's cage, of
@@ -2516,10 +2659,16 @@ the point attribute `fitted_under_headwear`.
   instead moves with a smooth field of the cage's moves: each vertex by the
   moves of the cage's vertices, weighted by a Gaussian of their distance beyond
   the nearest one, 15 mm wide plus 0.7 times the vertex's distance from the
-  cage. The band is measured from the same regions. A vertex or a face centre
-  that then leaves the band moves back into it. A version corrected by hand
-  keeps its corrections, because the point attribute `fitted` holds the shape
-  the last fitting gave, and the difference to it is applied again.
+  cage. The band is measured from the same regions. A vertex or a face centre of
+  the cloth that then leaves the band moves back into it, and the turned edges
+  are laid again from the cloth where it now lies, also from a cloth corrected
+  by hand. A version corrected by hand keeps its corrections, because the point
+  attribute `fitted` holds the shape the last fitting gave, and the difference
+  to it is applied again.
+- The first version's turned edges are laid again from its cloth where it lies,
+  in place, after the cloth vertices they are turned from keep their room off
+  the cage: only positions change, never the order of the vertices, faces, or
+  corners, so the textures stay in their UVs. `built` follows for them.
 - Every vertex gets the weights of the nearest skin of the body part its cage
   face lies on, the cage's region and side, and on a hand the face's finger or
   thumb with the palm, interpolated from the corners of the skin's triangle,
@@ -2527,8 +2676,39 @@ the point attribute `fitted_under_headwear`.
   `transferred_weights` holds a checksum of the weights the last transfer gave
   each vertex of the first version, so a vertex whose weights were painted by
   hand keeps them, also in the other versions. `-Weights` transfers every weight
-  again.
+  again. A turned vertex takes its weights from its cloth instead, as
+  [Turned Edges](#turned-edges) describes.
 - A file that this leaves as it was is not saved, so its approvals stay valid.
+
+### Turned Edges
+
+A turned edge is always derived from its cloth, on every version and at every
+sync, and never settled into the band on its own: a settle of its own pushed it
+out through the cloth where the body leans over the hem, such as a belly over a
+shirt's hem, and turned its faces up, which lit as a bright strip in the game.
+
+- The cloth vertices a turned edge is turned from keep at least 0.5 mm off the
+  cage, where their band lets them come closer: the settle moves one that lies
+  closer, on every version and at every sync, so its fold has room above the
+  cage. A loose part's hem hangs on its scaffold and is never settled.
+- The rim lies under the cloth's vertex it is turned from, along the cloth's
+  normal there, the recipe's `hem` deep, or as deep as the cloth lies off the
+  cage there if that is less, so it never lies under the cage.
+- The flap runs 12 mm back across the cloth from the edge and lies at the same
+  depth inside the cloth along its normal at the flap's top, or as deep as the
+  cloth lies off the cage there if that is less.
+- A turned vertex takes its skin weights from its cloth, so its fold moves with
+  the cloth in every pose: the rim the weights of the cloth vertex it is turned
+  from, the flap the weights of the cloth over it, interpolated on the cloth's
+  face, also where the cloth's weights were painted by hand, and on a loose part
+  the weights its scaffold gave the cloth.
+- The pipeline finds a template's turned edges from its faces alone: the tops
+  of the flaps are the border of the mesh, each joins its rim, and the rim joins
+  the cloth's vertex. Nothing is stored for them, so they survive a fitting, a
+  rebuild, and an export.
+- A hand edit of a turned vertex, of its position or its weights, does not
+  survive a sync, and until the next sync the `model` stage fails. Shape the
+  cloth instead; the turned edge follows it.
 
 ### Checks And Review Of A Template
 
@@ -2550,10 +2730,26 @@ The `model` stage checks that the bodies and the cage are the current ones of
 their files and the cage the approved one, that every body has a version with
 the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, a hair
-template's also in its shape key `UnderHeadwear`, and that the fitting and the
-weights are as a sync leaves them. A point is too close by its straight distance
-to the cage's nearest point and too far by its distance along the normal of the
-cage's nearest face, as the recipes build the cloth.
+template's also in its shape key `UnderHeadwear`, and that the fitting, the
+weights, and the turned edges of every version, their positions and their
+weights, are as a sync leaves them. A point is too close by its straight
+distance to the cage's nearest point and too far by its distance along the
+normal of the cage's nearest face, as the recipes build the cloth. A turned
+edge's vertices may come down to the cage, and the centres of the faces that
+touch them, which are flat between points that may lie on a round cage, may cut
+under it by less than the `hem` depth; neither lies farther from the cage than
+its cloth may. The cloth vertices a turned edge is turned from keep 0.5 mm off
+the cage. Of a template whose recipe turns its edges, the stage also checks on
+every version that no turned vertex lies outside the cloth it is turned from and
+that every rim lies at least 0.3 mm inside it; the message names the cloth
+vertex at the thinnest fold, which is the one to shape, and says when the cloth
+there lies too close to the cage for a fold. It also checks that every corner
+normal the export writes at the hem's outer edge leans out of the cloth and out
+of the opening: down and out at a bottom hem, up and out at a neckline, out
+along the arm at a cuff. A normal that leans back into the garment breaks the
+rule, and the message names the version, how many hem vertices break it, and the
+worst one. Neither rule is decided by the rounding of float32 positions and
+normals.
 
 The `rig` stage adds the rig rules of skinned assets for each version on its
 armature, the motion check, and the pair check:
@@ -2607,7 +2803,8 @@ in the faces and vertices of the body's editable mesh:
   a corner lies within the edge reach of an open edge is never covered; the open
   edges are the borders of the mesh, the lines its loose parts hang from, and
   the lines where its texture is cut, sampled every 5 mm where the garment is
-  opaque. Loose parts cover nothing, and a template with `"covers": false`, such
+  opaque. Loose parts cover nothing where they swing, below where their chains
+  hang from, and a template with `"covers": false`, such
   as the cloak, covers no face at all.
 - **The underlay**: the body face under each garment face, along its inward
   normal, or the nearest one.
@@ -2725,9 +2922,9 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | --- | --- |
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
-| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, and the eyelids of `Humanoid_Next`. |
-| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
-| `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies. |
+| `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid`, and the bones no clip keys. |
+| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges and the border read from a mesh's faces, the fold rule, its message, its least fold, and the room of a hem, and that the build and every function of `hang.py` go over their elements by index, never over a set. |
+| `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
 | `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes. |
@@ -2735,11 +2932,13 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
-| `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
+| `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
-| `test_rig_landmarks.py` | The rebuilt bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, and the turn of the test poses' arms for another bind pose. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_rig_landmarks.py` | The bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
+| `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
+| `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -2805,7 +3004,9 @@ slot, so a shirt and a jerkin replace each other.
    and its band, such as `Waist:head:tight` for a top over trousers. `-Hang`
    adds a loose part, as `<Line>:<all|back>:<skirt|cloak>:<flare>`, or across
    the back `<Line>:back:cloak:<flare>:<top>:<width>`, with `-Cloth` naming its
-   profile. `-Hides` names the slots it hides, `-HidesUnderwear` and
+   profile. One more part at the end names the line of the legs it ends at,
+   such as `SkirtWaist:all:skirt:0.08:SkirtHem` for a skirt that ends above the
+   ankle. `-Hides` names the slots it hides, `-HidesUnderwear` and
    `-CoversNothing` set `hidesUnderwear` and `"covers": false`, `-Ease` adds
    ease, and `-Hem` sets the depth of the turned edges, 4 mm unless it says
    otherwise. Its layer and triangle budget default to the slot's values in
@@ -2828,8 +3029,10 @@ slot, so a shirt and a jerkin replace each other.
    with the cage's versions in the `Cage` collection; the female and
    `Tunic_Female` are hidden in the Outliner. Shape `Tunic_Male` in Edit Mode
    where it needs more than the recipe gives, such as folds or a flared hem, and
-   paint its weights by hand if it needs it. Correct `Tunic_Female` only where
-   the fitting needs help, as the helmet's nasal over the woman's smaller nose.
+   paint its weights by hand if it needs it. Shape the cloth, not the rims and
+   flaps of its turned edges: the sync lays them again from the cloth. Correct
+   `Tunic_Female` only where the fitting needs help, as the helmet's nasal over
+   the woman's smaller nose.
    A hairstyle, a template of `-Slot hair -Band hair -Modeled`, also has the
    shape key `UnderHeadwear` on its first version, the hair pressed flat under
    hoods and helmets, shaped in Edit Mode with that key active. Save, then fit
@@ -2841,7 +3044,7 @@ slot, so a shirt and a jerkin replace each other.
 
    Expected result: the report lines, `Synced Tunic: ...`, the paths of the
    review sheet and the review file, how much skin comes through it in motion,
-   what it covers on each body, such as `Tunic_Male: covers <n> of 4358 body
+   what it covers on each body, such as `Tunic_Male: covers <n> of 7292 body
    faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
    the pair check over every exported template of another slot and a lower
    layer, such as `Trousers under Tunic_Male: none of the <n> vertices of it
@@ -2898,7 +3101,9 @@ properties `roughness` and `metallic`, and the mesh `Preview`, a copy of the
 template's first version with the material `M_Garment_<Name>` that shows the
 image, for painting in Texture Paint mode. `Preview` keeps the UVs the image is
 painted in, and its property `template_uvs` the fingerprint of the template's
-UVs then. Where the image's alpha is below 0.5, the garment is cut: the skin
+UVs then. The file also keeps `Preview_Cage`, hidden, the version of the garment
+cage that `Preview` lies on. Where the image's alpha is below 0.5, the garment
+is cut: the skin
 shows through, with its paint. A texture and a template both export the material
 `M_Garment_<Name>`, so a texture never takes a template's name:
 `New-ArtAsset.ps1` refuses it, and `Verify-ArtAssets.ps1` fails when two assets
@@ -2910,10 +3115,36 @@ export a material of the same name.
   color and its alpha moved to the template's UVs by projection: Cycles bakes
   them from `Preview`'s surface, looking 60 mm both ways for the other mesh.
 - `tools/art/Sync-TextureAsset.ps1` moves the texture to the template's new UVs
-  the same way, from the old `Preview`, when the template's UVs changed, such as
-  after a rebuild of its recipe, or when `Preview`'s own faces or UVs were
-  edited, and leaves the file as it was otherwise. It then writes the review
-  sheet and checks every rule.
+  when the template's faces or UVs changed, such as after a rebuild of its
+  recipe, or when `Preview`'s own faces or UVs were edited, and leaves the file
+  as it was otherwise. It then writes the review sheet and checks every rule.
+  The move goes by correspondence, not by rays, because a body may come to rest
+  in another pose, where rays from the new sleeve never meet the old one, and a
+  template built again from its recipe has other faces:
+  - `Preview` first follows the template. When the template still has its
+    faces, it takes the template's shape vertex by vertex. Otherwise it moves
+    with the cage, from `Preview_Cage` to the template's cage as it is now, as a
+    template's first version moves with its cage: cloth on the cage face by
+    face, a loose part as a whole with the edge it hangs from, and a modeled
+    form with the cage's smooth field.
+  - Then its feature curves, its open edges and the lines its loose parts hang
+    from, are each drawn onto the template's nearest curve of its kind, when
+    that lies within 100 mm on average, and the move is spread evenly over the
+    cloth between the curves. The standard lines a template is cut at are
+    measured on the bones, and the cage's net slides along the body from one fit
+    to the next, so the cage alone leaves a hem off its place: when the human
+    bodies were rebuilt, the shirt's hem lay 49 mm from where the cage put it.
+  - Every texel of the new UVs then takes the color and the alpha of the nearest
+    point of the moved `Preview`, each channel filtered on its own, from a face
+    that faces the texel's way when one lies within 30 mm beyond the nearest of
+    all, so the inside of a turned edge never paints the outside. The paint
+    grows 8 texels beyond the UV islands, and a dye mask moves the same way as
+    the image.
+  - The script prints how far `Preview` moved with the cage, how far each curve
+    lay from the template's, and from how far away the texels took their paint.
+    A texture file from before the sync kept `Preview_Cage` has none: its
+    `Preview` is taken to lie on the template's cage as it is now, and the
+    script says so.
 - The `texture` stage checks that the image is packed as a PNG, of a known size,
   with its roughness and metallic, that `Preview` shows it, and that it was
   painted in the template's current UVs, which `Preview` still has. A texture
@@ -3017,7 +3248,7 @@ at the front where the skin shows between the laces.
    rule. Review it, then record the approval with tools/art/Approve-ArtAsset.ps1
    -Asset art/GarmentTextures/WoolTunic -Stage texture.` After the template's
    UVs changed, such as after a rebuild, it first prints `Moved WoolTunic to the
-   new UVs of Tunic: ...`.
+   new UVs of Tunic: ...` and the notes of the move.
 3. Look at `artifacts\art-previews\WoolTunic.png`, the sheet that
    [Garment Textures](#garment-textures) describes. Expected result: the
    texture lies on both bodies as painted, with its trim at the template's hems,
@@ -3454,10 +3685,8 @@ passes.
 | `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand: an ash recurve with a dark laminated back, a dark oak riser with a brass oak leaf, a cross-laced leather grip, a sight window with a shelf on the left, horn tips with a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip, 1,860 triangles, hand-painted on one UV layout. On the `Bow` skeleton with its clip `Draw`, 15 frames from brace to full draw. `holdClip` `HoldBow`, `attackClip` `BowShot`, released at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. |
 | `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. Flat material colors. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body and fitted to the male and the female, with a figure scale of 60 mm and the standard lines; see [Garment Cage](#garment-cage). |
-| `art/Characters/Human_Female_Next` | `skinned` | `Female` | The new female human base body, built by `tools/art/blender/human_build`; see [Rebuild The Human Base Characters](#rebuild-the-human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, the same net as the male, 15,084 triangles with its eyeballs, teeth, and tongue, and an unmirrored UV map, on the `Humanoid_Next` skeleton. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
-| `art/Characters/Human_Male_Next` | `skinned` | `Male` | The new male human base body, built by `tools/art/blender/human_build`, 1.79 m, like `Human_Female_Next` in pose, net, triangles, and skeleton. In review: its `model` stage is approved, its `rig` stage waits, and it has no export. |
-| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted from the mesh with its baked occlusion; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, built by `tools/art/blender/human_build`; see [Human Base Characters](#human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, with its source body, ten body parts, eyeballs, teeth, and tongue, 15,084 triangles, an unmirrored UV map, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
+| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, built like the female, 1.79 m, with the same pose and topology as the female, its source body, 15,084 triangles, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
 | `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (120 frames, breathing, looking about, an ear flick, and a tail sway), `Walk` (16 frames, a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (12 frames, a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (30 frames, a lunge with the bite at frame 8), and `Death` (60 frames, a fall onto its side that lies on the ground). The game shows it with `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`; see [Prefabs](#prefabs). |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. |
 | `art/GarmentTextures/IronNasalHelm` | `texture` | none | Matte wrought iron on `NasalHelm`, 1024 px, painted by a script from each texel's point and from the part of the helmet its face is, which the template marks in the face attribute `paint_part`: hammered plates darkened by patina with a few rust specks toward the rim and into the corners beside the bands, the bands a little lighter and worn bright along their edges, domed rivets down every band, round the brow band, at the cap, and two on the nasal, the iron's dark underside at the rim, and the brown leather lining below it. Roughness 0.55, metallic 0.45. |
@@ -3473,17 +3702,17 @@ passes.
 | `art/GarmentTextures/WoolRobe` | `texture` | none | Undyed grey-brown wool on `Robe`, 1024 px, painted the same way: fibres and mottling, folds that deepen down the skirt from the waist, stitched seams, among them the waist seam where the skirt starts, and darker turned hems with stitches at the neckline, the cuffs, and the skirt's hem. Roughness 0.86. Dyeable: one dye channel over all of it, natural color `#8D806E`; its image is the neutral wool, which the natural color gives back within one step of 255. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
 | `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. |
-| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03, 920 triangles per body, 243 vertices of them on the chains. It covers nothing (`"covers": false`). One dye channel. |
-| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,808 triangles per body, the cuff about 7 cm up the forearm. |
+| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03, 892 triangles per body, 243 vertices of them on the chains. It covers nothing (`"covers": false`). One dye channel. |
+| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,840 triangles per body, the cuff about 7 cm up the forearm. |
 | `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
 | `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
-| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,284 triangles per body. |
-| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge. The female version's nasal is shaped by hand, a rigid copy of the male's with its brow band. |
-| `art/Garments/Robe` | `garment` | none | A floor-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains to the ankles, 30 mm off the belly, the hips, and the legs and with a flare of 0.08, so it does not follow the figure, 2,860 triangles per body, 416 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
-| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,644 triangles per body. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,360 triangles per body. |
+| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and stays stiff: the fitting's smooth field bends a thin bar that stands off the face, so the female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage. |
+| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,872 triangles per body, 320 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
+| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
-| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
-| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, on a canvas of the female: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
+| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,436 triangles per body, with seams along the inside of the legs. |
+| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, painted on a canvas of the female after her form: a pale blue bra with a darker band about 2.5 cm high under the bust, a cup over each breast with one smooth upper edge down to a centre piece between the breasts, and darker straps about 1.2 cm wide from the cups over the shoulders, midway between the neck and the shoulder joint, and straight down the back to the band. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900, on a canvas of the male, moved to the female: pale blue briefs with a darker waistband, lifted out of the male body texture. Roughness 0.8. |
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
@@ -3494,12 +3723,7 @@ passes.
 
 ## Planned
 
-- Blinking in the game: the client turns the eyelid bones of `Humanoid_Next` by
-  a share of their closed turns, and closes the eyes of the dead.
 - Forearm twist bones.
-- A model fix of the low armpits, where the triceps meet the torso, where skin
-  comes through close-fitting sleeves in motion, and of the female's bra straps,
-  which are painted up her neck, above the collar of chest paint.
 - Making a body type for a new race from a human body, with the human base tools
   working for every body of the race; see
   [Future Races And Base Models](EQUIPMENT_VISUALS_DESIGN.md#future-races-and-base-models).

@@ -115,11 +115,13 @@ class RigTableTests(unittest.TestCase):
         for bone in rig.RULE_BONES:
             self.assertTrue(BONES[bone]["deform"])
 
-    def test_the_deforming_bones_no_zone_or_rule_names_are_the_finger_bones(self):
+    def test_the_deforming_bones_no_zone_or_rule_names_are_the_finger_bones_and_the_eyelids(self):
         used = {bone for names in rig.ZONE_BONES.values() for name in names for bone in expanded(name)} | set(rig.RULE_BONES)
         left = {name for name, bone in BONES.items() if bone["deform"] and not bone.get("chain")} - used
         fingers = {f"{digit}{segment}_{side}" for digit in rig.DIGITS for segment in rig.SEGMENTS for side in ("L", "R")}
-        self.assertEqual(left, fingers)
+        # The eyelids take their weights by the rule of the skeleton's eyelids section.
+        lids = {eye[lid] for eye in SKELETON["eyelids"]["eyes"] for lid in ("upper", "lower")}
+        self.assertEqual(left, fingers | lids)
 
     def test_the_digits_and_segments_are_those_of_the_cage_and_the_gait_model(self):
         self.assertEqual(set(rig.DIGITS), set(cage.DIGITS))
@@ -229,11 +231,11 @@ class GaitTests(unittest.TestCase):
             self.assertTrue(frames[name]["loop"], name)
 
     def test_the_length_of_a_cycle_for_the_leg_of_the_human_rig_is_the_exported_length(self):
-        # The human rig's leg, hip joint to ankle, is about 0.78 m: the cycle rounds to the exported
-        # 28 and 19 frames for the legs from 0.771 to 0.782 m.
+        # The leg of the library's rig, the male body's, is 0.821 m from hip joint to ankle: the
+        # cycle rounds to the exported 30 and 20 frames for the legs from 0.813 to 0.837 m.
         library = json.loads((REPOSITORY_ROOT / "art/Animations/Human_Actions/asset.json").read_text(encoding="utf-8"))
         frames = {clip["name"]: clip["frames"] for clip in library["export"]["clips"]}
-        for leg in (0.772, 0.777, 0.781):
+        for leg in (0.814, 0.821, 0.836):
             rig_of_leg = types.SimpleNamespace(leg=leg)
             with self.subTest(leg=leg):
                 self.assertEqual(animate.gait_frames(rig_of_leg, animate.WALK), frames["Walk"])

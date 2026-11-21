@@ -142,11 +142,13 @@ a canvas of its own, a copy of the body it is painted on that never changes with
 the bodies, and every body gets the paint baked into its own paint UV map when
 the layer is synced: exactly through the shared topology where a body has the
 canvas's, and through the garment cage and the rigs' landmarks otherwise. The
-paint UV map is a second UV map of every body, only for paint: the mirrored
-human skin keeps its texture, and the paint lays the two sides apart, so a
-tattoo can be one-sided. When a new base model replaces the bodies, each layer's
-canvas moves to its new first body and its paint is checked and touched up
-there; see [Paint Layers](ART_PIPELINE.md#paint-layers).
+paint UV map is a second UV map of every body, only for paint, which gives each
+side of the body texels of its own, so a tattoo can be one-sided: on the human
+bodies, whose skin is not mirrored, it is the skin's own UV map, and a body with
+mirrored skin gets one that lays the two sides apart. When a new base model
+replaces the bodies, each layer's canvas moves to its new first body and its
+paint is checked and touched up there; see
+[Paint Layers](ART_PIPELINE.md#paint-layers).
 
 Under the look lies the body model, `Human_Male` or `Human_Female`: exactly one,
 chosen in character creation and never changed. One look serves both bodies: a
@@ -187,7 +189,7 @@ so `head` is the highest layer.
 
 An item names the garments it shows, so one item may show several garments,
 such as a robe with a hood. A garment may also hide whole slots below it, such
-as a floor-length robe that hides the `legs` slot. The equipment slots `head`,
+as a long robe that hides the `legs` slot. The equipment slots `head`,
 `body`, `legs`, `hands`, `feet`, and `back` map to the visual slots of the same
 name. `main_hand` and `off_hand` show attachments, the `tool` slot shows its
 tool only while it is used, `neck`, `ring_1`, `ring_2`, and `ammunition` show
@@ -242,18 +244,32 @@ pipeline builds, fits, and checks it is in
      blades, the navel, the abdominal muscles, and the cleavage, while the
      figure from top to bottom, the waist, the small of the back, the bust, the
      buttocks, and the shoulders, stays. The cage never webs between an arm and
-     the trunk or between the legs, since the lift and the tension fade in from
-     the borders between its regions and from its open ends.
+     the trunk or between the legs: the lift fades in from the borders between
+     its regions and from its open ends, a ring of the tension ends at such a
+     border, and where an arm stands off the trunk, the border between them lies
+     in the fold of the armpit, so the cage runs along the arm on one side of the
+     fold and along the chest on the other.
   5. The cage is faired, and no vertex and no face centre lies closer to the
      skin than 1 mm. Nor does the skin come out through a face between its
      corners, where a large face cuts across a curve such as a woman's shoulder,
      so no garment on the cage shows skin through it at rest.
 
+  A body is the mirror image of itself across its middle plane, and its two
+  halves face each other in its clefts, the crotch and the buttock cleft. A
+  vertex of the neck or the trunk therefore keeps to its side of that plane
+  through every step, and one in the plane stays in it: lifted out along its
+  normal, a vertex in a cleft would cross to the other half and the cage would
+  cut through itself. A mirrored body also gets a mirrored cage: the two sides
+  are evened out after every step.
+
   The hands and the feet are fitted after the rest and keep the wrist and ankle
   rings where the rest left them, so adding them changed nothing of it: a hand
   follows each finger with the gaps between the fingers open, and a foot follows
   the convex outlines of its cross sections, so the toes and the arch are
-  spanned and the sole is flat.
+  spanned and the sole is flat. A hand's net is drawn to the skin as a whole,
+  sliding into place in one piece before each vertex takes its place, so it
+  also fits a hand whose thumb and fingers stand at other angles than those of
+  the body the cage was made from.
 - **Its figure scale**, the radius of the ball, is one number of the cage asset:
   60 mm. The reviewer judges it on the cage's review sheet and asks for more or
   less figure. Not every groove has to go: the cage is approved with the lower
@@ -288,10 +304,10 @@ reaches out over the shoulders.
 | `Neckline` | `neck` | `Neck` 0.19, rise 5.3 | round the neck's base: just above the hollow of the throat, up at the sides of the neck where the shoulders meet it, and at the nape | a round neckline: the shirts, the robe, the cloak |
 | `CloakNape` | `trunk` | `UpperChest` 0.85 | a few centimeters below the base of the neck at the back | where a cloak's back hangs from |
 | `CloakYoke` | `trunk` | `UpperChest` 0.55 | a few centimeters below the collarbones, above the armpits | where a cloak's yoke ends in front |
-| `HemCrop` | `trunk` | `Chest` 0.5 | under the bust, above the navel | a crop top's hem |
-| `SkirtWaist` | `trunk` | `Spine` 0.45 | just below the navel: 2 to 3 cm on the male, about 1 cm on the female | a robe's or a dress's waist seam, where its skirt starts |
-| `Waist` | `trunk` | `Spine` 0.1 | at the hip bones | the trousers' waistband |
-| `HemHip` | `trunk` | `Hips` 0.72 | about 5 cm under `Waist`, the overlap | a top's hem, over the trousers |
+| `HemCrop` | `trunk` | `Chest` 0.3 | under the bust, above the navel | a crop top's hem |
+| `SkirtWaist` | `trunk` | `Spine` 0.16 | just below the navel: 2 to 3 cm on the male, about 1 cm on the female | a robe's or a dress's waist seam, where its skirt starts |
+| `Waist` | `trunk` | `Hips` 0.79 | at the hip bones | the trousers' waistband |
+| `HemHip` | `trunk` | `Hips` 0.37 | about 5 cm under `Waist`, the overlap | a top's hem, over the trousers |
 | `SleeveShort` | `arms` | `UpperArm` 0.6 | over half the upper arm, about 9 cm below the armpit | a short sleeve |
 | `SleeveElbow` | `arms` | `LowerArm` 0.05 | just below the elbow | an elbow sleeve |
 | `GloveCuff` | `arms` | `LowerArm` 0.65 | on the forearm, about 5 cm toward the elbow from `SleeveLong`, the overlap | a glove's cuff, over the sleeve |
@@ -299,6 +315,7 @@ reaches out over the shoulders.
 | `LegShorts` | `legs` | `UpperLeg` 0.5 | at half the thigh | shorts |
 | `LegKnee` | `legs` | `LowerLeg` 0.1 | below the knee | knee breeches |
 | `BootCalf` | `legs` | `LowerLeg` 0.55 | at the calf | a boot's top, over the trouser leg |
+| `SkirtHem` | `legs` | `LowerLeg` 0.87 | just above the ankle, 13 to 14 cm above the ground | a long skirt's hem: the robe's, so the shoes show below it |
 | `LegAnkle` | `legs` | `LowerLeg` 0.9 | at the ankle | a trouser hem, in the boot |
 
 The lines and their shares are part of the cage asset and are approved with it;
@@ -350,6 +367,11 @@ sleeveless top. The pipeline cuts the cage's faces at the lines, offsets them
 into the band, turns every open edge inward by a few millimeters, so a hem shows
 the cloth's thickness instead of a paper edge, and unfolds the UVs along seams
 where clothes have them; see [Building A Template](ART_PIPELINE.md#building-a-template).
+A turned edge is always laid from the cloth it is turned from, inside it and
+never under the cage, on every body and at every sync, so it never comes out
+through the cloth where the body leans over the hem, and the normals along the
+hem's outer edge lean out of the cloth and out of the opening; a turned edge
+that leaned back into the garment would light as a bright strip.
 
 The result is the template's version on the first body of its cage, the male;
 every other body's version is fitted from it, as
@@ -384,7 +406,10 @@ line instead of lying on the cage and take the cloth chains. A recipe names the
 trunk line a part hangs from, its side, all around for a skirt or across the
 back for a cloak, its chains, and its flare, how much wider it grows toward its
 hem. The template's open edge is cut at that line, and rings of cloth hang below
-it down to the chains' tips.
+it down to the chains' tips, or to a line of the legs that the recipe names as
+the part's hem. The skirt chains reach the ankles, and a skirt that hung that far
+would hide the shoes under it, so the robe's skirt ends at `SkirtHem`, just above
+the ankle.
 
 On every body the rings follow a scaffold, and the cloth does not follow the
 figure under it: every column is stretched like a string from the edge over the
@@ -404,11 +429,26 @@ above the part's line; with a width, the part fans out to that width by the
 first joint of its chains. Both are shares of how far the shoulder joints lie
 from the middle, so they fit every body.
 
+A skirt whose edge lies above where its chains hang from, such as one from the
+waist, leaves the body evenly over that height: it keeps the edge's gap of 4 mm
+at the waist and its margin of 30 mm only at the hip joints, where the thighs
+need the room. Cloth that stood off the belly and the hips a few centimeters
+below a fitted waist would puff out there like a bell and make a dress of a
+robe on any body, so a robe falls in a straight line from the waist to the
+widest of the hips and the thighs and straight down from there, wider only by
+its flare.
+
 A loose part takes the weights of its chains, two neighbouring chains blended
 across, and blends into the weights of the edge it hangs from over its first
-ring, or down to where its chains hang from when its edge lies above them, such
-as a skirt from the waist, which moves with the hips there. Loose parts have no
-band and cover nothing, since they swing off what they hang over. The motion and
+ring. A skirt from above where its chains hang from takes the weights of the
+skin under it down to there instead, of the belly, the hips, and the top of the
+thighs, and the chains' weights only over the last 30 mm above their roots: it
+moves with the body there, so a thigh that rises carries the cloth in front of
+the hip along, and a chain bone, which turns about its root, does not swing the
+cloth above its root inward. Loose parts have no band and cover nothing where
+they swing, since they swing off what they hang over; the top of a skirt above
+where its chains hang from does not swing and covers the skin under it like the
+rest of the garment. The motion and
 pair checks follow them with their chains laid as the game lays them, so they
 report a leg that comes through a skirt, and their swing is reviewed in
 [the Wardrobe](ART_PIPELINE.md#the-wardrobe).
@@ -477,11 +517,14 @@ a garment fits, the pipeline computes:
   through the garment already at rest shows in every pose, so that breaks a rule
   instead of being reported; the cage keeps the skin inside it, so a template on
   it has none.
-- **Loose parts cover nothing.** A robe's skirt or a cloak's back swings off
-  what it hangs over at rest, and a face hidden under it would show as a hole,
-  so the skin and the inner garments under loose parts stay drawn, and the line
-  a loose part hangs from counts as an open edge of the cloth that lies on the
-  cage.
+- **Loose parts cover nothing where they swing.** A robe's skirt or a cloak's
+  back swings off what it hangs over at rest, and a face hidden under it would
+  show as a hole, so the skin and the inner garments under the swinging faces
+  of loose parts stay drawn, and the line where the swinging begins counts as
+  an open edge of the cloth that does not swing. The faces of a loose part
+  above where its chains hang from, such as a skirt from the waist down to the
+  hip joints, move with the skin under them and cover it like the cloth that
+  lies on the cage.
 - **A garment may cover nothing at all.** A template whose manifest says
   `"covers": false` keeps an empty cover mask: it lies on top of the body and
   the garments under it and hides none of them, so it can swing open or be
@@ -562,12 +605,14 @@ pipeline fits it to every other body of the cage, also those of
   hem follows its limb and not the hand or the foot beyond it. Every body's cage
   has the same faces, so this needs nothing of the bodies' own topology. The
   first version keeps its binding to the cage too, so when the first body or its
-  cage changes, the first version follows. A vertex or a face centre that leaves
-  the garment's band moves back into it. Garments stay out of the body's armpits
+  cage changes, the first version follows. A vertex or a face centre of the cloth
+  that leaves the garment's band moves back into it, and then the turned edges
+  are laid again from the fitted cloth. Garments stay out of the body's armpits
   and crotch by the same rule as they do on the first body.
 - **Corrections**: where the fitted shape needs a hand, a person shapes it on the
   other body's version. The pipeline keeps the correction as a difference over
-  the cage, so the next fit keeps it.
+  the cage, so the next fit keeps it. A turned edge is not corrected by hand: it
+  follows the corrected cloth.
 - **Weights**: a garment vertex takes the skin weights of the nearest skin of
   the body part its cage face lies on, the region and side of the cage, and on a
   hand the finger or thumb with the palm, not smoothed, so it moves like the
@@ -579,7 +624,8 @@ pipeline fits it to every other body of the cage, also those of
   instead. Weights painted by hand on the first version are kept, and the other
   versions copy them, because every version of a garment has the same topology;
   rules in the recipe are preferred to painted weights, since they carry over to
-  new bodies by themselves.
+  new bodies by themselves. A turned edge takes the weights of the cloth it is
+  turned from, also painted ones, so its fold moves with the cloth in every pose.
 
 ## Future Races And Base Models
 
@@ -623,14 +669,18 @@ bodies, not code:
 
 A new base model that replaces today's human bodies, with another topology, is
 handled the same way: the new bodies join the cage, the cage is fitted to them,
-the templates are fitted and their masks computed anew, and the textures keep
-their images and are exported again, with new masks where they have transparent
-parts. Each paint layer's canvas moves to the new first body through the cage,
+the templates are fitted and their masks computed anew, and the textures are
+exported again, with new masks where they have transparent parts: a texture
+keeps its image where its template keeps its faces and UVs, and moves to the new
+UVs where the template was built again. Each paint layer's canvas moves to the new first body through the cage,
 its paint is checked and touched up there, and the other bodies of the new
 model's topology get the exact move. A better cage of another topology is a new
 cage asset. Templates with a recipe of lines are built again from it, keeping
 their handmade shape by projection onto the new cage, and their textures move to
-the new UVs by projection. A modeled template keeps its mesh, its UVs, and its
+the new UVs by correspondence: a texture's preview follows the cage and then the
+template's edges, and every texel takes the paint of the nearest point of the
+moved preview; see
+[Garment Textures](ART_PIPELINE.md#garment-textures). A modeled template keeps its mesh, its UVs, and its
 painted weights: each vertex is bound to the new cage at its place on the first
 body, and its textures stay as they are.
 
@@ -846,8 +896,8 @@ checks of garments show the cloth as every visible body in the game shows it.
 Cases captured from the client keep the two within 0.01 mm of each other in CI;
 see [Cloth Parity](ART_PIPELINE.md#cloth-parity). The Blender checks of `Robe`
 and `Cloak` in the target pose meet every rule: the legs come through the robe
-only at the hip crease in `Death`, by up to 30 mm, and through the cloak
-nowhere.
+only at the hip crease in the fall of `Death`, by up to 56 mm, and through the
+cloak nowhere.
 
 ### Measuring The Cloth
 
@@ -889,41 +939,44 @@ how far the frame of a jump moves the chains:
 
 | Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
 | --- | --- | --- | --- | --- | --- | --- |
-| Idle | none | none | none | 17 m/s³ | never | |
-| Walk | 27 vertices, 23 mm | 6 mm | none | 2,375 m/s³ | never | |
-| Jog | 45, 62 mm | 18 mm | 2, 8 mm | 7,188 m/s³ | never | |
-| Zig-zag | 51, 56 mm | 18 mm | 6, 23 mm | 7,274 m/s³ | never | |
-| Network 15 Hz | 49, 63 mm | 16 mm | 6, 34 mm | 7,308 m/s³ | never | |
-| Turn 180 | 45, 58 mm | 18 mm | 10, 119 mm | 7,134 m/s³ | never | |
-| Spin 720 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
-| Spin 1440 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
-| Spin 2880 | none | none | 3, 8 mm | 17 m/s³ | never | flares 17.7 cm, settles in 0.6 s |
-| Jog stop jog | 45, 58 mm | 18 mm | 2, 4 mm | 5,959 m/s³ | never | settles in 0.6 s |
-| Death | 122, 98 mm | 98 mm | 6, 12 mm | 21,804 m/s³ | 9 frames | |
-| Teleport, snap 3 m | 48, 62 mm | 18 mm | 2, 52 mm | 7,192 m/s³ | never | the jump moves the chains 57 mm |
-| Snap 180 | none | none | none | 17 m/s³ | never | the jump moves the chains 2 mm |
+| Idle | 6 vertices, 6 mm | none | none | 14 m/s³ | never | |
+| Walk | none | none | none | 4,364 m/s³ | never | |
+| Jog | 13, 48 mm | 13 mm | none | 7,062 m/s³ | 5 frames | |
+| Zig-zag | 49, 63 mm | 14 mm | none | 6,964 m/s³ | 1 frame | |
+| Network 15 Hz | 49, 65 mm | 14 mm | none | 6,978 m/s³ | 3 frames | |
+| Turn 180 | 42, 52 mm | 15 mm | none | 7,012 m/s³ | 3 frames | |
+| Spin 720 | 12, 7 mm | none | none | 14 m/s³ | never | flares 16.6 cm, settles in 0.6 s |
+| Spin 1440 | 10, 6 mm | none | none | 14 m/s³ | never | flares 16.4 cm, settles in 0.6 s |
+| Spin 2880 | 11, 8 mm | none | none | 14 m/s³ | never | flares 17.6 cm, settles in 0.6 s |
+| Jog stop jog | 13, 48 mm | 13 mm | 2, 14 mm | 5,759 m/s³ | 3 frames | settles in 0.7 s |
+| Death | 287, 127 mm | 127 mm | 2, 14 mm | 22,437 m/s³ | 5 frames | |
+| Teleport, snap 3 m | 14, 48 mm | 13 mm | 2, 5 mm | 6,917 m/s³ | 3 frames | the jump moves the chains 121 mm |
+| Snap 180 | 6, 6 mm | none | none | 14 m/s³ | never | the jump moves the chains 2 mm |
 
 The legs come through the cloth no farther than in the target pose alone, since
 no bone of the springs lies nearer the body than it, and never through a cloak;
 `ClothStressMotionTests` holds the legs out of a cloak and within 25 mm of a
 robe while walking and jogging. What still comes through: an arm through a
 cloak's edge at the far end of its swing, after it lifted the edge 8 cm; the
-legs through the waist of a robe in `Death`, where the skirt's roots follow the
-hips while the thighs fold up 90 degrees; and a robe through a cloak where a
-knee lifts both, by up to 12 cm only in a turn of 180 degrees in a quarter of a
-second, where the robe flares out below the cloak's hem. The skirt's chains keep
-their order in every spin, a spin flares the hems out by 17 to 18 cm, where the
-target pose alone flares them 2 cm, and the cloth settles within 0.6 s of its
-end. A jump moves the cloth no more than the jog's own legs move it in that
-frame: `ClothSpringTests` holds the jump's frame and the next within a
-centimeter of the same motion without the jump.
+woman's arms through her robe by up to 8 mm while she stands, spins, or stops;
+the legs through the waist of a robe in `Death`, where the skirt's roots follow
+the hips while the thighs fold up 90 degrees; and a robe through a cloak by up
+to 14 mm, only in `Death`, in a jog that stops, and in a teleport. The skirt's
+chains keep their order in every spin and on the woman in every motion but
+`Death`; on the
+man under a cloak they cross for up to 5 frames while jogging, turning, and
+after a correction, and in the robe alone for a frame in a zig-zag. A spin
+flares the hems out by 16 to 18 cm, where the target pose alone flares them 2 cm,
+and the cloth settles within 0.7 s of its end. A jump moves the cloth no more
+than the jog's own legs move it in that frame: `ClothSpringTests` holds the
+jump's frame and the next within a centimeter of the same motion without the
+jump.
 
-The cloth jerks less than in the target pose alone while walking, 2,375 against
-3,545 m/s³, but as much while jogging and more while dying: where the legs push
-the cloth it goes with them, and the `Jog` clip's knee snaps straight at the toe
-off, its thighs turning up to 15 degrees in a frame where the gait model's leg
-is straight. The springs smooth everything the legs do not push. In about half
-of a jog's steady frames the legs push a cloak's lower half, by up to 15
+The cloth jerks up to 4,364 m/s³ while walking, 7,062 while jogging, and 22,437
+while dying: where the legs push the cloth it goes with them, and the `Jog`
+clip's knee snaps straight at the toe off, its thighs turning up to 15 degrees
+in a frame where the gait model's leg is straight. The springs smooth
+everything the legs do not push. In about half of a jog's steady frames the legs push a cloak's lower half, by up to 15
 degrees: the heel comes up behind nearly level in a jog and reaches a cloak to
 the middle of the calf however it hangs.
 
@@ -934,8 +987,8 @@ root moves:
 
 | Pose | 1/30 s | 1/60 s | 1/144 s | Jittery |
 | --- | --- | --- | --- | --- |
-| Clips | 22.7, 7.8 | 11.7, 3.7 | 10.8, 1.3 | 18.1, 5.8 |
-| Held | 4.3, 0.6 | 2.9, 0.4 | 3.5, 0.5 | 3.3, 0.7 |
+| Clips | 25.1, 8.2 | 19.9, 4.0 | 16.9, 2.7 | 24.3, 5.8 |
+| Held | 3.3, 0.6 | 3.0, 0.4 | 3.7, 0.5 | 3.9, 0.7 |
 
 Playing the clips, the target pose alone differs as much, since the Animator
 samples the clips differently at different frame times; with the pose held, the
@@ -1288,9 +1341,9 @@ character from showing. How the content loads is in
 A template's manifest may name another budget where its form needs it, such as
 the nasal helmet's 2,500. A character in a full outfit draws about 15,000 to
 18,000 triangles near the camera, because the covered body faces are gone.
-Gloves with five fingers are made at the resolution of the body's hands, 1,520
-triangles for both, and boots hide the body's feet, 1,328 triangles, so even
-their budgets leave the character lighter than without them. Levels of detail
+Gloves with five fingers, 1,840 triangles for both hands, hide the body's hands,
+2,232 triangles, and boots, 1,376 triangles, hide its feet, 2,408 triangles, so
+even their budgets leave the character lighter than without them. Levels of detail
 at half and a quarter of the triangles come with the first crowd measurement
 that needs them.
 

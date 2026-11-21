@@ -8,10 +8,10 @@
         { "name": "Neckline", "region": "neck", "bone": "Neck", "share": 0.19, "rise": 5.3 },
         { "name": "CloakNape", "region": "trunk", "bone": "UpperChest", "share": 0.85 },
         { "name": "CloakYoke", "region": "trunk", "bone": "UpperChest", "share": 0.55 },
-        { "name": "HemCrop", "region": "trunk", "bone": "Chest", "share": 0.5 },
-        { "name": "SkirtWaist", "region": "trunk", "bone": "Spine", "share": 0.45 },
-        { "name": "Waist", "region": "trunk", "bone": "Spine", "share": 0.1 },
-        { "name": "HemHip", "region": "trunk", "bone": "Hips", "share": 0.72 },
+        { "name": "HemCrop", "region": "trunk", "bone": "Chest", "share": 0.3 },
+        { "name": "SkirtWaist", "region": "trunk", "bone": "Spine", "share": 0.16 },
+        { "name": "Waist", "region": "trunk", "bone": "Hips", "share": 0.79 },
+        { "name": "HemHip", "region": "trunk", "bone": "Hips", "share": 0.37 },
         { "name": "SleeveShort", "region": "arms", "bone": "UpperArm", "share": 0.6 },
         { "name": "SleeveElbow", "region": "arms", "bone": "LowerArm", "share": 0.05 },
         { "name": "GloveCuff", "region": "arms", "bone": "LowerArm", "share": 0.65 },
@@ -19,16 +19,17 @@
         { "name": "LegShorts", "region": "legs", "bone": "UpperLeg", "share": 0.5 },
         { "name": "LegKnee", "region": "legs", "bone": "LowerLeg", "share": 0.1 },
         { "name": "BootCalf", "region": "legs", "bone": "LowerLeg", "share": 0.55 },
+        { "name": "SkirtHem", "region": "legs", "bone": "LowerLeg", "share": 0.87 },
         { "name": "LegAnkle", "region": "legs", "bone": "LowerLeg", "share": 0.9 }
     ],
     "fittedTo": [
-        { "body": "art/Characters/Human_Male", "fitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694" },
-        { "body": "art/Characters/Human_Female", "fitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d" }
+        { "body": "art/Characters/Human_Male", "fitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9" },
+        { "body": "art/Characters/Human_Female", "fitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819" }
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-25",
-            "sourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571"
+            "date": "2026-11-21",
+            "sourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455"
         }
     }
 }

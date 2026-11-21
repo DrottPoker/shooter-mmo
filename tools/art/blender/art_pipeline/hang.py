@@ -3,8 +3,9 @@ of lying on the garment cage, such as the skirt of a robe or the back of a cloak
 docs/EQUIPMENT_VISUALS_DESIGN.md.
 
 A part hangs from the template's open edge at its line, all around for a skirt or across the back for
-a cloak. Per body, a scaffold of rings is laid from that edge down to the tips of the chains, and the
-cloth does not follow the figure under it: every column is stretched like a string from the edge
+a cloak. Per body, a scaffold of rings is laid from that edge down to the tips of the chains, or to
+the height of the line the part's recipe names as its hem, such as a skirt that ends above the ankle
+so the shoes show, and the cloth does not follow the figure under it: every column is stretched like a string from the edge
 over the body's outline, the margin of the chains' cloth profile outside it, to where the body
 reaches out farthest, and hangs straight down from there, spanning the hollows. A skirt's columns
 lie around the hips between the chains and widen by the part's flare toward the hem, so it falls
@@ -16,8 +17,9 @@ a width the part fans out to that width by the first joint of its chains. Top an
 of how far the shoulder joints lie from the middle. Every scaffold point takes the weights of the
 chain bones around it, those of the two chains beside it and of the two bones along them, blended
 from the edge's own weights at the top down to where the chains hang from, so the cloth moves with
-the chains that the runtime solver swings, and cloth above them, such as a skirt from the waist,
-with the body.
+the chains that the runtime solver swings. A skirt above where its chains hang from, such as one
+from the waist, blends from the weights of the skin under it instead, so it moves with the belly,
+the hips, and the top of the thighs there, and a thigh that rises carries the cloth along.
 
 The template's first version takes the scaffold's points as its loose vertices. Every other version
 binds them to the scaffold of the first body and places them on its own, as the rest of a template is
@@ -30,6 +32,8 @@ import bmesh
 import bpy
 import numpy as np
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+from mathutils.interpolate import poly_3d_calc
 
 from . import bodies, cage
 from .scene import ArtPipelineError
@@ -64,13 +68,20 @@ TOP_BLEND = 1
 TRIM_SNAP = 0.008
 # The body is measured at heights this far apart. Right below the edge it hangs from, cloth keeps the
 # edge's own gap from the body and leaves the body by this much per meter down until it keeps the
-# margin.
+# margin. A skirt whose edge lies above where its chains hang from, such as one from the waist,
+# leaves the body evenly over that height instead when that is slower: cloth that stood off the
+# belly and the hips a few centimeters below a fitted waist would puff out like a bell there.
 STRING_STEP = 0.01
 EDGE_GAP = 0.004
 LEAVE = 0.5
 # The zones whose outline a part keeps outside of; a skirt from the waist spans the belly too.
 OUTLINE_ZONES = {"skirt": ("Torso", "Pelvis", "Thighs", "Shins", "Feet"),
                  "cloak": ("Torso", "UpperArms", "Pelvis", "Thighs", "Shins")}
+# Above where its chains hang from, a skirt moves with the skin of these zones under it, and
+# takes the chains' weights only over this height above their roots: a chain bone turns about its
+# root, so cloth above the root that turned with it would swing in where the bone swings out.
+UNDER_SKIRT_ZONES = ("Torso", "Pelvis", "Thighs")
+ROOT_BLEND = 0.03
 # A cloak keeps clear of a skirt that may be under it, by this much more than the skirt keeps from the
 # hips and the legs, as the runtime solver lays a cloak over a skirt: a skirt from the waist bulges
 # over the hips above its chains, where the solver does not lay the cloak over it.
@@ -80,6 +91,37 @@ SKIRT_CLEARANCE = 0.01
 
 def parts(recipe) -> list[dict]:
     return list(recipe.get("hang", [])) if isinstance(recipe, dict) else []
+
+
+def swinging_faces(obj: bpy.types.Object, positions: np.ndarray) -> np.ndarray:
+    """Which faces of a garment version swing on the cloth chains: the faces of its loose parts
+    that reach down to where the part's chains hang from. A part's faces above that, such as the
+    top of a skirt from the waist, move with the skin under them and do not swing."""
+    mesh = obj.data
+    attribute = mesh.attributes.get(HANG_FACE)
+    if attribute is None or attribute.domain != "FACE" or attribute.data_type != "INT":
+        return np.zeros(len(mesh.polygons), bool)
+    parts = np.empty(len(mesh.polygons), np.int32)
+    attribute.data.foreach_get("value", parts)
+    arm = obj.find_armature() or obj.parent
+    # The height each part's chains hang from, by the chains its vertices weigh.
+    roots: dict[int, float] = {}
+    for kind, prefix in PREFIXES.items():
+        names = [group.name for group in obj.vertex_groups if group.name.startswith(prefix)]
+        if not names or arm is None or arm.type != "ARMATURE":
+            continue
+        carried = bodies.weights_of(obj, names).sum(axis=1) > 0.0
+        height = float(np.mean([joints[0, 2] for _names, joints in chains(arm, kind)]))
+        for polygon in mesh.polygons:
+            if parts[polygon.index] > 0 and carried[list(polygon.vertices)].any():
+                roots.setdefault(int(parts[polygon.index]), height)
+    swinging = np.zeros(len(mesh.polygons), bool)
+    for polygon in mesh.polygons:
+        part = int(parts[polygon.index])
+        if part > 0:
+            # A part whose chains are unknown swings as a whole.
+            swinging[polygon.index] = part not in roots or positions[list(polygon.vertices), 2].min() <= roots[part] + 1e-4
+    return swinging
 
 
 def shoulder_half(arm: bpy.types.Object) -> float:
@@ -165,6 +207,24 @@ class Outline:
         return np.concatenate(found)[:, :2] if found else np.zeros((0, 2))
 
 
+class SkinWeights:
+    """A body's weights over some bones at the nearest skin of some zones to a point."""
+
+    def __init__(self, body: bpy.types.Object, names: list[str], zones: tuple[str, ...]):
+        self.co = bodies.world_positions(body)
+        zone_of = bodies.zones_of(body)
+        wanted = {bodies.ZONES.index(z) for z in zones}
+        self.polygons = [tuple(p.vertices) for p in body.data.polygons if zone_of[p.index] in wanted]
+        self.tree = BVHTree.FromPolygons([tuple(c) for c in self.co], self.polygons)
+        self.weights = bodies.weights_of(body, names)
+
+    def at(self, point) -> np.ndarray:
+        location, _normal, index, _distance = self.tree.find_nearest(Vector(point))
+        corners = self.polygons[index]
+        shares = poly_3d_calc([Vector(self.co[v]) for v in corners], location)
+        return sum(self.weights[v] * share for v, share in zip(corners, shares))
+
+
 def _reach(convex: np.ndarray | None, centre: np.ndarray, angle: float) -> float:
     """How far from a centre a convex outline reaches toward an angle from the front (+Y) toward +X,
     so a skirt spans the gap between the legs: where a ray leaves the outline, also from a centre
@@ -203,10 +263,12 @@ def _string(depth: np.ndarray, needed: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return depth[hull], needed[hull]
 
 
-def _gap(depth: float, margin: float) -> float:
+def _gap(depth: float, margin: float, over: float = 0.0) -> float:
     """How far the cloth keeps from the body this far below the edge it hangs from: the edge's own gap
-    right below it, growing to the margin."""
-    return min(margin, EDGE_GAP + depth * LEAVE)
+    right below it, growing to the margin, by LEAVE per meter down or, where that is slower, evenly
+    over the height over."""
+    leave = min(LEAVE, (margin - EDGE_GAP) / over) if over > 0.0 else LEAVE
+    return min(margin, EDGE_GAP + depth * leave)
 
 
 def _back(convex: np.ndarray | None, x: float) -> float | None:
@@ -261,42 +323,61 @@ def _flared(outline: Outline, starts: np.ndarray, chain_radii: np.ndarray, angle
     widest of the hips and the legs and never narrows."""
     hulls = [cage.hull(s) if len(s) >= 3 else None for s in (outline.section(z) for z in heights)]
     depth = heights[0] - heights
+    # From an edge above where the chains hang from, the cloth leaves the body over the height down
+    # to there.
+    over = max(float(heights[0]) - z_root, 0.0)
     profiles = []
     for c in range(len(starts)):
         needed = np.array([max(chain_radii[c] if z <= z_root else 0.0,
-                               _reach(hull, centre, angles[c]) + _gap(d, margin))
+                               _reach(hull, centre, angles[c]) + _gap(d, margin, over))
                            for hull, d, z in zip(hulls, depth, heights)])
         needed[0] = starts[c]
         profiles.append(_string(depth, needed))
     return profiles
 
 
-def ring_count(part: dict, arm: bpy.types.Object, top: np.ndarray) -> int:
+def hem_height(part: dict, tips: float, hem: float | None) -> float:
+    """The height a part hangs down to: the tips of its chains, or its hem where its recipe names a
+    line for it. The hem may not lie below the tips, where no chain carries the cloth."""
+    if hem is None:
+        return tips
+    if hem < tips:
+        raise ArtPipelineError(f'The hem of the part at {part["line"]}, the line {part["to"]}, lies '
+                               f'{(tips - hem) * 100:.1f} cm below the tips of its {part["chains"]} chains.')
+    return hem
+
+
+def ring_count(part: dict, arm: bpy.types.Object, top: np.ndarray, hem: float | None = None) -> int:
     """How many rings a part has below the edge it hangs from, on the first body."""
     joints = [j for _names, j in chains(arm, part["chains"])]
-    drop = float(top[:, 2].mean() - np.mean([j[-1, 2] for j in joints]))
+    drop = float(top[:, 2].mean() - hem_height(part, float(np.mean([j[-1, 2] for j in joints])), hem))
     if drop <= RING_SPACING:
-        raise ArtPipelineError(f"The edge a part hangs from lies below the tips of its {part['chains']} chains.")
+        raise ArtPipelineError(f"The edge a part hangs from lies below its hem or the tips of its {part['chains']} chains.")
     return max(2, round(drop / RING_SPACING))
 
 
 def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray,
-             names: list[str], rings: int) -> tuple[np.ndarray, np.ndarray]:
+             names: list[str], rings: int, hem: float | None = None) -> tuple[np.ndarray, np.ndarray]:
     """A part's scaffold on a body: points (rings + 1, columns, 3), its first ring the edge it hangs
-    from, and their weights over the bones of names."""
+    from, and their weights over the bones of names. It reaches down to the tips of the chains, or
+    to the height hem."""
     kind = part["chains"]
     found = chains(arm, kind)
     margin = MARGINS[kind]
     outline = Outline(body, OUTLINE_ZONES[kind])
     column = {name: i for i, name in enumerate(names)}
     z_top = float(top[:, 2].mean())
-    z_tip = float(np.mean([j[-1, 2] for _n, j in found]))
+    z_tip = hem_height(part, float(np.mean([j[-1, 2] for _n, j in found])), hem)
     # Above where the chains hang from, the cloth moves with the body, as its edge does.
     z_root = float(np.mean([j[0, 2] for _n, j in found]))
     co = np.zeros((rings + 1, len(top), 3))
     weights = np.zeros((rings + 1, len(top), len(names)))
     co[0] = top
     weights[0] = top_weights
+    # A skirt from above where its chains hang from, such as one from the waist, moves there with
+    # the skin under it, not with its edge: a thigh that rises carries the cloth in front of the
+    # hip along, so the cloth can lie close to the body there without the thigh coming through.
+    under = SkinWeights(body, names, UNDER_SKIRT_ZONES) if kind == "skirt" and z_top > z_root and top_weights.any() else None
     heights = np.append(np.arange(z_top, z_tip, -STRING_STEP), z_tip)
     if kind == "skirt":
         centre = np.mean([j[0, :2] for _n, j in found], axis=0)
@@ -335,7 +416,12 @@ def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.
     for k in range(1, rings + 1):
         down = (k / rings) ** RING_EASING
         z = z_top + (z_tip - z_top) * down
-        share = _smooth(k / TOP_BLEND) if z <= z_root else _smooth((z_top - z) / (z_top - z_root))
+        if z <= z_root:
+            share = _smooth(k / TOP_BLEND)
+        elif under is not None:
+            share = _smooth(1.0 - (z - z_root) / ROOT_BLEND)
+        else:
+            share = _smooth((z_top - z) / (z_top - z_root))
         points = [_down(j, z) for _n, j in found]
         for c in range(len(top)):
             chain_weights = np.zeros(len(names))
@@ -358,7 +444,8 @@ def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.
                     if bone not in column:
                         raise ArtPipelineError(f'The chain bone "{bone}" is not a deforming bone of "{arm.name}".')
                     chain_weights[column[bone]] += w * carried
-            weights[k, c] = top_weights[c] * (1.0 - share) + chain_weights * share
+            above = under.at(co[k, c]) if under is not None and z > z_root else top_weights[c]
+            weights[k, c] = above * (1.0 - share) + chain_weights * share
     return co, weights
 
 
@@ -390,12 +477,15 @@ def _bisect(bm: bmesh.types.BMesh, faces: list, point, normal, clear_outer: bool
     first move onto it, so the cut leaves no slivers."""
     faces = [f for f in faces if f.is_valid]
     point, normal = Vector(point), Vector(normal).normalized()
-    verts = list({v for f in faces for v in f.verts})
+    # By index, not by memory address as a set goes, so a rebuild gives its new elements the same order.
+    bm.verts.index_update()
+    bm.edges.index_update()
+    verts = sorted({v for f in faces for v in f.verts}, key=lambda v: v.index)
     for v in verts:
         distance = (v.co - point).dot(normal)
         if abs(distance) < TRIM_SNAP:
             v.co -= normal * distance
-    geom = list({e for f in faces for e in f.edges}) + verts + faces
+    geom = sorted({e for f in faces for e in f.edges}, key=lambda e: e.index) + verts + faces
     bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal, clear_outer=clear_outer,
                            clear_inner=clear_inner)
 
@@ -418,7 +508,10 @@ def edge(bm: bmesh.types.BMesh, part: dict, line_point: Vector, line_normal: Vec
     those behind their middle for a cloak, or behind the bone at the line for one with a top, in their
     order along the border, from the left across the back for a cloak and around the hips from the
     front for a skirt."""
-    on = {v for e in bm.edges if e.is_boundary for v in e.verts if abs((v.co - line_point).dot(line_normal)) < 1e-4}
+    # By index, not by memory address as a set goes, so a tie below is decided the same way every time.
+    bm.verts.index_update()
+    on = sorted({v for e in bm.edges if e.is_boundary for v in e.verts if abs((v.co - line_point).dot(line_normal)) < 1e-4},
+                key=lambda v: v.index)
     if not on:
         raise ArtPipelineError(f"The template has no open edge at {part['line']} for a part to hang from.")
     if part["side"] == "back":
@@ -427,8 +520,9 @@ def edge(bm: bmesh.types.BMesh, part: dict, line_point: Vector, line_normal: Vec
             middle = line_point.y
         else:
             middle = (max(v.co.y for v in on) + min(v.co.y for v in on)) / 2.0
-        on = {v for v in on if v.co.y < middle}
-    neighbors = {v: [w for e in v.link_edges if e.is_boundary for w in e.verts if w is not v and w in on] for v in on}
+        on = [v for v in on if v.co.y < middle]
+    members = set(on)
+    neighbors = {v: [w for e in v.link_edges if e.is_boundary for w in e.verts if w is not v and w in members] for v in on}
     ends = [v for v, n in neighbors.items() if len(n) < 2]
     if part["side"] == "back":
         if len(ends) != 2:

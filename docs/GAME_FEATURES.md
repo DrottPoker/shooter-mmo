@@ -228,7 +228,8 @@ and what a far viewer receives in [Detail Radius](SERVICE_FEATURES.md#detail-rad
 
 - Every player shows a human body, male or female, in the look stored with its
   character: face, eyes, paint layers such as a scar, a tattoo, or underwear,
-  and hair. The body stands, walks, and jogs with the speed it moves at.
+  and hair. The body stands, walks, and jogs with the speed it moves at, and
+  its eyes blink now and then while it is seen up close.
 - Every player wears the garments of the items it has equipped, such as a linen
   shirt, a wool robe, or a wool hood, and holds its weapon and shield. The
   local player changes as soon as it equips an item, and others as the worker
@@ -243,9 +244,10 @@ and what a far viewer receives in [Detail Radius](SERVICE_FEATURES.md#detail-rad
   [Gathering](#gathering).
 - A worn hood can be lowered and raised with the `Lower <item>` or
   `Raise <item>` button in the inventory footer, and every client shows it.
-- A dying body keeps its clothes until its character respawns. A player corpse
-  then shows the dead character's body, look, and the garments still in it, and
-  an item looted from it, such as the robe, leaves the lying body at once.
+- A dying body closes its eyes and keeps its clothes until its character
+  respawns. A player corpse then shows the dead character's body with closed
+  eyes, its look, and the garments still in it, and an item looted from it,
+  such as the robe, leaves the lying body at once.
 - Development bots show either body with a varied look, outfit, and weapons
   chosen by their ids.
 - In the Development environment, the Admin menu's Look tab changes the stored

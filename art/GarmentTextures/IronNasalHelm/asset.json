@@ -4,14 +4,14 @@
     "garment": "art/Garments/NasalHelm",
     "approvals": {
         "texture": {
-            "date": "2026-10-25",
+            "date": "2026-11-21",
             "sourceSha256": "6a940d92ae77159b808405f443dbe9d8d72f90b95451cb7333a5074334001b2d",
-            "garmentSourceSha256": "5b7060e8e567dfe8f509b528e00fa95e236d7e45be6ea5c2d2fde22f27b0faba"
+            "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6"
         }
     },
     "export": {
         "sourceSha256": "6a940d92ae77159b808405f443dbe9d8d72f90b95451cb7333a5074334001b2d",
-        "garmentSourceSha256": "5b7060e8e567dfe8f509b528e00fa95e236d7e45be6ea5c2d2fde22f27b0faba",
+        "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6",
         "materials": [
             {
                 "name": "M_Garment_IronNasalHelm",
