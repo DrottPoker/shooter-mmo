@@ -26,39 +26,39 @@
     "approvals": {
         "model": {
             "date": "2026-11-21",
-            "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb"
+            "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
         },
         "rig": {
             "date": "2026-11-21",
-            "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb"
+            "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
         }
     },
     "export": {
-        "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb",
+        "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/Boots_Male.fbx",
-                "sha256": "d4ca6e193c3491620ba3ca67180ae1ee558958a9adf8ebf05f853cd0df20efb9",
+                "sha256": "2016728b8b117ca664091954a9f16ade4ee89aa22ef72dc8a4b4f5c3b8a1f8ab",
                 "data": "src/Client/Assets/Art/Models/Garments/Boots_Male.json",
-                "dataSha256": "dfba68d0c3ae4452618858cfb36996c26186f96c6ca554d7930afe63e334167e"
+                "dataSha256": "326dbb42dc7b7fa3877c733a42de3f8e507b0223c96dafe5891f7057e6d08e0a"
             },
             {
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/Boots_Female.fbx",
-                "sha256": "307c41a10da8f2cf16a115cf59ceb2742b69242d5a2bea59ac970dcaada923ec",
+                "sha256": "48f25607239a9d3237a5f18efbb715cd784625e831c960022710c09a54aad6ad",
                 "data": "src/Client/Assets/Art/Models/Garments/Boots_Female.json",
-                "dataSha256": "336caf42759e0b2ff2ecb1a47a3de4bb32ab1c4e891a4698ec8c01bf730851f0"
+                "dataSha256": "6553e9d7dc7744bf44ed62be0e4e78f4401490959aa933148c574849e32af38b"
             }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Trousers", "sourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465" }
         ],
         "materials": [
             {

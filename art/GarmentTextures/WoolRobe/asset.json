@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "cac16ce78e8a077c29d980c2e2f9a2bf6a84060a5affd17911c284de43efc5f7",
-            "garmentSourceSha256": "699235a7181c9021bb288a4a62eca390442b9f81df53fdea4405969faede0439"
+            "garmentSourceSha256": "a639e1e295fa38333df15adf018e4cbf3cb7232e5e7f620bf9d6637ca15a9d13"
         }
     },
     "export": {
         "sourceSha256": "cac16ce78e8a077c29d980c2e2f9a2bf6a84060a5affd17911c284de43efc5f7",
-        "garmentSourceSha256": "699235a7181c9021bb288a4a62eca390442b9f81df53fdea4405969faede0439",
+        "garmentSourceSha256": "a639e1e295fa38333df15adf018e4cbf3cb7232e5e7f620bf9d6637ca15a9d13",
         "materials": [
             {
                 "name": "M_Garment_WoolRobe",

@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "b2368c168fb98eba2b66805c0945891e068e72f60b65469894dd9e4486103c42",
-            "garmentSourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703"
+            "garmentSourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465"
         }
     },
     "export": {
         "sourceSha256": "b2368c168fb98eba2b66805c0945891e068e72f60b65469894dd9e4486103c42",
-        "garmentSourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703",
+        "garmentSourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465",
         "materials": [
             {
                 "name": "M_Garment_WoolTrousers",

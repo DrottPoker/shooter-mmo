@@ -6,15 +6,15 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "3ebb11c80212361d92d519834b017f3d1a3c05b26949d959b185e1e84a3f195c",
-            "garmentSourceSha256": "5a3263a8e13b7b4217aa059809ac2020749c7e82465f306d13c72a0b8631e405"
+            "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1"
         }
     },
     "export": {
         "sourceSha256": "3ebb11c80212361d92d519834b017f3d1a3c05b26949d959b185e1e84a3f195c",
-        "garmentSourceSha256": "5a3263a8e13b7b4217aa059809ac2020749c7e82465f306d13c72a0b8631e405",
+        "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "3dbb6a08b61de48cf82331bdcbd679de1d4209592376fad1f04e9d457d85fefc" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "dc602a9a30024693ee6f942e8980d98fa46eb66b479ccc69d0734a417f1204a8" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "9428fd616f195559aa2da27b84c8cbbc3fe71e66109ee7045157bd1e5d086ed6" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "3142538b648091001d4dd4177c00d1ca42b5b397605a3c673a1d274dac5ffc07" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }

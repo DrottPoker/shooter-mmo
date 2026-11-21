@@ -6,15 +6,15 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "7ceabf89a3d1e6bced27e7f897b2be50fb3f94f66bf139db2572803f83b7ad4f",
-            "garmentSourceSha256": "5a3263a8e13b7b4217aa059809ac2020749c7e82465f306d13c72a0b8631e405"
+            "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1"
         }
     },
     "export": {
         "sourceSha256": "7ceabf89a3d1e6bced27e7f897b2be50fb3f94f66bf139db2572803f83b7ad4f",
-        "garmentSourceSha256": "5a3263a8e13b7b4217aa059809ac2020749c7e82465f306d13c72a0b8631e405",
+        "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "bbc7646aba06984fcdccc2430b6fff666e6fd590687a1d3aa2a3447c1390d8fa" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "7fd57b9d1d8e7ff1fc19d70d28006b16e3a6a348d951d3558d57fb2b99eb7542" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "a69a15296af72f49b5dc45b7d724c20b8752999893b7da3660540fd9c7bbba49" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "0712183153b42125ac9a8bdfdf2eb924a7379eb90be1149270b11774e67bf66c" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }

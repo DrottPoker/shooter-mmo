@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-            "garmentSourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb"
+            "garmentSourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
         }
     },
     "export": {
         "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-        "garmentSourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb",
+        "garmentSourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845",
         "materials": [
             {
                 "name": "M_Garment_LeatherBoots",

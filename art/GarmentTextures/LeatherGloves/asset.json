@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-11-21",
             "sourceSha256": "f0e3bce5e852b3ca767ca507fb58fe50870526ed4a13868bd7b50ffd02e76ee8",
-            "garmentSourceSha256": "9fbac221d56d41846491c8391dbe23fd4f47666a6f7ad05792a7136cf33780cb"
+            "garmentSourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448"
         }
     },
     "export": {
         "sourceSha256": "f0e3bce5e852b3ca767ca507fb58fe50870526ed4a13868bd7b50ffd02e76ee8",
-        "garmentSourceSha256": "9fbac221d56d41846491c8391dbe23fd4f47666a6f7ad05792a7136cf33780cb",
+        "garmentSourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448",
         "materials": [
             {
                 "name": "M_Garment_LeatherGloves",

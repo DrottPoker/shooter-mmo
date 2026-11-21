@@ -31,44 +31,44 @@
     "approvals": {
         "model": {
             "date": "2026-11-21",
-            "sourceSha256": "b554d07b59305ac1fc88e8c011dfa65c953264eb69c3d1cb2fbed50d86b8c73b"
+            "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae"
         },
         "rig": {
             "date": "2026-11-21",
-            "sourceSha256": "b554d07b59305ac1fc88e8c011dfa65c953264eb69c3d1cb2fbed50d86b8c73b"
+            "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae"
         }
     },
     "export": {
-        "sourceSha256": "b554d07b59305ac1fc88e8c011dfa65c953264eb69c3d1cb2fbed50d86b8c73b",
+        "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/Cloak_Male.fbx",
-                "sha256": "bb5458aa203af8eab1d78b7b5dbe38735d3e6e4360aa92cf6ec548ad3f2d32f6",
+                "sha256": "e27664fe2e41614396c309b4727dd08f3bb3a64e3b3aeed9dd6778341473f2eb",
                 "data": "src/Client/Assets/Art/Models/Garments/Cloak_Male.json",
-                "dataSha256": "7f5ee1dceacfe7fbac81be5f11e4bbb9fea02c2918989f9a38bfb88a1df88b53"
+                "dataSha256": "a9aac26767c5c7c994be8ff8f0e6fea73f2121f8ed6d615afcb9cf51954cb38f"
             },
             {
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/Cloak_Female.fbx",
-                "sha256": "20f91f47133278f5efd294b295e3441361e3bb8ac10bc3fe2e90842414846f42",
+                "sha256": "285fa5ca8552bc2ffc69c402d3ba0c96085ad2f880cbe75e71317b67d76491ce",
                 "data": "src/Client/Assets/Art/Models/Garments/Cloak_Female.json",
-                "dataSha256": "63754a3e0f444cb4075a5be77efa9f1466ad4f8c704ca96460bba551600c6148"
+                "dataSha256": "e2d77a44c37bba02f3ab0d097751a885c571c680b088b6d955f583b6394387a6"
             }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb" },
-            { "garment": "art/Garments/Gloves", "sourceSha256": "9fbac221d56d41846491c8391dbe23fd4f47666a6f7ad05792a7136cf33780cb" },
-            { "garment": "art/Garments/LongShirt", "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6" },
-            { "garment": "art/Garments/Robe", "sourceSha256": "699235a7181c9021bb288a4a62eca390442b9f81df53fdea4405969faede0439" },
-            { "garment": "art/Garments/Shirt", "sourceSha256": "5a3263a8e13b7b4217aa059809ac2020749c7e82465f306d13c72a0b8631e405" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703" }
+            { "garment": "art/Garments/Boots", "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845" },
+            { "garment": "art/Garments/Gloves", "sourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448" },
+            { "garment": "art/Garments/LongShirt", "sourceSha256": "c0da4b18f7f5784fb5533c7736f5b94f4a6e831c878bc693df08a770c09411f5" },
+            { "garment": "art/Garments/Robe", "sourceSha256": "a639e1e295fa38333df15adf018e4cbf3cb7232e5e7f620bf9d6637ca15a9d13" },
+            { "garment": "art/Garments/Shirt", "sourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465" }
         ],
         "materials": [
             {

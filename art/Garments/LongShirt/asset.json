@@ -28,40 +28,40 @@
     "approvals": {
         "model": {
             "date": "2026-11-21",
-            "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6"
+            "sourceSha256": "c0da4b18f7f5784fb5533c7736f5b94f4a6e831c878bc693df08a770c09411f5"
         },
         "rig": {
             "date": "2026-11-21",
-            "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6"
+            "sourceSha256": "c0da4b18f7f5784fb5533c7736f5b94f4a6e831c878bc693df08a770c09411f5"
         }
     },
     "export": {
-        "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6",
+        "sourceSha256": "c0da4b18f7f5784fb5533c7736f5b94f4a6e831c878bc693df08a770c09411f5",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/LongShirt_Male.fbx",
-                "sha256": "a65b094ff969f7c8e35d4302bf21edf14e7f08a57ce9846d4fc6e12bb6c1e3b8",
+                "sha256": "756ddcd53cc84241eff8dcceb7ef4f4b4b0ab940df0c00e03e376030de146206",
                 "data": "src/Client/Assets/Art/Models/Garments/LongShirt_Male.json",
-                "dataSha256": "57d772d2f7d28830a15160c2104d70c66ff70bc1e7f927820b68398a8cfe909d"
+                "dataSha256": "9d642cde04c850e46473424122156232061be8d57d68fde8dee786cedccdd25a"
             },
             {
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/LongShirt_Female.fbx",
-                "sha256": "282003d4da62ae5f40c2db64fa2f3e248faedd1a5f78d79839719f77e117420c",
+                "sha256": "597ed4ee63529a81cda851d4bb77e6cc9e0ba43048cea63e190dd2d757f3a493",
                 "data": "src/Client/Assets/Art/Models/Garments/LongShirt_Female.json",
-                "dataSha256": "2d7e3e995bb50d55b52ea4ca50bed63823e77354c5e0a6b68348b4c426cef9d9"
+                "dataSha256": "28f6c9e3197452e08ec96bf79725d5bd01a0fceea1dd3c69b6352662d5e85805"
             }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703" }
+            { "garment": "art/Garments/Boots", "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465" }
         ],
         "materials": [
             {
