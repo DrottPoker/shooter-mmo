@@ -70,6 +70,7 @@ largest, is split by area:
 | `Gameplay/Bodies` | Character bodies and their looks, garments, attachments, and materials, the corpse bodies, the remote player view, and `CharacterBody` |
 | `Gameplay/Animation` | Human and creature locomotion and their Animator drivers |
 | `Gameplay/Cloth` | The cloth chains on the bodies with their solver and scheduler; the cloth math itself is the assembly `Mmorpg.Client.Cloth` |
+| `Gameplay/Eyelids` | The eyelids of the bodies, their blink schedule, and its scheduler |
 | `Gameplay/Diagnostics` | The Debug menu's collision and path overlay and its settings |
 | `Networking/Channels` | A channel per feature of the realtime client, each an interface with its implementation; see [Realtime Networking Layer](#realtime-networking-layer) |
 | `Ui/Kit` | The themed widgets of the permanent UI, the layer table, and the window manager; see [UI Kit And Theme](#ui-kit-and-theme) and [UI Window Manager](#ui-window-manager) |
@@ -2113,6 +2114,7 @@ Characters move in `Update`. Then, in this order:
 | 60 | `Projectiles` | `CombatProjectilePresentation` places arrows and bolts in `LateUpdate`, after the bodies posed their hands and drew their strings |
 | 100 | `Camera` | `OrbitCameraController` follows the player |
 | 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the player camera or the character preview now sees |
+| 120 | `Eyelids` | `EyelidScheduler` turns the eyelids of the bodies that blink or close their eyes in death |
 | 200 | `ScreenAnchoredInterface` | `WorldNameplates` places the Mob nameplates, and `TemporaryCombatHud` places health bars and damage numbers |
 
 Without a fixed order Unity could place screen-anchored interface with the
@@ -2689,7 +2691,8 @@ view; a stale delta noticed before the closure no longer asks for a refresh.
 presence entry and updates it from server position, facing, and presentation key:
 
 - A player corpse, presentation key `corpse.remains`, shows the dead character's
-  body lying in the last pose of the handmade `Death` clip, turned by the
+  body lying in the last pose of the handmade `Death` clip with closed eyes, as
+  [Eyelids](#eyelids) describes, turned by the
   presence's `YawDegrees`, so it lies where and as the body fell, in the body
   model, look, and headwear of the presence's `Appearance`, wearing the garments
   of the items still in the corpse. `PlayerCorpseBodies` in `WorldSceneContext`
@@ -2873,7 +2876,8 @@ died before coming into view or a client that joins while dead, lies in the end
 pose at once, and a body whose character lives again stands in `Idle` at once,
 because the respawn teleports it to the World spawn. While dead, an Animator that
 starts over, after `Rebind` or when it is enabled again, goes back to the end
-pose.
+pose. The eyes close and open with the life state, as [Eyelids](#eyelids)
+describes.
 
 ### Combined Bodies
 
@@ -3243,6 +3247,66 @@ from these parts:
   correction or a teleport, and `RemotePlayerView` and `MobView` whenever
   `RemoteMovementPresenter` presents a new start or restarts its clock.
 
+### Eyelids
+
+The bodies blink, and the dead lie with closed eyes. The `Humanoid` skeleton has
+four eyelid bones outside the avatar that no clip keys, with the turns that
+close the lids, as [Skeletons](ART_PIPELINE.md#skeletons) describes, and the
+client turns them by code:
+
+- **The lids of a body.** `EyelidRig` holds the lid bones and the closed turns
+  of the skeleton's `eyelids` section, which `BodyEyelidsTests` compares with
+  `art/Skeletons/Humanoid.json`. A turn about a lid bone's X axis in Blender is a
+  turn about its local -X in Unity, where the export mirrors the axes.
+  `PlayerBodyAppearance.CombineParts` finds the four lid bones by name after
+  `Rebind` as a `BodyEyelids`, with the rotations they rest in, and
+  `BodyEyelids.Show` turns all four by a share of their closed turns, from 0,
+  open, to 1, closed. A body without lid bones has none. The Animator leaves the
+  lids alone, also after `Rebind` and when it is enabled again, so a share holds
+  until the next one. `BodyEyelidsTests` bakes both body models: open, the
+  margins of the lids lie about 11 mm apart across the middle of each eye, and
+  closed, at most 1.3 mm, where the test allows 1.5 mm.
+- **One scheduler.** `EyelidScheduler` blinks the eyes of every enabled body in
+  play from one place, as `ClothChainScheduler` lays the cloth: a body's
+  `PlayerBodyAppearance` registers its lids when it is combined or enabled and
+  takes them out when it is disabled or destroyed, and the scheduler puts itself
+  in play with the first. Once a frame, after the camera moved
+  (`PresentationExecutionOrder.Eyelids`), it steps an `EyelidSchedule`, which
+  keeps the bodies in a binary heap by the time of their next blink, so a frame
+  touches only the bodies whose blink is due or under way, and no body between
+  its blinks. When a body's time comes, it blinks only while it lives, its
+  combined renderer is visible, and a camera the cloth is laid for, the main
+  view or an added view such as the [Character Preview](#character-preview)'s,
+  is within `EyelidScheduler.MaxDistance`, 25 m, of its eyes; otherwise it only
+  gets its next time. Out of play, as in the Wardrobe and the EditMode tests, the
+  lids stay open.
+- **Timing.** A blink closes the lids in 0.08 s, keeps them closed for 0.03 s,
+  and opens them in 0.14 s, each eased, a quarter second in all, and 15 percent
+  of the blinks are double: a second blink follows 0.12 s after the first ends.
+  The next blink comes 2 to 6 s after the last one ended, evenly spread, so about
+  every 4 s, and a body that comes into play blinks first within 6 s, so a crowd
+  does not blink together. The random numbers come from the scheduler's own
+  `System.Random` and are of the presentation only. `EyelidSchedule` takes the
+  clock and the random numbers from its caller, so `EyelidScheduleTests` plans
+  with exact ones.
+- **The dead.** `CharacterLocomotionAnimator.ShowLifeState` tells the scheduler
+  a life change when it acts on one, so the living pay nothing for it per frame.
+  A body that falls closes its eyes from where its lids are at the blink's
+  closing speed and keeps them closed without work; a body that first shows its
+  character dead, or that is combined or enabled while it lies dead, has them
+  closed at once; and a body that stands up opens them at once and blinks as
+  before. `PlayerCorpseBodies` closes the lids of the hidden body after it takes
+  the end pose of `Death` and before it is baked, so every player corpse lies
+  with closed eyes.
+- **Cost.** The scheduler allocates nothing per frame, since its lists keep
+  room for every body it holds, and `EyelidScheduleTests` counts no allocation.
+  Stepping 400 bodies with lid bones of their own in the Editor, as that test
+  does, costs about 16 microseconds a frame when every body may blink, the worst
+  case of a whole crowd near the camera, with about 29 of them blinking at a time
+  and at most 48, and about 1 microsecond when none may, touching fewer than two
+  bodies a frame. The profiler marker `EyelidScheduler.Step` shows the cost in
+  play.
+
 ### Attachments, Tools, And Weapons
 
 - **Attachments.** `EquipmentGarments.Dress` puts an item's
@@ -3487,8 +3551,9 @@ bounded:
   The local player's equipment dresses only its own body. The combat
   presentation walks the views without allocating and knows each Mob's creature,
   the water wakes visit only the bodies within 60 m of the camera and ask
-  nothing for a body that stands, and the player corpses collect the dead bodies
-  once a frame.
+  nothing for a body that stands, the player corpses collect the dead bodies
+  once a frame, and the eyelids touch only the bodies whose blink is due or
+  under way, as [Eyelids](#eyelids) describes.
 - **Combined bodies and shared materials.** Every body draws as one combined
   renderer with shared meshes and materials, as
   [Combined Bodies](#combined-bodies) and [Looks](#looks) describe.
@@ -4726,17 +4791,18 @@ namespace rule are in [Folder Layout](#folder-layout).
 - **Where a test goes.** A new EditMode test goes into the folder of the area it
   tests, beside the tests of that area. Decisions live in pure classes, such as
   the combat rules, the world menu builder, the target advisors, the inventory
-  prediction, and the locomotion rules, so EditMode tests cover them without a
-  scene. EditMode tests also check authored assets, such as the player prefabs,
-  the input actions, the World scenes, the body prefabs and catalogs, and the
-  Addressables settings. PlayMode tests cover what needs the running bootstrap or
-  a real body: the bootstrap and its controllers, a World scene loaded through
-  Addressables without a joined session, the inventory panel drawn from a
-  committed snapshot, the LoginMenu and CharacterSelect screens against an
-  unreachable GameService, real bodies dying, using tools, and attacking, the
-  world actor presentation applying the change of one actor to its view alone,
-  and a World scene that keeps its player across a lost connection and the join
-  that restores it, on the hub of a `ScriptedRealtimeTransport`.
+  prediction, the locomotion rules, and the blink schedule, so EditMode tests
+  cover them without a scene. EditMode tests also check authored assets, such as
+  the player prefabs, the input actions, the World scenes, the body prefabs and
+  catalogs, and the Addressables settings. PlayMode tests cover what needs the
+  running bootstrap or a real body: the bootstrap and its controllers, a World
+  scene loaded through Addressables without a joined session, the inventory
+  panel drawn from a committed snapshot, the LoginMenu and CharacterSelect
+  screens against an unreachable GameService, real bodies dying and closing
+  their eyes, using tools, and attacking, the world actor presentation applying
+  the change of one actor to its view alone, and a World scene that keeps its
+  player across a lost connection and the join that restores it, on the hub of a
+  `ScriptedRealtimeTransport`.
 - **Fixtures.** Tests never depend on the layout of a development World:
   `FixtureCollisionWorld`, `FixtureItemCatalog`, and `FixtureWorldActorContent` in
   `Tests/EditMode/Fixtures` provide test-owned collision, items, and actors; see

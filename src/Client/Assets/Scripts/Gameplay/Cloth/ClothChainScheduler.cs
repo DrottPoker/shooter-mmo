@@ -226,7 +226,7 @@ namespace Mmorpg.Client.Gameplay
         private void Step()
         {
             var main = mainView != null && mainView.isActiveAndEnabled ? mainView : null;
-            CollectCameras(main);
+            CollectCameras();
             var eye = main != null ? main.transform.position : Vector3.zero;
             bodies.Clear();
             foreach (var solver in Solvers)
@@ -292,14 +292,15 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // The main view and the enabled views, each with the planes of its view, reusing the
-        // plane arrays, so a frame allocates nothing.
-        private void CollectCameras(Camera main)
+        // The cameras the cloth is laid for in this frame: the main view first, as long as it is
+        // enabled, and the enabled views besides it. The eyelids blink for the same cameras.
+        internal static void CollectViews(List<Camera> into)
         {
-            cameras.Clear();
+            into.Clear();
+            var main = mainView != null && mainView.isActiveAndEnabled ? mainView : null;
             if (main != null)
             {
-                cameras.Add(main);
+                into.Add(main);
             }
 
             for (var index = Views.Count - 1; index >= 0; index--)
@@ -311,10 +312,16 @@ namespace Mmorpg.Client.Gameplay
                 }
                 else if (view != main && view.isActiveAndEnabled)
                 {
-                    cameras.Add(view);
+                    into.Add(view);
                 }
             }
+        }
 
+        // The cameras of this frame, each with the planes of its view, reusing the plane arrays, so
+        // a frame allocates nothing.
+        private void CollectCameras()
+        {
+            CollectViews(cameras);
             while (cameraPlanes.Count < cameras.Count)
             {
                 cameraPlanes.Add(new Plane[6]);

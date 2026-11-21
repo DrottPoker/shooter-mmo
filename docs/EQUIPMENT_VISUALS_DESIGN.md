@@ -1328,9 +1328,9 @@ character from showing. How the content loads is in
 A template's manifest may name another budget where its form needs it, such as
 the nasal helmet's 2,500. A character in a full outfit draws about 15,000 to
 18,000 triangles near the camera, because the covered body faces are gone.
-Gloves with five fingers are made at the resolution of the body's hands, 1,520
-triangles for both, and boots hide the body's feet, 1,328 triangles, so even
-their budgets leave the character lighter than without them. Levels of detail
+Gloves with five fingers, 1,840 triangles for both hands, hide the body's hands,
+2,232 triangles, and boots, 1,376 triangles, hide its feet, 2,408 triangles, so
+even their budgets leave the character lighter than without them. Levels of detail
 at half and a quarter of the triangles come with the first crowd measurement
 that needs them.
 

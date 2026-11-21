@@ -7,8 +7,8 @@ using UnityEngine.TestTools;
 
 namespace Mmorpg.Client.Tests.PlayMode
 {
-    // The player body plays the handmade Death clip from its Animator when its character dies.
-    // See docs/UNITY_CLIENT_ARCHITECTURE.md, Player Bodies.
+    // The player body plays the handmade Death clip from its Animator when its character dies, and
+    // closes its eyes. See docs/UNITY_CLIENT_ARCHITECTURE.md, Player Bodies and Eyelids.
     public sealed class PlayerBodyLifePlayModeTests
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
@@ -16,6 +16,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         private static readonly int IdleState = Animator.StringToHash(HumanLocomotion.IdleState);
 
         private GameObject body;
+        private PlayerBodyMeshes meshes;
 
         [TearDown]
         public void DestroyBody()
@@ -24,6 +25,75 @@ namespace Mmorpg.Client.Tests.PlayMode
             {
                 Object.Destroy(body);
             }
+
+            meshes?.Dispose();
+            meshes = null;
+        }
+
+        [UnityTest]
+        public IEnumerator ABodyThatDiesClosesItsEyesAndOpensThemWhenItStandsUp()
+        {
+            var life = SpawnCombined();
+            var lids = life.GetComponent<PlayerBodyAppearance>().Eyelids;
+            Assert.That(lids, Is.Not.Null);
+            Assert.That(EyelidScheduler.Holds(lids), Is.True, "the body's lids are in play");
+            yield return null;
+            life.ShowLifeState(false);
+            yield return null;
+            Assert.That(lids.Share, Is.EqualTo(0f), "no view is near, so the living body does not blink");
+
+            // It dies in view: the eyes close at the blink's closing speed and stay closed.
+            life.ShowLifeState(true);
+            var start = Time.time;
+            while (lids.Share < 1f && Time.time - start < 1f)
+            {
+                yield return null;
+            }
+
+            Assert.That(lids.Share, Is.EqualTo(1f));
+            AssertLids(lids, 1f);
+
+            // The Animator plays Death and starts over without touching the lids.
+            var animator = life.GetComponent<Animator>();
+            animator.Rebind();
+            yield return null;
+            yield return null;
+            AssertLids(lids, 1f);
+
+            // It stands up: the eyes open at once.
+            life.ShowLifeState(false);
+            Assert.That(lids.Share, Is.EqualTo(0f));
+            AssertLids(lids, 0f);
+        }
+
+        [UnityTest]
+        public IEnumerator ABodyFirstSeenDeadHasItsEyesClosedAtOnce()
+        {
+            var life = SpawnCombined();
+            var lids = life.GetComponent<PlayerBodyAppearance>().Eyelids;
+            yield return null;
+            life.ShowLifeState(true);
+            Assert.That(lids.Share, Is.EqualTo(1f));
+            yield return null;
+            yield return null;
+            AssertLids(lids, 1f);
+        }
+
+        [UnityTest]
+        public IEnumerator ADeadBodyThatIsEnabledAgainKeepsItsEyesClosed()
+        {
+            var life = SpawnCombined();
+            var lids = life.GetComponent<PlayerBodyAppearance>().Eyelids;
+            yield return null;
+            life.ShowLifeState(true);
+            body.SetActive(false);
+            Assert.That(EyelidScheduler.Holds(lids), Is.False, "a disabled body leaves the scheduler");
+            yield return null;
+            body.SetActive(true);
+            Assert.That(EyelidScheduler.Holds(lids), Is.True);
+            yield return null;
+            Assert.That(lids.Share, Is.EqualTo(1f));
+            AssertLids(lids, 1f);
         }
 
         [UnityTest]
@@ -161,6 +231,27 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(prefab, Is.Not.Null, BodyPrefabPath);
             body = Object.Instantiate(prefab);
             return body.GetComponent<CharacterLocomotionAnimator>();
+        }
+
+        // A body combined as a World combines it, which finds its lids. Its Animator poses it
+        // every frame, also unseen, so a test sees that the Animator leaves the lids alone.
+        private CharacterLocomotionAnimator SpawnCombined()
+        {
+            var life = Spawn();
+            body.GetComponent<Animator>().cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            meshes = new PlayerBodyMeshes();
+            body.GetComponent<PlayerBodyAppearance>().CombineParts(meshes);
+            return life;
+        }
+
+        // Every lid bone is turned by the share of its closed turn.
+        private static void AssertLids(BodyEyelids lids, float share)
+        {
+            for (var index = 0; index < lids.Bones.Count; index++)
+            {
+                Assert.That(Quaternion.Angle(lids.Bones[index].localRotation, lids.RotationAt(index, share)), Is.LessThan(0.01f),
+                    lids.Bones[index].name);
+            }
         }
     }
 }

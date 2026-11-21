@@ -825,11 +825,15 @@ see [Appearance Layers](#appearance-layers). For a body with an editable mesh,
 the catalog maps every triangle of its parts to the face of the editable mesh it
 comes from, and every garment's triangles to their underlay: `ArtTopologyMaps`
 finds each Unity vertex at the position of a vertex of the exported topology,
-Blender's (x, y, z) being Unity's (x, z, y), and each triangle in the one face
-that holds its three corners, so the order of Unity's vertices and triangles
-does not matter. `ArtAppearanceCatalogTests` fails when a catalog differs from
-what the command writes from `asset.json`, or when a face of an editable body is
-not drawn by its size less two triangles.
+Blender's (x, y, z) being Unity's (x, z, y), and each triangle in the face that
+holds its three corners, so the order of Unity's vertices and triangles does not
+matter. Where several vertices lie at one place, such as where the lips meet or
+where a hood's collar meets the band turned down over it, the faces of a
+vertex's triangles tell which one it is. A triangle that several faces hold goes
+to the one that faces its way, or else to the one that holds the nearest vertex
+of each of its corners. `ArtAppearanceCatalogTests` fails when a catalog differs
+from what the command writes from `asset.json`, or when a face of an editable
+body is not drawn by its size less two triangles.
 
 A catalog holds data and addresses, not content, so a client loads only the looks
 in view; see [Body Content](UNITY_CLIENT_ARCHITECTURE.md#body-content). The same
@@ -1082,6 +1086,9 @@ its eye bone and its two lid bones, and the turns about X that close the lids,
 lower ones, just more than the male's lids need: the rig weights each body's
 lids so they meet at these turns, and a share of them closes the eyes that far;
 see [Rig The Human Base Characters](#rig-the-human-base-characters).
+[Eyelids](UNITY_CLIENT_ARCHITECTURE.md#eyelids) describes how the client turns
+the lid bones, and `BodyEyelidsTests` holds the client's copy of the section to
+this file.
 
 `Quadruped` is the skeleton of four-legged creatures, such as the wolf: 30
 deforming bones outside any Unity avatar, so its assets import with a Generic
@@ -2969,7 +2976,7 @@ slot, so a shirt and a jerkin replace each other.
 
    Expected result: the report lines, `Synced Tunic: ...`, the paths of the
    review sheet and the review file, how much skin comes through it in motion,
-   what it covers on each body, such as `Tunic_Male: covers <n> of 4358 body
+   what it covers on each body, such as `Tunic_Male: covers <n> of 7292 body
    faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
    the pair check over every exported template of another slot and a lower
    layer, such as `Trousers under Tunic_Male: none of the <n> vertices of it
@@ -3648,8 +3655,6 @@ passes.
 
 ## Planned
 
-- Blinking in the game: the client turns the eyelid bones of `Humanoid` by
-  a share of their closed turns, and closes the eyes of the dead.
 - Forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso, where skin
   comes through close-fitting sleeves in motion, and of the female's bra straps,

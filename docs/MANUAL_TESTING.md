@@ -2900,6 +2900,18 @@ these checks. [Art Pipeline](ART_PIPELINE.md#assets) describes each asset.
    pose without falling again. After the respawn, its corpse stays at the place
    of death as the same body lying in the same pose and direction, and a click
    on it opens the corpse.
+7. Stand within a few meters of another character, or turn the camera with the
+   middle mouse button to face your own character and zoom in, and watch for
+   half a minute; then open the Equipment window (`C`). Expected result: the
+   eyes blink about every four seconds, irregularly between two and six seconds
+   apart, each blink a quick close and open of both lids together, and now and
+   then twice in quick succession. The figure in the Equipment window blinks
+   too. Characters further away than about 25 m do not blink.
+8. Die, or watch another character die, as in steps 5 and 6. Expected result:
+   the eyes close as the body falls and stay closed while it lies dead, also
+   for a client that joins while it lies there; the corpse left after the
+   respawn lies with closed eyes; and the respawned body has open eyes and
+   blinks again.
 
 ### Weapons And Tools In The Wardrobe
 

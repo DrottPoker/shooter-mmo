@@ -51,7 +51,8 @@ namespace Mmorpg.Client.Tests.EditMode
             typeof(ItemPresentationCatalogLoader),
             typeof(WorldLabels),
             typeof(ClothChainScheduler),
-            typeof(ClothChainSolver)
+            typeof(ClothChainSolver),
+            typeof(EyelidScheduler)
         };
 
         // Static fields whose type could hold state but that hold none, or must outlive a play.

@@ -502,6 +502,9 @@ namespace Mmorpg.Client.Editor
         // The constants of the cloth on its chains, which ClothChainSolver, ClothPose, and the art
         // pipeline's cloth_core.py share.
         public ArtSkeletonCloth cloth = new ArtSkeletonCloth();
+        // The eyelids, which the client turns by code: each eye's bones and the turns that close
+        // the lids, which EyelidRig shares. A skeleton without eyelids has no eyes in it.
+        public ArtSkeletonEyelids eyelids = new ArtSkeletonEyelids();
 
         // A skeleton with bones of the Unity Humanoid avatar, such as Humanoid; one without, such as
         // Quadruped, imports with a Generic avatar.
@@ -529,6 +532,24 @@ namespace Mmorpg.Client.Editor
         public float armPush;
         public float straightBlendDot;
         public ArtSkeletonClothKind[] kinds = Array.Empty<ArtSkeletonClothKind>();
+    }
+
+    // The turns about each lid bone's own X axis in Blender that close the upper and the lower lids,
+    // and each eye with its eye bone and its two lid bones.
+    [Serializable]
+    public sealed class ArtSkeletonEyelids
+    {
+        public float upperClosedDegrees;
+        public float lowerClosedDegrees;
+        public ArtSkeletonEye[] eyes = Array.Empty<ArtSkeletonEye>();
+    }
+
+    [Serializable]
+    public sealed class ArtSkeletonEye
+    {
+        public string eye = string.Empty;
+        public string upper = string.Empty;
+        public string lower = string.Empty;
     }
 
     // A body bone the cloth collides with, the bone its capsule ends at, empty for a sphere, and

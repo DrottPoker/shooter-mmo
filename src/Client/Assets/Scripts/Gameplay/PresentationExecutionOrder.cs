@@ -20,6 +20,10 @@ namespace Mmorpg.Client.Gameplay
         // so the cloth is laid for the bodies this frame's camera sees.
         public const int Cloth = 110;
 
+        // Eyelids turn in LateUpdate, after the Animator posed the bodies, which leaves the lids
+        // alone, and after the camera moved, so a body blinks for this frame's views.
+        public const int Eyelids = 120;
+
         public const int ScreenAnchoredInterface = 200;
 
         // The client measurements read what every presentation drew this frame.

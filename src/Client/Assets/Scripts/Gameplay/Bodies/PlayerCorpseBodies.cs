@@ -4,12 +4,12 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // The remains a player leaves: the dead character's body in the last pose of the Death clip, in
-    // its look and the garments still in the corpse's equipment, baked once per body model and look
-    // into a static mesh that every corpse that looks the same shares, so a field of corpses costs
-    // no animation or skinning. A bake reads the combined mesh of a hidden body back, so it takes
-    // it from a set of readable meshes, which the hidden body releases when it goes. The owner
-    // destroys the lying meshes; their materials come from the shared set, which counts every
+    // The remains a player leaves: the dead character's body in the last pose of the Death clip with
+    // closed eyes, in its look and the garments still in the corpse's equipment, baked once per body
+    // model and look into a static mesh that every corpse that looks the same shares, so a field of
+    // corpses costs no animation or skinning. A bake reads the combined mesh of a hidden body back,
+    // so it takes it from a set of readable meshes, which the hidden body releases when it goes. The
+    // owner destroys the lying meshes; their materials come from the shared set, which counts every
     // lying body as a user until it goes. A body is baked only once the content of its look is
     // loaded, and a lying body holds that content while it exists, so it shows the body as it died.
     public sealed class PlayerCorpseBodies : IDisposable
@@ -146,8 +146,8 @@ namespace Mmorpg.Client.Gameplay
             body.Content?.Release(body.Needs);
         }
 
-        // A hidden copy of the body plays the end of Death, and its combined renderer is baked in
-        // the body's own space, so the mesh lies where the dying body lay.
+        // A hidden copy of the body plays the end of Death and closes its lids, and its combined
+        // renderer is baked in the body's own space, so the mesh lies where the dying body lay.
         private static Baked Bake(PlayerBodyAppearance bodyPrefab, BodyLook look, PlayerBodyMeshes meshes,
             PlayerBodyMaterials bodyMaterials)
         {
@@ -168,6 +168,8 @@ namespace Mmorpg.Client.Gameplay
                 animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
                 animator.Play(DeathStateId, 0, 1f);
                 animator.Update(0f);
+                // A corpse lies with closed eyes.
+                appearance.Eyelids?.Show(1f);
                 var mesh = new Mesh { name = "PlayerCorpseBody" };
                 appearance.CombinedRenderer.BakeMesh(mesh, true);
                 mesh.RecalculateBounds();
