@@ -3262,8 +3262,9 @@ client turns them by code:
   `Rebind` as a `BodyEyelids`, with the rotations they rest in, and
   `BodyEyelids.Show` turns all four by a share of their closed turns, from 0,
   open, to 1, closed. A body without lid bones has none. The Animator leaves the
-  lids alone, also after `Rebind` and when it is enabled again, so a share holds
-  until the next one. `BodyEyelidsTests` bakes both body models: open, the
+  lids alone, also after `Rebind` and when it is enabled again, since no clip of
+  the bodies' controller or of the animation library keys them, which
+  `BodyEyelidsTests` holds, so a share holds until the next one. `BodyEyelidsTests` bakes both body models: open, the
   margins of the lids lie about 11 mm apart across the middle of each eye, and
   closed, at most 1.3 mm, where the test allows 1.5 mm.
 - **One scheduler.** `EyelidScheduler` blinks the eyes of every enabled body in
@@ -3275,11 +3276,15 @@ client turns them by code:
   keeps the bodies in a binary heap by the time of their next blink, so a frame
   touches only the bodies whose blink is due or under way, and no body between
   its blinks. When a body's time comes, it blinks only while it lives, its
-  combined renderer is visible, and a camera the cloth is laid for, the main
-  view or an added view such as the [Character Preview](#character-preview)'s,
-  is within `EyelidScheduler.MaxDistance`, 25 m, of its eyes; otherwise it only
-  gets its next time. Out of play, as in the Wardrobe and the EditMode tests, the
-  lids stay open.
+  combined renderer was drawn in the last frame, and a camera the cloth is laid
+  for, the main view or an added view such as the
+  [Character Preview](#character-preview)'s, is within
+  `EyelidScheduler.MaxDistance`, 25 m, of its eyes; otherwise it only gets its
+  next time. The scheduler makes no view test of its own: it asks
+  `Renderer.isVisible`, which is true when any camera draws the renderer, a
+  shadow pass or the Scene view included, so a body near the camera but behind
+  it may blink unseen, which costs only that blink's work. Out of play, as in the
+  Wardrobe and the EditMode tests, the lids stay open.
 - **Timing.** A blink closes the lids in 0.08 s, keeps them closed for 0.03 s,
   and opens them in 0.14 s, each eased, a quarter second in all, and 15 percent
   of the blinks are double: a second blink follows 0.12 s after the first ends.
@@ -3299,13 +3304,16 @@ client turns them by code:
   the end pose of `Death` and before it is baked, so every player corpse lies
   with closed eyes.
 - **Cost.** The scheduler allocates nothing per frame, since its lists keep
-  room for every body it holds, and `EyelidScheduleTests` counts no allocation.
-  Stepping 400 bodies with lid bones of their own in the Editor, as that test
-  does, costs about 16 microseconds a frame when every body may blink, the worst
-  case of a whole crowd near the camera, with about 29 of them blinking at a time
-  and at most 48, and about 1 microsecond when none may, touching fewer than two
-  bodies a frame. The profiler marker `EyelidScheduler.Step` shows the cost in
-  play.
+  room for every body it holds. `EyelidScheduleTests` steps 400 bodies with lid
+  bones of their own at 60 frames a second and holds that no frame allocates,
+  both when every body may blink, the worst case of a whole crowd near the
+  camera, and when none may, as out of view or far; that with every body
+  allowed, fewer than 80 blink at once and fewer than 90 are touched in a frame;
+  and that with none allowed, a frame touches fewer than two bodies on average.
+  Measured once in the Editor on these steps, every body allowed cost about
+  16 microseconds a frame, with about 29 bodies blinking at a time and at most
+  48, and none allowed about 1 microsecond, 1.7 bodies touched a frame. The
+  profiler marker `EyelidScheduler.Step` shows the cost in play.
 
 ### Attachments, Tools, And Weapons
 

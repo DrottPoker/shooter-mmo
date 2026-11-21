@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Profiling;
 using UnityEngine;
@@ -7,12 +8,12 @@ namespace Mmorpg.Client.Gameplay
     // Blinks the eyes of every body in play and closes those of the dead, from one place: one
     // EyelidSchedule of the lids of every enabled body, stepped once a frame after the Animator posed
     // the bodies and the camera moved. A frame touches only the bodies whose blink is due or under
-    // way. A body blinks when its time comes only while it lives, its combined renderer is visible,
-    // and a camera the cloth is laid for, the main view or an added view such as the character
-    // preview's, is within MaxDistance of its eyes; otherwise it only gets its next time. The random
-    // numbers are the scheduler's own and of the presentation only. The scheduler puts itself in play
-    // with the first body; out of play the lids stay open. See docs/UNITY_CLIENT_ARCHITECTURE.md,
-    // Eyelids.
+    // way. A body blinks when its time comes only while it lives, its combined renderer was drawn by
+    // some camera, and a camera the cloth is laid for, the main view or an added view such as the
+    // character preview's, is within MaxDistance of its eyes; otherwise it only gets its next time.
+    // The random numbers are the scheduler's own and of the presentation only. The scheduler puts
+    // itself in play with the first body; out of play the lids stay open. See
+    // docs/UNITY_CLIENT_ARCHITECTURE.md, Eyelids.
     [DefaultExecutionOrder(PresentationExecutionOrder.Eyelids)]
     public sealed class EyelidScheduler : MonoBehaviour, EyelidSchedule.IViews
     {
@@ -24,16 +25,26 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly EyelidSchedule schedule = new EyelidSchedule();
         private readonly Dictionary<BodyEyelids, EyelidSchedule.Body> bodies = new Dictionary<BodyEyelids, EyelidSchedule.Body>();
-        // The cameras the cloth is laid for, collected once in a frame in which a body's time came.
+        // The cameras the cloth is laid for, collected once in a step in which a body's time came.
         private readonly List<Camera> views = new List<Camera>();
         private readonly System.Random random = new System.Random();
-        private int viewsFrame = -1;
+        private bool viewsCollected;
 
         // How many bodies' lids are in play.
         public static int Count
         {
             get { return runner != null ? runner.schedule.Count : 0; }
         }
+
+        // The scheduler in play, or null before the first body.
+        internal static EyelidScheduler Running
+        {
+            get { return runner; }
+        }
+
+        // Whether a camera drew the renderer in the last frame. Renderer.isVisible is true when any
+        // camera draws it, a shadow pass and the Scene view included; the tests give their own.
+        internal Func<Renderer, bool> IsDrawn { get; set; } = drawn => drawn.isVisible;
 
         // Whether the lids are in play.
         public static bool Holds(BodyEyelids lids)
@@ -57,12 +68,7 @@ namespace Mmorpg.Client.Gameplay
                 runner = host.AddComponent<EyelidScheduler>();
             }
 
-            if (!runner.bodies.ContainsKey(lids))
-            {
-                var body = new EyelidSchedule.Body(lids);
-                runner.bodies.Add(lids, body);
-                runner.schedule.Add(body, Time.timeAsDouble, dead, runner);
-            }
+            runner.Add(lids, dead, Time.timeAsDouble);
         }
 
         // The body is disabled or destroyed.
@@ -99,6 +105,31 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // The lids come into this scheduler's schedule at a time, once.
+        internal void Add(BodyEyelids lids, bool dead, double now)
+        {
+            if (lids != null && !bodies.ContainsKey(lids))
+            {
+                var body = new EyelidSchedule.Body(lids);
+                bodies.Add(lids, body);
+                schedule.Add(body, now, dead, this);
+            }
+        }
+
+        // Where the lids are in the schedule, or null when they are not in it.
+        internal EyelidSchedule.Body BodyOf(BodyEyelids lids)
+        {
+            return lids != null && bodies.TryGetValue(lids, out var body) ? body : null;
+        }
+
+        // One step of the schedule at a time, which collects the views again for its bodies that
+        // come due.
+        internal void Step(double now)
+        {
+            viewsCollected = false;
+            schedule.Step(now, this);
+        }
+
         // Play without a domain reload keeps statics; the runner of the last play is gone.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
@@ -115,7 +146,7 @@ namespace Mmorpg.Client.Gameplay
 
             using (StepMarker.Auto())
             {
-                schedule.Step(Time.timeAsDouble, this);
+                Step(Time.timeAsDouble);
             }
         }
 
@@ -123,15 +154,15 @@ namespace Mmorpg.Client.Gameplay
         {
             var lids = body.Lids;
             var drawn = lids != null ? lids.Renderer : null;
-            if (drawn == null || !drawn.isVisible)
+            if (drawn == null || !IsDrawn(drawn))
             {
                 return false;
             }
 
-            if (viewsFrame != Time.frameCount)
+            if (!viewsCollected)
             {
                 ClothChainScheduler.CollectViews(views);
-                viewsFrame = Time.frameCount;
+                viewsCollected = true;
             }
 
             return IsNear(lids.Position, views);

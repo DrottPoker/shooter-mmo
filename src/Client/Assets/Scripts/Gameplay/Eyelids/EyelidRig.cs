@@ -6,8 +6,9 @@ namespace Mmorpg.Client.Gameplay
     // The eyelids of the Humanoid skeleton, as its section eyelids in art/Skeletons/Humanoid.json
     // names them: per eye its eye bone and two lid bones, children of Head at the eye's centre and
     // outside the Humanoid avatar, which no clip keys, and the turns about each lid bone's own X axis
-    // in Blender that close the lids, which the rig weights each body's lids to meet at. EyelidTests
-    // holds these constants to the skeleton. See docs/ART_PIPELINE.md, Skeletons.
+    // in Blender that close the lids, which the rig weights each body's lids to meet at.
+    // BodyEyelidsTests holds these constants to the skeleton and checks that no clip keys the lids.
+    // See docs/ART_PIPELINE.md, Skeletons.
     public static class EyelidRig
     {
         public const float UpperClosedDegrees = -46f;
@@ -15,7 +16,7 @@ namespace Mmorpg.Client.Gameplay
 
         // The X axis of a lid bone in Blender is the bone's local -X in Unity, since the export
         // turns Blender's right-handed axes into Unity's left-handed ones. A turn by the closed
-        // degrees about it closes the lids; EyelidTests measures them meet on every body model.
+        // degrees about it closes the lids; BodyEyelidsTests measures them meet on every body model.
         public static readonly Vector3 TurnAxis = Vector3.left;
 
         // Each eye with its lid bones, left first, as the skeleton lists them.

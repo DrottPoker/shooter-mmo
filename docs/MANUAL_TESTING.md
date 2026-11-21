@@ -2906,7 +2906,9 @@ these checks. [Art Pipeline](ART_PIPELINE.md#assets) describes each asset.
    eyes blink about every four seconds, irregularly between two and six seconds
    apart, each blink a quick close and open of both lids together, and now and
    then twice in quick succession. The figure in the Equipment window blinks
-   too. Characters further away than about 25 m do not blink.
+   too. Characters further than about 25 m from the camera do not blink; the
+   distance counts from the camera, not from your character, which the orbit
+   camera can be up to 15 m away from.
 8. Die, or watch another character die, as in steps 5 and 6. Expected result:
    the eyes close as the body falls and stay closed while it lies dead, also
    for a client that joins while it lies there; the corpse left after the

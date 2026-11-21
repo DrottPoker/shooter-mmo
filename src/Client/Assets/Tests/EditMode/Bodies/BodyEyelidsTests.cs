@@ -9,17 +9,21 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // The lids of the bodies: their constants are the eyelids section of the Humanoid skeleton, the
-    // closed turn about the lid bone's local -X in Unity makes the margins of both lids meet on every
-    // body model, open they lie several millimeters apart, and a corpse lies with closed eyes. See
-    // docs/UNITY_CLIENT_ARCHITECTURE.md, Eyelids.
+    // The lids of the bodies: their constants are the eyelids section of the Humanoid skeleton, no
+    // clip keys them, the closed turn about the lid bone's local -X in Unity makes the margins of
+    // both lids meet on every body model, open they lie several millimeters apart, and a corpse lies
+    // with closed eyes. See docs/UNITY_CLIENT_ARCHITECTURE.md, Eyelids.
     public sealed class BodyEyelidsTests
     {
+        private const string HumanActionsPath = "Assets/Art/Models/Animations/Human_Actions.fbx";
+
         private static readonly string[] BodyPrefabPaths =
         {
             "Assets/Prefabs/Player/HumanMaleBody.prefab",
             "Assets/Prefabs/Player/HumanFemaleBody.prefab",
         };
+
+        private static readonly string[] LidBones = EyelidRig.Eyes.SelectMany(eye => new[] { eye.Upper, eye.Lower }).ToArray();
 
         // How far apart the margins of closed lids may lie, and how far apart open ones lie at least,
         // in meters.
@@ -39,18 +43,57 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(eyelids.eyes.Select(eye => (eye.eye, eye.upper, eye.lower)),
                 Is.EqualTo(EyelidRig.Eyes.Select(eye => (eye.Bone, eye.Upper, eye.Lower))));
 
-            // The lids are bones of Head outside the avatar, which no clip keys.
-            foreach (var eye in EyelidRig.Eyes)
+            // The lids are bones of Head outside the avatar; NoClipKeysTheLids holds that no clip
+            // keys them.
+            foreach (var name in LidBones)
             {
-                foreach (var name in new[] { eye.Upper, eye.Lower })
+                var bone = skeleton.bones.SingleOrDefault(candidate => candidate.name == name);
+                Assert.That(bone, Is.Not.Null, name);
+                Assert.That(bone.parent, Is.EqualTo("Head"), name);
+                Assert.That(bone.human, Is.Empty, name);
+                Assert.That(bone.deform, Is.True, name);
+            }
+        }
+
+        // The lids keep what the scheduler last turned them to, and a dead body's lids get no more
+        // work once closed, so a clip that bound a lid bone would open the eyes of the dead on the
+        // next evaluation of its Animator. The export bakes every bone, so this holds the import to
+        // it: no clip of the bodies' controllers and of the human animation library has a curve on a
+        // lid bone.
+        [Test]
+        public void NoClipKeysTheLids()
+        {
+            var clips = new List<AnimationClip>();
+            foreach (var path in BodyPrefabPaths)
+            {
+                var controller = AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<Animator>().runtimeAnimatorController;
+                Assert.That(controller, Is.Not.Null, path);
+                clips.AddRange(controller.animationClips);
+            }
+
+            var library = AssetDatabase.LoadAllAssetsAtPath(HumanActionsPath).OfType<AnimationClip>()
+                .Where(clip => !clip.name.StartsWith("__preview__", System.StringComparison.Ordinal))
+                .ToArray();
+            Assert.That(library, Is.Not.Empty, HumanActionsPath);
+            clips.AddRange(library);
+
+            var keyed = new List<string>();
+            foreach (var clip in clips.Distinct())
+            {
+                var bindings = AnimationUtility.GetCurveBindings(clip)
+                    .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    .ToArray();
+                Assert.That(bindings, Is.Not.Empty, clip.name + " has no curves, so the test reads nothing");
+                foreach (var binding in bindings)
                 {
-                    var bone = skeleton.bones.SingleOrDefault(candidate => candidate.name == name);
-                    Assert.That(bone, Is.Not.Null, name);
-                    Assert.That(bone.parent, Is.EqualTo("Head"), name);
-                    Assert.That(bone.human, Is.Empty, name);
-                    Assert.That(bone.deform, Is.True, name);
+                    if (LidBones.Any(bone => binding.path == bone || binding.path.EndsWith("/" + bone, System.StringComparison.Ordinal)))
+                    {
+                        keyed.Add(clip.name + ": " + binding.path + " " + binding.propertyName);
+                    }
                 }
             }
+
+            Assert.That(keyed, Is.Empty, "clips that key a lid bone");
         }
 
         [Test]

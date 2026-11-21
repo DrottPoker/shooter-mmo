@@ -40,10 +40,27 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return null;
             life.ShowLifeState(false);
             yield return null;
-            Assert.That(lids.Share, Is.EqualTo(0f), "no view is near, so the living body does not blink");
 
-            // It dies in view: the eyes close at the blink's closing speed and stay closed.
+            // No view of the cloth is near the body in this test, so when its first time comes, at
+            // most 6 s on, which the scheduler is stepped to, it does not blink and only gets its
+            // next time.
+            Assert.That(ClothChainScheduler.MainView == null, Is.True, "no main view");
+            var scheduler = EyelidScheduler.Running;
+            var scheduled = scheduler.BodyOf(lids);
+            Assert.That(scheduled.State, Is.EqualTo(EyelidSchedule.BodyState.Waiting));
+            var due = scheduled.Due;
+            scheduler.Step(due);
+            Assert.That(scheduled.State, Is.EqualTo(EyelidSchedule.BodyState.Waiting));
+            Assert.That(scheduled.Due, Is.GreaterThan(due));
+            Assert.That(lids.Share, Is.EqualTo(0f));
+
+            // It dies in view: the eyes close at the blink's closing speed, half closed 0.04 s after
+            // the fall, which the scheduler is stepped to, and then stay closed.
             life.ShowLifeState(true);
+            Assert.That(scheduled.State, Is.EqualTo(EyelidSchedule.BodyState.Closing));
+            scheduler.Step(Time.timeAsDouble + EyelidSchedule.CloseSeconds / 2f);
+            Assert.That(lids.Share, Is.EqualTo(0.5f).Within(0.01f));
+            AssertLids(lids, lids.Share);
             var start = Time.time;
             while (lids.Share < 1f && Time.time - start < 1f)
             {

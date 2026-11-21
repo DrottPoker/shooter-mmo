@@ -273,8 +273,60 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(schedule.Touched, Is.EqualTo(0));
         }
 
+        // The scheduler's own decision when a body's time comes: the body blinks only when a camera
+        // drew its renderer and a view the cloth is laid for, here the main view, is within 25 m of
+        // its eyes; without a view no body blinks.
         [Test]
-        public void ABodyBlinksOnlyWithinTwentyFiveMetersOfAView()
+        public void TheSchedulerLetsABodyBlinkOnlyWhenItIsDrawnAndNearAView()
+        {
+            var objects = new List<GameObject>();
+            var view = Hidden("View").AddComponent<Camera>();
+            objects.Add(view.gameObject);
+            var scheduler = Hidden("EyelidScheduler").AddComponent<EyelidScheduler>();
+            objects.Add(scheduler.gameObject);
+            try
+            {
+                var drawn = new HashSet<Renderer>();
+                scheduler.IsDrawn = renderer => drawn.Contains(renderer);
+                view.transform.position = new Vector3(0f, 1.6f, 0f);
+                var near = LidsAt(objects, new Vector3(0f, 1.6f, 5f));
+                var far = LidsAt(objects, new Vector3(0f, 1.6f, 40f));
+                var unseen = LidsAt(objects, new Vector3(0f, 1.6f, 6f));
+                drawn.Add(near.Renderer);
+                drawn.Add(far.Renderer);
+                foreach (var lids in new[] { near, far, unseen })
+                {
+                    scheduler.Add(lids, false, 0.0);
+                }
+
+                // Every first time lies within 6 s, so all come due; without a view none blinks.
+                scheduler.Step(10.0);
+                foreach (var lids in new[] { near, far, unseen })
+                {
+                    Assert.That(scheduler.BodyOf(lids).State, Is.EqualTo(EyelidSchedule.BodyState.Waiting));
+                    Assert.That(scheduler.BodyOf(lids).Due, Is.GreaterThan(10.0));
+                }
+
+                // The next times lie within 16 s. With the main view near, only the body that was
+                // drawn and is near blinks.
+                ClothChainScheduler.UseMainView(view);
+                scheduler.Step(20.0);
+                Assert.That(scheduler.BodyOf(near).State, Is.EqualTo(EyelidSchedule.BodyState.Blinking));
+                Assert.That(scheduler.BodyOf(far).State, Is.EqualTo(EyelidSchedule.BodyState.Waiting), "40 m away");
+                Assert.That(scheduler.BodyOf(unseen).State, Is.EqualTo(EyelidSchedule.BodyState.Waiting), "not drawn");
+            }
+            finally
+            {
+                ClothChainScheduler.ForgetMainView(view);
+                foreach (var created in objects)
+                {
+                    Object.DestroyImmediate(created);
+                }
+            }
+        }
+
+        [Test]
+        public void IsNearFindsACameraWithinTwentyFiveMeters()
         {
             var near = Hidden("Near").AddComponent<Camera>();
             var far = Hidden("Far").AddComponent<Camera>();
@@ -297,8 +349,10 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // 400 bodies with real lid bones, all near a view: the worst case of a crowd. Every frame
-        // touches only the bodies whose blink is due or under way, allocates nothing, and the test
-        // reports what a frame costs.
+        // touches only the bodies whose blink is due or under way and allocates nothing; the same
+        // crowd where no body may blink, as out of view or far, touches only the bodies that come due,
+        // fewer than two a frame. The random numbers come from a fixed seed, so every run steps the
+        // same frames.
         [Test]
         public void AFrameWith400BodiesTouchesOnlyTheBlinkingAndAllocatesNothing()
         {
@@ -306,8 +360,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var roots = new List<GameObject>();
             try
             {
-                var schedule = new EyelidSchedule();
-                var views = new Views(0.5f) { Uniform = true };
+                var lids = new List<BodyEyelids>();
                 for (var index = 0; index < count; index++)
                 {
                     var root = Hidden("Body" + index);
@@ -320,40 +373,39 @@ namespace Mmorpg.Client.Tests.EditMode
                     }
 
                     roots.Add(root);
-                    schedule.Add(new EyelidSchedule.Body(BodyEyelids.Find(root.transform, null)), 0.0, false, views);
+                    lids.Add(BodyEyelids.Find(root.transform, null));
                 }
 
-                Assert.That(schedule.Count, Is.EqualTo(count));
-                var frame = 0;
-                var mostTouched = 0;
-                var mostMoving = 0;
-                void Frames(int frames)
-                {
-                    for (var step = 0; step < frames; step++)
-                    {
-                        frame++;
-                        schedule.Step(frame / 60.0, views);
-                        mostTouched = Mathf.Max(mostTouched, schedule.Touched);
-                        mostMoving = Mathf.Max(mostMoving, schedule.Moving);
-                    }
-                }
-
+                // Every body near a view, the worst case of a crowd.
+                var near = NewCrowd(lids, true);
                 // A minute settles the crowd into its rhythm.
-                Frames(3600);
-                Assert.That(ManagedAllocations.Of(() => Frames(600)), Is.EqualTo(0));
-
+                near.Run(3600);
+                Assert.That(ManagedAllocations.Of(() => near.Run(600)), Is.EqualTo(0));
+                near.Measure();
                 var watch = Stopwatch.StartNew();
-                Frames(3600);
+                near.Run(3600);
                 watch.Stop();
                 var perFrame = watch.Elapsed.TotalMilliseconds / 3600.0;
                 TestContext.WriteLine("400 bodies near a view: " + (perFrame * 1000.0).ToString("F1")
-                    + " microseconds per frame on average, at most " + mostMoving + " bodies blinking and "
-                    + mostTouched + " touched in a frame");
+                    + " microseconds per frame on average, " + near.MeanMoving.ToString("F1") + " blinking on average and "
+                    + near.MostMoving + " at most, " + near.MostTouched + " touched in a frame at most");
 
                 // About 400 * 0.3 s / 4.3 s, near 28, blink at a time; none of the others is touched.
-                Assert.That(mostMoving, Is.LessThan(80));
-                Assert.That(mostTouched, Is.LessThan(90));
+                Assert.That(near.MostMoving, Is.LessThan(80));
+                Assert.That(near.MostTouched, Is.LessThan(90));
                 Assert.That(perFrame, Is.LessThan(1.0), "milliseconds per frame");
+
+                // No body may blink: 400 bodies come due every 4 s on average, about 1.7 a frame.
+                var far = NewCrowd(lids, false);
+                far.Run(3600);
+                Assert.That(ManagedAllocations.Of(() => far.Run(600)), Is.EqualTo(0));
+                far.Measure();
+                far.Run(3600);
+                TestContext.WriteLine("400 bodies none of which may blink: " + far.MeanTouched.ToString("F2")
+                    + " touched in a frame on average, " + far.MostTouched + " at most");
+                Assert.That(far.MostMoving, Is.EqualTo(0));
+                Assert.That(far.MeanTouched, Is.LessThan(2.0));
+                Assert.That(far.MostTouched, Is.LessThan(12));
             }
             finally
             {
@@ -364,10 +416,95 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        private static Crowd NewCrowd(List<BodyEyelids> lids, bool may)
+        {
+            var crowd = new Crowd(new Views(0.5f) { Uniform = true, May = may });
+            foreach (var body in lids)
+            {
+                crowd.Schedule.Add(new EyelidSchedule.Body(body), 0.0, false, crowd.Views);
+            }
+
+            Assert.That(crowd.Schedule.Count, Is.EqualTo(lids.Count));
+            return crowd;
+        }
+
+        // A schedule stepped at 60 frames a second, with what its frames touched since Measure.
+        private sealed class Crowd
+        {
+            private int frame;
+            private int measured;
+            private long touched;
+            private long moved;
+
+            public Crowd(Views views)
+            {
+                Views = views;
+            }
+
+            public EyelidSchedule Schedule { get; } = new EyelidSchedule();
+
+            public Views Views { get; }
+
+            public int MostTouched { get; private set; }
+
+            public int MostMoving { get; private set; }
+
+            public double MeanTouched
+            {
+                get { return measured > 0 ? (double)touched / measured : 0.0; }
+            }
+
+            public double MeanMoving
+            {
+                get { return measured > 0 ? (double)moved / measured : 0.0; }
+            }
+
+            public void Measure()
+            {
+                measured = 0;
+                touched = 0;
+                moved = 0;
+                MostTouched = 0;
+                MostMoving = 0;
+            }
+
+            public void Run(int frames)
+            {
+                for (var step = 0; step < frames; step++)
+                {
+                    frame++;
+                    Schedule.Step(frame / 60.0, Views);
+                    measured++;
+                    touched += Schedule.Touched;
+                    moved += Schedule.Moving;
+                    MostTouched = Mathf.Max(MostTouched, Schedule.Touched);
+                    MostMoving = Mathf.Max(MostMoving, Schedule.Moving);
+                }
+            }
+        }
+
         // An object that the open scene neither shows nor saves.
         private static GameObject Hidden(string name)
         {
             return EditorUtility.CreateGameObjectWithHideFlags(name, HideFlags.HideAndDontSave);
+        }
+
+        // The lids of a body whose eyes are at a place, drawn by a renderer of its own.
+        private static BodyEyelids LidsAt(List<GameObject> objects, Vector3 eyes)
+        {
+            var root = Hidden("Body");
+            objects.Add(root);
+            root.transform.position = eyes;
+            var renderer = root.AddComponent<MeshRenderer>();
+            var head = Hidden("Head").transform;
+            head.SetParent(root.transform, false);
+            foreach (var eye in EyelidRig.Eyes)
+            {
+                Hidden(eye.Upper).transform.SetParent(head, false);
+                Hidden(eye.Lower).transform.SetParent(head, false);
+            }
+
+            return BodyEyelids.Find(root.transform, renderer);
         }
 
         // The views of a test: whether every body may blink, and the random numbers it gives, from
