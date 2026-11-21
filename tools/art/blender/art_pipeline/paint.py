@@ -190,7 +190,10 @@ def _load_body(path: str, root: str, collection: bpy.types.Collection, name: str
     arm = next(o for o in loaded if o.name == root)
     if arm.type != "ARMATURE":
         raise ArtPipelineError(f'"{root}" in {path} is not an armature.')
-    meshes = [o for o in loaded if o.type == "MESH" and not bodies.is_source_body(o)]
+    # The body is the armature's own meshes: its file may hold others, such as the reference the
+    # model was made after.
+    own = set(arm.children_recursive)
+    meshes = [o for o in loaded if o.type == "MESH" and o in own and not bodies.is_source_body(o)]
     body = join(arm, meshes, root, name)
     for obj in loaded:
         if obj not in meshes:
