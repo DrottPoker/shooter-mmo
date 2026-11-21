@@ -3688,110 +3688,135 @@ its ticks or drops snapshots, which its log in the run's folder says, the
 client sees fewer owner snapshots and starves its remote players for reasons
 outside the client.
 
-The baseline, measured on 2026-11-17 on an AMD Ryzen 7 5800 with an NVIDIA
-GeForce RTX 3070 (Direct3D 12), at 1920 by 1080 with the quality level `PC`,
-no VSync, and no frame rate limit, with the body content loaded on demand as
-[Body Content](#body-content) describes and the first view prepared under the
-entry's cover. Before every run the script waited until other programs left
-the machine alone, and it accepted no run that they disturbed; the bots, the
-worker, and GameService on the same machine kept it 38 to 69 percent busy. The
-run still had the far body shadow rule that
-[Far Bodies, Tried And Measured](#far-bodies-tried-and-measured) records, which
-changed nothing measurable and is not in the client.
+The baseline, measured on 2026-11-21 with the rebuilt human bodies on an AMD
+Ryzen 7 5800 with an NVIDIA GeForce RTX 3070 (Direct3D 12), at 1920 by 1080
+with the quality level `PC`, no VSync, and no frame rate limit, with the body
+content loaded on demand as [Body Content](#body-content) describes and the
+first view prepared under the entry's cover. Before every run the script waited
+until other programs left the machine alone, and it accepted no run that they
+disturbed; other programs were open within the script's limits, more than on
+2026-11-17, and with the bots, the worker, and GameService on the same machine
+it was 43 to 90 percent busy.
 
 Standing, 60 seconds per size:
 
 | Bots in view | Whole crowd shown after | Frame p50 | p95 | p99 | Longest | Owner snapshots per s | Remote players starved | Allocated / reserved / managed memory | Player private memory |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
-| 100 | 0.8 s | 3.5 ms | 5.9 ms | 7.9 ms | 13.0 ms | 15.0 | never | 286 / 808 / 29 MB | 1953 MB |
-| 200 | 1.9 s | 6.4 ms | 9.0 ms | 10.9 ms | 15.8 ms | 15.0 | 2.6 % of the time, 0.46 s at the longest | 391 / 1067 / 21 MB | 2249 MB |
-| 400 | 5.3 s | 11.8 ms | 14.6 ms | 18.5 ms | 26.7 ms | 15.0 | 1.4 % of the time, 0.48 s at the longest | 578 / 1322 / 42 MB | 2724 MB |
+| 100 | 1.2 s | 4.5 ms | 7.2 ms | 9.7 ms | 18.2 ms | 15.0 | never | 297 / 1065 / 35 MB | 1915 MB |
+| 200 | 2.8 s | 9.0 ms | 12.3 ms | 14.1 ms | 276.2 ms | 15.0 | 2.65 % of the time, 0.69 s at the longest | 409 / 1066 / 39 MB | 2221 MB |
+| 400 | 10.1 s | 16.8 ms | 20.4 ms | 23.4 ms | 34.0 ms | 15.0 | 1.44 % of the time, 0.49 s at the longest | 615 / 1580 / 46 MB | 2783 MB |
 
 Arrival, from the first frame after the World showed until the whole crowd is
 shown, the first time and when the same number of bots comes back:
 
 | Bots | Arrival | World entry / activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| 100 | first | 417.2 / 209.3 ms | 0.8 s | 15.3 ms | 0 | 0 | 6.9 / 10.0 / 11.1 ms |
-| 100 | return | - | 4.8 s | 13.3 ms | 0 | 0 | 3.2 / 6.9 / 8.8 ms |
-| 200 | first | 420.9 / 184.8 ms | 1.9 s | 15.2 ms | 0 | 0 | 8.7 / 13.3 / 14.9 ms |
-| 200 | return | - | 9.9 s | 16.3 ms | 0 | 0 | 3.7 / 9.1 / 12.0 ms |
-| 400 | first | 448.5 / 197.3 ms | 5.3 s | 21.0 ms | 0 | 36 | 11.8 / 17.9 / 19.0 ms |
-| 400 | return | - | 20.0 s | 26.9 ms | 0 | 66 | 5.7 / 14.0 / 19.0 ms |
+| 100 | first | 534.6 / 245.7 ms | 1.2 s | 13.7 ms | 0 | 0 | 8.0 / 11.5 / 13.5 ms |
+| 100 | return | - | 4.8 s | 16.9 ms | 0 | 1 | 3.9 / 8.0 / 10.0 ms |
+| 200 | first | 562.5 / 291.7 ms | 2.8 s | 18.5 ms | 0 | 4 | 9.8 / 14.1 / 16.7 ms |
+| 200 | return | - | 9.9 s | 20.3 ms | 0 | 16 | 6.8 / 13.0 / 17.0 ms |
+| 400 | first | 818.8 / 416.8 ms | 10.1 s | 36.4 ms | 3 | 269 | 16.0 / 24.8 / 30.3 ms |
+| 400 | return | - | 20.0 s | 44.5 ms | 3 | 296 | 9.9 / 22.6 / 28.5 ms |
 
 Memory with the crowd, once it left, and with it back:
 
 | Bots | Moment | Allocated / reserved / managed memory | Player private memory | Body meshes / materials | Body garments / attachments |
 | ---: | --- | --- | ---: | --- | --- |
-| 100 | with the crowd | 286 / 808 / 29 MB | 1898 MB | 91 / 18 | 22 / 5 |
-| 100 | crowd gone | 160 / 808 / 12 MB | 1762 MB | 2 / 2 | 0 / 0 |
-| 100 | crowd back | 284 / 1064 / 28 MB | 1743 MB | 88 / 18 | 22 / 5 |
-| 200 | with the crowd | 391 / 1067 / 21 MB | 2222 MB | 159 / 18 | 22 / 5 |
-| 200 | crowd gone | 167 / 1067 / 21 MB | 2005 MB | 2 / 2 | 0 / 0 |
-| 200 | crowd back | 399 / 1067 / 30 MB | (614 MB) | 169 / 18 | 22 / 5 |
-| 400 | with the crowd | 578 / 1322 / 42 MB | 2722 MB | 275 / 18 | 22 / 5 |
-| 400 | crowd gone | 179 / 1322 / 41 MB | 1991 MB | 2 / 2 | 0 / 0 |
-| 400 | crowd back | 586 / 1582 / 37 MB | 2764 MB | 279 / 18 | 22 / 5 |
-
-The private memory of 614 MB is one sample of the operating system that does
-not fit the rows beside it; Unity's own counts in that row do.
+| 100 | with the crowd | 297 / 1065 / 35 MB | 1906 MB | 90 / 18 | 22 / 5 |
+| 100 | crowd gone | 162 / 1065 / 37 MB | 1785 MB | 2 / 2 | 0 / 0 |
+| 100 | crowd back | 302 / 1065 / 32 MB | 1903 MB | 94 / 18 | 22 / 5 |
+| 200 | with the crowd | 409 / 1066 / 39 MB | 2217 MB | 158 / 18 | 22 / 5 |
+| 200 | crowd gone | 168 / 1066 / 39 MB | 1928 MB | 2 / 2 | 0 / 0 |
+| 200 | crowd back | 412 / 1066 / 32 MB | 2218 MB | 160 / 18 | 22 / 5 |
+| 400 | with the crowd | 615 / 1580 / 46 MB | 2764 MB | 282 / 18 | 22 / 5 |
+| 400 | crowd gone | 181 / 1580 / 47 MB | 1968 MB | 2 / 2 | 0 / 0 |
+| 400 | crowd back | 617 / 1580 / 46 MB | 2407 MB | 276 / 18 | 22 / 5 |
 
 Churn, 200 bot slots that come and go, 60 seconds:
 
 | Bots known | Spawns per s | Despawns per s | Frame p50 / p95 / p99 | Longest frame | Frames over 33.3 ms | Remote players starved |
 | --- | ---: | ---: | --- | ---: | ---: | --- |
-| 180 to 200 | 3.1 | 3.1 | 6.4 / 9.4 / 11.4 ms | 20.5 ms | 0 | never |
+| 184 to 198 | 3.0 | 3.0 | 8.5 / 11.9 / 14.3 ms | 29.7 ms | 0 | never |
 
 Walking Mobs and no bots, 60 seconds per size:
 
 | Mobs | World entry / activation frame | Shown after | Arrival, longest frame | Frame p50 / p95 / p99 | Longest | Frames over 33.3 ms | Allocated / reserved / managed memory | Player private memory |
 | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | ---: |
-| 100 | 232.7 / 112.7 ms | 0.1 s | 13.5 ms | 2.2 / 3.1 / 4.5 ms | 18.2 ms | 0 | 165 / 548 / 15 MB | 1416 MB |
-| 200 | 229.1 / 112.3 ms | 0.2 s | 15.0 ms | 4.2 / 5.8 / 8.0 ms | 22.0 ms | 0 | 179 / 558 / 17 MB | 1513 MB |
+| 100 | 377.4 / 213.7 ms | 0.1 s | 12.5 ms | 3.2 / 5.0 / 6.1 ms | 17.7 ms | 0 | 167 / 550 / 20 MB | 1307 MB |
+| 200 | 414.8 / 251.6 ms | 0.2 s | 14.0 ms | 5.2 / 7.4 / 9.5 ms | 26.9 ms | 0 | 181 / 553 / 17 MB | 1426 MB |
 
 What the baseline says:
 
-- **The built client holds 60 frames per second with 400 dressed bodies in
-  view at the 95th percentile**: 11.8 ms at the median and 14.6 ms at the 95th
-  percentile, where it took 13.5 and 17.6 ms on 2026-11-16. The standing frame
-  grows by about 3 ms per 100 bodies.
-- **Entering the World takes 230 to 450 ms** from the start of the activation
-  frame until the World shows, of which the activation frame is 110 to 210 ms:
-  about 230 ms into a World without other players, and about 420 to 450 ms into
-  a crowd of 100 to 400, whose first view was ready before its cap of one
-  second every time. The cover hides the World for that time, so the player
-  sees a short black screen and then the World with the own body dressed.
-- **No frame of an arrival is longer than 33.3 ms**, whether the crowd is
-  already there when the client enters or comes into view later: the longest
-  frame of a first arrival is 15, 15, and 21 ms at 100, 200, and 400, where an
-  hour earlier, before the first view was prepared under the cover, it was 105
-  to 140 ms, and the longest frame when the same bots come back is 13, 16, and
-  27 ms, where it was 26, 30, and 37 ms on 2026-11-16.
+- **The built client holds 60 frames per second at the 95th percentile with
+  200 dressed bodies in view, and not with 400**: with 200 the frame takes
+  9.0 ms at the median and 12.3 ms at the 95th percentile, and with 400 it
+  takes 16.8 and 20.4 ms, over the 16.7 ms of 60 frames per second. The
+  standing frame grows by about 4 ms per 100 bodies. The standing minute of
+  the 200 run had 2 frames over 33.3 ms, one of them 276.2 ms; it was seen in
+  this one run only, and what it held is not known.
+- **Entering the World takes 377 to 819 ms** from the start of the activation
+  frame until the World shows, of which the activation frame is 214 to 417 ms:
+  377 and 415 ms into a World with Mobs and no other players, and 535 to
+  819 ms into a crowd of 100 to 400, whose first view was ready before its cap
+  of one second every time. The cover hides the World for that time, so the
+  player sees a short black screen and then the World with the own body
+  dressed.
+- **No frame of an arrival is longer than 33.3 ms at 100 and 200, and at 400
+  this does not hold**: the longest frame of a first arrival is 13.7, 18.5, and
+  36.4 ms at 100, 200, and 400, and the longest frame when the same bots come
+  back is 16.9, 20.3, and 44.5 ms. At 400 each arrival has 3 frames over
+  33.3 ms, and 269 and 296 frames over 16.7 ms. In the `in it` lines of those
+  six frames `ClothChainScheduler.Step` took 9 to 14 ms in five and 2.5 ms in
+  the last, `Animators.Update` 4 to 9 ms, and `WorldSceneContext.PresentBody`
+  3 to 7 ms.
   [The Long Frames After The Entry](#the-long-frames-after-the-entry) says what
-  the long frames held.
+  the long frames of an earlier measurement held.
 - **Memory comes back.** Once the crowd left, the shared body caches hold 2
   meshes and 2 material copies, where they kept every mesh before, and no
   garment or attachment stays loaded, where every one of the catalog was
-  loaded for the whole World visit. The client allocated 578 MB with 400 bots,
-  179 MB once they left, and 586 MB with them back, where it was 608, 477, and
-  755 MB on 2026-11-16. The process's private memory falls only partly, from
-  2,722 to 1,991 MB, and Unity's reserved memory does not fall.
-- **Players that come and go one at a time cost no hitch**: at 3.1 spawns and
-  despawns a second with about 190 in view, the frame is that of 200 standing
-  bots and the longest frame was 21 ms.
-- **A walking Mob costs about 2 ms per 100 at the median**, and the Mob runs
-  have no frame over 33.3 ms, neither while the Mobs come into view nor in the
-  minute after, where they had 27 at 100 Mobs and one of 119 ms at 200 on
-  2026-11-16: their views, with their nameplates, come into view within the
-  presentation budget.
-- **Remote players starve a little at 200 in view and at 400**, as on
-  2026-11-16. The owner snapshots kept their 15 per second. A crowd in one
-  place meets each recipient's byte budget, as
+  loaded for the whole World visit. The client allocated 615 MB with 400 bots,
+  181 MB once they left, and 617 MB with them back. The process's private
+  memory falls only partly, from 2,764 to 1,968 MB, and Unity's reserved
+  memory does not fall.
+- **Players that come and go one at a time cost no hitch**: at 3.0 spawns and
+  despawns a second with 184 to 198 in view, the frame is 8.5 ms at the median,
+  that of 200 standing bots, and the longest frame was 29.7 ms, with none over
+  33.3 ms.
+- **A walking Mob costs about 2 ms per 100 at the median**, 3.2 ms with 100
+  and 5.2 ms with 200, and the Mob runs have no frame over 33.3 ms, neither
+  while the Mobs come into view nor in the minute after: their views, with
+  their nameplates, come into view within the presentation budget.
+- **Remote players starve a little at 200 in view and at 400**: 2.65 percent
+  of the time at 200 and 1.44 percent at 400, and never at 100. The owner
+  snapshots kept their 15 per second. A crowd in one place meets each
+  recipient's byte budget, as
   [Remote Update Rate](STACK_STRESS_TESTING.md#remote-update-rate) describes,
   so some records are deferred already at 200, and a remote player walks on
   past its newest state before it counts as starved, as
   [Remote Players](#remote-players) describes.
-- **Private memory grows by about 3 MB per body in view.**
+- **Private memory grows by about 3 MB per body in view**, from 1,915 MB with
+  100 to 2,783 MB with 400.
+
+`development` (e329ef53), the client before the rebuilt bodies, measured the
+same afternoon right after this baseline, keeps two effects apart.
+`development` itself measured slower than on 2026-11-17: its standing median
+was 4.4, 8.5, and 14.0 ms at 100, 200, and 400, where the tables of 2026-11-17
+had 3.5, 6.4, and 11.8 ms, its 95th percentile at 400 18.1 ms, where it was
+14.6 ms, and its median with 100 and 200 walking Mobs and no bots 2.9 and
+5.0 ms, where it was 2.2 and 4.2 ms. That is the state of the machine that day
+or what was merged since, and it is not explained. On top of it the rebuilt
+bodies cost about 0.1, 0.5, and 2.8 ms of the standing median at 100, 200, and
+400, the frames over 33.3 ms of the arrivals at 400, where `development` had
+none and its longest arrival frames were 32.6 and 32.9 ms, and 30 to 120 ms of
+the activation frame. The likely cause is what the rebuilt bodies changed per
+body: the skin has 14,404 triangles where it had 8,692, and 7,204 vertices
+where it had 4,348, a dressed combined body has about 15 to 26 percent more
+triangles, and it has four more bones, the eyelids, which no clip keys; the
+cloth code, the cloth chains, and the bones the clips key did not change. No
+profiler split of the standing frame exists yet, so the cause is not proven.
+Open: bring 400 bodies in view back to 60 frames per second at the 95th
+percentile and to arrivals without frames over 33.3 ms on the rebuilt bodies,
+and find why `development` measures slower than on 2026-11-17.
 
 #### Far Bodies, Tried And Measured
 
@@ -3848,9 +3873,10 @@ beyond 60 m, so a rule for far bodies touches a fifth of the crowd at most there
 #### The Long Frames After The Entry
 
 What the long frames of a first arrival held on the morning of 2026-11-17,
-before the baseline above, and what changed. The baseline was measured after
-the changes: its player logs hold no line of the sampling error and no long
-frame of an arrival.
+and what changed. The baseline of that afternoon was measured after the
+changes: its player logs held no line of the sampling error and no long frame
+of an arrival. What the long frames of the arrivals at 400 in the baseline
+above held is under What the baseline says.
 
 - **The 105 to 140 ms frame** was most likely the first error with a stack trace
   that the player logged: `BowRig` sampled the bow's clip `Draw` on the bow's
@@ -3875,7 +3901,8 @@ frame of an arrival.
   Editor's profile of 400 bots that growth took 105 ms, and the growths before it
   15, 30, and 55 ms. The cloth world now grows under the cover for the players in
   view, as The first view above describes. The player's logs of that morning
-  cannot show it; the baseline's arrival at 400 has no frame over 21 ms.
+  cannot show it; the arrival at 400 of that afternoon had no frame over
+  21 ms.
 - **Unity's unload of unused assets** after the scene load is not one of them: it
   took 4 to 5 ms in the activation frame, before the warm-up.
 
