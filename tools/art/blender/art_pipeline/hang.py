@@ -477,12 +477,15 @@ def _bisect(bm: bmesh.types.BMesh, faces: list, point, normal, clear_outer: bool
     first move onto it, so the cut leaves no slivers."""
     faces = [f for f in faces if f.is_valid]
     point, normal = Vector(point), Vector(normal).normalized()
-    verts = list({v for f in faces for v in f.verts})
+    # By index, not by memory address as a set goes, so a rebuild gives its new elements the same order.
+    bm.verts.index_update()
+    bm.edges.index_update()
+    verts = sorted({v for f in faces for v in f.verts}, key=lambda v: v.index)
     for v in verts:
         distance = (v.co - point).dot(normal)
         if abs(distance) < TRIM_SNAP:
             v.co -= normal * distance
-    geom = list({e for f in faces for e in f.edges}) + verts + faces
+    geom = sorted({e for f in faces for e in f.edges}, key=lambda e: e.index) + verts + faces
     bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal, clear_outer=clear_outer,
                            clear_inner=clear_inner)
 

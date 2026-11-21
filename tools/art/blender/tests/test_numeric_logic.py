@@ -26,7 +26,7 @@ cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares"
             "middle_sides", "keep_aside", "away_from_middle", "mirror_images", "twins_of", "evened", "drawn", "MIDDLE",
             "nearest_on_segments", numpy=True)
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
-               numpy=True)
+               "cloth_normals", "hem_frames", "turned_mask", "limits", "BANDS", "hem_normal_error", numpy=True)
 bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
 rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "limit", "_move_excess", "_segment_distance",
            "_smooth", "_around", "hip_boundary", "evened_out", "crotch_line", "line_distance", "HIP_BOUNDARY",
@@ -391,6 +391,113 @@ class GarmentWeightTests(unittest.TestCase):
 
     def test_at_most_four_influences(self):
         self.assertEqual(garment.MAX_INFLUENCES, 4)
+
+
+class TurnedEdgeFrameTests(unittest.TestCase):
+    """What a turned edge is laid from: the cloth's normals and the direction into it across its edge."""
+
+    def test_a_flat_cloth_faces_the_side_it_turns_counterclockwise_from(self):
+        np.testing.assert_allclose(garment.cloth_normals(GRID_CO, GRID), np.tile([0.0, 0.0, 1.0], (9, 1)), atol=1e-12)
+        np.testing.assert_allclose(garment.cloth_normals(GRID_CO, [p[::-1] for p in GRID]),
+                                   np.tile([0.0, 0.0, -1.0], (9, 1)), atol=1e-12)
+
+    def test_a_vertex_of_no_face_has_no_normal(self):
+        normals = garment.cloth_normals(GRID_CO, GRID[:1])
+        np.testing.assert_allclose(normals[[2, 5, 6, 7, 8]], np.zeros((5, 3)))
+
+    def test_a_ridge_between_two_slopes_faces_straight_up(self):
+        co = np.array([(0, -1, 0), (1, -1, 0), (1, 0, 1), (0, 0, 1), (1, 1, 0), (0, 1, 0)], float)
+        normals = garment.cloth_normals(co, [(0, 1, 2, 3), (3, 2, 4, 5)])
+        np.testing.assert_allclose(normals[[2, 3]], [(0, 0, 1), (0, 0, 1)], atol=1e-12)
+        np.testing.assert_allclose(normals[0], np.array([0, -1, 1]) / np.sqrt(2), atol=1e-12)
+
+    def test_each_face_counts_by_its_angle_at_the_vertex(self):
+        # A square with a right angle at the origin, facing up, and a triangle with 45 degrees there,
+        # facing along x.
+        co = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 1, 1), (0, 0, 1)], float)
+        normals = garment.cloth_normals(co, [(0, 1, 2, 3), (0, 4, 5)])
+        np.testing.assert_allclose(normals[0], np.array([1.0, 0.0, 2.0]) / np.sqrt(5.0), atol=1e-12)
+
+    def test_the_cloth_lies_inward_across_its_edge(self):
+        normals = garment.cloth_normals(GRID_CO, GRID)
+        hems = [0, 1, 2, 3, 5, 6, 7, 8]
+        inward = garment.hem_frames(GRID_CO, GRID, hems, normals)
+        diagonal = 1.0 / np.sqrt(2.0)
+        expected = [(diagonal, diagonal, 0), (0, 1, 0), (-diagonal, diagonal, 0), (1, 0, 0), (-1, 0, 0),
+                    (diagonal, -diagonal, 0), (0, -1, 0), (-diagonal, -diagonal, 0)]
+        np.testing.assert_allclose(inward, expected, atol=1e-12)
+
+    def test_the_direction_is_at_right_angles_to_the_normal_on_a_slope(self):
+        co = np.array([(0, -1, 0), (1, -1, 0), (1, 0, 1), (0, 0, 1)], float)
+        polygons = [(0, 1, 2, 3)]
+        normals = garment.cloth_normals(co, polygons)
+        inward = garment.hem_frames(co, polygons, [0, 1, 2, 3], normals)
+        np.testing.assert_allclose(np.einsum("ij,ij->i", inward, normals[[0, 1, 2, 3]]), np.zeros(4), atol=1e-12)
+        # Up the slope from the bottom edge's corners, toward the far corner.
+        self.assertGreater(inward[0] @ (co[2] - co[0]), 0.0)
+
+
+class HemNormalTests(unittest.TestCase):
+    """The normals at the outer edge of a hem: out of the cloth and out of the opening, never back."""
+
+    # The bottom hem of a front, cloth facing +y above it: two cloth vertices turned, each with two
+    # corners, the cloth's and the rim face's.
+    CO = np.array([(0.0, 0.0, 1.0), (0.1, 0.0, 1.0)])
+    TURNED = [(0, 2, 3), (1, 4, 5)]
+    INWARD = np.array([(0.0, 0.0, 1.0), (0.0, 0.0, 1.0)])
+    OUTWARD = np.array([(0.0, 1.0, 0.0), (0.0, 1.0, 0.0)] + [(0.0, 0.0, 0.0)] * 4)
+    LOOPS = np.array([0, 0, 1, 1])
+
+    def error(self, normals):
+        corner = np.array(normals, float)
+        corner /= np.linalg.norm(corner, axis=1, keepdims=True)
+        return garment.hem_normal_error("Shirt_Male", self.CO, self.TURNED, self.INWARD, self.OUTWARD, self.LOOPS, corner)
+
+    def test_down_and_out_at_a_bottom_hem_keeps_the_rule(self):
+        self.assertIsNone(self.error([(0, 1, -1), (0, 1, -1), (0, 2, -1), (0, 1, -2)]))
+
+    def test_a_normal_turned_up_into_the_garment_breaks_it(self):
+        error = self.error([(0, 1, -1), (0, 1, -1), (0, 0.32, 0.95), (0, 1, -1)])
+        self.assertTrue(error.startswith('1 hem vertex has a normal that leans back into "Shirt_Male"'))
+        self.assertIn("vertex 1 at (0.100, 0.000, 1.000) m", error)
+        self.assertIn(f"leans {-0.95 / np.hypot(0.32, 0.95):+.2f}", error)
+
+    def test_a_normal_into_the_body_breaks_it_too(self):
+        error = self.error([(0, -1, -1), (0, -1, -1), (0, 1, -1), (0, 1, -1)])
+        self.assertTrue(error.startswith("1 hem vertex has"))
+        self.assertIn("vertex 0 at", error)
+
+
+class TurnedLimitTests(unittest.TestCase):
+    """The band of a template's turned edges: from the cage up, no higher than their cloth's."""
+
+    RECIPE = {"regions": ["trunk"], "cuts": [], "ease": 0, "hem": 0.002}
+    # A cloth quad with one turned edge along 0-1: rims 4 and 6, flaps 5 and 7.
+    POLYGONS = [(0, 1, 2, 3), (1, 0, 4, 6), (6, 4, 5, 7)]
+    TURNED = [(0, 4, 5), (1, 6, 7)]
+    CO = np.zeros((8, 3))
+
+    def test_a_turned_edge_may_come_down_to_the_cage_and_its_faces_under_it_by_less_than_the_hem(self):
+        low, high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool), self.TURNED,
+                                   0.002)
+        least, largest = garment.BANDS["mid"]
+        np.testing.assert_allclose(low, [least] * 4 + [0.0] * 4 + [least, -0.002, -0.002])
+        np.testing.assert_allclose(high, [largest] * 11)
+
+    def test_without_turned_edges_every_point_keeps_the_band(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool))
+        np.testing.assert_allclose(low, [garment.BANDS["mid"][0]] * 11)
+
+    def test_a_loose_part_is_free_of_the_band_also_where_its_edge_is_turned(self):
+        loose = np.zeros(8, bool)
+        loose[[1, 6, 7]] = True
+        low, high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", loose, self.TURNED, 0.002)
+        self.assertEqual(low.tolist()[:8], [0.005, -np.inf, 0.005, 0.005, 0.0, 0.0, -np.inf, -np.inf])
+        self.assertTrue(np.isinf(low[8:]).all() and np.isinf(high[8:]).all())
+
+    def test_the_rims_and_flaps_are_marked(self):
+        self.assertEqual(garment.turned_mask(8, self.TURNED).tolist(), [False] * 4 + [True] * 4)
+        self.assertEqual(garment.turned_mask(3, []).tolist(), [False] * 3)
 
 
 class BodyWeightTests(unittest.TestCase):

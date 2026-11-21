@@ -365,6 +365,11 @@ sleeveless top. The pipeline cuts the cage's faces at the lines, offsets them
 into the band, turns every open edge inward by a few millimeters, so a hem shows
 the cloth's thickness instead of a paper edge, and unfolds the UVs along seams
 where clothes have them; see [Building A Template](ART_PIPELINE.md#building-a-template).
+A turned edge is always laid from the cloth it is turned from, inside it and
+never under the cage, on every body and at every sync, so it never comes out
+through the cloth where the body leans over the hem, and the normals along the
+hem's outer edge lean out of the cloth and out of the opening; a turned edge
+that leaned back into the garment would light as a bright strip.
 
 The result is the template's version on the first body of its cage, the male;
 every other body's version is fitted from it, as
@@ -598,12 +603,14 @@ pipeline fits it to every other body of the cage, also those of
   hem follows its limb and not the hand or the foot beyond it. Every body's cage
   has the same faces, so this needs nothing of the bodies' own topology. The
   first version keeps its binding to the cage too, so when the first body or its
-  cage changes, the first version follows. A vertex or a face centre that leaves
-  the garment's band moves back into it. Garments stay out of the body's armpits
+  cage changes, the first version follows. A vertex or a face centre of the cloth
+  that leaves the garment's band moves back into it, and then the turned edges
+  are laid again from the fitted cloth. Garments stay out of the body's armpits
   and crotch by the same rule as they do on the first body.
 - **Corrections**: where the fitted shape needs a hand, a person shapes it on the
   other body's version. The pipeline keeps the correction as a difference over
-  the cage, so the next fit keeps it.
+  the cage, so the next fit keeps it. A turned edge is not corrected by hand: it
+  follows the corrected cloth.
 - **Weights**: a garment vertex takes the skin weights of the nearest skin of
   the body part its cage face lies on, the region and side of the cage, and on a
   hand the finger or thumb with the palm, not smoothed, so it moves like the

@@ -2623,10 +2623,13 @@ the point attribute `fitted_under_headwear`.
   them; an offset from the cage into the band, 10 mm for `mid` and 20 mm for
   `outer` and `loose`, and for `tight` as close as
   [Layer Bands](EQUIPMENT_VISUALS_DESIGN.md#layer-bands) says, and more where
-  `over` lifts it over an inner garment; the ease; every open edge turned inward
-  by the `hem` depth with a 12 mm flap, whose faces take the look of the edge in
-  the texture; and every vertex and face centre settled into the band from the
-  cage, the band taken again where a point ends up until it holds. Its loose
+  `over` lifts it over an inner garment; the ease; every vertex and face centre
+  settled into the band from the cage, the band taken again where a point ends up
+  until it holds; and every open edge turned inward with a 12 mm flap, whose faces
+  take the look of the edge in the texture, laid from the settled cloth as
+  [Turned Edges](#turned-edges) describes. The build goes over the cage's
+  vertices, edges, and faces by their indices, so building a recipe again gives
+  every vertex, face, and corner the same order. Its loose
   parts hang in rings from the open edge at their line down to the tips of their
   chains, on the scaffold and with the weights that
   [Loose Parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts) describes, and a cloak
@@ -2646,10 +2649,15 @@ the point attribute `fitted_under_headwear`.
   instead moves with a smooth field of the cage's moves: each vertex by the
   moves of the cage's vertices, weighted by a Gaussian of their distance beyond
   the nearest one, 15 mm wide plus 0.7 times the vertex's distance from the
-  cage. The band is measured from the same regions. A vertex or a face centre
-  that then leaves the band moves back into it. A version corrected by hand
-  keeps its corrections, because the point attribute `fitted` holds the shape
-  the last fitting gave, and the difference to it is applied again.
+  cage. The band is measured from the same regions. A vertex or a face centre of
+  the cloth that then leaves the band moves back into it, and the turned edges
+  are laid again from the cloth where it now lies, also from a cloth corrected
+  by hand. A version corrected by hand keeps its corrections, because the point
+  attribute `fitted` holds the shape the last fitting gave, and the difference
+  to it is applied again.
+- The first version's turned edges are laid again from its cloth where it lies,
+  in place: only their positions change, never the order of the vertices, faces,
+  or corners, so the textures stay in their UVs. `built` follows for them.
 - Every vertex gets the weights of the nearest skin of the body part its cage
   face lies on, the cage's region and side, and on a hand the face's finger or
   thumb with the palm, interpolated from the corners of the skin's triangle,
@@ -2659,6 +2667,26 @@ the point attribute `fitted_under_headwear`.
   hand keeps them, also in the other versions. `-Weights` transfers every weight
   again.
 - A file that this leaves as it was is not saved, so its approvals stay valid.
+
+### Turned Edges
+
+A turned edge is always derived from its cloth, on every version and at every
+sync, and never settled into the band on its own: a settle of its own pushed it
+out through the cloth where the body leans over the hem, such as a belly over a
+shirt's hem, and turned its faces up, which lit as a bright strip in the game.
+
+- The rim lies under the cloth's vertex it is turned from, along the cloth's
+  normal there, the recipe's `hem` deep, or as deep as the cloth lies off the
+  cage there if that is less, so it never lies under the cage.
+- The flap runs 12 mm back across the cloth from the edge and lies at the same
+  depth inside the cloth along its normal at the flap's top, or as deep as the
+  cloth lies off the cage there if that is less.
+- The pipeline finds a template's turned edges from its faces alone: the tops
+  of the flaps are the border of the mesh, each joins its rim, and the rim joins
+  the cloth's vertex. Nothing is stored for them, so they survive a fitting, a
+  rebuild, and an export.
+- A hand edit of a turned vertex does not survive a sync. Shape the cloth
+  instead; the turned edge follows it.
 
 ### Checks And Review Of A Template
 
@@ -2680,10 +2708,21 @@ The `model` stage checks that the bodies and the cage are the current ones of
 their files and the cage the approved one, that every body has a version with
 the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, a hair
-template's also in its shape key `UnderHeadwear`, and that the fitting and the
-weights are as a sync leaves them. A point is too close by its straight distance
-to the cage's nearest point and too far by its distance along the normal of the
-cage's nearest face, as the recipes build the cloth.
+template's also in its shape key `UnderHeadwear`, and that the fitting, the
+weights, and the first version's turned edges are as a sync leaves them. A point
+is too close by its straight distance to the cage's nearest point and too far by
+its distance along the normal of the cage's nearest face, as the recipes build
+the cloth. A turned edge's vertices may come down to the cage, and the centres of
+the faces that touch them, which are flat between points that may lie on a round
+cage, may cut under it by less than the `hem` depth; neither lies farther from
+the cage than its cloth may. Of a template whose recipe turns its edges, the
+stage also checks on every version that no turned vertex lies outside the cloth
+it is turned from and that every rim lies at least 0.3 mm inside it, and that
+every corner normal the export writes at the hem's outer edge leans out of the
+cloth and out of the opening: down and out at a bottom hem, up and out at a
+neckline, out along the arm at a cuff. A normal that leans back into the garment
+breaks the rule, and the message names the version, how many hem vertices break
+it, and the worst one.
 
 The `rig` stage adds the rig rules of skinned assets for each version on its
 armature, the motion check, and the pair check:
@@ -2857,7 +2896,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
 | `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid`, and the bones no clip keys. |
-| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`. |
+| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges read from a mesh's faces, the fold rule and its least fold, and that the build goes over its elements by index, never over a set. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
@@ -2872,7 +2911,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_rig_landmarks.py` | The bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges and the rule of the normals at a hem, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -2963,8 +3002,10 @@ slot, so a shirt and a jerkin replace each other.
    with the cage's versions in the `Cage` collection; the female and
    `Tunic_Female` are hidden in the Outliner. Shape `Tunic_Male` in Edit Mode
    where it needs more than the recipe gives, such as folds or a flared hem, and
-   paint its weights by hand if it needs it. Correct `Tunic_Female` only where
-   the fitting needs help, as the helmet's nasal over the woman's smaller nose.
+   paint its weights by hand if it needs it. Shape the cloth, not the rims and
+   flaps of its turned edges: the sync lays them again from the cloth. Correct
+   `Tunic_Female` only where the fitting needs help, as the helmet's nasal over
+   the woman's smaller nose.
    A hairstyle, a template of `-Slot hair -Band hair -Modeled`, also has the
    shape key `UnderHeadwear` on its first version, the hair pressed flat under
    hoods and helmets, shaped in Edit Mode with that key active. Save, then fit
