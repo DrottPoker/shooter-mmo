@@ -209,8 +209,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EqualTo(new[] { "Scar", "Tattoo", "ForearmRunes", "Briefs" }));
             Assert.That(catalog.Paints.Select(paint => paint.Category),
                 Is.EqualTo(new[] { AppearanceCategory.Scar, AppearanceCategory.Tattoo, AppearanceCategory.Tattoo, AppearanceCategory.Underwear }));
-            // Every image lies at its crop of the paint UVs, and the runes on the left forearm only in
-            // the left half, which holds the body's left side.
+            // Every image lies at its crop of the paint UVs, and the runes on the left forearm only:
+            // across the paint UVs of the left forearm, and apart from those of the right one.
             foreach (var paint in catalog.Paints)
             {
                 Assert.That(paint.Rect.x >= 0f && paint.Rect.y >= 0f && paint.Rect.z > 0f && paint.Rect.w > 0f
@@ -218,7 +218,10 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             var runes = catalog.Paints.Single(paint => paint.Name == "ForearmRunes").Rect;
-            Assert.That(runes.x + runes.z, Is.LessThanOrEqualTo(0.5f));
+            var left = PaintURange(body, "LowerArm_L");
+            var right = PaintURange(body, "LowerArm_R");
+            Assert.That(runes.x >= left.x && runes.x + runes.z <= left.y, Is.True, "runes " + runes + " left forearm " + left);
+            Assert.That(runes.x + runes.z < right.x || runes.x > right.y, Is.True, "runes " + runes + " right forearm " + right);
             Assert.That(catalog.Paints.Single(paint => paint.Name == "Briefs").Slot, Is.EqualTo("legs"));
             Assert.That(catalog.Paints.Single(paint => paint.Name == "Scar").Material.name, Is.EqualTo("M_Face_Male"));
             // The garments from the lowest layer up, and by name within a layer.
@@ -256,6 +259,41 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.GarmentNamed("WoolHoodDown").Hair, Is.EqualTo("show"));
             Assert.That(catalog.GarmentNamed("IronNasalHelm").Template, Is.EqualTo("NasalHelm"));
             Assert.That(catalog.GarmentNamed("IronNasalHelm").Hair, Is.EqualTo("compress"));
+        }
+
+        // The least and greatest paint U, the second UV map, of the vertices that this bone moves
+        // most, in the body part that holds most of them, such as the forearm for a lower arm.
+        private static Vector2 PaintURange(GameObject body, string bone)
+        {
+            var best = new System.Collections.Generic.List<float>();
+            foreach (var part in body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var paintUvs = new System.Collections.Generic.List<Vector2>();
+                part.sharedMesh.GetUVs(1, paintUvs);
+                if (paintUvs.Count == 0)
+                {
+                    continue;
+                }
+
+                var weights = part.sharedMesh.boneWeights;
+                var found = new System.Collections.Generic.List<float>();
+                for (var index = 0; index < weights.Length; index++)
+                {
+                    var moved = part.bones[weights[index].boneIndex0];
+                    if (weights[index].weight0 > 0.6f && moved != null && moved.name == bone)
+                    {
+                        found.Add(paintUvs[index].x);
+                    }
+                }
+
+                if (found.Count > best.Count)
+                {
+                    best = found;
+                }
+            }
+
+            Assert.That(best, Is.Not.Empty, body.name + " " + bone);
+            return new Vector2(best.Min(), best.Max());
         }
     }
 }
