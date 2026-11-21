@@ -4,14 +4,14 @@
     "garment": "art/Garments/Boots",
     "approvals": {
         "texture": {
-            "date": "2026-10-25",
+            "date": "2026-11-21",
             "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-            "garmentSourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7"
+            "garmentSourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb"
         }
     },
     "export": {
         "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-        "garmentSourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7",
+        "garmentSourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb",
         "materials": [
             {
                 "name": "M_Garment_LeatherBoots",

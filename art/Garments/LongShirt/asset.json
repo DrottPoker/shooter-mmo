@@ -27,41 +27,41 @@
     "triangleBudget": 3000,
     "approvals": {
         "model": {
-            "date": "2026-10-25",
-            "sourceSha256": "d300f2b2ba9178d34526b9a29d6404e8b775ccaf0b6f5b18c75b1ecff1726bf4"
+            "date": "2026-11-21",
+            "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6"
         },
         "rig": {
-            "date": "2026-10-25",
-            "sourceSha256": "d300f2b2ba9178d34526b9a29d6404e8b775ccaf0b6f5b18c75b1ecff1726bf4"
+            "date": "2026-11-21",
+            "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6"
         }
     },
     "export": {
-        "sourceSha256": "d300f2b2ba9178d34526b9a29d6404e8b775ccaf0b6f5b18c75b1ecff1726bf4",
-        "cageSourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571",
+        "sourceSha256": "775d9cbfbaf83e6e75baa8ad675e1282a956a15a494ebce53dac0e9650d780b6",
+        "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
-                "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
+                "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/LongShirt_Male.fbx",
-                "sha256": "1bfb0992b33d8c3d7659039c045bad2b20b7e33599465c81363e32f123f374f7",
+                "sha256": "a65b094ff969f7c8e35d4302bf21edf14e7f08a57ce9846d4fc6e12bb6c1e3b8",
                 "data": "src/Client/Assets/Art/Models/Garments/LongShirt_Male.json",
-                "dataSha256": "cf8237bc4251d0eb5ed5ef500cc24cc02a2974e4210d2ecada89ac1775d70044"
+                "dataSha256": "57d772d2f7d28830a15160c2104d70c66ff70bc1e7f927820b68398a8cfe909d"
             },
             {
                 "body": "Female",
-                "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
+                "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/LongShirt_Female.fbx",
-                "sha256": "61ab6fc997516c0edeb15f4ee2eb7764872f7e3126ac39d41f18ad612136e140",
+                "sha256": "282003d4da62ae5f40c2db64fa2f3e248faedd1a5f78d79839719f77e117420c",
                 "data": "src/Client/Assets/Art/Models/Garments/LongShirt_Female.json",
-                "dataSha256": "7909636bc93afa3aeb14789c56ac647dfa5ea5fb7d06939cc8987b0d2ba181b6"
+                "dataSha256": "2d7e3e995bb50d55b52ea4ca50bed63823e77354c5e0a6b68348b4c426cef9d9"
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "f184d6e2e9d924cd1475b1d713d066a0f58a424c90ed470fcd68fe234d45d8b2" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "f9d96d304d8b4bce5b463b9f6cc83cdaef7d848b47a315cd54c56db80729572e" }
+            { "garment": "art/Garments/Boots", "sourceSha256": "1b6661fc8916cd55743f0ee83a146cf47dd2cb48067b2d439082d25868d30cfb" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "e3ca9c27099f9f7a3731d62d2ba799f9d704fc6b575496848ae82690d2abd703" }
         ],
         "materials": [
             {
