@@ -15,6 +15,7 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
         private const string Jerkin = "LeatherJerkin";
+        private const string Shirt = "LinenShirt";
         private const string Trousers = "WoolTrousers";
         private const string Hair = "DarkBrownHair";
         private const string HoodUp = "WoolHoodUp";
@@ -89,21 +90,23 @@ namespace Mmorpg.Client.Tests.EditMode
             Wear((appearance, meshes, materials) =>
             {
                 var parts = Parts(appearance);
-                var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
+                // The plain shirt covers body faces under the trousers' waistband; the jerkin's own
+                // masks cover none of them on the rebuilt male body.
+                var shirt = appearance.Catalog.GarmentNamed(Shirt);
                 var under = appearance.Catalog.GarmentNamed(Trousers);
-                Assert.That(under.Layer, Is.LessThan(jerkin.Layer));
+                Assert.That(under.Layer, Is.LessThan(shirt.Layer));
                 var alone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under }, null, meshes.Content);
-                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, jerkin }, null, meshes.Content);
+                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, shirt }, null, meshes.Content);
                 try
                 {
-                    // The trousers' faces over the body faces the jerkin covers at the waist go, and
-                    // so do the body faces the jerkin covers beyond the trousers.
-                    var covered = new HashSet<int>(jerkin.Covered);
+                    // The trousers' faces over the body faces the shirt covers at the waist go, and
+                    // so do the body faces the shirt covers beyond the trousers.
+                    var covered = new HashSet<int>(shirt.Covered);
                     var underCovered = new HashSet<int>(under.Covered);
                     var trousersLost = under.Underlay.Count(face => covered.Contains(face));
                     var bodyLost = appearance.Catalog.Parts.Sum(part =>
                         part.TriangleFaces.Count(face => covered.Contains(face) && !underCovered.Contains(face)));
-                    var garmentTriangles = jerkin.Underlay.Count;
+                    var garmentTriangles = shirt.Underlay.Count;
                     Assert.That(trousersLost, Is.GreaterThan(0));
                     Assert.That(TriangleCount(both.Mesh),
                         Is.EqualTo(TriangleCount(alone.Mesh) - trousersLost - bodyLost + garmentTriangles));
