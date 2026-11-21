@@ -508,7 +508,10 @@ def edge(bm: bmesh.types.BMesh, part: dict, line_point: Vector, line_normal: Vec
     those behind their middle for a cloak, or behind the bone at the line for one with a top, in their
     order along the border, from the left across the back for a cloak and around the hips from the
     front for a skirt."""
-    on = {v for e in bm.edges if e.is_boundary for v in e.verts if abs((v.co - line_point).dot(line_normal)) < 1e-4}
+    # By index, not by memory address as a set goes, so a tie below is decided the same way every time.
+    bm.verts.index_update()
+    on = sorted({v for e in bm.edges if e.is_boundary for v in e.verts if abs((v.co - line_point).dot(line_normal)) < 1e-4},
+                key=lambda v: v.index)
     if not on:
         raise ArtPipelineError(f"The template has no open edge at {part['line']} for a part to hang from.")
     if part["side"] == "back":
@@ -517,8 +520,9 @@ def edge(bm: bmesh.types.BMesh, part: dict, line_point: Vector, line_normal: Vec
             middle = line_point.y
         else:
             middle = (max(v.co.y for v in on) + min(v.co.y for v in on)) / 2.0
-        on = {v for v in on if v.co.y < middle}
-    neighbors = {v: [w for e in v.link_edges if e.is_boundary for w in e.verts if w is not v and w in on] for v in on}
+        on = [v for v in on if v.co.y < middle]
+    members = set(on)
+    neighbors = {v: [w for e in v.link_edges if e.is_boundary for w in e.verts if w is not v and w in members] for v in on}
     ends = [v for v, n in neighbors.items() if len(n) < 2]
     if part["side"] == "back":
         if len(ends) != 2:

@@ -22,7 +22,8 @@ hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", "_gap", "
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
                "collection_name", "version_name", "material_name", "image_name", "file_sha256", "recipe_text",
                "recipe_regions", "export_paths", "read_wearing", "read_manifests", "turned_edges", "fold_error",
-               "MIN_FOLD", "SETTLE_MARGIN", "_by_index", cage=cage, hang=hang, ArtPipelineError=scene.ArtPipelineError)
+               "border_vertices", "MIN_FOLD", "SETTLE_MARGIN", "HEM_ROOM", "ROUNDING", "_by_index", cage=cage, hang=hang,
+               ArtPipelineError=scene.ArtPipelineError)
 coverage = load("art_pipeline/coverage.py", "REACH", "EDGE_REACH")
 texture = load("art_pipeline/texture.py", "MAX_DYES")
 
@@ -382,30 +383,59 @@ class TurnedEdgeTests(unittest.TestCase):
         self.assertIn("-Rebuild", str(raised.exception))
 
     def test_a_mesh_without_a_border_has_no_turned_edges(self):
-        # A closed box.
-        box = [(0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
-        self.assertEqual(garment.turned_edges(box), [])
+        self.assertEqual(garment.turned_edges(BOX), [])
+
+
+# A closed box.
+BOX = [(0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+
+
+class BorderTests(unittest.TestCase):
+    def test_the_border_is_the_vertices_of_edges_of_one_face(self):
+        self.assertEqual(garment.border_vertices(GRID), [0, 1, 2, 3, 5, 6, 7, 8])
+        self.assertEqual(garment.border_vertices(RING), list(range(8)))
+        self.assertEqual(garment.border_vertices(BOX), [])
 
 
 class FoldRuleTests(unittest.TestCase):
-    def test_turned_vertices_inside_their_cloth_keep_the_rule(self):
-        self.assertIsNone(garment.fold_error("Shirt_Male", [0.002, garment.MIN_FOLD], [0.002, 0.0]))
+    # Three turned edges along a hem: cloth vertices 0 to 2, their rims and flaps 3 to 8.
+    TURNED = [(0, 3, 4), (1, 5, 6), (2, 7, 8)]
+    CO = [(0.1 * k, 0.1, 1.0) for k in range(9)]
+    ROOMS = [0.002, 0.002, 0.002]
 
-    def test_a_thin_fold_names_the_version_the_count_and_the_thinnest_fold(self):
-        error = garment.fold_error("Shirt_Male", [0.002, 0.0001, -0.00011], [0.002, 0.002, 0.002])
+    def error(self, version, rims, flaps, rooms=None):
+        return garment.fold_error(version, rims, flaps, self.TURNED, self.CO, rooms or self.ROOMS)
+
+    def test_turned_vertices_inside_their_cloth_keep_the_rule(self):
+        self.assertIsNone(self.error("Shirt_Male", [0.002, garment.MIN_FOLD, 0.002], [0.002, 0.0, 0.002]))
+
+    def test_rounding_never_puts_a_flap_outside_its_cloth(self):
+        self.assertIsNone(self.error("Shirt_Male", [0.002] * 3, [0.002, -garment.ROUNDING / 2, 0.002]))
+
+    def test_a_thin_fold_names_the_version_the_count_the_thinnest_fold_and_its_hem_vertex(self):
+        error = self.error("Shirt_Male", [0.002, 0.0001, -0.00011], [0.002, 0.002, 0.002])
         self.assertIn('"Shirt_Male"', error)
         self.assertTrue(error.startswith("2 turned vertices lie"))
         self.assertIn(f"{garment.MIN_FOLD * 1000:.1f} mm", error)
-        self.assertIn("the thinnest fold is -0.11 mm", error)
+        self.assertIn("the thinnest fold is -0.11 mm, at the hem vertex 2 at (0.200, 0.100, 1.000) m.", error)
+        self.assertNotIn("too close", error)
 
     def test_a_flap_outside_its_cloth_breaks_the_rule(self):
-        error = garment.fold_error("Cloak_Female", [0.004], [0.004, -0.0004])
-        self.assertTrue(error.startswith("1 turned vertex lies outside the cloth of \"Cloak_Female\""))
-        self.assertIn("-0.40 mm", error)
+        error = self.error("Cloak_Female", [0.004] * 3, [0.004, -0.0004, 0.004])
+        self.assertTrue(error.startswith('1 turned vertex lies outside the cloth of "Cloak_Female"'))
+        self.assertIn("-0.40 mm, at the hem vertex 1", error)
 
-    def test_the_least_fold_leaves_room_under_cloth_a_settle_pushed_out_and_under_every_hem(self):
+    def test_a_rim_without_depth_where_the_cloth_lies_on_the_cage_says_so_at_its_hem_vertex(self):
+        error = self.error("Robe_Male", [0.0, 0.002, 0.002], [0.0, 0.002, 0.002], [0.0, 0.002, 0.002])
+        self.assertTrue(error.startswith("1 turned vertex lies"))
+        self.assertIn("at the hem vertex 0 at (0.000, 0.100, 1.000) m, where the cloth lies 0.00 mm off the cage, "
+                      "too close to it for the fold.", error)
+
+    def test_the_least_fold_is_thinner_than_the_room_of_a_hem_and_than_every_hem(self):
         self.assertGreater(garment.MIN_FOLD, 0.0)
-        self.assertLess(garment.MIN_FOLD, garment.SETTLE_MARGIN)
+        # The cloth a turned edge is turned from keeps the settle's margin off the cage.
+        self.assertEqual(garment.HEM_ROOM, garment.SETTLE_MARGIN)
+        self.assertLess(garment.MIN_FOLD, garment.HEM_ROOM - garment.ROUNDING)
         for name, manifest in manifests().items():
             if isinstance(manifest["recipe"], dict) and manifest["recipe"]["hem"] > 0.0:
                 with self.subTest(garment=name):
@@ -417,11 +447,34 @@ class _Element:
         self.index = index
 
 
+def _sets(function: ast.FunctionDef) -> set[str]:
+    """The names a function binds to a set, by a set display, a set comprehension, or set()."""
+    names = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign) and _is_set(node.value, set()):
+            names |= {target.id for target in node.targets if isinstance(target, ast.Name)}
+    return names
+
+
+def _is_set(value: ast.expr, names: set[str]) -> bool:
+    return (isinstance(value, (ast.Set, ast.SetComp)) or (isinstance(value, ast.Name) and value.id in names)
+            or (isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in ("set", "frozenset")))
+
+
+# Calls whose result depends on the order they go over their argument in.
+ORDERED = ("list", "tuple", "min", "max", "next", "iter", "enumerate", "zip")
+
+
 class BuildOrderTests(unittest.TestCase):
     """A rebuild gives its new vertices and faces the same order every time, so it goes over the
-    elements of a BMesh by their indices, never over a set of them, whose order follows memory."""
+    elements of a BMesh by their indices, never over a set of them, whose order follows memory, and
+    a tie in min or max is decided by that order too."""
 
-    BUILD = {"art_pipeline/garment.py": ("_cut", "_cut_curved", "_turn_edges"), "art_pipeline/hang.py": ("_bisect",)}
+    # The build of garment.py, and every function of hang.py, which the build cuts, trims, and hangs
+    # loose parts with.
+    BUILD = {"art_pipeline/garment.py": ("build", "_cut", "_cut_curved", "_add_hangs", "_mark_seams", "_unwrap",
+                                         "_lay_hangs", "_turn_edges", "_armpits", "_hang_columns"),
+             "art_pipeline/hang.py": None}
 
     def test_elements_are_taken_once_each_by_index_whatever_order_they_come_in(self):
         elements = [_Element(i) for i in (5, 1, 4, 0, 3, 2)]
@@ -434,17 +487,24 @@ class BuildOrderTests(unittest.TestCase):
         for path, names in self.BUILD.items():
             tree = ast.parse(source_text(path))
             functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-            for name in names:
+            for name in names or sorted(functions):
+                sets = _sets(functions[name])
                 for node in ast.walk(functions[name]):
                     if isinstance(node, (ast.For, ast.comprehension)):
                         iterated = [node.iter]
-                    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "tuple"):
+                    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ORDERED:
                         iterated = node.args
                     else:
                         continue
                     for value in iterated:
                         with self.subTest(function=name, code=ast.unparse(node)):
-                            self.assertNotIsInstance(value, (ast.Set, ast.SetComp))
+                            self.assertFalse(_is_set(value, sets))
+
+    def test_the_check_finds_a_set_kept_in_a_name(self):
+        function = ast.parse("def f(bm):\n    on = {v for v in bm.verts}\n    return min(on, key=len)\n").body[0]
+        self.assertEqual(_sets(function), {"on"})
+        call = function.body[1].value
+        self.assertTrue(_is_set(call.args[0], _sets(function)))
 
 
 if __name__ == "__main__":

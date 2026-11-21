@@ -622,7 +622,8 @@ pipeline fits it to every other body of the cage, also those of
   instead. Weights painted by hand on the first version are kept, and the other
   versions copy them, because every version of a garment has the same topology;
   rules in the recipe are preferred to painted weights, since they carry over to
-  new bodies by themselves.
+  new bodies by themselves. A turned edge takes the weights of the cloth it is
+  turned from, also painted ones, so its fold moves with the cloth in every pose.
 
 ## Future Races And Base Models
 

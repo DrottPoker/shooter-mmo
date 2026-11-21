@@ -26,7 +26,19 @@ cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares"
             "middle_sides", "keep_aside", "away_from_middle", "mirror_images", "twins_of", "evened", "drawn", "MIDDLE",
             "nearest_on_segments", numpy=True)
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
-               "cloth_normals", "hem_frames", "turned_mask", "limits", "BANDS", "hem_normal_error", numpy=True)
+               "cloth_normals", "hem_frames", "turned_mask", "limits", "BANDS", "hem_normal_error", "turned_weights",
+               "carried_moves", "HEM_ROOM", "ROUNDING", numpy=True)
+
+
+def _band_by_x(recipe, lines, label, points, band):
+    """A band that depends on where a point lies, as one over an inner garment does: it grows with x."""
+    x = np.asarray(points, float)[:, 0]
+    return 0.001 * x, 0.01 + 0.001 * x
+
+
+# limits with that band, so a test sees where it takes a point's band; the band over an inner
+# garment needs the cage in Blender.
+anchored = load("art_pipeline/garment.py", "limits", "HEM_ROOM", "ROUNDING", band_limits=_band_by_x, numpy=True)
 bodies = load("art_pipeline/bodies.py", "place_keys", "mirror_key", "ZONES")
 rig = load("human_base/rig.py", "_mirror_columns", "_mirrored", "symmetrize", "limit", "_move_excess", "_segment_distance",
            "_smooth", "_around", "hip_boundary", "evened_out", "crotch_line", "line_distance", "HIP_BOUNDARY",
@@ -467,6 +479,61 @@ class HemNormalTests(unittest.TestCase):
         self.assertTrue(error.startswith("1 hem vertex has"))
         self.assertIn("vertex 0 at", error)
 
+    def test_a_normal_in_the_cloth_s_plane_keeps_it_as_at_a_rim_without_depth_which_the_fold_rule_reports(self):
+        self.assertIsNone(self.error([(0, 1, 0), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+        self.assertIsNone(self.error([(0, 1, 1e-6), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+
+    def test_a_normal_that_leans_back_beyond_rounding_breaks_it(self):
+        self.assertIsNotNone(self.error([(0, 1, 0.01), (0, 1, 0), (0, 1, -1), (0, 1, -1)]))
+
+
+class TurnedWeightTests(unittest.TestCase):
+    """A turned vertex takes its skin weights from its cloth, so a fold moves with it in every pose."""
+
+    # Cloth vertices 0 to 3 in one face, a turned edge from vertex 0: rim 4, flap 5.
+    WEIGHTS = np.array([(1.0, 0.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.5, 0.5, 0.0),
+                        (0.1, 0.1, 0.1, 0.1, 0.6), (0.0, 0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 0.0, 1.0)])
+    TURNED = [(0, 4, 5)]
+
+    def test_a_rim_takes_the_weights_of_the_vertex_it_is_turned_from(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [1.0, 0.0, 0.0, 0.0])])
+        np.testing.assert_array_equal(weights[4], self.WEIGHTS[0])
+        np.testing.assert_array_equal(weights[:4], self.WEIGHTS[:4])
+
+    def test_a_flap_takes_the_weights_of_the_cloth_over_it_as_vertex_groups_keep_them(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [0.5, 0.5, 0.0, 0.0])])
+        np.testing.assert_allclose(weights[5], [0.5, 0.5, 0.0, 0.0, 0.0])
+        self.assertEqual(weights[5].tolist(), garment._rounded_weights(weights[5]).tolist())
+
+    def test_a_flap_under_more_than_four_bones_keeps_the_four_largest(self):
+        weights = garment.turned_weights(self.WEIGHTS, self.TURNED, [((0, 1, 2, 3), [0.1, 0.2, 0.3, 0.4])])
+        mixed = 0.1 * self.WEIGHTS[0] + 0.2 * self.WEIGHTS[1] + 0.3 * self.WEIGHTS[2] + 0.4 * self.WEIGHTS[3]
+        self.assertEqual(int((weights[5] > 0.0).sum()), 4)
+        self.assertAlmostEqual(float(weights[5].sum()), 1.0, places=6)
+        np.testing.assert_allclose(weights[5], garment._rounded_weights(garment._limited(mixed)))
+
+    def test_the_weights_given_are_left_alone(self):
+        given = self.WEIGHTS.copy()
+        garment.turned_weights(given, self.TURNED, [((0, 1, 2, 3), [0.5, 0.5, 0.0, 0.0])])
+        np.testing.assert_array_equal(given, self.WEIGHTS)
+
+
+class CarryOverTests(unittest.TestCase):
+    """A rebuild carries a handmade shape over from the old cloth, never from old turned vertices."""
+
+    # Old cloth vertices 0 and 1, and an old turned vertex 2 that lies nearest the new point.
+    BUILT = np.array([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.1, 0.0, 0.0)])
+    SHAPED = BUILT + np.array([(0.0, 0.0, 0.01), (0.0, 0.0, 0.02), (0.0, 0.0, 5.0)])
+    POINTS = np.array([(0.09, 0.0, 0.0), (0.9, 0.0, 0.0)])
+
+    def test_a_point_takes_the_difference_of_the_nearest_cloth_vertex(self):
+        moves = garment.carried_moves(self.BUILT, self.SHAPED, self.POINTS, [0, 1])
+        np.testing.assert_allclose(moves, [(0.0, 0.0, 0.01), (0.0, 0.0, 0.02)])
+
+    def test_reading_the_turned_vertex_would_carry_its_difference(self):
+        moves = garment.carried_moves(self.BUILT, self.SHAPED, self.POINTS, [0, 1, 2])
+        np.testing.assert_allclose(moves[0], (0.0, 0.0, 5.0))
+
 
 class TurnedLimitTests(unittest.TestCase):
     """The band of a template's turned edges: from the cage up, no higher than their cloth's."""
@@ -498,6 +565,48 @@ class TurnedLimitTests(unittest.TestCase):
     def test_the_rims_and_flaps_are_marked(self):
         self.assertEqual(garment.turned_mask(8, self.TURNED).tolist(), [False] * 4 + [True] * 4)
         self.assertEqual(garment.turned_mask(3, []).tolist(), [False] * 3)
+
+    def test_the_cloth_a_turned_edge_is_turned_from_keeps_its_room_off_the_cage(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool),
+                                    self.TURNED, 0.002)
+        room = garment.HEM_ROOM - garment.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.0, 0.0])
+
+    def test_a_settle_holds_the_cloth_it_is_given_off_the_cage_too(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool),
+                                    hems=[0, 1])
+        room = garment.HEM_ROOM - garment.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.0, 0.0])
+
+    def test_a_band_that_lets_the_cloth_lie_farther_off_keeps_it(self):
+        low, _high = garment.limits(self.RECIPE, [], "Male", self.CO, self.POLYGONS, "mid", np.zeros(8, bool), hems=[0, 1])
+        np.testing.assert_allclose(low[:4], [garment.BANDS["mid"][0]] * 4)
+
+
+class AnchoredLimitTests(unittest.TestCase):
+    """Where a band depends on where a point lies, a turned edge takes it where its cloth lies."""
+
+    POLYGONS = TurnedLimitTests.POLYGONS
+    TURNED = TurnedLimitTests.TURNED
+    # The cloth near x = 0, its rims and flaps far off along x, where the band would be wider.
+    CO = np.array([(0.1, 0.0, 0.0), (0.2, 0.0, 0.0), (3.0, 0.0, 0.0), (4.0, 0.0, 0.0),
+                   (10.0, 0.0, 0.0), (20.0, 0.0, 0.0), (30.0, 0.0, 0.0), (40.0, 0.0, 0.0)])
+
+    def test_a_turned_vertex_and_its_faces_take_the_band_of_the_cloth_they_are_turned_from(self):
+        low, high = anchored.limits({}, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool), self.TURNED, 0.002)
+        # Rim 4 and flap 5 from vertex 0, rim 6 and flap 7 from vertex 1.
+        np.testing.assert_allclose(high[4:8], [0.0101, 0.0101, 0.0102, 0.0102])
+        # The faces at the turned edge, between vertices 0 and 1 of the cloth.
+        np.testing.assert_allclose(high[9:], [0.01015, 0.01015])
+        np.testing.assert_allclose(low[4:8], [0.0] * 4)
+        np.testing.assert_allclose(low[9:], [-0.002, -0.002])
+
+    def test_the_cloth_keeps_its_own_band_and_its_hem_its_room(self):
+        low, high = anchored.limits({}, [], "Male", self.CO, self.POLYGONS, "tight", np.zeros(8, bool), self.TURNED, 0.002)
+        room = anchored.HEM_ROOM - anchored.ROUNDING
+        np.testing.assert_allclose(low[:4], [room, room, 0.003, 0.004])
+        np.testing.assert_allclose(high[:4], [0.0101, 0.0102, 0.013, 0.014])
+        np.testing.assert_allclose(high[8], 0.01 + 0.001 * self.CO[:4, 0].mean())
 
 
 class BodyWeightTests(unittest.TestCase):

@@ -89,9 +89,13 @@ ARMPIT_DROP = 0.04
 # A turned edge folds back inside the cloth this far.
 HEM_FLAP = 0.012
 # Every rim of a turned edge lies at least this far inside the cloth it is turned from. A rim lies as
-# deep as the cloth lies off the cage at most, and a settle leaves cloth SETTLE_MARGIN off the cage
-# where it pushes it out, so this stays below that margin.
+# deep as the cloth lies off the cage at most, and the cloth it is turned from keeps HEM_ROOM off the
+# cage, so this stays below that room.
 MIN_FOLD = 0.0003
+# How far a distance, in meters, or a normal's lean may miss a limit and still keep it, so the
+# rounding of float32 positions and normals never decides a rule.
+ROUNDING = 1e-6
+LEAN_ROUNDING = 1e-4
 # A cage vertex this close to a line moves onto it before the cut, so the cut leaves no slivers and
 # the edge runs straight.
 LINE_SNAP = 0.008
@@ -105,6 +109,10 @@ SOLE_FACING = 0.5
 # margin, a few times over, because moving one face moves the corners it shares.
 SETTLE_MARGIN = 0.0005
 SETTLE_PASSES = 4
+# The cloth vertices a turned edge is turned from keep at least this far off the cage, where their
+# band lets them come closer, so their fold has room above the cage: the settle moves one that lies
+# closer, on every version and at every sync.
+HEM_ROOM = SETTLE_MARGIN
 # A point that a push along the nearest normal cannot settle moves along the mean of the cage's
 # normals this close around it, by at most this much.
 SETTLE_AROUND = 0.02
@@ -187,8 +195,9 @@ def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.n
     if not entries:
         return lift
     shell = cage_object(label)
-    # A point is over the region of the template it belongs to: a hem turned in at the border of
-    # the template's region, such as a cloak's neckline over a shirt's, is nearer the region beyond.
+    # A point is over the region of the template it lies nearest, of those the template covers. A
+    # turned edge takes its band from the cloth it is turned from: it may lie under the inner
+    # garment's surface, down to the cage, inside its own cloth.
     surface = Surface(shell, [], tuple(r for r in cage.REGIONS if r in recipe["regions"]))
     keys = cage_keys(shell, surface)
     nearest = [surface.tree.find_nearest(Vector(p))[2] for p in points]
@@ -250,20 +259,26 @@ def _loose(mesh: bpy.types.Mesh) -> np.ndarray:
 
 
 def limits(recipe, lines: list[dict], label: str, co: np.ndarray, polygons: list[tuple[int, ...]], band: str,
-           loose: np.ndarray, turned: list[tuple[int, int, int]] | None = None,
-           hem: float = 0.0) -> tuple[np.ndarray, np.ndarray | None]:
+           loose: np.ndarray, turned: list[tuple[int, int, int]] | None = None, hem: float = 0.0,
+           hems=None) -> tuple[np.ndarray, np.ndarray | None]:
     """The band of every vertex and face centre of a template on a body, as band_limits gives it,
     and none for the vertices of loose parts and the faces that touch them, which hang off the cage.
     The vertices of turned edges lie inside their cloth, as deep as it lies off the cage at most:
     their least distance is zero. The faces that touch them are flat between points that may lie on
     the cage, so over a round part of it their centres may cut under it, by less than the hem's
     depth. The largest distance of both is their cloth's, taken where the vertex they are turned
-    from lies."""
+    from lies. The cloth vertices they are turned from, hems, or those of turned when hems is None,
+    keep at least HEM_ROOM off the cage, short of float32 rounding, so a settle that left one there
+    does not move it again."""
     anchor = np.arange(len(co))
     for cloth, rim, flap in turned or []:
         anchor[rim] = anchor[flap] = cloth
     low, high = band_limits(recipe, lines, label, _points(np.asarray(co)[anchor], polygons), band)
     count = len(co) + len(polygons)
+    hems = [cloth for cloth, _rim, _flap in turned or []] if hems is None else list(hems)
+    if hems:
+        low = np.array(np.broadcast_to(np.asarray(low, float), (count,)))
+        low[hems] = np.maximum(low[hems], HEM_ROOM - ROUNDING)
     if turned:
         inside = turned_mask(len(co), turned)
         faces = np.array([inside[list(p)].any() for p in polygons], bool)
@@ -459,14 +474,15 @@ def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Sur
 
 
 def _settle_band(co: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, recipe, lines: list[dict],
-                 label: str, band: str, loose: np.ndarray) -> np.ndarray:
+                 label: str, band: str, loose: np.ndarray, hems=()) -> np.ndarray:
     """The positions settled into the band that limits gives where the points end up: a point that
     moves may come to lie over another region of the cage, where the template lies over an inner
     garment or does not, so the band is taken again until it holds. loose marks the vertices it
     leaves where they are, with the faces that touch them: those of loose parts, and the rims and
-    flaps of turned edges, which are laid from the settled cloth."""
+    flaps of turned edges, which are laid from the settled cloth. hems are the cloth vertices the
+    turned edges are turned from, which keep HEM_ROOM off the cage."""
     for _ in range(SETTLE_PASSES):
-        settled = _settle(co, polygons, surface, *limits(recipe, lines, label, co, polygons, band, loose))
+        settled = _settle(co, polygons, surface, *limits(recipe, lines, label, co, polygons, band, loose, hems=hems))
         if np.array_equal(settled, co):
             break
         co = settled
@@ -921,6 +937,17 @@ def turned_edges(polygons: list[tuple[int, ...]]) -> list[tuple[int, int, int]]:
     return sorted(found)
 
 
+def border_vertices(polygons: list[tuple[int, ...]]) -> list[int]:
+    """The vertices on the border of a mesh, the edges of only one face, in their order."""
+    count: dict[tuple[int, int], int] = {}
+    for polygon in polygons:
+        for i, a in enumerate(polygon):
+            b = polygon[(i + 1) % len(polygon)]
+            key = (a, b) if a < b else (b, a)
+            count[key] = count.get(key, 0) + 1
+    return sorted({v for key, n in count.items() if n == 1 for v in key})
+
+
 def _turned(recipe, polygons: list[tuple[int, ...]]) -> list[tuple[int, int, int]]:
     """The turned edges of a template whose recipe turns its edges, or none."""
     if not isinstance(recipe, dict) or recipe.get("hem", 0.0) <= 0.0:
@@ -988,6 +1015,33 @@ def hem_frames(co: np.ndarray, cloth: list[tuple[int, ...]], hems, normals: np.n
     return inward
 
 
+def _lay(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tuple[int, int, int]], depth: float,
+         shell: Surface) -> tuple[np.ndarray, list[tuple[tuple[int, ...], list[float]]]]:
+    """lay_turned, and for every turned edge the cloth face its flap lies under, with the flap's
+    barycentric weights on it, which turned_weights takes the flap's skin weights from."""
+    if not turned:
+        return np.asarray(co), []
+    co = np.array(co, float)
+    inside = turned_mask(len(co), turned)
+    cloth = [p for p in polygons if not inside[list(p)].any()]
+    hems = [hem for hem, _rim, _flap in turned]
+    normals = cloth_normals(co, cloth)
+    inward = hem_frames(co, cloth, hems, normals)
+    tree = BVHTree.FromPolygons([tuple(p) for p in co], cloth)
+    under = []
+    for (hem, rim, flap), direction in zip(turned, inward):
+        deep = min(depth, max(shell.straight_distance(Vector(co[hem])), 0.0))
+        co[rim] = co[hem] - normals[hem] * deep
+        location, _normal, index, _distance = tree.find_nearest(Vector(co[hem] + direction * HEM_FLAP))
+        corners = cloth[index]
+        shares = poly_3d_calc([Vector(co[v]) for v in corners], location)
+        normal = np.sum([normals[v] * w for v, w in zip(corners, shares)], axis=0)
+        deep = min(deep, max(shell.straight_distance(location), 0.0))
+        co[flap] = np.array(location) - normal / max(np.linalg.norm(normal), 1e-30) * deep
+        under.append((tuple(corners), [float(w) for w in shares]))
+    return co, under
+
+
 def lay_turned(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tuple[int, int, int]], depth: float,
                shell: Surface) -> np.ndarray:
     """The positions with every turned edge laid from its cloth, which does not move: the rim inside
@@ -997,25 +1051,20 @@ def lay_turned(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tup
     inside along the cloth's normal there, or as deep as the cloth lies off the cage there if that
     is less. A point that moves less than its distance from the cage cannot reach it, so no rim and
     no flap lies under the cage."""
-    if not turned:
-        return np.asarray(co)
-    co = np.array(co, float)
-    inside = turned_mask(len(co), turned)
-    cloth = [p for p in polygons if not inside[list(p)].any()]
-    hems = [hem for hem, _rim, _flap in turned]
-    normals = cloth_normals(co, cloth)
-    inward = hem_frames(co, cloth, hems, normals)
-    tree = BVHTree.FromPolygons([tuple(p) for p in co], cloth)
-    for (hem, rim, flap), direction in zip(turned, inward):
-        deep = min(depth, max(shell.straight_distance(Vector(co[hem])), 0.0))
-        co[rim] = co[hem] - normals[hem] * deep
-        location, _normal, index, _distance = tree.find_nearest(Vector(co[hem] + direction * HEM_FLAP))
-        corners = cloth[index]
-        weights = poly_3d_calc([Vector(co[v]) for v in corners], location)
-        normal = np.sum([normals[v] * w for v, w in zip(corners, weights)], axis=0)
-        deep = min(deep, max(shell.straight_distance(location), 0.0))
-        co[flap] = np.array(location) - normal / max(np.linalg.norm(normal), 1e-30) * deep
-    return co
+    return _lay(co, polygons, turned, depth, shell)[0]
+
+
+def turned_weights(weights: np.ndarray, turned: list[tuple[int, int, int]], under) -> np.ndarray:
+    """The skin weights of a template's vertices with every turned vertex's taken from its cloth, so
+    a fold moves with its cloth in every pose: a rim's from the vertex it is turned from, a flap's
+    interpolated on the cloth face it lies under, at most four bones adding up to one, as vertex
+    groups store them. under holds, per turned edge, that face's corners and the flap's barycentric
+    weights on it, as _lay gives them."""
+    weights = np.array(weights, float)
+    for (cloth, rim, flap), (corners, shares) in zip(turned, under):
+        weights[rim] = weights[cloth]
+        weights[flap] = _rounded_weights(_limited(np.sum([weights[c] * s for c, s in zip(corners, shares)], axis=0)))
+    return weights
 
 
 def _folds(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tuple[int, int, int]]) -> tuple[np.ndarray, np.ndarray]:
@@ -1034,17 +1083,28 @@ def _folds(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tuple[i
             np.array([depth(flap) for _hem, _rim, flap in turned]))
 
 
-def fold_error(version: str, rims, flaps) -> str | None:
+def fold_error(version: str, rims, flaps, turned: list[tuple[int, int, int]], co: np.ndarray, rooms) -> str | None:
     """The rule of a template's turned edges: no turned vertex lies outside the cloth it is turned
     from, and every rim lies at least MIN_FOLD inside it, so the hem shows the cloth's thickness and
-    its faces face the body. rims and flaps hold how deep each lies inside its cloth, in meters."""
+    its faces face the body. rims and flaps hold how deep each lies inside its cloth, and rooms how
+    far the cloth vertex each turned edge is turned from lies off the cage, in meters. A turned
+    vertex cannot be edited, since every sync lays it from its cloth, so the message names the cloth
+    vertex at the thinnest fold, and says when the cloth there lies too close to the cage for one,
+    such as a loose part's hem, which no settle holds off the cage."""
     rims, flaps = [float(d) for d in rims], [float(d) for d in flaps]
-    failing = sum(1 for d in rims if d < MIN_FOLD) + sum(1 for d in flaps if d < 0.0)
+    failing = sum(1 for d in rims if d < MIN_FOLD) + sum(1 for d in flaps if d < -ROUNDING)
     if not failing:
         return None
+    worst = min(range(len(turned)), key=lambda k: min(rims[k], flaps[k]))
+    cloth = turned[worst][0]
     noun = "vertex lies" if failing == 1 else "vertices lie"
-    return (f'{failing} turned {noun} outside the cloth of "{version}" or in a fold thinner than '
-            f"{MIN_FOLD * 1000:.1f} mm; the thinnest fold is {min(rims + flaps) * 1000:.2f} mm.")
+    text = (f'{failing} turned {noun} outside the cloth of "{version}" or in a fold thinner than '
+            f"{MIN_FOLD * 1000:.1f} mm; the thinnest fold is {min(rims[worst], flaps[worst]) * 1000:.2f} mm, at the hem "
+            f"vertex {cloth} at ({', '.join(f'{x:.3f}' for x in co[cloth])}) m")
+    if rooms[worst] < MIN_FOLD:
+        return (text + f", where the cloth lies {float(rooms[worst]) * 1000:.2f} mm off the cage, too close to it for "
+                "the fold.")
+    return text + "."
 
 
 def hem_normal_error(version: str, co: np.ndarray, turned: list[tuple[int, int, int]], inward: np.ndarray,
@@ -1053,7 +1113,8 @@ def hem_normal_error(version: str, co: np.ndarray, turned: list[tuple[int, int, 
     normal the export writes leans out of the cloth, along outward, the cloth's normal, and out of
     the opening, against inward, the direction into the cloth across its edge. A normal that leans
     back into the garment lights the hem's outer edge like a face turned up, a bright strip in the
-    game. inward holds one direction per turned edge, outward one per vertex."""
+    game. inward holds one direction per turned edge, outward one per vertex. A normal that lies in
+    the cloth's plane, such as where a rim has no depth, which the fold rule reports, keeps it."""
     row = {cloth: k for k, (cloth, _rim, _flap) in enumerate(turned)}
     lean = np.full(len(turned), np.inf)
     for loop, vertex in enumerate(loop_vertices):
@@ -1061,7 +1122,7 @@ def hem_normal_error(version: str, co: np.ndarray, turned: list[tuple[int, int, 
         if k is not None:
             normal = corner_normals[loop]
             lean[k] = min(lean[k], float(normal @ outward[vertex]), -float(normal @ inward[k]))
-    failing = np.nonzero(lean <= 0.0)[0]
+    failing = np.nonzero(lean < -LEAN_ROUNDING)[0]
     if not len(failing):
         return None
     worst = int(failing[np.argmin(lean[failing])])
@@ -1086,19 +1147,44 @@ def _hem_normal_error(obj: bpy.types.Object, polygons: list[tuple[int, ...]], tu
     return hem_normal_error(obj.name, co, turned, inward, outward, loop_vertices, corner)
 
 
-def _lay_first(first: bpy.types.Object, recipe, label: str) -> None:
-    """Lays the first version's turned edges again from its cloth, in place: only their positions
-    change, so a turned edge is always its cloth's and a hand edit of one does not last. The shape the
-    recipe gave them follows, laid from the shape the recipe gave the cloth."""
+def _fold_error(obj: bpy.types.Object, polygons: list[tuple[int, ...]], turned: list[tuple[int, int, int]], label: str,
+                recipe) -> str | None:
+    """fold_error of a version, with how far its hem's cloth lies off its cage."""
+    co = bodies.world_positions(obj)
+    shell = Surface(cage_object(label), [], recipe_regions(recipe))
+    rooms = [shell.straight_distance(Vector(co[cloth])) for cloth, _rim, _flap in turned]
+    return fold_error(obj.name, *_folds(co, polygons, turned), turned, co, rooms)
+
+
+def _laid_first(co: np.ndarray, polygons: list[tuple[int, ...]], turned: list[tuple[int, int, int]], recipe,
+                lines: list[dict], label: str, band: str, loose: np.ndarray, shell: Surface):
+    """The first version's positions as a sync leaves them, with where its flaps lie on its cloth: the
+    cloth vertices its turned edges are turned from settled HEM_ROOM off the cage where they lie
+    closer, every other cloth vertex where it is, and the turned edges laid from that cloth."""
+    held = np.ones(len(co), bool)
+    held[[cloth for cloth, _rim, _flap in turned]] = False
+    settled = _settle_band(np.asarray(co, float), polygons, shell, recipe, lines, label, band, held | loose,
+                           [cloth for cloth, _rim, _flap in turned])
+    # Laid from the cloth as the file keeps it, in float32, so the next sync lays it alike.
+    return _lay(settled.astype(np.float32).astype(np.float64), polygons, turned, recipe["hem"], shell)
+
+
+def _lay_first(first: bpy.types.Object, recipe, lines: list[dict], label: str, band: str) -> None:
+    """Lays the first version's turned edges again from its cloth, in place, after the cloth vertices
+    they are turned from keep their room off the cage: only positions change, so a turned edge is
+    always its cloth's and a hand edit of one does not last. The shape the recipe gave them follows,
+    laid from the shape the recipe gave the cloth."""
     polygons = [tuple(p.vertices) for p in first.data.polygons]
     turned = _turned(recipe, polygons)
     if not turned:
         return
     shell = Surface(cage_object(label), [], recipe_regions(recipe))
-    _set_shape(first, lay_turned(bodies.world_positions(first), polygons, turned, recipe["hem"], shell))
+    loose = _loose(first.data)
+    _set_shape(first, _laid_first(bodies.world_positions(first), polygons, turned, recipe, lines, label, band, loose,
+                                  shell)[0])
     built = _attribute(first.data, BUILT)
     if built is not None and len(built) == len(first.data.vertices):
-        _store(first.data, BUILT, lay_turned(built, polygons, turned, recipe["hem"], shell))
+        _store(first.data, BUILT, _laid_first(built, polygons, turned, recipe, lines, label, band, loose, shell)[0])
     first.data.update()
 
 
@@ -1254,7 +1340,9 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
     co = co + normals * np.where(loose, 0.0, offset)[:, None]
     surface = Surface(cage_obj, [], recipe_regions(recipe))
     polygons = [tuple(p.vertices) for p in mesh.polygons]
-    co = _settle_band(co, polygons, surface, recipe, lines, label, band, loose)
+    # The open edges, which the hem turns, keep room for their fold above the cage.
+    hems = border_vertices(polygons) if recipe.get("hem", 0.0) > 0.0 else []
+    co = _settle_band(co, polygons, surface, recipe, lines, label, band, loose, hems)
     mesh.vertices.foreach_set("co", co.reshape(-1))
     mesh.update()
     _lay_hangs(mesh, arm, recipe, lines, label)
@@ -1309,10 +1397,8 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     turned = _turned(recipe, polygons)
     folded = turned_mask(len(co), turned)
 
-    def weights_on(skin: RegionSkin, positions: np.ndarray, indices=None) -> np.ndarray:
-        indices = range(len(positions)) if indices is None else indices
-        return _rounded_weights(np.array([skin.weights(keys[binding[i][0]], Vector(positions[i])) for i in indices])
-                                .reshape(-1, len(names)))
+    def weights_on(skin: RegionSkin, positions: np.ndarray) -> np.ndarray:
+        return _rounded_weights(np.array([skin.weights(keys[t], Vector(p)) for p, (t, _w, _o) in zip(positions, binding)]))
 
     transferred = weights_on(RegionSkin(bodies.source_body(labels[0]), names), co)
     # Loose parts hang on scaffolds instead of the cage: on the first body each of their vertices is
@@ -1336,14 +1422,21 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     else:
         sums = np.array([_checksum(row, names) for row in current])
         hand = (sums != stored) & (current.sum(1) > 0)
+    # A turned vertex is never painted by hand: it takes its weights from its cloth, also from cloth
+    # painted by hand, so its fold moves with the cloth in every pose.
+    hand &= ~folded
     first_weights = np.where(hand[:, None], current, transferred)
     checksums = np.array([_checksum(row, names) for row in transferred])
     if stored is not None and not transfer_all:
         checksums = np.where(hand, stored, checksums)
-    plan = {"names": names, "hand": int(hand.sum()), "binding": binding, "turned": turned,
+    if turned:
+        first_weights = turned_weights(first_weights, turned, _lay(co, polygons, turned, recipe["hem"], first_cage)[1])
+        checksums = np.where(folded, [_checksum(row, names) for row in first_weights], checksums)
+    plan = {"names": names, "hand": int(hand.sum()), "binding": binding, "turned": turned, "folded": folded,
             "hem": recipe["hem"] if turned else 0.0, "regions": regions,
             "versions": {first.name: {"positions": None, "under": None, "weights": first_weights,
                                       "checksums": checksums}}}
+    hems = [cloth for cloth, _rim, _flap in turned]
     # A modeled form, such as hair or a helmet, stands off the cage and moves with its smooth field;
     # a recipe's cloth lies on the cage and follows each of its faces.
     modeled = not isinstance(recipe, dict)
@@ -1355,7 +1448,7 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
             placed = field_place(first_shape, own_shape, co)
         else:
             placed = np.array([own.place(t, w, o) for t, w, o in binding])
-        positions = _settle_band(placed, polygons, own, recipe, lines, arm.name, band, loose | folded)
+        positions = _settle_band(placed, polygons, own, recipe, lines, arm.name, band, loose | folded, hems)
         under = None
         if under_binding is not None:
             under = field_place(first_shape, own_shape, under_first) if modeled else \
@@ -1370,15 +1463,14 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
                 positions[members[number]] = np.array([surface.place(t, w, o) for t, w, o in hangs[number]])
                 weights[members[number]] = _rounded_weights(
                     np.array([surface.weights_at(t, w) for t, w, _o in hangs[number]]))
-        # Last the turned edges, from the cloth where it now lies, with the weights of the skin there;
-        # those of loose parts keep their scaffold's.
+        weights = np.where(hand[:, None], first_weights, weights)
+        # Last the turned edges, from the cloth where it now lies, with its weights, also those of a
+        # loose part's cloth, which its scaffold gave it.
         if turned:
-            positions = lay_turned(positions, polygons, turned, recipe["hem"], own)
-            fixed = np.nonzero(folded & ~loose)[0]
-            weights[fixed] = weights_on(skin, positions, fixed)
+            positions, flaps = _lay(positions, polygons, turned, recipe["hem"], own)
+            weights = turned_weights(weights, turned, flaps)
         plan["versions"][version_name(name, arm.name)] = {
-            "positions": positions, "under": under, "weights": np.where(hand[:, None], first_weights, weights),
-            "checksums": None}
+            "positions": positions, "under": under, "weights": weights, "checksums": None}
     return plan
 
 
@@ -1390,6 +1482,7 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
     for arm in arms:
         target = bpy.data.objects.get(version_name(name, arm.name))
         entry = plan["versions"][version_name(name, arm.name)]
+        weights = entry["weights"]
         if entry["positions"] is not None:
             fitted, under = entry["positions"], entry["under"]
             under_correction = np.zeros_like(fitted)
@@ -1412,8 +1505,9 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
             shape = fitted + correction
             # A turned edge follows its cloth's corrections and keeps none of its own.
             if plan["turned"] and np.any(correction):
-                shape = lay_turned(shape, [tuple(p.vertices) for p in first.data.polygons], plan["turned"], plan["hem"],
-                                   Surface(cage_object(arm.name), [], plan["regions"]))
+                shape, flaps = _lay(shape, [tuple(p.vertices) for p in first.data.polygons], plan["turned"], plan["hem"],
+                                    Surface(cage_object(arm.name), [], plan["regions"]))
+                weights = turned_weights(weights, plan["turned"], flaps)
             _set_shape(target, shape, under + under_correction if under is not None else None)
             _store(target.data, FITTED, fitted)
             if under is not None:
@@ -1426,7 +1520,7 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
             _store(target.data, TRANSFERRED, entry["checksums"], "INT")
         target.parent = arm
         target.matrix_parent_inverse = Matrix.Identity(4)
-        bodies.set_weights(target, entry["weights"], names)
+        bodies.set_weights(target, weights, names)
         bodies.bind(target, arm)
 
 
@@ -1504,24 +1598,39 @@ def create(file: str, name: str, band: str, recipe, lines: list[dict], body_list
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
 
 
-def _carry_over(old: bpy.types.Object, new: bpy.types.Object) -> int:
+def carried_moves(built: np.ndarray, shaped: np.ndarray, points: np.ndarray, sources) -> np.ndarray:
+    """How far each point of a new build moves to carry a handmade shape over: by the difference
+    between the old version and the old build at the nearest point of the old build among sources,
+    the old vertices the carry-over reads, the first of them where two lie as near."""
+    built, points = np.asarray(built, float)[sources], np.asarray(points, float)
+    difference = np.asarray(shaped, float)[sources] - built
+    moves = np.empty((len(points), 3))
+    for start in range(0, len(points), 256):
+        chunk = points[start:start + 256]
+        nearest = np.argmin(((chunk[:, None, :] - built[None, :, :]) ** 2).sum(axis=2), axis=1)
+        moves[start:start + 256] = difference[nearest]
+    return moves
+
+
+def _carry_over(old: bpy.types.Object, new: bpy.types.Object, recipe) -> int:
     """Gives a new build of the first version the handmade shape of the old one: each new vertex
     takes the difference between the old version and the old build at the nearest point of the old
-    build. Returns how many old vertices had been shaped by hand."""
+    build's cloth. The old turned edges are left out: they are laid from their cloth and carry no
+    shape of their own, and the new build's are laid again from its cloth. Returns how many old
+    vertices of the cloth had been shaped by hand."""
     built = _attribute(old.data, BUILT)
     shaped = bodies.world_positions(old)
     if built is None or len(built) != len(shaped):
         return 0
-    difference = shaped - built
-    near = KDTree(len(built))
-    for i, point in enumerate(built):
-        near.insert(point, i)
-    near.balance()
+    try:
+        turned = _turned(recipe, [tuple(p.vertices) for p in old.data.polygons])
+    except ArtPipelineError:
+        turned = []
+    sources = np.nonzero(~turned_mask(len(built), turned))[0]
     co = bodies.world_positions(new)
-    moved = np.array([difference[near.find(point)[1]] for point in co])
-    new.data.vertices.foreach_set("co", (co + moved).reshape(-1))
+    new.data.vertices.foreach_set("co", (co + carried_moves(built, shaped, co, sources)).reshape(-1))
     new.data.update()
-    return int((np.linalg.norm(difference, axis=1) > FIT_TOLERANCE).sum())
+    return int((np.linalg.norm((shaped - built)[sources], axis=1) > FIT_TOLERANCE).sum())
 
 
 def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str,
@@ -1599,7 +1708,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     if recipe != MODELED and (first is None or rebuild):
         new = _new_first_version(name, band, recipe, lines, arms[0])
         if first is not None:
-            shaped = _carry_over(first, new)
+            shaped = _carry_over(first, new, recipe)
             notes.append(f"{version_name(name, labels[0])} was built again from its recipe; {shaped} vertices keep "
                          "their handmade shape.")
             for obj in [bpy.data.objects.get(version_name(name, arm.name)) for arm in arms[1:]] + [first]:
@@ -1614,7 +1723,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
         raise ArtPipelineError(f'Model the template "{version_name(name, labels[0])}" on the first body first.')
     # The first version's turned edges come from its cloth as it now lies, also after a rebuild that
     # carried a handmade shape over, or a move with its cage.
-    _lay_first(first, recipe, labels[0])
+    _lay_first(first, recipe, lines, labels[0], band)
 
     plan = _plan(name, arms, band, recipe, lines, transfer_all)
     _apply(plan, name, arms)
@@ -1629,8 +1738,9 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
 def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str) -> list[str]:
     """A template is checked as a sync would leave it: its bodies and its cages are the current ones
     of their files, its first version was built from the recipe of its asset.json, every fitted
-    version is fitted to the current first version, and every version has the weights a sync gives
-    it."""
+    version is fitted to the current first version, every version has the weights a sync gives it,
+    and on every version the turned edges are laid from its cloth and have its weights, so a hand
+    edit of a hem fails until a sync lays it again."""
     labels = [root for _path, root in body_list]
     stale = body_files.stale_bodies(body_list)
     if stale:
@@ -1641,27 +1751,16 @@ def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: lis
     if first is not None and recipe != MODELED and first.get(RECIPE) != recipe_text(recipe):
         return [f'"{first.name}" was built from another recipe than its asset.json names; run '
                 "tools/art/Sync-GarmentAsset.ps1 -Rebuild."]
-    if first is not None and recipe != MODELED:
-        polygons = [tuple(p.vertices) for p in first.data.polygons]
-        try:
-            turned = _turned(recipe, polygons)
-            shell = Surface(cage_object(labels[0]), [], recipe_regions(recipe)) if turned else None
-        except ArtPipelineError:
-            # garment_errors reports a border that is not turned and a missing cage.
-            turned = []
-        if turned:
-            co = bodies.world_positions(first)
-            if np.abs(lay_turned(co, polygons, turned, recipe["hem"], shell) - co).max() > FIT_TOLERANCE:
-                return [f'The turned edges of "{first.name}" are not laid from its cloth; run '
-                        "tools/art/Sync-GarmentAsset.ps1."]
     arms = [bpy.data.objects[label] for label in labels]
     try:
         plan = _plan(name, arms, band, recipe, lines)
     except ArtPipelineError:
-        # garment_errors reports the missing first version or cage.
+        # garment_errors reports the missing first version or cage, and a border that is not turned.
         return []
     errors = []
-    for version, entry in plan["versions"].items():
+    for label in labels:
+        version = version_name(name, label)
+        entry = plan["versions"][version]
         obj = bpy.data.objects.get(version)
         if obj is None:
             errors.append(f'The garment has no version "{version}"; run tools/art/Sync-GarmentAsset.ps1.')
@@ -1680,9 +1779,34 @@ def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: lis
                     errors.append(f'The shape key {UNDER_HEADWEAR} of "{version}" is not fitted to the current '
                                   f'"{version_name(name, labels[0])}"; run tools/art/Sync-GarmentAsset.ps1.')
                     continue
-        if np.abs(bodies.weights_of(obj, plan["names"]) - entry["weights"]).max(initial=0.0) > WEIGHT_TOLERANCE:
+        current = bodies.weights_of(obj, plan["names"])
+        # The weights of turned vertices follow their cloth where it lies now, below.
+        cloth = ~plan["folded"]
+        if np.abs(current - entry["weights"])[cloth].max(initial=0.0) > WEIGHT_TOLERANCE:
             errors.append(f'"{version}" does not have the weights its body gives it; run tools/art/Sync-GarmentAsset.ps1.')
+            continue
+        if plan["turned"]:
+            errors += filter(None, [_turned_stale(obj, current, label, label == labels[0], plan, recipe, lines, band)])
     return errors
+
+
+def _turned_stale(obj: bpy.types.Object, current: np.ndarray, label: str, is_first: bool, plan: dict, recipe,
+                  lines: list[dict], band: str) -> str | None:
+    """Whether a version's turned edges are as a sync leaves them: laid from its cloth, the first
+    version's after its hem keeps its room off the cage, and with the weights of its cloth."""
+    polygons = [tuple(p.vertices) for p in obj.data.polygons]
+    co = bodies.world_positions(obj)
+    shell = Surface(cage_object(label), [], plan["regions"])
+    if is_first:
+        laid, flaps = _laid_first(co, polygons, plan["turned"], recipe, lines, label, band, _loose(obj.data), shell)
+    else:
+        laid, flaps = _lay(co, polygons, plan["turned"], plan["hem"], shell)
+    if np.abs(laid - co).max(initial=0.0) > FIT_TOLERANCE:
+        return f'The turned edges of "{obj.name}" are not laid from its cloth; run tools/art/Sync-GarmentAsset.ps1.'
+    derived = turned_weights(current, plan["turned"], flaps)
+    if np.abs(derived - current)[plan["folded"]].max(initial=0.0) > WEIGHT_TOLERANCE:
+        return f'The turned edges of "{obj.name}" do not have the weights of their cloth; run tools/art/Sync-GarmentAsset.ps1.'
+    return None
 
 
 def shape_key_errors(obj: bpy.types.Object, slot: str | None) -> list[str]:
@@ -1768,7 +1892,7 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
                               f"vertices and face centres ({int(near.sum())} too close, {int(far.sum())} too far; "
                               f"{', '.join(worst)}), over {places}.")
         if turned and len(obj.data.vertices) == len(first.data.vertices):
-            errors += filter(None, [fold_error(obj.name, *_folds(bodies.world_positions(obj), polygons, turned)),
+            errors += filter(None, [_fold_error(obj, polygons, turned, label, recipe),
                                     _hem_normal_error(obj, polygons, turned)])
     return errors
 

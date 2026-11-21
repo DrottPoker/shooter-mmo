@@ -2587,7 +2587,7 @@ The recipe in `asset.json` says what the pipeline builds:
 | --- | --- |
 | `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and `head`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
-| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest, so a hem turned in at the border of the template's region, such as the cloak's neckline over a shirt's, keeps above the inner garment. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest. A [turned edge](#turned-edges) takes its band from the cloth it is turned from: it may lie under the inner garment's surface, down to the cage, inside its own cloth. |
 | `hang` | Optional: its [loose parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts), which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. A part across the back may also have a `top` and a `width`, shares above 0 and up to 1.5 of how far the shoulder joints lie from the middle: with a `top`, the template keeps only its middle within the top, cut straight down there, and its back only above the part's line, with a cut that need not be a cage line, and the part hangs from the template's open edge at its line behind the bone there; with a `width`, no smaller than the top, the part fans out to that width by the first joint of its chains. A part may name a line of the legs as `to`, its hem: it then hangs down to that line's height on every body, between the body's two sides, instead of to the tips of its chains, and the sync stops when that line lies below the tips. The robe hangs a skirt `all` around from `SkirtWaist` on the `skirt` chains with a flare of 0.04 down to `SkirtHem`; the cloak hangs its back from `CloakNape` on the `cloak` chains with a flare of 0.03, a top of 0.72, and a width of 0.8. A template with loose parts names the matching `cloth` profile. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, up to 0.03, fading out over 60 mm. The templates have none; see [Templates](EQUIPMENT_VISUALS_DESIGN.md#templates). |
 | `hem` | How deep every open edge is turned inward, in meters, up to 0.01, such as `0.002`. |
@@ -2638,8 +2638,9 @@ the point attribute `fitted_under_headwear`.
   `hang_ring` their column and ring, and the face attribute `hang_face` its
   faces; every other version places them on its own body's scaffold. The point
   attribute `built` holds the shape the recipe gave, so a rebuild carries a
-  shape made by hand over: each new vertex takes the difference at its place on
-  the cage.
+  shape made by hand over: each new vertex takes the difference at the nearest
+  vertex of the old cloth; the old turned edges carry none, since they are laid
+  from their cloth.
 - Every other version is fitted from the first through the cage, as
   [Fitting Every Body Type](EQUIPMENT_VISUALS_DESIGN.md#fitting-every-body-type)
   describes: each vertex is bound to a triangle of the first body's cage, of
@@ -2656,8 +2657,9 @@ the point attribute `fitted_under_headwear`.
   attribute `fitted` holds the shape the last fitting gave, and the difference
   to it is applied again.
 - The first version's turned edges are laid again from its cloth where it lies,
-  in place: only their positions change, never the order of the vertices, faces,
-  or corners, so the textures stay in their UVs. `built` follows for them.
+  in place, after the cloth vertices they are turned from keep their room off
+  the cage: only positions change, never the order of the vertices, faces, or
+  corners, so the textures stay in their UVs. `built` follows for them.
 - Every vertex gets the weights of the nearest skin of the body part its cage
   face lies on, the cage's region and side, and on a hand the face's finger or
   thumb with the palm, interpolated from the corners of the skin's triangle,
@@ -2665,7 +2667,8 @@ the point attribute `fitted_under_headwear`.
   `transferred_weights` holds a checksum of the weights the last transfer gave
   each vertex of the first version, so a vertex whose weights were painted by
   hand keeps them, also in the other versions. `-Weights` transfers every weight
-  again.
+  again. A turned vertex takes its weights from its cloth instead, as
+  [Turned Edges](#turned-edges) describes.
 - A file that this leaves as it was is not saved, so its approvals stay valid.
 
 ### Turned Edges
@@ -2675,18 +2678,28 @@ sync, and never settled into the band on its own: a settle of its own pushed it
 out through the cloth where the body leans over the hem, such as a belly over a
 shirt's hem, and turned its faces up, which lit as a bright strip in the game.
 
+- The cloth vertices a turned edge is turned from keep at least 0.5 mm off the
+  cage, where their band lets them come closer: the settle moves one that lies
+  closer, on every version and at every sync, so its fold has room above the
+  cage. A loose part's hem hangs on its scaffold and is never settled.
 - The rim lies under the cloth's vertex it is turned from, along the cloth's
   normal there, the recipe's `hem` deep, or as deep as the cloth lies off the
   cage there if that is less, so it never lies under the cage.
 - The flap runs 12 mm back across the cloth from the edge and lies at the same
   depth inside the cloth along its normal at the flap's top, or as deep as the
   cloth lies off the cage there if that is less.
+- A turned vertex takes its skin weights from its cloth, so its fold moves with
+  the cloth in every pose: the rim the weights of the cloth vertex it is turned
+  from, the flap the weights of the cloth over it, interpolated on the cloth's
+  face, also where the cloth's weights were painted by hand, and on a loose part
+  the weights its scaffold gave the cloth.
 - The pipeline finds a template's turned edges from its faces alone: the tops
   of the flaps are the border of the mesh, each joins its rim, and the rim joins
   the cloth's vertex. Nothing is stored for them, so they survive a fitting, a
   rebuild, and an export.
-- A hand edit of a turned vertex does not survive a sync. Shape the cloth
-  instead; the turned edge follows it.
+- A hand edit of a turned vertex, of its position or its weights, does not
+  survive a sync, and until the next sync the `model` stage fails. Shape the
+  cloth instead; the turned edge follows it.
 
 ### Checks And Review Of A Template
 
@@ -2709,20 +2722,25 @@ their files and the cage the approved one, that every body has a version with
 the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, a hair
 template's also in its shape key `UnderHeadwear`, and that the fitting, the
-weights, and the first version's turned edges are as a sync leaves them. A point
-is too close by its straight distance to the cage's nearest point and too far by
-its distance along the normal of the cage's nearest face, as the recipes build
-the cloth. A turned edge's vertices may come down to the cage, and the centres of
-the faces that touch them, which are flat between points that may lie on a round
-cage, may cut under it by less than the `hem` depth; neither lies farther from
-the cage than its cloth may. Of a template whose recipe turns its edges, the
-stage also checks on every version that no turned vertex lies outside the cloth
-it is turned from and that every rim lies at least 0.3 mm inside it, and that
-every corner normal the export writes at the hem's outer edge leans out of the
-cloth and out of the opening: down and out at a bottom hem, up and out at a
-neckline, out along the arm at a cuff. A normal that leans back into the garment
-breaks the rule, and the message names the version, how many hem vertices break
-it, and the worst one.
+weights, and the turned edges of every version, their positions and their
+weights, are as a sync leaves them. A point is too close by its straight
+distance to the cage's nearest point and too far by its distance along the
+normal of the cage's nearest face, as the recipes build the cloth. A turned
+edge's vertices may come down to the cage, and the centres of the faces that
+touch them, which are flat between points that may lie on a round cage, may cut
+under it by less than the `hem` depth; neither lies farther from the cage than
+its cloth may. The cloth vertices a turned edge is turned from keep 0.5 mm off
+the cage. Of a template whose recipe turns its edges, the stage also checks on
+every version that no turned vertex lies outside the cloth it is turned from and
+that every rim lies at least 0.3 mm inside it; the message names the cloth
+vertex at the thinnest fold, which is the one to shape, and says when the cloth
+there lies too close to the cage for a fold. It also checks that every corner
+normal the export writes at the hem's outer edge leans out of the cloth and out
+of the opening: down and out at a bottom hem, up and out at a neckline, out
+along the arm at a cuff. A normal that leans back into the garment breaks the
+rule, and the message names the version, how many hem vertices break it, and the
+worst one. Neither rule is decided by the rounding of float32 positions and
+normals.
 
 The `rig` stage adds the rig rules of skinned assets for each version on its
 armature, the motion check, and the pair check:
@@ -2896,7 +2914,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
 | `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid`, and the bones no clip keys. |
-| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges read from a mesh's faces, the fold rule and its least fold, and that the build goes over its elements by index, never over a set. |
+| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges and the border read from a mesh's faces, the fold rule, its message, its least fold, and the room of a hem, and that the build and every function of `hang.py` go over their elements by index, never over a set. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
@@ -2911,7 +2929,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_rig_landmarks.py` | The bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges and the rule of the normals at a hem, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
