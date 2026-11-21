@@ -142,11 +142,13 @@ a canvas of its own, a copy of the body it is painted on that never changes with
 the bodies, and every body gets the paint baked into its own paint UV map when
 the layer is synced: exactly through the shared topology where a body has the
 canvas's, and through the garment cage and the rigs' landmarks otherwise. The
-paint UV map is a second UV map of every body, only for paint: the mirrored
-human skin keeps its texture, and the paint lays the two sides apart, so a
-tattoo can be one-sided. When a new base model replaces the bodies, each layer's
-canvas moves to its new first body and its paint is checked and touched up
-there; see [Paint Layers](ART_PIPELINE.md#paint-layers).
+paint UV map is a second UV map of every body, only for paint, which gives each
+side of the body texels of its own, so a tattoo can be one-sided: on the human
+bodies, whose skin is not mirrored, it is the skin's own UV map, and a body with
+mirrored skin gets one that lays the two sides apart. When a new base model
+replaces the bodies, each layer's canvas moves to its new first body and its
+paint is checked and touched up there; see
+[Paint Layers](ART_PIPELINE.md#paint-layers).
 
 Under the look lies the body model, `Human_Male` or `Human_Female`: exactly one,
 chosen in character creation and never changed. One look serves both bodies: a

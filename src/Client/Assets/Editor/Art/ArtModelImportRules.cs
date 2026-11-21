@@ -32,8 +32,8 @@ namespace Mmorpg.Client.Editor
         // A dyeable garment texture's dye mask, whose channels are data, not colors.
         public const string DyeMaskSuffix = "_Dye.png";
         public const int MaximumTextureSize = 2048;
-        // A paint layer's image is cropped to its paint in a body's paint UVs, which are twice as
-        // wide as the skin texture for a mirrored body, so it keeps its size, up to that width.
+        // A paint layer's image is cropped to its paint in a body's paint layout, which is as wide
+        // as the human body texture, so it keeps its size, up to that width.
         public const int MaximumPaintTextureSize = 4096;
 
         // Blender writes every clip at this rate; the animation rules require it.

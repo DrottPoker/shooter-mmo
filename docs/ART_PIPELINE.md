@@ -441,9 +441,9 @@ reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
    `Male_Head` to `Male_Feet`, and the eyes, teeth, and tongue as its children,
    and the file has no actions. Select `Male_Torso`, open the UV Editor, and
    switch the UV map from `UVMap` to `UVMap_Paint` in the mesh data. Expected
-   result: in `UVMap` both halves of the chest lie on one island; in
-   `UVMap_Paint` the left half lies in the left half of the map and the right
-   half in the right half. Close Blender without saving.
+   result: both maps are the same: the chest is one island, the trunk's front,
+   with both of its halves side by side, and no island lies over another.
+   Close Blender without saving.
 
 ### Compare A Model With Its Reference Pictures
 
@@ -814,8 +814,9 @@ quality compression. The images of paint layers and garments, below
 mask, `T_Garment_<Name>_Dye`, imports without alpha and as linear data, not
 sRGB, because the shader reads how far each channel dyes as it is stored. A
 paint layer's image keeps its size, up to 4096 px and also when that is not a
-power of two, because it is cropped to its paint in a body's paint UV map, which
-is twice as wide as the skin texture of a mirrored body.
+power of two, because it is cropped to its paint in a body's paint layout: the
+size of the skin texture, 4096 by 2048 texels for the human bodies' `M_Body`, and
+twice as wide for a body that mirrors its skin texture.
 
 `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
 appearance catalog of every exported skinned model with `variants` or a paint
@@ -2146,14 +2147,19 @@ body.
 The canvas is painted in its paint UV map, `UVMap_Paint`, which every body has
 next to the skin's `UVMap`: the skin's UVs, with every material whose faces share
 their texels with their mirror image laid out twice as wide, the left side in the
-left half and the right side in the right half. The human bodies' skin texture
-`T_Body_<Label>` is mirrored, so the paint of `M_Body` is twice as wide as the
-skin, 4096 by 2048 texels for both sides at the skin's own density, and paint on
-one side stays on that side, as the left forearm's runes of `ForearmRunes` do.
-The face texture `T_Face_<Label>` is not mirrored, so `M_Face`'s paint, such as
-the scar, keeps its UVs and its size. `Sync-HumanBase.ps1` writes `UVMap_Paint`
-on every body part from the source body's `UVMap`; a body of another base model
-brings a map of its own without mirroring, so its `UVMap_Paint` is its `UVMap`.
+left half and the right side in the right half. The human bodies mirror none of
+their skin: every island of their `UVMap` has texels of its own, the left
+forearm's apart from the right one's, so their `UVMap_Paint` is their `UVMap`,
+the paint of `M_Body` has the size of the body texture `T_Body_<Label>`, 4096 by
+2048 texels, and that of `M_Face`, such as the scar, the size of the face
+texture `T_Face_<Label>`. Paint on one side so stays on that side, as the left
+forearm's runes of `ForearmRunes` do: `check-parts` of `Sync-HumanBase.ps1`
+fails a body in which a texel of `UVMap_Paint` belongs to both sides, and
+`ArtAppearanceCatalogTests` holds the runes' crop within the paint UVs of the
+male's left forearm and apart from those of the right one.
+`Sync-HumanBase.ps1` writes `UVMap_Paint` on every body part from the source
+body's `UVMap`; a body of another base model brings a map of its own without
+mirroring, so its `UVMap_Paint` is its `UVMap`.
 
 ### Moving The Paint To The Bodies
 
@@ -3693,17 +3699,17 @@ passes.
 | `art/GarmentTextures/WoolRobe` | `texture` | none | Undyed grey-brown wool on `Robe`, 1024 px, painted the same way: fibres and mottling, folds that deepen down the skirt from the waist, stitched seams, among them the waist seam where the skirt starts, and darker turned hems with stitches at the neckline, the cuffs, and the skirt's hem. Roughness 0.86. Dyeable: one dye channel over all of it, natural color `#8D806E`; its image is the neutral wool, which the natural color gives back within one step of 255. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
 | `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. |
-| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03, 920 triangles per body, 243 vertices of them on the chains. It covers nothing (`"covers": false`). One dye channel. |
-| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,808 triangles per body, the cuff about 7 cm up the forearm. |
+| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03, 892 triangles per body, 243 vertices of them on the chains. It covers nothing (`"covers": false`). One dye channel. |
+| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,840 triangles per body, the cuff about 7 cm up the forearm. |
 | `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
 | `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
-| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,284 triangles per body. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,360 triangles per body. |
 | `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and stays stiff: the fitting's smooth field bends a thin bar that stands off the face, so the female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage. |
 | `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,872 triangles per body, 384 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
-| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,644 triangles per body. |
+| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
-| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
-| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, on a canvas of the female: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
+| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,436 triangles per body, with seams along the inside of the legs. |
+| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, painted on a canvas of the female after her form: a pale blue bra with a darker band about 2.5 cm high under the bust, a cup over each breast with one smooth upper edge down to a centre piece between the breasts, and darker straps about 1.2 cm wide from the cups over the shoulders, midway between the neck and the shoulder joint, and straight down the back to the band. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900, on a canvas of the male, moved to the female: pale blue briefs with a darker waistband, lifted out of the male body texture. Roughness 0.8. |
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
@@ -3715,9 +3721,6 @@ passes.
 ## Planned
 
 - Forearm twist bones.
-- A model fix of the low armpits, where the triceps meet the torso, where skin
-  comes through close-fitting sleeves in motion, and of the female's bra straps,
-  which are painted up her neck, above the collar of chest paint.
 - Making a body type for a new race from a human body, with the human base tools
   working for every body of the race; see
   [Future Races And Base Models](EQUIPMENT_VISUALS_DESIGN.md#future-races-and-base-models).
