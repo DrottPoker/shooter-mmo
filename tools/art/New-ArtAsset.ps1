@@ -389,14 +389,16 @@ try {
             & (Join-Path $PSScriptRoot "Sync-PaintAsset.ps1") -Asset $directory -BlenderPath $BlenderPath
         }
         "garment" {
+            # The template records the content of its cage, from the cage's record made current.
+            $blender = Resolve-ArtBlender $BlenderPath
+            $null = Update-ArtContentRecord $blender $manifest.Cage
             $arguments = @(
                 "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
                 "--python", $script:ArtBlenderCli, "--", "garment-create",
                 "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
-                "--cage-manifest", $manifest.Cage.ManifestPath)
+                "--cage-manifest", $manifest.Cage.ManifestPath, "--cage-content", (Get-ArtCageContent $manifest.Cage))
             $arguments += @($manifest.Bodies | ForEach-Object { @("--body", "$($_.SourcePath)=$($_.Root)") })
             $arguments += Get-ArtGarmentPairArguments $manifest
-            $blender = Resolve-ArtBlender $BlenderPath
             $output = Invoke-ArtNative $blender $arguments
             if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART_GARMENT created *" }).Count -eq 0) {
                 throw "Blender could not write $($manifest.SourcePath):`n$(($output | Select-Object -Last 20) -join "`n")"

@@ -45,13 +45,13 @@ CANVAS = "Canvas"
 CANVAS_CAGE = "Canvas_Cage"
 # Custom properties: the label of the body a canvas was copied from, the rig's landmarks of a
 # canvas or a body, the fingerprint of what the move reads from a body, a body image's place in its
-# full layout, and the SHA-256 of the cage file a body's cage version was taken from.
+# full layout, and the content fingerprint of the cage a body's cage version was taken from.
 CANVAS_BODY = "canvas_body"
 LANDMARKS = "landmarks"
 LAYOUT = "paint_layout"
 RECT = "rect"
 FULL = "layout"
-CAGE_SHA = "cage_sha256"
+CAGE_CONTENT = "cage_content"
 DIGIT = "digit"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 BODY_SPACING = 1.2
@@ -970,9 +970,9 @@ def export_images(name: str, labels: list[str], folder: str) -> list[dict]:
 
 
 def cage_record() -> str | None:
-    """The SHA-256 of the cage file the bodies' cage versions came from, when a body was moved
-    through the cage."""
-    return bpy.context.scene.get(CAGE_SHA)
+    """The content fingerprint of the cage the bodies' cage versions came from, when a body was
+    moved through the cage."""
+    return bpy.context.scene.get(CAGE_CONTENT)
 
 
 def _ground(collection: bpy.types.Collection, low: float, high: float) -> None:
@@ -1006,14 +1006,6 @@ def _cage_version(cage_file: str, label: str, name: str, collection: bpy.types.C
     obj.hide_render = True
     obj.hide_set(True)
     return obj
-
-
-def _file_sha256(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _remove(obj: bpy.types.Object | None) -> None:
@@ -1087,25 +1079,27 @@ def _new_canvas(name: str, part: str, body: bpy.types.Object, label: str, cage_f
     preview_material(canvas, index, f"Canvas_{part}_{label}", [image], live=True)
 
 
-def _keep_cages(canvas: bpy.types.Object, joined: list[bpy.types.Object], labels: list[str], cage_file: str | None) -> None:
+def _keep_cages(canvas: bpy.types.Object, joined: list[bpy.types.Object], labels: list[str], cage_file: str | None,
+                cage_content: str | None) -> None:
     """Gives every body of another topology than the canvas its cage version, which the move through
-    the cage reads, and takes it from every body of the canvas's topology."""
+    the cage reads, and takes it from every body of the canvas's topology. The scene keeps the cage's
+    content fingerprint while a body has a cage version."""
     for body, root in zip(joined, labels):
         if same_topology(canvas.data, body.data):
             _remove(_body_cage(root))
         elif _body_cage(root) is None:
-            if cage_file is None:
+            if cage_file is None or cage_content is None:
                 raise ArtPipelineError(f"The body {root} has another topology than the canvas and needs the garment cage.")
             _cage_version(cage_file, root, cage.version_name(root), _collection(CAGE_COLLECTION))
     if any(_body_cage(root) for root in labels):
-        bpy.context.scene[CAGE_SHA] = _file_sha256(cage_file)
-    elif CAGE_SHA in bpy.context.scene:
-        del bpy.context.scene[CAGE_SHA]
+        bpy.context.scene[CAGE_CONTENT] = cage_content
+    elif CAGE_CONTENT in bpy.context.scene:
+        del bpy.context.scene[CAGE_CONTENT]
 
 
-def stale_errors(name: str, part: str, body_list: list[tuple[str, str]], cage_file: str | None) -> list[str]:
+def stale_errors(name: str, part: str, body_list: list[tuple[str, str]], cage_content: str | None) -> list[str]:
     """Why the open file is not what a sync gives now: a broken rule, a body that changed in its own
-    file, or a cage version that changed in the cage's file."""
+    file, or cage versions taken from other content of the cage."""
     labels = [root for _path, root in body_list]
     errors = paint_errors(name, part, labels)
     if errors:
@@ -1121,13 +1115,13 @@ def stale_errors(name: str, part: str, body_list: list[tuple[str, str]], cage_fi
                 _remove(fresh)
     finally:
         bpy.data.collections.remove(scratch)
-    if cage_file is not None and bpy.context.scene.get(CAGE_SHA) not in (None, _file_sha256(cage_file)):
-        errors.append("The cage changed in its file.")
+    if cage_content is not None and bpy.context.scene.get(CAGE_CONTENT) not in (None, cage_content):
+        errors.append("The cage's content changed.")
     return errors
 
 
 def sync(path: str, name: str, part: str, body_list: list[tuple[str, str]], cage_file: str | None,
-         canvas_label: str | None = None, force: bool = False) -> bool:
+         cage_content: str | None, canvas_label: str | None = None, force: bool = False) -> bool:
     """Builds the paint file from the bodies (file, armature), or rebuilds its body meshes, keeps the
     canvas and its paint, moves the paint to every body, and saves. A new file's canvas is a copy of
     the first body; canvas_label moves the canvas to that body, with the paint moved to it. Returns
@@ -1137,14 +1131,14 @@ def sync(path: str, name: str, part: str, body_list: list[tuple[str, str]], cage
         raise ArtPipelineError(f"The canvas can move only to a body of the layer: {', '.join(labels)}.")
     if os.path.isfile(path):
         bpy.ops.wm.open_mainfile(filepath=path)
-        if not force and canvas_label is None and not stale_errors(name, part, body_list, cage_file):
+        if not force and canvas_label is None and not stale_errors(name, part, body_list, cage_content):
             return False
     else:
         bpy.ops.wm.read_factory_settings(use_empty=True)
     for obj in [o for o in bpy.data.objects if o.name not in (CANVAS, CANVAS_CAGE)]:
         _remove(obj)
-    if CAGE_SHA in bpy.context.scene:
-        del bpy.context.scene[CAGE_SHA]
+    if CAGE_CONTENT in bpy.context.scene:
+        del bpy.context.scene[CAGE_CONTENT]
     bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
     reference = _collection(REFERENCE_COLLECTION)
     joined = []
@@ -1157,14 +1151,14 @@ def sync(path: str, name: str, part: str, body_list: list[tuple[str, str]], cage
     if canvas is None:
         _new_canvas(name, part, joined[0], labels[0], cage_file, None)
         canvas = bpy.data.objects[CANVAS]
-    _keep_cages(canvas, joined, labels, cage_file)
+    _keep_cages(canvas, joined, labels, cage_file, cage_content)
     if canvas_label is not None:
         body = joined[labels.index(canvas_label)]
         rgba = move(canvas, body, part, canvas_label, bpy.data.objects[CANVAS_CAGE], _body_cage(canvas_label))
         _new_canvas(name, part, body, canvas_label, cage_file, rgba)
         canvas = bpy.data.objects[CANVAS]
         # Bodies that shared the old canvas's topology may not share the new one's.
-        _keep_cages(canvas, joined, labels, cage_file)
+        _keep_cages(canvas, joined, labels, cage_file, cage_content)
     for root in labels:
         _image(image_name(name, root), (CROP_BLOCK, CROP_BLOCK))
     refresh(name, part, labels)
