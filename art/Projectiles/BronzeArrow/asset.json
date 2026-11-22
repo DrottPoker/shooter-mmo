@@ -10,22 +10,22 @@
         "version": 1,
         "sourceSha256": "ae3b3dda2acb7f7701c4c7277f1f21cbb8e70ee38012f0122119da43d77dd91f",
         "stages": {
-            "model": "85f8fdb1c75cab55abcd03615075623a38c42d5851a9bdb2d993d188ec961ae5"
+            "model": "b56d0b636b12788943f2b4fe6c470f52f0871da20ff9a1e5ba529fc9a66939bc"
         },
         "parts": {
             "materials": "7262e7b9cd028d237cfe9f6ea5c194881817549b637691d94447c3bf7f14ceb2",
-            "shape": "71e39ae07f91b9745eb9364736455a5839c2708420025b87cfbfee572a50a825",
+            "shape": "a055f53acc2bfa5842a44bb81276c99208fcae51b9f233ec6e33c367cca2e056",
             "uv": "ad76107befebcff06488b5520ad4a9408eba5378f55e90dfac31f0e3ea704488"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-10-31",
-            "contentSha256": "85f8fdb1c75cab55abcd03615075623a38c42d5851a9bdb2d993d188ec961ae5"
+            "contentSha256": "b56d0b636b12788943f2b4fe6c470f52f0871da20ff9a1e5ba529fc9a66939bc"
         }
     },
     "export": {
-        "contentSha256": "85f8fdb1c75cab55abcd03615075623a38c42d5851a9bdb2d993d188ec961ae5",
+        "contentSha256": "b56d0b636b12788943f2b4fe6c470f52f0871da20ff9a1e5ba529fc9a66939bc",
         "targetSha256": "8d0034ba201d3f523d86623b2aaf42f982e4af6b695cef2ee6e54661b97f6f17",
         "materials": [
             {
