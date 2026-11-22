@@ -34,32 +34,32 @@
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952"
+            "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c"
         },
         "rig": {
             "date": "2026-11-22",
-            "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952"
+            "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c"
         }
     },
     "export": {
-        "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952",
+        "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/Trousers_Male.fbx",
-                "sha256": "9655b2a10b4f5c1ac008e10e32c48ae42720530afee8691462d1d407ca726bec",
+                "sha256": "d96e1d95a9b65138733bb41eac2ed846ef55689c735bce78f32bb9e49030c31e",
                 "data": "src/Client/Assets/Art/Models/Garments/Trousers_Male.json",
-                "dataSha256": "fa0397e9ef72aa5f4b7eb2501df27d8697c6bef8f583a01796313faf9a4f7e9e"
+                "dataSha256": "c61a6f14f1a9130e87e705c559501f86c51284c757498f44ce8a6330ee6f7f54"
             },
             {
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/Trousers_Female.fbx",
-                "sha256": "6f1d82b80b661a4d5dfc09eadd52bd30ca16a6572d287137a5513218f22a524a",
+                "sha256": "f4057048b7a5884e9179c2f9ed8c28f24730d3fd0305aed5506cafc9c304c262",
                 "data": "src/Client/Assets/Art/Models/Garments/Trousers_Female.json",
-                "dataSha256": "007468758c2b1d6d72013af527a1724c593b4caaccf8c90f89372473f4989f58"
+                "dataSha256": "88827d81256f25c5c4a336e1871c7a47961428a98437bc8bb8c0c9077f9bfcb0"
             }
         ],
         "clipSources": [

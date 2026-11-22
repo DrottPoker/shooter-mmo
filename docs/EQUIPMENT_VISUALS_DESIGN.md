@@ -557,9 +557,12 @@ a garment fits, the pipeline computes:
 - **The pull-in**: for every body vertex that stays visible but lies closer to
   the garment than its band allows, such as the skin right at a tight collar or
   a sleeve hem, how far to move it inward, at most 3 mm, so it cannot poke
-  through the hem.
+  through the hem. The game draws a face as flat triangles between its corners,
+  so the middle of a face can lie closer to the cloth than its corners: there
+  the corners move inward by what the middle lacks.
 - **In motion**, visible skin under the garment can come through it in the test
-  poses and the clips. Skinning blends the bones of a fold, such as an armpit,
+  poses and the clips, at a corner of a face or in its middle, so the pipeline
+  follows both. Skinning blends the bones of a fold, such as an armpit,
   so the gap between skin and cloth closes there in motion whatever the weights.
   Such skin lies at an opening that shows it, and hiding it would leave a hole
   there in every pose, so the pipeline reports it instead, and the template's
@@ -674,8 +677,22 @@ pipeline fits it to every other body of the cage, also those of
   come through farther, 20 instead of 7 mm, and weights from a ray inward along
   the cage's normal or from the bottom of a spanned pit gave no less skin
   through the cloth than the nearest skin. Loose parts take the cloth chains
-  instead. Weights painted by hand on the first version are kept, and the other
-  versions copy them, because every version of a garment has the same topology;
+  instead. At the crotch the cloth follows the skin's rule instead of the skin
+  nearest to it: a rebuilt body holds its crotch with the pelvis when the legs
+  move, while cloth that spans the crotch, such as trousers between the legs,
+  lies centimeters below that skin, nearest to the inner thighs, and a leg that
+  swung it along pressed it up into the held skin, which then showed through it
+  in the jog. So the fixed cloth in a band under, behind, and just in front of
+  the crotch takes the thighs' share of its weights to the pelvis by its
+  distance across the body from the middle, with the skin's own distances, and
+  the share it moves fades smoothly over whole faces of the cloth, so its large
+  faces between the legs never turn inside out; the numbers are in
+  [Building A Template](ART_PIPELINE.md#building-a-template). The price is
+  skin the garment covers, which the game removes: the thighs now slide under
+  the held cloth and come farther through it in the review sheet's poses, where
+  the body is drawn whole. Weights painted by hand on the first version are
+  kept, and the other versions copy them, because every version of a garment
+  has the same topology;
   rules in the recipe are preferred to painted weights, since they carry over to
   new bodies by themselves. A turned edge takes the weights of the cloth it is
   turned from, also painted ones, so its fold moves with the cloth in every pose.

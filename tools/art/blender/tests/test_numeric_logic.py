@@ -25,9 +25,14 @@ except ImportError:
 cage = load("art_pipeline/cage.py", "Net", "Part", "hull", "centroid", "_shares", "_along", "_turning", "REGIONS",
             "middle_sides", "keep_aside", "away_from_middle", "mirror_images", "twins_of", "evened", "drawn", "MIDDLE",
             "nearest_on_segments", numpy=True)
+# The skin's crotch rule, whose numbers the cloth's takes.
+skin = load("human_base/rig.py", "CROTCH_MIDDLE_REBUILT", "CROTCH_RADIUS", "REFERENCE_HEIGHT", "evened_out", numpy=True)
+scene = load("art_pipeline/scene.py", "ArtPipelineError")
 garment = load("art_pipeline/garment.py", "_limited", "_checksum", "_rounded_weights", "MAX_INFLUENCES", "version_name",
                "cloth_normals", "hem_frames", "turned_mask", "limits", "BANDS", "hem_normal_error", "turned_weights",
-               "carried_moves", "HEM_ROOM", "ROUNDING", numpy=True)
+               "carried_moves", "HEM_ROOM", "ROUNDING", "band_fade", "crotch_point", "crotch_hold", "held_weights",
+               "evened_hold", "CROTCH_SEARCH", "CROTCH_BAND_DEPTH", "CROTCH_BAND_HEIGHT", "CROTCH_EVENING", rig=skin,
+               ArtPipelineError=scene.ArtPipelineError, numpy=True)
 
 
 def _band_by_x(recipe, lines, label, points, band):
@@ -403,6 +408,100 @@ class GarmentWeightTests(unittest.TestCase):
 
     def test_at_most_four_influences(self):
         self.assertEqual(garment.MAX_INFLUENCES, 4)
+
+
+class CrotchRuleTests(unittest.TestCase):
+    """The cloth at the crotch follows the skin's rule: the thighs' share of its weights moves to the
+    pelvis by its distance across the body, within a band about the crotch."""
+
+    CROTCH = np.array([0.0, 0.04, 0.80])
+
+    def test_a_fade_is_whole_within_its_first_range_nothing_beyond_its_second_and_smooth_between(self):
+        ranges = ((-0.1, 0.0), (-0.2, 0.05))
+        fade = garment.band_fade([-0.25, -0.2, -0.15, -0.1, -0.05, 0.0, 0.025, 0.05, 0.1], ranges)
+        np.testing.assert_allclose(fade, [0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 0.5, 0.0, 0.0], atol=1e-12)
+        rising = garment.band_fade(np.linspace(-0.2, -0.1, 11), ranges)
+        self.assertTrue(np.all(np.diff(rising) > 0.0))
+
+    def test_the_band_reaches_in_front_of_the_crotch_and_farther_behind(self):
+        (back, front), (behind, ahead) = garment.CROTCH_BAND_DEPTH
+        self.assertGreater(front, 0.0)
+        self.assertGreater(-back, front)
+        self.assertGreater(-behind, ahead)
+
+    def test_every_band_lies_inside_its_fade_and_holds_the_crotch(self):
+        for name, ((low, high), (lowest, highest)) in (("depth", garment.CROTCH_BAND_DEPTH), ("height", garment.CROTCH_BAND_HEIGHT)):
+            with self.subTest(axis=name):
+                self.assertLess(lowest, low)
+                self.assertLessEqual(low, 0.0)
+                self.assertLessEqual(0.0, high)
+                self.assertLess(high, highest)
+
+    def test_the_across_distances_are_the_skin_s_own(self):
+        held, full = skin.CROTCH_MIDDLE_REBUILT[0], skin.CROTCH_RADIUS
+        points = self.CROTCH + np.array([[0.0, 0.0, 0.0], [held, 0.0, 0.0], [-held, 0.0, 0.0], [(held + full) / 2, 0.0, 0.0],
+                                         [full, 0.0, 0.0], [-0.2, 0.0, 0.0]])
+        np.testing.assert_allclose(garment.crotch_hold(points, self.CROTCH, 1.0), [1.0, 1.0, 1.0, 0.5, 0.0, 0.0], atol=1e-12)
+
+    def test_the_distances_scale_with_the_body(self):
+        held = skin.CROTCH_MIDDLE_REBUILT[0]
+        point = self.CROTCH + np.array([[1.2 * held, 0.0, 0.0]])
+        self.assertLess(garment.crotch_hold(point, self.CROTCH, 1.0)[0], 1.0)
+        self.assertEqual(garment.crotch_hold(point, self.CROTCH, 1.2)[0], 1.0)
+
+    def test_nothing_is_held_outside_the_band_and_the_fades_meet_it_smoothly(self):
+        (_low, _high), (lowest, highest) = garment.CROTCH_BAND_HEIGHT
+        (_back, _front), (behind, ahead) = garment.CROTCH_BAND_DEPTH
+        outside = self.CROTCH + np.array([[0.0, 0.0, lowest - 0.001], [0.0, 0.0, highest + 0.001],
+                                          [0.0, behind - 0.001, 0.0], [0.0, ahead + 0.001, 0.0]])
+        self.assertEqual(garment.crotch_hold(outside, self.CROTCH, 1.0).tolist(), [0.0] * 4)
+        down = self.CROTCH + np.array([[0.0, 0.0, z] for z in np.linspace(lowest, 0.0, 9)])
+        self.assertTrue(np.all(np.diff(garment.crotch_hold(down, self.CROTCH, 1.0)) >= 0.0))
+
+    def test_the_crotch_is_the_lowest_place_of_the_middle_line_near_the_hip_joints_depth(self):
+        search = garment.CROTCH_SEARCH
+        # The middle line's lowest place lies far in front, one lies far behind, and a vertex off the
+        # middle, which is not given, lies lower still.
+        co = np.array([[0.0, 0.0, 0.85], [0.0, 0.6 * search, 0.80], [0.0, 3.0 * search, 0.70], [0.05, 0.0, 0.60],
+                       [0.0, -1.5 * search, 0.75]])
+        found = garment.crotch_point(co, np.array([0, 1, 2, 4]), 0.0, 1.0)
+        np.testing.assert_allclose(found, co[1])
+        # At a smaller scale the search reaches less far.
+        np.testing.assert_allclose(garment.crotch_point(co, np.array([0, 1, 2, 4]), 0.0, 0.5), co[0])
+        with self.assertRaises(scene.ArtPipelineError):
+            garment.crotch_point(co, np.array([2]), 0.0, 1.0)
+
+    def test_the_legs_share_moves_to_the_other_bones_in_their_proportions(self):
+        # Bones: Hips, Spine, UpperLeg_L, UpperLeg_R, LowerLeg_L.
+        weights = np.array([[0.3, 0.1, 0.6, 0.0, 0.0], [0.0, 0.0, 0.5, 0.5, 0.0], [0.4, 0.0, 0.6, 0.0, 0.0]])
+        held = garment.held_weights(weights, np.array([0.5, 1.0, 0.0]), [2, 3, 4], 0)
+        np.testing.assert_allclose(held[0], [0.3 + 0.3 * 0.75, 0.1 + 0.3 * 0.25, 0.3, 0.0, 0.0])
+        # A row of legs alone gives the pelvis what it moves.
+        np.testing.assert_allclose(held[1], [1.0, 0.0, 0.0, 0.0, 0.0])
+        np.testing.assert_allclose(held[2], weights[2])
+        np.testing.assert_allclose(held.sum(axis=1), [1.0, 1.0, 1.0])
+
+    def test_the_hold_is_evened_over_the_faces_edges_and_nowhere_without_one(self):
+        # A strip of three quads, vertices 0 to 3 along the bottom and 4 to 7 along the top, held only
+        # at its left end.
+        strip = [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6)]
+        hold = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+        once = garment.evened_hold(hold, strip, 1)
+        # Each vertex moves halfway to the mean of its neighbours along the edges: vertex 0 has 1 and
+        # 4, vertex 1 has 0, 2, and 5.
+        np.testing.assert_allclose(once, [0.75, 1 / 6, 0.0, 0.0, 0.75, 1 / 6, 0.0, 0.0])
+        evened = garment.evened_hold(hold, strip)
+        self.assertTrue(np.all(np.diff(evened[:4]) < 0.0))
+        self.assertGreater(evened[3], 0.0)
+        np.testing.assert_allclose(evened[:4], evened[4:])
+        self.assertEqual(garment.evened_hold(np.zeros(8), strip).tolist(), [0.0] * 8)
+
+    def test_a_held_row_keeps_at_most_four_bones(self):
+        weights = np.array([[0.0, 0.2, 0.2, 0.2, 0.2, 0.2]])
+        held = garment.held_weights(weights, np.array([0.5]), [1, 2, 3, 4, 5], 0)
+        self.assertLessEqual(int((held[0] > 0).sum()), garment.MAX_INFLUENCES)
+        self.assertAlmostEqual(float(held[0].sum()), 1.0)
+        self.assertEqual(garment.held_weights(weights, np.array([0.0]), [1, 2], 0).tolist(), weights.tolist())
 
 
 class TurnedEdgeFrameTests(unittest.TestCase):
@@ -887,7 +986,6 @@ class CoverageReportTests(unittest.TestCase):
                                                           pull_distances=np.array([0.001, 0.0024])))
         self.assertEqual(report, "Shirt_Male: covers 3 of 4 body faces, leaves 2 at its edges visible, and pulls in 2 "
                                  "visible vertices by at most 2.4 mm")
-
 
 class TextureMoveTests(unittest.TestCase):
     """A texture follows a template that was built again: its preview's feature curves are drawn onto

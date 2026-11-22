@@ -151,18 +151,29 @@ class CommittedRecordTests(unittest.TestCase):
 class MotionReportTests(unittest.TestCase):
     @staticmethod
     def _motion(**fields):
-        values = {"label": "Male", "vertices": 120, "through": 0, "depth": 0.0, "where": "stride", "zone": "Thighs",
-                  "checked": 40, **fields}
+        values = {"label": "Male", "vertices": 120, "through": 0, "depth": 0.0, "where": "", "zone": "", "checked": 40,
+                  "faces": 96, "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0004, "sit"),
+                                         "Walk": (0.0, ""), "Jog": (0.0, "")}, **fields}
         return coverage.Motion(**values)
 
-    def test_a_pose_where_nothing_comes_through_says_so(self):
-        self.assertEqual(coverage.motion_summary("Shirt", self._motion()),
-                         "Shirt_Male: none of the 120 visible vertices under it comes through it in 40 poses and clip frames")
+    def test_a_garment_over_no_drawn_face_says_so(self):
+        self.assertEqual(coverage.motion_summary("Cloak", self._motion(faces=0, vertices=0, worst={})),
+                         "Cloak_Male: none of the drawn faces of the body lies under it in 40 poses and clip frames")
 
-    def test_skin_that_comes_through_is_counted_with_its_depth_and_place(self):
-        text = coverage.motion_summary("Shirt", self._motion(through=7, depth=0.0042, where="arms_up", zone="Forearms"))
-        self.assertEqual(text, "Shirt_Male: of the 120 visible vertices under it, 7 come through it in 40 poses and clip frames, "
-                               "by at most 4.2 mm (Forearms in arms_up), red on the review sheet")
+    def test_the_skin_under_a_garment_is_reported_with_its_deepest_place_per_phase(self):
+        self.assertEqual(coverage.motion_summary("Shirt", self._motion()),
+                         "Shirt_Male: 96 drawn faces of the body lie under it, with 120 visible vertices; the deepest their "
+                         "skin comes through it in 40 poses and clip frames: the rest pose 0.00 mm, the test poses 0.40 mm "
+                         "(sit), Walk 0.00 mm, Jog 0.00 mm")
+
+    def test_skin_that_comes_through_is_counted_by_its_faces_and_a_clip_is_named_beside_a_deeper_one(self):
+        worst = {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0, ""), "Death": (0.0108, "Death frame 21"),
+                 "Jog": (0.0021, "Jog frame 5")}
+        text = coverage.motion_summary("Trousers", self._motion(through=7, depth=0.0108, where="Death frame 21", zone="Pelvis",
+                                                                worst=worst))
+        self.assertTrue(text.endswith(": the rest pose 0.00 mm, the test poses 0.00 mm, Death 10.80 mm (frame 21), Jog 2.10 mm "
+                                      f"(frame 5); 7 faces come through by more than {coverage.CLIP_TOLERANCE * 1000:.0f} mm, "
+                                      "by at most 10.8 mm (Pelvis in Death frame 21), red on the review sheet"), text)
 
     @staticmethod
     def _pair(**fields):
@@ -203,11 +214,11 @@ class MotionReportTests(unittest.TestCase):
                                 "clip frames; of the 320 triangles it hides, the most that show a hole: the rest pose 0")
 
     def test_nothing_is_wrong_when_nothing_lies_through_at_rest(self):
-        self.assertIsNone(self._motion().rest_error("Shirt_Male", "visible skin vertices"))
+        self.assertIsNone(self._motion().rest_error("Shirt_Male", "drawn faces of the body"))
 
-    def test_vertices_that_lie_through_at_rest_are_an_error_because_they_show_in_every_pose(self):
-        error = self._motion(rest=4).rest_error("Shirt_Male", "visible skin vertices")
-        self.assertEqual(error, '4 visible skin vertices lie through "Shirt_Male" at rest, where they show in every pose; '
+    def test_faces_that_lie_through_at_rest_are_an_error_because_they_show_in_every_pose(self):
+        error = self._motion(rest=4).rest_error("Shirt_Male", "drawn faces of the body")
+        self.assertEqual(error, '4 drawn faces of the body lie through "Shirt_Male" at rest, where they show in every pose; '
                                 "fix its shape or the cage.")
 
     def test_the_rest_pose_has_its_own_name_in_the_reports(self):
