@@ -4,20 +4,24 @@
     "garment": "art/Garments/Shirt",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "3ebb11c80212361d92d519834b017f3d1a3c05b26949d959b185e1e84a3f195c",
-            "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1"
+            "date": "2026-11-22",
+            "sourceSha256": "6185ec90a65c147b019f6371c5c3567f42801b49271cd6a549dd114ad4e0095d",
+            "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62"
         }
     },
     "export": {
-        "sourceSha256": "3ebb11c80212361d92d519834b017f3d1a3c05b26949d959b185e1e84a3f195c",
-        "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1",
+        "sourceSha256": "6185ec90a65c147b019f6371c5c3567f42801b49271cd6a549dd114ad4e0095d",
+        "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "9428fd616f195559aa2da27b84c8cbbc3fe71e66109ee7045157bd1e5d086ed6" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "3142538b648091001d4dd4177c00d1ca42b5b397605a3c673a1d274dac5ffc07" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "fcc44079dcec728d3781a488f4a9ffa0538f624b7d7529f288c775d42591432e" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "cb9cebc6fd819dd0c3d7bb400b66cca66e31b23739927b2f86d28a1cdc49b8cb" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+        ],
+        "pairSources": [
+            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
         ],
         "materials": [
             {
@@ -32,7 +36,7 @@
             {
                 "name": "T_Garment_NetShirt",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_NetShirt.png",
-                "sha256": "392adb54f15e116a218bbdf697052a8d2e6ef4c9a28cc3a8ffc4ca95e61d4ba4"
+                "sha256": "2f36e45c3916410112bd15132915fd57321107604ff1138814fb351424d81100"
             }
         ]
     }

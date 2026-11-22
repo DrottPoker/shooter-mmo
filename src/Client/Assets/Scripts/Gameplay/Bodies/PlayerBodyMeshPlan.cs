@@ -114,10 +114,12 @@ namespace Mmorpg.Client.Gameplay
             // A body part's map, whose faces a drawn garment covers and whose vertices it pulls in.
             public BodyAppearanceCatalog.Part Map;
 
-            // A garment, whose triangles a garment of a higher layer covers.
+            // A garment, whose triangles a garment of a higher layer covers, and whose template's
+            // triangles a drawn garment of a higher layer may hide.
             public bool IsGarment;
             public IReadOnlyList<int> Underlay;
             public int Layer;
+            public string Template;
 
             // A rigid attachment's mesh, weighted fully to one bone.
             public bool IsRigid;
@@ -158,6 +160,10 @@ namespace Mmorpg.Client.Gameplay
             public readonly List<BoneWeight1> KeptWeights = new List<BoneWeight1>();
             // The slots that kept triangles, in order; their triangles are remapped in place.
             public readonly List<int> KeptSlots = new List<int>();
+            // For the garment being joined, the sorted triangles of it that each drawn garment of a
+            // higher layer hides, and how far the walk over its triangles has come in each.
+            public readonly List<IReadOnlyList<int>> Hiding = new List<IReadOnlyList<int>>();
+            public readonly List<int> HidingAt = new List<int>();
 
             public void Clear(int slots)
             {
@@ -190,6 +196,8 @@ namespace Mmorpg.Client.Gameplay
                 KeptBonesPerVertex.Clear();
                 KeptWeights.Clear();
                 KeptSlots.Clear();
+                Hiding.Clear();
+                HidingAt.Clear();
             }
         }
 
@@ -258,6 +266,7 @@ namespace Mmorpg.Client.Gameplay
                     piece.IsGarment = true;
                     piece.Underlay = garment.Underlay;
                     piece.Layer = garment.Layer;
+                    piece.Template = garment.Template;
                     piece.HasBounds = true;
                     piece.Bounds = BoundsIn(garmentRootBone, renderer.localBounds, bodyRootBone);
                 }
@@ -518,7 +527,8 @@ namespace Mmorpg.Client.Gameplay
 
                     if (piece.Source != null)
                     {
-                        AddTriangles(piece, first, coverLayer, into.Triangles);
+                        FindHiding(piece, drawn, into);
+                        AddTriangles(piece, first, coverLayer, into);
                     }
 
                     if (piece.HasBounds)
@@ -637,13 +647,69 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
+            // The sorted triangles of a garment's model that each drawn garment of a higher layer hides,
+            // by the garment's template, into the buffers, each walked from its start; none for a
+            // piece that is no garment. It allocates nothing, as a crowd's bodies arrive together.
+            private static void FindHiding(Piece piece, List<BodyAppearanceCatalog.Garment> drawn, Buffers into)
+            {
+                into.Hiding.Clear();
+                into.HidingAt.Clear();
+                if (!piece.IsGarment)
+                {
+                    return;
+                }
+
+                for (var index = 0; index < drawn.Count; index++)
+                {
+                    var outer = drawn[index];
+                    if (outer == null || outer.Layer <= piece.Layer)
+                    {
+                        continue;
+                    }
+
+                    var triangles = outer.HiddenTrianglesOf(piece.Template);
+                    if (triangles.Count > 0)
+                    {
+                        into.Hiding.Add(triangles);
+                        into.HidingAt.Add(0);
+                    }
+                }
+            }
+
+            // Whether a drawn garment of a higher layer hides a triangle, asked for the triangles of
+            // a model in ascending order: each list of hidden triangles is sorted, so its place only
+            // moves forward.
+            private static bool IsHidden(int triangle, Buffers into)
+            {
+                for (var index = 0; index < into.Hiding.Count; index++)
+                {
+                    var hidden = into.Hiding[index];
+                    var at = into.HidingAt[index];
+                    while (at < hidden.Count && hidden[at] < triangle)
+                    {
+                        at++;
+                    }
+
+                    into.HidingAt[index] = at;
+                    if (at < hidden.Count && hidden[at] == triangle)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
             // The triangles of one mesh that stay, over its submeshes in order, in their material
             // slots: a body face stays unless a drawn garment covers it, and a garment face unless a
-            // garment of a higher layer covers the body face under it.
-            private static void AddTriangles(Piece piece, int first, Dictionary<int, int> coverLayer, List<List<int>> triangles)
+            // garment of a higher layer covers the body face under it or a drawn garment of a higher
+            // layer hides it.
+            private static void AddTriangles(Piece piece, int first, Dictionary<int, int> coverLayer, Buffers into)
             {
                 var map = piece.Map;
                 var coversBody = map != null && map.TriangleFaces.Count > 0;
+                var hides = into.Hiding.Count > 0;
+                var triangles = into.Triangles;
                 var triangle = 0;
                 var sourceTriangles = piece.Source.Triangles;
                 for (var submesh = 0; submesh < sourceTriangles.Length; submesh++)
@@ -659,6 +725,11 @@ namespace Mmorpg.Client.Gameplay
 
                         if (piece.IsGarment && triangle < piece.Underlay.Count
                             && coverLayer.TryGetValue(piece.Underlay[triangle], out var layer) && layer > piece.Layer)
+                        {
+                            continue;
+                        }
+
+                        if (hides && IsHidden(triangle, into))
                         {
                             continue;
                         }

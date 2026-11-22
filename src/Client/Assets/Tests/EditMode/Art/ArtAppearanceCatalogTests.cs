@@ -72,6 +72,68 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EquivalentTo(manifests.Select(ArtAppearanceCatalogs.PathFor)));
         }
 
+        // A garment's data names the faces it hides of a template worn under it; the catalog holds the
+        // triangles of that template's model that come from them.
+        [Test]
+        public void TheHiddenFacesOfATemplateBecomeTheTrianglesOfItsModel()
+        {
+            // Fixtures: a model of three quads, two triangles each.
+            var triangleFaces = new[] { 0, 0, 1, 1, 2, 2 };
+            var data = new ArtGarmentData
+            {
+                garment = "Shirt",
+                body = "Male",
+                innerTemplates = new[] { "Boots", "Trousers" },
+                innerFaceCounts = new[] { 10, 3 },
+                innerHiddenCounts = new[] { 1, 2 },
+                innerHiddenFaces = new[] { 7, 0, 2 },
+            };
+            Assert.That(data.HiddenFacesOf("Trousers"), Is.EqualTo(new[] { 0, 2 }));
+            Assert.That(data.HiddenFacesOf("Boots"), Is.EqualTo(new[] { 7 }));
+            Assert.That(data.HiddenFacesOf("Gloves"), Is.Empty);
+            Assert.That(data.InnerFaceCountOf("Trousers"), Is.EqualTo(3));
+            Assert.That(data.InnerFaceCountOf("Gloves"), Is.EqualTo(-1));
+            var hidden = ArtAppearanceCatalogs.HiddenTrianglesFor("Trousers", triangleFaces, 3, data.InnerFaceCountOf("Trousers"),
+                data.HiddenFacesOf("Trousers"), "Shirt Male");
+            Assert.That(hidden.Template, Is.EqualTo("Trousers"));
+            Assert.That(hidden.Triangles, Is.EqualTo(new[] { 0, 1, 4, 5 }));
+            // A face the template does not have is data of another export.
+            Assert.Throws<System.InvalidOperationException>(() =>
+                ArtAppearanceCatalogs.HiddenTrianglesFor("Trousers", triangleFaces, 3, 3, new[] { 3 }, "Shirt Male"));
+            data.innerHiddenCounts = new[] { 1, 5 };
+            Assert.Throws<System.InvalidOperationException>(() => data.HiddenFacesOf("Trousers"));
+            data.innerFaceCounts = new[] { 10 };
+            Assert.Throws<System.InvalidOperationException>(() => data.InnerFaceCountOf("Trousers"));
+        }
+
+        // The faces a garment hides of a template were found on one export of that template; a model
+        // of the template with another number of faces is another export, whose faces those are not.
+        [Test]
+        public void HiddenFacesOfAnotherExportOfTheTemplateAreRefusedWithAClearMessage()
+        {
+            var triangleFaces = new[] { 0, 0, 1, 1, 2, 2, 3, 3 };
+            var error = Assert.Throws<System.InvalidOperationException>(() =>
+                ArtAppearanceCatalogs.HiddenTrianglesFor("Trousers", triangleFaces, 4, 3, new[] { 0, 2 }, "LinenShirt Male"));
+            Assert.That(error.Message, Does.StartWith("LinenShirt Male: the data names the faces it hides of Trousers with 3 faces, "
+                + "but its model for the body has 4"));
+            Assert.That(ArtAppearanceCatalogs.HiddenTrianglesFor("Trousers", triangleFaces, 4, 4, new[] { 0, 2 }, "LinenShirt Male").Triangles,
+                Is.EqualTo(new[] { 0, 1, 4, 5 }));
+        }
+
+        // The body build walks a garment's hidden triangles alongside its model's, so the catalog holds
+        // them in ascending order and each once, whatever order the data names its faces in.
+        [Test]
+        public void TheHiddenTrianglesAreSortedAndUnique()
+        {
+            // Fixtures: a model whose triangles come from its faces in no order, and faces named twice
+            // and out of order.
+            var triangleFaces = new[] { 3, 1, 0, 3, 2, 1, 0, 2 };
+            var hidden = ArtAppearanceCatalogs.HiddenTrianglesFor("Trousers", triangleFaces, 4, 4, new[] { 3, 1, 3, 1 }, "Shirt Male");
+            Assert.That(hidden.Triangles, Is.EqualTo(new[] { 0, 1, 3, 5 }));
+            Assert.That(hidden.Triangles, Is.Ordered.Ascending);
+            Assert.That(hidden.Triangles, Is.Unique);
+        }
+
         // The content asset of every garment and attachment holds what the exports give, and no
         // other content asset exists.
         [Test]

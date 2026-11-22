@@ -2953,7 +2953,8 @@ teeth, and tongue alone. The colors are in `PlayerBodyColors`.
 ### Body Content
 
 The appearance catalogs hold what the rules need as data, the names, slots,
-layers, hides, covered and underlay faces, pull-ins, cloth kinds, sockets, clip
+layers, hides, covered and underlay faces, pull-ins, the hidden triangles of the
+garments under each garment, cloth kinds, sockets, clip
 names, grips, and paint crops, and name the content of a look by Addressables
 address: a garment's `BodyPieceContent` per body with the template's model for
 that body and the texture's material, an attachment's `BodyPieceContent` with its
@@ -3101,14 +3102,16 @@ its [template](ART_PIPELINE.md#garments), named after the texture. The catalog
 lists every garment that fits the body with its template's name, the address of
 its content, the template's model for that body and the texture's material, the
 visual slot, layer, and the slots it
-hides, the body faces it covers, the body face under each of its triangles, and
-its pull-in, from the texture's own masks when it has transparent parts and from
-the template's otherwise, and every body part with the face of the body's
-editable mesh that each of its triangles comes from and the vertex each of its
-vertices is. Unity imports a model's triangles in an order of its own, so these
-faces are found again by position when the catalog is written in the Editor: every
-body exports its editable mesh next to its model; see
-[Unity Import Rules](ART_PIPELINE.md#unity-import-rules).
+hides, the body faces it covers, the body face under each of its triangles, its
+pull-in, and, per template of a lower layer that can be worn under it, the
+triangles of that template's model for the body that it hides, from the
+texture's own masks when it has transparent parts and from the template's
+otherwise, and every body part with the face of the body's editable mesh that
+each of its triangles comes from and the vertex each of its vertices is. Unity
+imports a model's triangles in an order of its own, so these faces are found
+again by position when the catalog is written in the Editor: every body exports
+its editable mesh next to its model, and every template its own vertices and
+faces; see [Unity Import Rules](ART_PIPELINE.md#unity-import-rules).
 
 When the look's garments change, such as when equipment changes, and never per
 frame, `PlayerBodyAppearance` puts the body together again in `PlayerBodyMeshes`,
@@ -3121,8 +3124,16 @@ following the layers of
    drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a
    garment triangle when a garment of a higher layer covers the body face under
-   it. Loose parts, such as a robe's skirt, cover nothing where they swing, and the cloak covers
-   nothing at all, so what lies under them stays drawn when they swing.
+   it or a drawn garment of a higher layer hides it, such as the trousers' waist
+   under a shirt beyond the
+   [hide margin](ART_PIPELINE.md#what-a-template-covers) inside its hem; taken
+   off, the garment hides nothing again. The catalog holds each garment's hidden
+   triangles in ascending order, so the build walks them alongside the model's
+   triangles, one place per hiding garment in buffers it keeps, and allocates
+   nothing for them, as a crowd's bodies arrive together. Loose parts, such as a
+   robe's skirt, cover and hide nothing
+   where they swing, and the cloak covers and hides nothing at all, so what lies
+   under them stays drawn when they swing.
 3. A pulled-in body vertex moves inward along its normal by its distance, the
    largest any drawn garment asks for.
 4. The drawn garments' meshes join the body's in one mesh, with their bones bound

@@ -434,6 +434,26 @@ namespace Mmorpg.Client.Tests.EditMode
                     data.pullInDistances.All(distance => distance > 0f && distance <= ArtGarmentData.MaximumPullIn + 1e-6f),
                     Is.True,
                     path);
+
+                // What it hides of every template of a lower layer worn under it, in the faces of that
+                // template's version for the same body.
+                var template = manifest.IsGarment ? manifest : garments.Single(garment => garment.AssetPath == manifest.garment);
+                Assert.That(data.innerTemplates, Is.Ordered.And.Unique, path);
+                Assert.That(data.innerFaceCounts, Has.Length.EqualTo(data.innerTemplates.Length), path);
+                Assert.That(data.innerHiddenCounts, Has.Length.EqualTo(data.innerTemplates.Length), path);
+                Assert.That(data.innerHiddenFaces, Has.Length.EqualTo(data.innerHiddenCounts.Sum()), path);
+                foreach (var inner in data.innerTemplates)
+                {
+                    var under = garments.SingleOrDefault(garment => garment.Name == inner);
+                    Assert.That(under, Is.Not.Null, path + " hides faces of " + inner + ", which is no exported template");
+                    Assert.That(under.layer, Is.LessThan(template.layer), path + " " + inner);
+                    var underData = ArtGarmentData.FromJson(AssetDatabase.LoadAssetAtPath<TextAsset>(
+                        under.export.models.Single(record => record.body == body).UnityDataPath).text);
+                    Assert.That(data.InnerFaceCountOf(inner), Is.EqualTo(underData.garmentFaces), path + " " + inner);
+                    var hidden = data.HiddenFacesOf(inner);
+                    Assert.That(hidden, Is.Ordered.And.Unique, path + " " + inner);
+                    Assert.That(hidden.All(face => face >= 0 && face < underData.garmentFaces), Is.True, path + " " + inner);
+                }
             }
         }
 

@@ -4,14 +4,14 @@
     "garment": "art/Garments/Shirt",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "4c7d9f70d6fe24e3d2dc52ae37072ad93007783f4d46b3a79aaa7e663ecef151",
-            "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1"
+            "date": "2026-11-22",
+            "sourceSha256": "19b96b4c8d3bcb0002b36e65c3aa5c34bde36ad4ffc11a59b9149a8ffef02d54",
+            "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62"
         }
     },
     "export": {
-        "sourceSha256": "4c7d9f70d6fe24e3d2dc52ae37072ad93007783f4d46b3a79aaa7e663ecef151",
-        "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1",
+        "sourceSha256": "19b96b4c8d3bcb0002b36e65c3aa5c34bde36ad4ffc11a59b9149a8ffef02d54",
+        "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
         "materials": [
             {
                 "name": "M_Garment_LinenShirt",
@@ -25,7 +25,7 @@
             {
                 "name": "T_Garment_LinenShirt",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LinenShirt.png",
-                "sha256": "3ebdcb2e0076c66cfd30a7cf168deab506a31d56cb59309d74fb27177863be0f"
+                "sha256": "426222b63d1142e2afb825538e158999332e0bfee591d4121529f9ec84416905"
             }
         ]
     }

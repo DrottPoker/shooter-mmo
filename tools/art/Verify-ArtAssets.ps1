@@ -134,11 +134,17 @@ foreach ($directory in $directories) {
         }
     }
 
-    # A texture with masks of its own was checked in the clips of these libraries.
+    # A texture with masks of its own was checked in the clips of these libraries, and its masks name
+    # the faces they hide of these exports of the templates of lower layers worn under its template.
     if ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
         $clipProblem = Get-ArtClipSourcesProblem $manifest "tools/art/Sync-TextureAsset.ps1"
         if ($null -ne $clipProblem) {
             $problems.Add("${where}: $clipProblem.")
+        }
+
+        $pairProblem = Get-ArtPairSourcesProblem $manifest $manifest.Garment "tools/art/Sync-TextureAsset.ps1"
+        if ($null -ne $pairProblem) {
+            $problems.Add("${where}: $pairProblem.")
         }
     }
 

@@ -75,6 +75,8 @@ $script:ArtGarmentHangShareLimit = 1.5
 $script:ArtGarmentKeeps = @("head", "tail")
 $script:ArtGarmentEaseLimit = 0.03
 $script:ArtGarmentHemLimit = 0.01
+# The most a split of a template lies off its line, in meters.
+$script:ArtGarmentSplitLimit = 0.05
 $script:ArtTextureSizes = @(512, 1024, 2048)
 
 # Kinds with a skeleton and animation clips.
@@ -957,13 +959,22 @@ function Get-ArtGarmentPairArguments($Manifest) {
     return @(Get-ArtGarmentPairs $Manifest | ForEach-Object { @("--pair", "$($_.SourcePath)=$($_.Name):$($_.Band)") })
 }
 
-function Get-ArtPairSourcesProblem($Manifest) {
-    # Returns $null when the template's export was checked over the current exports of every template
-    # of another visual slot and a lower layer of its cage, otherwise the reason it was not.
-    $current = @(Get-ArtGarmentPairs $Manifest | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.sourceSha256)" } | Sort-Object)
+function Get-ArtPairSourcesProblem($Manifest, $Template, [string]$Sync) {
+    # Returns $null when the export of a template, or of a texture's masks on its template, was
+    # checked over the current exports of every template of another visual slot and a lower layer of
+    # the template's cage, otherwise the reason it was not.
+    if ($null -eq $Template) {
+        $Template = $Manifest
+    }
+
+    if ([string]::IsNullOrEmpty($Sync)) {
+        $Sync = "tools/art/Sync-GarmentAsset.ps1"
+    }
+
+    $current = @(Get-ArtGarmentPairs $Template | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.sourceSha256)" } | Sort-Object)
     $recorded = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.garment)=$($_.sourceSha256)" } | Sort-Object)
     if (($current -join ",") -cne ($recorded -join ",")) {
-        return "was checked over other templates of a lower layer than the current exports of its cage's templates; run tools/art/Sync-GarmentAsset.ps1, review it, then run tools/art/Export-ArtAsset.ps1"
+        return "was checked over other templates of a lower layer than the current exports of its cage's templates; run $Sync, review it, then run tools/art/Export-ArtAsset.ps1"
     }
 
     return $null
@@ -988,6 +999,49 @@ function Get-ArtGarmentCoverArguments($Garment) {
     }
 
     return $arguments
+}
+
+function Get-ArtGarmentSplitProblem($Recipe, $Cage) {
+    # Returns $null when every split of a recipe is valid, otherwise what is wrong with the first
+    # wrong one, naming the entry and the key: a line of the cage in the template's regions, once per
+    # place, and "toward" with "offset" together when it lies off its line.
+    $regions = @($Recipe.regions | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+    $places = New-Object System.Collections.Generic.HashSet[string]
+    $splits = @($Recipe.splits | Where-Object { $null -ne $_ })
+    for ($i = 0; $i -lt $splits.Count; $i++) {
+        $split = $splits[$i]
+        $where = "recipe.splits entry $($i + 1) (line $([string]$split.line))"
+        $names = if ($split -is [System.Collections.IDictionary]) { @($split.Keys) } else { @($split.PSObject.Properties.Name) }
+        $unknown = @($names | Where-Object { @("line", "toward", "offset") -cnotcontains $_ }) | Select-Object -First 1
+        if ($null -ne $unknown) {
+            return "$where has the key ""$unknown""; a split has ""line"", and ""toward"" and ""offset"" together when it lies off its line"
+        }
+
+        $line = @($Cage.Lines | Where-Object { $_.name -ceq [string]$split.line }) | Select-Object -First 1
+        if ($null -eq $line -or $regions -cnotcontains $line.region) {
+            return "$where has a ""line"" that is not a line of the cage in the template's regions ($($regions -join ', '))"
+        }
+
+        if (($names -ccontains "toward") -ne ($names -ccontains "offset")) {
+            $has, $lacks = if ($names -ccontains "toward") { "toward", "offset" } else { "offset", "toward" }
+            return "$where has ""$has"" without ""$lacks""; ""toward"" and ""offset"" come together: a split off its line names the side of the line's bone it lies toward (head or tail) and how far, above 0 and up to $script:ArtGarmentSplitLimit m"
+        }
+
+        if ($names -ccontains "toward" -and $script:ArtGarmentKeeps -cnotcontains [string]$split.toward) {
+            return "$where has the key ""toward"" set to ""$([string]$split.toward)""; it is head or tail"
+        }
+
+        if ($names -ccontains "offset" -and (-not (Test-ArtNumber $split.offset) -or $split.offset -le 0 -or $split.offset -gt $script:ArtGarmentSplitLimit)) {
+            return "$where has the key ""offset"" set to $($split.offset); it is above 0 and up to $script:ArtGarmentSplitLimit m"
+        }
+
+        $place = if ($names -ccontains "offset") { "$($split.line):$($split.toward):$([double]$split.offset)" } else { "$($split.line)" }
+        if (-not $places.Add($place)) {
+            return "$where repeats a split at the same place; each place gets one edge loop"
+        }
+    }
+
+    return $null
 }
 
 function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
@@ -1022,6 +1076,24 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
         }
 
         $cuts.Add([ordered]@{ line = [string]$cut.line; keep = [string]$cut.keep })
+    }
+
+    # Edge loops at standard lines where the template is not cut, each optionally moved by an offset
+    # toward the head or the tail of the line's bone, such as just beyond the hide margin inside a
+    # top's hem, so a template of a higher layer that ends there hides it face by face.
+    if ($null -ne (Get-ArtGarmentSplitProblem $Recipe $Cage)) {
+        return $null
+    }
+
+    $splits = New-Object System.Collections.Generic.List[object]
+    foreach ($split in @($Recipe.splits | Where-Object { $null -ne $_ })) {
+        $entry = [ordered]@{ line = [string]$split.line }
+        if ($null -ne $split.offset) {
+            $entry.toward = [string]$split.toward
+            $entry.offset = [double]$split.offset
+        }
+
+        $splits.Add($entry)
     }
 
     # Beyond a standard line, on the side an inner garment keeps, the template lies over a garment of
@@ -1095,6 +1167,10 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
     }
 
     $result = [ordered]@{ regions = [string[]]$regions; cuts = $cuts.ToArray() }
+    if ($splits.Count -gt 0) {
+        $result.splits = $splits.ToArray()
+    }
+
     if ($over.Count -gt 0) {
         $result.over = $over.ToArray()
     }
@@ -1215,8 +1291,14 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
     }
 
     $recipe = ConvertTo-ArtGarmentRecipe $Json.recipe $cage
-    if ($null -ne $cage -and $null -eq $recipe) {
-        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, optionally its loose parts, each a line of the trunk it hangs from, its side ($($script:ArtGarmentHangSides -join ', ')), its chains ($($script:ArtGarmentHangChains -join ', ')), its flare from 0 to $script:ArtGarmentFlareLimit m, across the back optionally its top and its width, no smaller than its top, both above 0 and up to $script:ArtGarmentHangShareLimit of the shoulders' half width, and optionally the line of the legs it ends at (to), its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
+    $splitProblem = if ($null -ne $cage -and $null -eq $recipe -and $Json.recipe -isnot [string] -and $null -ne $Json.recipe) {
+        Get-ArtGarmentSplitProblem $Json.recipe $cage
+    }
+    if ($null -ne $splitProblem) {
+        $problems.Add($splitProblem)
+    }
+    elseif ($null -ne $cage -and $null -eq $recipe) {
+        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally its splits, each a line of those regions at which it gets an edge loop, once per place, optionally moved by an offset above 0 and up to $script:ArtGarmentSplitLimit m toward the head or the tail of the line's bone, optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, optionally its loose parts, each a line of the trunk it hangs from, its side ($($script:ArtGarmentHangSides -join ', ')), its chains ($($script:ArtGarmentHangChains -join ', ')), its flare from 0 to $script:ArtGarmentFlareLimit m, across the back optionally its top and its width, no smaller than its top, both above 0 and up to $script:ArtGarmentHangShareLimit of the shoulders' half width, and optionally the line of the legs it ends at (to), its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
     }
 
     # The chains a loose part hangs on move only with the cloth profile that activates them.
@@ -1400,6 +1482,17 @@ function Add-ArtRecipeLines($Lines, $Recipe) {
         for ($i = 0; $i -lt $cuts.Count; $i++) {
             $comma = if ($i -lt $cuts.Count - 1) { "," } else { "" }
             $Lines.Add("            { `"line`": `"$($cuts[$i].line)`", `"keep`": `"$($cuts[$i].keep)`" }$comma")
+        }
+        $Lines.Add('        ],')
+    }
+
+    $splits = @($Recipe.splits | Where-Object { $null -ne $_ })
+    if ($splits.Count -gt 0) {
+        $Lines.Add('        "splits": [')
+        for ($i = 0; $i -lt $splits.Count; $i++) {
+            $comma = if ($i -lt $splits.Count - 1) { "," } else { "" }
+            $offset = if ($null -ne $splits[$i].offset) { ", `"toward`": `"$($splits[$i].toward)`", `"offset`": $(Format-ArtShare $splits[$i].offset)" } else { "" }
+            $Lines.Add("            { `"line`": `"$($splits[$i].line)`"$offset }$comma")
         }
         $Lines.Add('        ],')
     }
@@ -1788,6 +1881,14 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
                     [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
                     [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
+        # Masks name the faces they hide of the templates of lower layers worn under the template,
+        # with the sourceSha256 of the exports they were made with.
+        $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
+        $pairSourcesMatch = ($maskRecords.Count -gt 0 -or $pairSources.Count -eq 0) -and
+            @($pairSources | Where-Object {
+                    [string]$_.garment -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
+                    [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+            @($pairSources | ForEach-Object { [string]$_.garment } | Sort-Object -Unique).Count -eq $pairSources.Count
         if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or [string]$Json.export.garmentSourceSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256 and the garmentSourceSha256 of its template's export")
         }
@@ -1796,6 +1897,9 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
         elseif (-not $clipSourcesMatch) {
             $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")
+        }
+        elseif (-not $pairSourcesMatch) {
+            $problems.Add("export.pairSources must list, for a texture with masks, every template of a lower layer its masks hide faces of once, with its garment (art/Garments/<Name>) and the sourceSha256 of its export, and be empty without masks")
         }
         elseif ($null -eq $materials -or $materials.Count -ne 1 -or $materials[0].name -cne "M_Garment_$name" -or $materials[0].baseMap -cne "T_Garment_$name") {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness, and for a dyeable texture its dyeMap T_Garment_${name}_Dye and dyeColors")
@@ -1810,6 +1914,7 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
                 garmentSourceSha256 = [string]$Json.export.garmentSourceSha256
                 masks = @($maskRecords | ForEach-Object { [ordered]@{ body = [string]$_.body; data = [string]$_.data; dataSha256 = [string]$_.dataSha256 } })
                 clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
+                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; sourceSha256 = [string]$_.sourceSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -1884,6 +1989,16 @@ function Write-ArtTextureManifest($Manifest) {
             }
 
             $lines.Add('        ],')
+            $pairs = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ })
+            if ($pairs.Count -gt 0) {
+                $lines.Add('        "pairSources": [')
+                for ($i = 0; $i -lt $pairs.Count; $i++) {
+                    $comma = if ($i -lt $pairs.Count - 1) { "," } else { "" }
+                    $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"sourceSha256`": `"$($pairs[$i].sourceSha256)`" }$comma")
+                }
+
+                $lines.Add('        ],')
+            }
         }
 
         Add-ArtMaterialLines $lines @($Manifest.Export.materials) ","
@@ -2720,20 +2835,20 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
         }
 
-        if ($Stage -eq "rig") {
-            $arguments += Get-ArtGarmentPairArguments $Manifest
-        }
-
-        return $arguments + (Get-ArtGarmentClipArguments $Manifest)
+        # The templates of lower layers it is worn over: its band clears their real surface where it
+        # lies over one, and at its rig stage it hides what it covers of them and none comes through.
+        return $arguments + (Get-ArtGarmentPairArguments $Manifest) + (Get-ArtGarmentClipArguments $Manifest)
     }
 
     # A texture is checked against its template's current UVs, and one with transparent parts gets
-    # its masks in its template's band, checked in the clips of the skeleton's libraries.
+    # its masks in its template's band, with what it hides of the templates of lower layers worn
+    # under it, checked in the clips of the skeleton's libraries.
     if ($Manifest.Kind -eq "texture") {
         return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
             "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
             "--dyes", [string]$Manifest.Garment.Dyes) +
-            (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentClipArguments $Manifest)
+            (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentPairArguments $Manifest.Garment) +
+            (Get-ArtGarmentClipArguments $Manifest)
     }
 
     # A cage is checked against the current files of its bodies and against the figure scale and

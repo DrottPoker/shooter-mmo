@@ -408,9 +408,10 @@ namespace Mmorpg.Client.Gameplay
 
         // A garment the body can wear: a garment texture on its template's version for the body; its
         // visual slot and layer; the slots it hides; the body faces it covers; the body face under
-        // each of its triangles; and how far it moves visible body vertices inward. Its content, the
-        // template's model skinned to the body's armature and the texture's material it draws with,
-        // is a BodyPieceContent at its address.
+        // each of its triangles; how far it moves visible body vertices inward; and the triangles it
+        // hides of every template of a lower layer worn under it. Its content, the template's model
+        // skinned to the body's armature and the texture's material it draws with, is a
+        // BodyPieceContent at its address.
         [Serializable]
         public sealed class Garment
         {
@@ -438,10 +439,11 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private int[] underlay;
             [SerializeField] private int[] pullInVertices;
             [SerializeField] private float[] pullInDistances;
+            [SerializeField] private HiddenTriangles[] hiddenInner;
 
             public Garment(string name, string template, string address, string slot, int layer, string[] hides,
                 bool hidesUnderwear, string hair, string cloth, int[] covered, int[] underlay,
-                int[] pullInVertices, float[] pullInDistances)
+                int[] pullInVertices, float[] pullInDistances, HiddenTriangles[] hiddenInner = null)
             {
                 this.name = name;
                 this.template = template ?? string.Empty;
@@ -456,6 +458,7 @@ namespace Mmorpg.Client.Gameplay
                 this.underlay = underlay ?? Array.Empty<int>();
                 this.pullInVertices = pullInVertices ?? Array.Empty<int>();
                 this.pullInDistances = pullInDistances ?? Array.Empty<float>();
+                this.hiddenInner = hiddenInner ?? Array.Empty<HiddenTriangles>();
             }
 
             // Such as LeatherJerkin, from the garment texture art/GarmentTextures/LeatherJerkin.
@@ -534,6 +537,56 @@ namespace Mmorpg.Client.Gameplay
             public IReadOnlyList<float> PullInDistances
             {
                 get { return pullInDistances ?? Array.Empty<float>(); }
+            }
+
+            // For each template of a lower layer that can be worn under it, by name, the triangles of
+            // that template's model for the body that it hides, so a garment under it never shows
+            // through it.
+            public IReadOnlyList<HiddenTriangles> HiddenInner
+            {
+                get { return hiddenInner ?? Array.Empty<HiddenTriangles>(); }
+            }
+
+            // The triangles it hides of a template worn under it, sorted, or none. A body build calls it
+            // for every garment, so it allocates nothing.
+            public IReadOnlyList<int> HiddenTrianglesOf(string innerTemplate)
+            {
+                var all = hiddenInner ?? Array.Empty<HiddenTriangles>();
+                for (var index = 0; index < all.Length; index++)
+                {
+                    if (all[index] != null && string.Equals(all[index].Template, innerTemplate, StringComparison.Ordinal))
+                    {
+                        return all[index].Triangles;
+                    }
+                }
+
+                return Array.Empty<int>();
+            }
+        }
+
+        // The triangles a garment hides of a template of a lower layer worn under it: the template's
+        // name, such as Trousers, and the triangles of its model for the body, over its submeshes in
+        // order, in ascending order and each once, so a body build walks them alongside the model's.
+        [Serializable]
+        public sealed class HiddenTriangles
+        {
+            [SerializeField] private string template;
+            [SerializeField] private int[] triangles;
+
+            public HiddenTriangles(string template, int[] triangles)
+            {
+                this.template = template ?? string.Empty;
+                this.triangles = triangles ?? Array.Empty<int>();
+            }
+
+            public string Template
+            {
+                get { return template ?? string.Empty; }
+            }
+
+            public IReadOnlyList<int> Triangles
+            {
+                get { return triangles ?? Array.Empty<int>(); }
             }
         }
 

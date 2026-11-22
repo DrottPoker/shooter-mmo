@@ -4,20 +4,24 @@
     "garment": "art/Garments/Shirt",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "7ceabf89a3d1e6bced27e7f897b2be50fb3f94f66bf139db2572803f83b7ad4f",
-            "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1"
+            "date": "2026-11-22",
+            "sourceSha256": "7edbe18b1c72d5fd1ffae474103a3b33a4531c390028c8717344bdfa5cef2077",
+            "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62"
         }
     },
     "export": {
-        "sourceSha256": "7ceabf89a3d1e6bced27e7f897b2be50fb3f94f66bf139db2572803f83b7ad4f",
-        "garmentSourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1",
+        "sourceSha256": "7edbe18b1c72d5fd1ffae474103a3b33a4531c390028c8717344bdfa5cef2077",
+        "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "a69a15296af72f49b5dc45b7d724c20b8752999893b7da3660540fd9c7bbba49" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "0712183153b42125ac9a8bdfdf2eb924a7379eb90be1149270b11774e67bf66c" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "405e00a8816fa34d874e760bb448a5d775f23acdfcd0dc044e91f5bcfddee0c1" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "cc0cf3ecb239e59fa37f7d700f2adb18c4e2425d45d4315902d6948c8a1f6056" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+        ],
+        "pairSources": [
+            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
         ],
         "materials": [
             {
@@ -32,7 +36,7 @@
             {
                 "name": "T_Garment_LeatherJerkin",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LeatherJerkin.png",
-                "sha256": "6b54867ae3797258e27fbff6345e64d04e78b88267cb380dd3164fc6c369a8d1"
+                "sha256": "692d7b8c1c957ac6dbec0d7fa08b6db8144a6e2af1a2edee2cd20e048fd0272b"
             }
         ]
     }

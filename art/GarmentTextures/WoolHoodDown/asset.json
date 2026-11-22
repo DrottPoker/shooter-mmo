@@ -4,13 +4,13 @@
     "garment": "art/Garments/HoodDown",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "0324b81f1099d449c8c88ae74abeba239ae1fc2bfb2eb97ff29f26f03e8c0e8e",
+            "date": "2026-11-22",
+            "sourceSha256": "575530fd9f2c18247f3739c38374a6405889300b50e1392f0426c20ade7f76bf",
             "garmentSourceSha256": "a10466ca64fd233666c3dcbfe2be60f2e2733c874071ed8ca3eadc73733f02c3"
         }
     },
     "export": {
-        "sourceSha256": "0324b81f1099d449c8c88ae74abeba239ae1fc2bfb2eb97ff29f26f03e8c0e8e",
+        "sourceSha256": "575530fd9f2c18247f3739c38374a6405889300b50e1392f0426c20ade7f76bf",
         "garmentSourceSha256": "a10466ca64fd233666c3dcbfe2be60f2e2733c874071ed8ca3eadc73733f02c3",
         "materials": [
             {

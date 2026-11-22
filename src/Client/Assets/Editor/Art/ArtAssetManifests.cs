@@ -396,13 +396,14 @@ namespace Mmorpg.Client.Editor
 
     // What a garment's model covers on its body, in the faces and vertices of the body's editable
     // mesh, which every body of the shared topology numbers alike: the body faces it hides, the
-    // body face under each of its faces, and how far to move visible body vertices inward.
+    // body face under each of its faces, how far to move visible body vertices inward, and the
+    // faces it hides of every template of a lower layer worn under it, in that template's faces.
     // Export-ArtAsset.ps1 writes it next to the model; see docs/ART_PIPELINE.md, Export Of A
     // Template.
     [Serializable]
     public sealed class ArtGarmentData
     {
-        public const int SchemaVersion = 2;
+        public const int SchemaVersion = 3;
 
         // The most a pulled-in vertex moves, in meters.
         public const float MaximumPullIn = 0.003f;
@@ -417,6 +418,13 @@ namespace Mmorpg.Client.Editor
         public int[] underlay = Array.Empty<int>();
         public int[] pullInVertices = Array.Empty<int>();
         public float[] pullInDistances = Array.Empty<float>();
+        // The templates of lower layers worn under it, sorted by name, the faces each had when it was
+        // exported, how many faces of each it hides, and those faces, in the faces of each template,
+        // one template after the other.
+        public string[] innerTemplates = Array.Empty<string>();
+        public int[] innerFaceCounts = Array.Empty<int>();
+        public int[] innerHiddenCounts = Array.Empty<int>();
+        public int[] innerHiddenFaces = Array.Empty<int>();
         // The garment's own vertices in Blender's world space and its faces, so the faces of the
         // model's triangles can be found.
         public float[] garmentVertices = Array.Empty<float>();
@@ -426,6 +434,55 @@ namespace Mmorpg.Client.Editor
         public static ArtGarmentData FromJson(string json)
         {
             return JsonUtility.FromJson<ArtGarmentData>(json);
+        }
+
+        // The faces of a template worn under it that it hides, in that template's faces, or none.
+        public int[] HiddenFacesOf(string template)
+        {
+            var templates = innerTemplates ?? Array.Empty<string>();
+            var counts = innerHiddenCounts ?? Array.Empty<int>();
+            var faces = innerHiddenFaces ?? Array.Empty<int>();
+            if (counts.Length != templates.Length)
+            {
+                throw new InvalidOperationException(garment + " " + body + ": its data names " + templates.Length
+                    + " templates worn under it and " + counts.Length + " counts of their hidden faces.");
+            }
+
+            var first = 0;
+            for (var index = 0; index < templates.Length; index++)
+            {
+                if (first + counts[index] > faces.Length)
+                {
+                    throw new InvalidOperationException(garment + " " + body + ": its data counts more hidden faces than it lists.");
+                }
+
+                if (templates[index] == template)
+                {
+                    var found = new int[counts[index]];
+                    Array.Copy(faces, first, found, 0, counts[index]);
+                    return found;
+                }
+
+                first += counts[index];
+            }
+
+            return Array.Empty<int>();
+        }
+
+        // The faces a template worn under it had when the faces it hides of it were found, or -1
+        // when its data names no such template.
+        public int InnerFaceCountOf(string template)
+        {
+            var templates = innerTemplates ?? Array.Empty<string>();
+            var counts = innerFaceCounts ?? Array.Empty<int>();
+            if (counts.Length != templates.Length)
+            {
+                throw new InvalidOperationException(garment + " " + body + ": its data names " + templates.Length
+                    + " templates worn under it and " + counts.Length + " counts of their faces.");
+            }
+
+            var index = Array.IndexOf(templates, template);
+            return index >= 0 ? counts[index] : -1;
         }
     }
 

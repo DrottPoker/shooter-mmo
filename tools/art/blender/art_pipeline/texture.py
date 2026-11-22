@@ -189,6 +189,123 @@ def _faces(mesh: bpy.types.Mesh) -> list[tuple[int, ...]]:
     return [tuple(p.vertices) for p in mesh.polygons]
 
 
+def _corner_uvs(mesh: bpy.types.Mesh) -> list[list[tuple[float, float]]]:
+    """The UVs of every face's corners, in their order."""
+    uv = bodies._uvs(mesh)
+    return [[tuple(float(x) for x in uv[loop]) for loop in p.loop_indices] for p in mesh.polygons]
+
+
+def _uv_area(face: np.ndarray) -> float:
+    """The area of a face in UV space, by the shoelace formula."""
+    return 0.5 * abs(float(np.dot(face[:, 0], np.roll(face[:, 1], -1)) - np.dot(face[:, 1], np.roll(face[:, 0], -1))))
+
+
+def in_uv_face(points: np.ndarray, face: np.ndarray, tolerance: float = 1e-5) -> np.ndarray:
+    """Whether each point lies inside a face in UV space or within the tolerance of its outline."""
+    points = np.asarray(points, float).reshape(-1, 2)
+    start, end = face, np.roll(face, -1, axis=0)
+    along = end - start
+    t = np.clip(((points[:, None] - start[None]) * along[None]).sum(axis=2) / np.maximum((along ** 2).sum(axis=1), 1e-30)[None],
+                0.0, 1.0)
+    on = np.linalg.norm(points[:, None] - start[None] - t[:, :, None] * along[None], axis=2).min(axis=1) <= tolerance
+    # Inside where a ray toward +u crosses the outline an odd number of times.
+    y = points[:, 1:2]
+    crosses = (start[None, :, 1] > y) != (end[None, :, 1] > y)
+    height = np.where(crosses, end[None, :, 1] - start[None, :, 1], 1.0)
+    at = start[None, :, 0] + (y - start[None, :, 1]) * along[None, :, 0] / height
+    inside = (crosses & (points[:, 0:1] < at)).sum(axis=1) % 2 == 1
+    return on | inside
+
+
+def refines(uvs, other_uvs, tolerance: float = 1e-5) -> bool:
+    """Whether the faces of other UVs refine the faces of the first, as edge loops that cut faces and
+    move no vertex leave them: every other face lies in UV space inside one of the first faces, with
+    its corners in it or on its outline, every corner UV of the first faces is one of the others',
+    and together the other faces cover as much as the first. An image painted in the first UVs then
+    lies in the second where it lay."""
+    old_faces = [np.array(face, float).reshape(-1, 2) for face in uvs]
+    new_faces = [np.array(face, float).reshape(-1, 2) for face in other_uvs]
+    if not old_faces or not new_faces:
+        return False
+    old = np.concatenate(old_faces)
+    new = np.concatenate(new_faces)
+    for first in range(0, len(old), 256):
+        if (np.linalg.norm(old[first:first + 256, None] - new[None], axis=2).min(axis=1) > tolerance).any():
+            return False
+    old_area = sum(_uv_area(face) for face in old_faces)
+    if abs(sum(_uv_area(face) for face in new_faces) - old_area) > 1e-4 * max(old_area, 1e-12):
+        return False
+    low = np.array([face.min(axis=0) for face in old_faces]) - tolerance
+    high = np.array([face.max(axis=0) for face in old_faces]) + tolerance
+    for face in new_faces:
+        centre = face.mean(axis=0)
+        candidates = np.nonzero(((low <= centre) & (centre <= high)).all(axis=1))[0]
+        if not any(in_uv_face(face, old_faces[k], tolerance).all() and in_uv_face(centre, old_faces[k], tolerance).all()
+                   for k in candidates):
+            return False
+    return True
+
+
+def _uv_weights(point: np.ndarray, face: np.ndarray) -> tuple[int, np.ndarray] | None:
+    """The triangle of a face's fan from its first corner that holds a point in UV space, as the index
+    of its middle corner, and the point's barycentric weights in it, or None."""
+    for i in range(1, len(face) - 1):
+        a, b, c = face[0], face[i], face[i + 1]
+        frame = np.array([b - a, c - a]).T
+        if abs(np.linalg.det(frame)) < 1e-18:
+            continue
+        u, v = np.linalg.solve(frame, point - a)
+        if u >= -1e-6 and v >= -1e-6 and u + v <= 1.0 + 1e-6:
+            return i, np.array([1.0 - u - v, u, v])
+    return None
+
+
+def places_match(uvs, co, faces, other_uvs, other_co, other_faces, reach: float = PROJECTION_REACH,
+                 tolerance: float = 1e-5) -> bool:
+    """Whether every other face lies on the garment where the first face that holds it in UV space
+    lay: the point of that face at the other face's UV centre, by the corners of the fan triangle
+    that holds it at their old positions, lies within the reach of the other face's centre at its
+    new positions. UVs alone do not tell a face that kept its place from one whose UV island another
+    part of the garment now has, such as the other glove's."""
+    old_faces = [np.array(face, float).reshape(-1, 2) for face in uvs]
+    co, other_co = np.asarray(co, float), np.asarray(other_co, float)
+    low = np.array([face.min(axis=0) for face in old_faces]) - tolerance
+    high = np.array([face.max(axis=0) for face in old_faces]) + tolerance
+    for face_uvs, face in zip(other_uvs, other_faces):
+        centre = np.array(face_uvs, float).reshape(-1, 2).mean(axis=0)
+        here = other_co[list(face)].mean(axis=0)
+        found = False
+        for k in np.nonzero(((low <= centre) & (centre <= high)).all(axis=1))[0]:
+            held = _uv_weights(centre, old_faces[k])
+            if held is None:
+                continue
+            i, weights = held
+            corners = [faces[k][0], faces[k][i], faces[k][i + 1]]
+            if np.linalg.norm(weights @ co[corners] - here) <= reach:
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+
+def same_corners(faces, uvs, other_faces, other_uvs, tolerance: float = 1e-5) -> bool:
+    """Whether two meshes have the same faces in the same UVs, each face's corners at most turned to
+    start from another of them: the same vertices in the same winding, every corner with its UV."""
+    if len(faces) != len(other_faces):
+        return False
+    for face, uv, other, other_uv in zip(faces, uvs, other_faces, other_uvs):
+        if len(face) != len(other) or not face or face[0] not in other:
+            return False
+        turn = list(other).index(face[0])
+        order = [(turn + k) % len(other) for k in range(len(other))]
+        if [other[k] for k in order] != list(face):
+            return False
+        if any(abs(a - b) > tolerance for k, corner in zip(order, uv) for a, b in zip(corner, other_uv[k])):
+            return False
+    return True
+
+
 def open_loops(faces: list[tuple[int, ...]]) -> list[tuple[list[int], bool]]:
     """The open edges of faces as chains of vertices in their order, and whether each closes."""
     count: dict[tuple[int, int], int] = {}
@@ -751,12 +868,39 @@ def sync(file: str, name: str, template_file: str, template: str, label: str, re
     if preview is None or image is None:
         raise ArtPipelineError(f'The texture needs its image "{image_name(name)}" and its "{PREVIEW}".')
     current = current_template_uvs(template_file, template, label)
-    if preview.get(TEMPLATE_UVS) == current and uv_fingerprint(preview.data) == current:
-        return False, []
     dye = bpy.data.images.get(dye_image_name(name))
     colors = parse_dye_colors(dye.get(DYE_COLORS)) if dye is not None else None
     first = _template_first(template_file, template, label)
     cage_mesh = _template_cage(template_file, label)
+    # The template has the preview's faces and UVs, with their corners turned at most, or the
+    # preview's UV faces, cut by edge loops that moved no vertex or with its vertices numbered anew,
+    # as a rebuild on a changed cage numbers them, each where it lay on the garment: the image is
+    # painted in its UVs and stays as it is, and the preview takes the template's faces and shape.
+    same = preview.get(TEMPLATE_UVS) == current and uv_fingerprint(preview.data) == current
+    old_uvs, new_uvs = _corner_uvs(preview.data), _corner_uvs(first)
+    turned = not same and same_corners(_faces(preview.data), old_uvs, _faces(first), new_uvs)
+    split = not same and not turned and refines(old_uvs, new_uvs) and places_match(
+        old_uvs, bodies.world_positions(preview), _faces(preview.data), new_uvs, paint._positions(first), _faces(first))
+    renumbered = split and len(old_uvs) == len(new_uvs)
+    if same or turned or split:
+        moved = len(first.vertices) != len(preview.data.vertices) or \
+            np.abs(paint._positions(first) - bodies.world_positions(preview)).max(initial=0.0) > garment.FIT_TOLERANCE
+        if same and not moved:
+            bpy.data.meshes.remove(first)
+            if cage_mesh is not None:
+                bpy.data.meshes.remove(cage_mesh)
+            return False, []
+        new = _preview(name, first, image, dye if colors else None)
+        new[TEMPLATE_UVS] = current
+        _keep_cage(cage_mesh)
+        bpy.data.orphans_purge(do_recursive=True)
+        relative_image_paths()
+        bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
+        why = ("keeps its UV faces, each where it lay, with its vertices numbered anew" if renumbered else
+               "cuts its UVs with edge loops that moved none of them, each face where it lay" if split else
+               "keeps its faces and UVs with the corners of its faces turned" if turned else "keeps its faces and UVs")
+        return True, [f"Its preview takes the template's faces and shape; the template {why}, so the image stays as "
+                      "it is."]
     cage_now = bpy.data.objects.new("TemplateCage", cage_mesh) if cage_mesh is not None else None
     moved, notes = followed(preview, first, recipe, bpy.data.objects.get(PREVIEW_CAGE), cage_now)
     if cage_now is not None:
@@ -902,18 +1046,60 @@ def dress(template: str, texture_file: str, name: str, labels: list[str]) -> boo
 
 
 def masks(texture_file: str, name: str, template_file: str, template: str, labels: list[str], band: str,
-          libraries: list[tuple[str, list[str]]], covers: bool = True) -> dict[str, tuple[coverage.Coverage, coverage.Motion]]:
-    """The texture's own masks on every body, and the skin that comes through the garment in the test
-    poses and the clips of the libraries, computed in the template's file with the texture on every
-    version. The template's file is opened in place of the texture's and not saved."""
+          libraries: list[tuple[str, list[str]]], covers: bool = True, inners: list[tuple[str, str, object, str]] = (),
+          recipe=None, compressed: bool = False) -> tuple[dict[str, list], dict, list[str]]:
+    """The texture's own masks on every body, with the faces it hides of every template of a lower
+    layer worn under it, given as its file, its name, its recipe, and its band, one list for every
+    body, the skin that comes through the garment in the test poses and the clips of the libraries,
+    and the pair check of every such template, computed in the template's file with the texture on
+    every version, so its holes hide nothing and the pair check follows what it hides. Returns the
+    hide margins of its open edges over each template on every body, as coverage.body_margins gives
+    them, per body the masks, the motion check, and the pair checks by template, and notes on the
+    faces left drawn where a look past it shows a hole. The template's file is opened in place of the
+    texture's and not saved."""
     bpy.ops.wm.open_mainfile(filepath=template_file)
     dress(template, texture_file, name, labels)
+    worn = [(inner, inner_recipe, inner_band, garment.append_inner(path, inner, labels, compressed))
+            for path, inner, inner_recipe, inner_band in inners]
     actions = coverage.load_actions(libraries)
+    margins = {inner: coverage.body_margins(template, labels, objects, recipe)
+               for inner, _inner_recipe, _inner_band, objects in worn} if covers else {}
+    # The faces the rest rule hides on the first body beyond the margins on every body, one list for
+    # every body, without those at which a look past the texture's cloth shows a hole on any body at
+    # rest or in any frame of any clip.
+    candidates = {inner: coverage.hidden(template, labels[0], band, objects[0], recipe, inner_recipe, covers,
+                                         margins.get(inner))
+                  for inner, inner_recipe, _inner_band, objects in worn}
+    found = {label: coverage.compute(template, label, band, covers) for label in labels}
+    # Each inner template's own cover on every body, whose faces the game removes under the pair too.
+    inner_covers = {inner: {label: coverage.compute(inner, label, inner_band) for label in labels}
+                    for inner, _inner_recipe, inner_band, _objects in worn}
+    notes = []
+    for inner, inner_recipe, _inner_band, objects in worn:
+        failures = []
+        for label, obj in zip(labels, objects):
+            failed, where = coverage.follow_failures(template, found[label], obj, candidates[inner], actions, recipe,
+                                                     inner_recipe, inner_covers[inner][label].covered
+                                                     ) if covers else (np.zeros(len(candidates[inner]), bool), {})
+            failures.append(failed)
+            notes += [f"{garment.version_name(template, label)} with {name} would show a hole at face {face} of {inner} in "
+                      f"{frame} at ({', '.join(f'{x:.3f}' for x in place)}) m, so it leaves that face drawn"
+                      for face, (frame, place) in sorted(where.items())]
+        chosen = coverage.chosen_hidden(candidates[inner], failures, [tuple(p.vertices) for p in objects[0].data.polygons],
+                                        coverage._turned_of(objects[0], inner_recipe))
+        for label in labels:
+            found[label].hidden[inner] = chosen.copy()
     results = {}
-    for label in labels:
-        result = coverage.compute(template, label, band, covers)
-        results[label] = (result, coverage.check_motion(template, result, actions))
-    return results
+    for index, label in enumerate(labels):
+        result = found[label]
+        # A template that covers nothing hides nothing, and its own pair check, with all of its
+        # cloth opaque, holds for its textures too.
+        pairs = {inner: coverage.check_pair(template, result, objects[index], inner_covers[inner][label].underlay,
+                                            result.hidden[inner], actions, recipe, inner_recipe,
+                                            inner_covers[inner][label].covered)
+                 for inner, inner_recipe, _inner_band, objects in worn} if covers else {}
+        results[label] = (result, coverage.check_motion(template, result, actions), pairs)
+    return margins, results, notes
 
 
 def mask_record(name: str, template: str, result: coverage.Coverage) -> dict:

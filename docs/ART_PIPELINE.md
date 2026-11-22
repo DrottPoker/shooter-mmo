@@ -286,7 +286,9 @@ length in `frames`, and whether it should `loop`. Beyond that:
   `M_Garment_<Name>` without an image; and no textures.
 - A garment texture records the `garmentSourceSha256` of its template's export,
   its `masks` with their `body`, `data`, and `dataSha256` and their
-  `clipSources` when it has transparent parts, its material `M_Garment_<Name>`,
+  `clipSources` and `pairSources` when it has transparent parts, the
+  `pairSources` as a template's, for the templates of lower layers worn under its
+  template, whose faces its masks hide, its material `M_Garment_<Name>`,
   and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`.
   A dyeable texture's material also names its dye mask in `dyeMap`,
   `T_Garment_<Name>_Dye`, exported next to the image, and the natural color of
@@ -824,7 +826,9 @@ layer or a garment that fits it, as
 `Assets/Art/Appearance/<Model>_Appearance.asset`, when it is missing or differs;
 see [Appearance Layers](#appearance-layers). For a body with an editable mesh,
 the catalog maps every triangle of its parts to the face of the editable mesh it
-comes from, and every garment's triangles to their underlay: `ArtTopologyMaps`
+comes from, every garment's triangles to their underlay, and the faces each
+garment hides of every template worn under it to that template's triangles:
+`ArtTopologyMaps`
 finds each Unity vertex at the position of a vertex of the exported topology,
 Blender's (x, y, z) being Unity's (x, z, y), and each triangle in the face that
 holds its three corners, so the order of Unity's vertices and triangles does not
@@ -2596,7 +2600,8 @@ The recipe in `asset.json` says what the pipeline builds:
 | --- | --- |
 | `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and `head`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
-| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest. A [turned edge](#turned-edges) takes its band from the cloth it is turned from: it may lie under the inner garment's surface, down to the cage, inside its own cloth. |
+| `splits` | Optional: standard lines of its regions where it gets an edge loop without being cut there, each optionally moved by an `offset` in meters, above 0 and up to 0.05, `toward` the `head` or the `tail` of the line's bone along the line's normal. A template of a higher layer that ends at that line hides the template's faces beyond the [hide margin](#what-a-template-covers) of its edge face by face, so the recipes split at the line and inside the outer template up to just beyond its largest margin, as far as the margin reaches into the inner template on the first body, rounded up to a millimeter: the trousers at `HemHip` and 11, 13, 15, 17, and 19 mm toward its `tail`, inside a top's hem, whose margin is 10 mm at the back of the hip and up to 16.5 mm at its front, so the faces between go where the margin around them allows, the loops at 13 and 15 mm where the trousers come through the back of a top in motion, and the loop at 19 mm because a top is fitted 1.5 mm outside the trousers worn under it, which that loop holds closer to them there, so they come through it least in motion; and at `BootCalf` and 40 mm toward its `tail`, inside a boot's shaft, whose rim stands off them; the long shirt and the robe at `GloveCuff` and 11 mm toward its `tail`, inside a glove. A split comes after the UVs are unfolded and moves no vertex: it runs through a vertex within 1 mm of its plane, and its new vertices take UVs interpolated along the edges they cut, so a texture keeps its place. A wrong entry fails with a message that names the entry and the key; `toward` and `offset` come together. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there it is built, and may lie, the inner band's distance farther off the cage, rising to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm, and its cloth keeps 1.5 mm outside the real surface of the templates of lower layers it lies over there, their triangles as the game draws them, instead of the inner band's nominal distance, so a later build of an inner template that comes closer fails the outer one's sync. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest. A [turned edge](#turned-edges) takes its band from the cloth it is turned from: it may lie under the inner garment's surface, down to the cage, inside its own cloth. |
 | `hang` | Optional: its [loose parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts), which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. A part across the back may also have a `top` and a `width`, shares above 0 and up to 1.5 of how far the shoulder joints lie from the middle: with a `top`, the template keeps only its middle within the top, cut straight down there, and its back only above the part's line, with a cut that need not be a cage line, and the part hangs from the template's open edge at its line behind the bone there; with a `width`, no smaller than the top, the part fans out to that width by the first joint of its chains. A part may name a line of the legs as `to`, its hem: it then hangs down to that line's height on every body, between the body's two sides, instead of to the tips of its chains, and the sync stops when that line lies below the tips. The robe hangs a skirt `all` around from `SkirtWaist` on the `skirt` chains with a flare of 0.04 down to `SkirtHem`; the cloak hangs its back from `CloakNape` on the `cloak` chains with a flare of 0.03, a top of 0.72, and a width of 0.8. A template with loose parts names the matching `cloth` profile. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, up to 0.03, fading out over 60 mm. The templates have none; see [Templates](EQUIPMENT_VISUALS_DESIGN.md#templates). |
 | `hem` | How deep every open edge is turned inward, in meters, up to 0.01, such as `0.002`. |
@@ -2629,16 +2634,29 @@ the point attribute `fitted_under_headwear`.
   each face looks to, so the seam runs along the sides of the fingers, and around
   a boot's sole, where its faces look down, and up the back of its heel, while a
   neckline runs on from the trunk up the neck without a seam; UVs unfolded along
-  them; an offset from the cage into the band, 10 mm for `mid` and 20 mm for
+  them; edge loops at its `splits`, which interpolate the UVs and move no
+  vertex; an offset from the cage into the band, 10 mm for `mid` and 20 mm for
   `outer` and `loose`, and for `tight` as close as
   [Layer Bands](EQUIPMENT_VISUALS_DESIGN.md#layer-bands) says, and more where
   `over` lifts it over an inner garment; the ease; every vertex and face centre
   settled into the band from the cage, the band taken again where a point ends up
-  until it holds; and every open edge turned inward with a 12 mm flap, whose faces
-  take the look of the edge in the texture, laid from the settled cloth as
-  [Turned Edges](#turned-edges) describes. The build goes over the cage's
-  vertices, edges, and faces by their indices, so building a recipe again gives
-  every vertex, face, and corner the same order. Its loose
+  until it holds, and where it lies over an inner garment kept 1.5 mm outside the
+  real surface of the templates of lower layers it is worn over, which the sync
+  puts on the bodies from their own files and never saves; every open edge
+  turned inward with a 12 mm flap, whose faces take the look of the edge in the
+  texture, laid from the settled cloth as [Turned Edges](#turned-edges)
+  describes; and last the corners of every quad turned, with their UVs, so that
+  it splits from its first corner to its third, as the export and the game split
+  it, across the diagonal it folds outward across on the first body. A quad and
+  its mirror image across the middle plane are decided together, from both
+  their bends, so they split along mirrored diagonals and the cloth folds alike
+  on both sides; a quad that bends by less than 0.01 mm takes its shorter
+  diagonal, and two of the same length are decided by their geometry. A rebuild
+  decides the diagonals again on the shape the first version ends with, the
+  handmade shape carried over and the turned edges laid, so no quad splits along
+  a valley that shape folds it into. The build
+  goes over the cage's vertices, edges, and faces by their indices, so building a
+  recipe again gives every vertex, face, and corner the same order. Its loose
   parts hang in rings from the open edge at their line down to the tips of their
   chains, on the scaffold and with the weights that
   [Loose Parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts) describes, and a cloak
@@ -2732,7 +2750,16 @@ the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, a hair
 template's also in its shape key `UnderHeadwear`, and that the fitting, the
 weights, and the turned edges of every version, their positions and their
-weights, are as a sync leaves them. A point is too close by its straight
+weights, are as a sync leaves them. Where the recipe says the template lies over
+an inner garment, its band's least distance is 1.5 mm outside the real surface
+of the templates of lower layers it is worn over there, their triangles as the
+game draws them, which every stage puts on the bodies from their own files, so
+a later build of an inner template that comes closer fails the outer one's
+sync. Of a recipe template, it checks that every quad and its mirror image
+across the middle plane of the first version split from their first corners
+along mirrored diagonals; the message names how many pairs do not and one of
+them. A quad that is its own mirror image, across the middle, is no pair. A
+point is too close by its straight
 distance to the cage's nearest point and too far by its distance along the
 normal of the cage's nearest face, as the recipes build the cloth. A turned
 edge's vertices may come down to the cage, and the centres of the faces that
@@ -2762,15 +2789,65 @@ armature, the motion check, and the pair check:
   and the review sheet shows their faces red.
 - The pair check puts every exported template of another visual slot and a
   lower layer of the cage, such as the trousers under a shirt, on the bodies from
-  its own file, and of its faces that stay drawn, those whose body face this
-  template leaves visible at its openings, follows every vertex that this
-  template is over at rest, or that already lies outside it, through the rest
-  pose, the test poses, and the clips. Only vertices that face away from the cage
-  are followed: a turned edge's rim and flap face the body and lie under the
-  inner template's outer side, which is followed instead. The report names how
-  many come out through this template and the deepest place, as the motion check
-  does, and an inner template's vertex that lies through it at rest breaks the
-  rule. A body wears one garment per visual slot, so templates of the same slot,
+  its own file, works out which of its faces this template hides, as
+  [What A Template Covers](#what-a-template-covers) describes, and follows its
+  drawn triangles, those the game draws: of the faces whose body face this
+  template leaves visible and that it does not hide, split from their first
+  corner as the game splits them, of the cloth that faces away from the cage,
+  since a turned edge's rim and flap lie under it. Each triangle is followed at
+  its corners, along its edges and inside it every 3 mm, and where the edges of
+  this template's triangles cross it or their corners lie over it, of every
+  triangle of this template within the inner triangle's radius and the band's
+  reach of its centre, the places where this template's cloth, without its own
+  turned edges, can lie deepest
+  under it, wherever this template is over it at rest or it already lies outside
+  it, with this template's outer side at most 10 mm inward of it, since a
+  crossing of the two starts at a depth of nothing and farther in lies cloth
+  elsewhere, such as a hood's brim seen from the hair in its opening, through the
+  rest pose, the test poses, and the clips. At rest, any depth
+  above a rounding of 0.05 mm breaks the rule, and the message names the inner
+  template, the version, so the body, how many triangles lie through, the
+  deepest place in millimeters, and its position. The report names, per phase,
+  the rest pose, the test poses, and each clip, the deepest any of them comes
+  through and where, and how many come through by more than 1 mm, such as
+  `Trousers under Shirt_Male: 102 drawn triangles of it lie under Shirt_Male; the
+  deepest they come through it in 518 poses and clip frames: the rest pose 0.00
+  mm, the test poses 0.64 mm (sit), Death 5.41 mm (frame 25), Idle 0.00 mm, ...`.
+  The faces this template hides, but for their turned edges, are followed too,
+  by the cover rule that hid them: in the rest pose with the chains laid, every
+  test pose, and every clip frame, from each of a face's samples, held where they
+  lie on the face at rest, a ray of its cone that gets out past this template's
+  opaque cloth and what else the game draws there within the band's reach shows
+  a hole when the look along it, which comes in from outside and passes the face
+  the game leaves out, goes on past the sample without first meeting the front
+  of this template's opaque cloth within the reach, the side that faces the
+  look. Both the ray and the look take this template's cloth as the game draws
+  it, the rims and flaps of its turned edges too, which a look under a hem meets.
+  Only what the game draws blocks the ray: the inner template's faces but those
+  this template may hide, and the body's faces but those the game removes under
+  the pair, the ones this template covers and the ones the inner template's own
+  cover mask covers on that body. A hidden face that has come out through the
+  cloth has that front behind it, so the look ends on the cloth and sees no
+  hole. A face with a hole counts, with its triangles. The rig stage first
+  chooses the hidden faces, one list for every body: those the rest rule gives
+  on the first body, without every face that shows a hole on any body at rest or
+  in any frame of any clip of the animation libraries, followed with all of those
+  faces left out of what blocks, so a face that is then drawn only blocks more;
+  such a face stays drawn and is followed like every other drawn face, and the
+  report names it, its body, the first frame, and its place, such as
+  `Shirt_Female would show a hole at face 694 of Trousers in Death frame 15 at
+  (...) m, so it leaves that face drawn`. The test poses are reported, not chosen by. The
+  choice and the report follow the same poses and frames in the same run, so
+  the report adds, per phase, the most hidden triangles that show a hole in one
+  pose or frame, which only the test poses can have, such as `...; of the 242
+  triangles it hides, the most that show a hole: the rest pose 0, the test
+  poses 0, Death 0, Idle 0, ...`. A list that went stale, chosen over another
+  build of a template of a lower layer, is caught by the export's records, as
+  [Export Of A Template](#export-of-a-template) describes: the template's `pairSources`, which
+  `Verify-ArtAssets.ps1` compares with the current exports of the templates of
+  lower layers, and the data's `innerFaceCounts`, which the catalog compares
+  with the inner template's model before it hides any face of it.
+  A body wears one garment per visual slot, so templates of the same slot,
   such as a shirt and a jerkin, are not checked against each other, and a
   template is not checked over a slot it hides, such as the robe over trousers.
   Hair is checked under headwear in the form the headwear gives it: in its shape
@@ -2811,6 +2888,47 @@ in the faces and vertices of the body's editable mesh:
 - **The pull-in**: a visible body vertex closer to the garment than the band's
   smallest distance, and at least 3 mm, moves inward by the difference, at most
   3 mm.
+- **The hidden faces**: per template of a lower layer worn under the garment,
+  the ones the pair check takes, the faces of it that the garment hides, by the
+  cover rule with that template as the surface. From the centre of a face and a
+  point toward each of its corners, seven rays go out 0.1 mm off it, as above,
+  within the garment's band's reach; the face is hidden when every ray meets the
+  garment's cloth where it is opaque, or the body or the inner template itself,
+  and at least one meets the cloth, and the face, its outline and its inside,
+  lies beyond the hide margin of every place of the open edges of the cloth:
+  the borders of its cloth without its turned edges, where its hem shows, the
+  line where its loose parts begin to swing, and the lines where its texture is
+  cut, found every 2 mm. A look into an opening reaches about four times the gap
+  between its edge and the surface under it, so the margin of a place is four
+  times its gap, how far it lies from the nearer of the inner template's surface
+  and the body, and at least 10 mm; a segment of a border takes the larger gap
+  of its two ends. A top's hem that stands up to about 4 mm off the trousers
+  keeps a margin of up to 16.5 mm over them, a boot's rim about 10 mm off them one
+  of about 41 mm, and a glove's cuff over a sleeve the least, 10 mm, while hair
+  and headwear, which stand far off what lies under them, hide little of it.
+  The margins are measured on every body, each with that body's versions at
+  rest, and a face is hidden only when it lies beyond them on every body. The
+  recipes lay their `splits` just beyond the margins on the first body; every
+  other body's versions are fitted from it through the cage, which spaces the
+  split and the outer template's edge closer on the smaller female body, where a
+  face the split bounds may come within the margin and stays drawn. A face that
+  comes within a margin by less than 1 mm, as far as a split may run off its
+  plane, still counts as beyond it. A rim or a flap of the inner template's
+  turned edges goes with the cloth face it is turned from. Cloth of the inner
+  template that swings, such as a cloak's back, is never hidden, and neither is
+  anything under cloth of the garment that swings; a template with
+  `"covers": false` hides nothing at all. The checks report the margins on every
+  body, such as `Shirt_Male keeps a hide margin of 10.0 to 16.5 mm over Trousers
+  where its open edges lie within it of them`. The rest rule is applied on the
+  first body, and the rig stage leaves out of that list every face that shows a
+  hole on any body at rest or in a clip, as the pair check above says, so the
+  list is one for every body and every body's data names the same faces. These
+  rules hold three things: on every body at rest, no hidden face lies within the
+  hide margin of an open edge; at rest and in every frame of every clip, no ray
+  of a hidden face's cone, from its samples and within the band's reach, shows a
+  hole past what the game draws; and in the test poses such holes are reported,
+  not ruled out. A look from outside the cone, or one that reaches farther than
+  the band's reach, is not checked.
 - **Motion**: every visible vertex that the garment is over at rest keeps the
   point of the garment over it, and so does one that already lies outside the
   garment at rest, with the point of the garment just inward of it, at most
@@ -2837,12 +2955,18 @@ template skinned to that body's armature, and its data
 `Models/Garments/<Name>_<Label>.json`. The data holds `bodyFaces`,
 `bodyVertices`, and `garmentFaces`, the `covered` body faces, the `underlay` of
 every garment face, the `pullInVertices` with their `pullInDistances` in meters,
-and the template's own `garmentVertices`, `garmentFaceSizes`, and
-`garmentFaceVertices`, by which Unity finds the face of each triangle. The faces
-and vertices it names are those of the body's topology, which the body's export
-writes next to its model: its editable mesh's `vertices` in Blender's world
-space, `faceSizes`, `faceVertices`, and `faceZones`. Its material has no image,
-so the game shows a template only with a texture.
+the hidden faces of the templates of lower layers worn under it, the
+`innerTemplates` by name in order, `innerFaceCounts`, how many faces each had
+when its hidden faces were found, so the catalog refuses a model of it with
+other faces, `innerHiddenCounts`, how many faces of each it hides, and
+`innerHiddenFaces`, those faces in each template's own faces, one template after
+the other, and the template's own `garmentVertices`,
+`garmentFaceSizes`, and `garmentFaceVertices`, by which Unity finds the face of
+each triangle. The body faces and vertices it names are those of the body's
+topology, which the body's export writes next to its model: its editable mesh's
+`vertices` in Blender's world space, `faceSizes`, `faceVertices`, and
+`faceZones`. Its `schemaVersion` is 3. Its material has no image, so the game
+shows a template only with a texture.
 
 A template is exported after its cage is approved and after its bodies and the
 animation libraries of its skeleton are exported from their current files, and
@@ -2850,10 +2974,11 @@ it records the cage's approved file and their exports, so `Verify-ArtAssets.ps1`
 fails when the cage's file changed or a body or a library has a newer export
 than the one the template was fitted to and checked in: sync, review, and export
 the template again. It also records the exports of the templates it was checked
-over in the pair check, so templates that are exported together, such as after a
-change of the cage, are exported in the order of their layers, the trousers
-before the boots before the shirts before the gloves; `Export-ArtAsset.ps1` puts
-them in that order when it is given them together. A texture of a template
+over in the pair check, whose faces its data names, so templates that are
+exported together, such as after a change of the cage, are exported in the order
+of their layers, the trousers before the boots before the shirts before the
+gloves; `Export-ArtAsset.ps1` puts them in that order when it is given them
+together. A texture of a template
 exported before a template of a lower layer stops with `was checked over other
 templates of a lower layer than the current exports of its cage's templates`
 until its template is exported again.
@@ -2927,18 +3052,19 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
-| `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes. |
+| `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes, and the faces each hides of a template worn under it are faces of that template, whose face count it records; the sentences of the motion and pair reports, with the most hidden triangles that show a hole per phase, and the rule of a pair at rest. |
 | `test_rig_tables.py` | The test poses, the rig's zone, chain, and hinge tables, and the gait model against the Humanoid skeleton, the exported clips, and the Unity locomotion speeds. |
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
-| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
+| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the exports of the templates under its template and that name a wrong split's entry and key. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
 | `test_rig_landmarks.py` | The bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the five files that need it are skipped and the run says `skipped=5`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth; the one hidden list for every body; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the phases of its report; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the eight files that need it are skipped and the run says `skipped=8`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -2999,7 +3125,9 @@ slot, so a shirt and a jerkin replace each other.
 1. Create a new template with its visual slot, its band from the cage, and its
    recipe: `-Regions`, the cage regions it covers, and `-Cuts`, the standard
    lines where it ends, each as `<Line>:head` or `<Line>:tail` for the side it
-   keeps. `-Over` says where it lies over a garment of another slot, as
+   keeps. `-Splits` adds edge loops where it is not cut, each `<Line>` or
+   `<Line>:<head|tail>:<offset>`, such as `HemHip,HemHip:tail:0.011,HemHip:tail:0.017` for trousers
+   under a top. `-Over` says where it lies over a garment of another slot, as
    `<Line>:<head|tail>:<band>` for the side of the line the inner garment keeps
    and its band, such as `Waist:head:tight` for a top over trousers. `-Hang`
    adds a loose part, as `<Line>:<all|back>:<skirt|cloak>:<flare>`, or across
@@ -3046,10 +3174,12 @@ slot, so a shirt and a jerkin replace each other.
    review sheet and the review file, how much skin comes through it in motion,
    what it covers on each body, such as `Tunic_Male: covers <n> of 7292 body
    faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
-   the pair check over every exported template of another slot and a lower
-   layer, such as `Trousers under Tunic_Male: none of the <n> vertices of it
-   that stay drawn under Tunic_Male comes through it in <k> poses and clip
-   frames`, and `Tunic meets every rule. Review it, ...`. A second run prints
+   what it hides of every exported template of another slot and a lower layer,
+   such as `Tunic_Male hides <h> of the <f> faces of Trousers worn under it`,
+   the pair check over them, such as `Trousers under Tunic_Male: <t> drawn
+   triangles of it lie under Tunic_Male; the deepest they come through it in
+   <k> poses and clip frames: the rest pose 0.00 mm, the test poses ...`, and
+   `Tunic meets every rule. Review it, ...`. A second run prints
    `Tunic is up to date: ...` and leaves the file as it is. A broken rule stops
    it with the list of rules, such as a version that leaves its band, with the
    body parts where it does. After a change of the recipe in `asset.json`, run
@@ -3117,7 +3247,15 @@ export a material of the same name.
 - `tools/art/Sync-TextureAsset.ps1` moves the texture to the template's new UVs
   when the template's faces or UVs changed, such as after a rebuild of its
   recipe, or when `Preview`'s own faces or UVs were edited, and leaves the file
-  as it was otherwise. It then writes the review sheet and checks every rule.
+  as it was otherwise. When the template keeps `Preview`'s faces and their UVs
+  and only their corners start elsewhere, as when a rebuild turns its quads to
+  split across the diagonal they fold outward across, when its UVs are
+  `Preview`'s cut by edge loops that moved none of them, as its `splits` leave
+  them, every old corner's UV still there, every new face inside one old face in
+  UV space, and as much of the UVs covered, or when only the template's shape
+  changed, the image stays as it is, byte for byte, and `Preview` takes the
+  template's faces and shape. It then writes the
+  review sheet and checks every rule.
   The move goes by correspondence, not by rays, because a body may come to rest
   in another pose, where rays from the new sleeve never meet the old one, and a
   template built again from its recipe has other faces:
@@ -3149,10 +3287,14 @@ export a material of the same name.
   with its roughness and metallic, that `Preview` shows it, and that it was
   painted in the template's current UVs, which `Preview` still has. A texture
   with transparent parts, such as the jerkin's laced V, also gets masks of its
-  own on every body, because its holes change what the body shows: the
-  template's file is opened with the texture on every version, and `coverage.py`
-  computes the cover mask, underlay, and pull-in and runs the motion check with
-  the template's rules. An opaque texture uses the template's masks.
+  own on every body, because its holes change what the body and the garments
+  under it show: the template's file is opened with the texture on every
+  version, and `coverage.py` computes the cover mask, underlay, pull-in, and the
+  faces it hides of every template of a lower layer worn under it, with the
+  margins of its own cut lines, so the net shirt hides nothing of the trousers
+  under its holes, and runs the motion check with the template's rules and, for a
+  template that covers, the pair check of every such template with the texture's
+  masks. An opaque texture uses the template's masks.
 - The review sheet `artifacts/art-previews/<Name>.png` shows the template with
   the texture on every body from four sides with the torso up close and in the
   test poses, and for a texture with transparent parts the body without it in
@@ -3706,12 +3848,12 @@ passes.
 | `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,840 triangles per body, the cuff about 7 cm up the forearm. |
 | `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
 | `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
-| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,360 triangles per body. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,468 triangles per body. |
 | `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and stays stiff: the fitting's smooth field bends a thin bar that stands off the face, so the female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage. |
-| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,872 triangles per body, 320 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. One dye channel. |
+| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,980 triangles per body, 384 vertices of them on the chains, 320 of its cloth and 64 of the turned edge of its hem. It hides the `legs` slot, so the boots show below it. One dye channel. |
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
-| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,436 triangles per body, with seams along the inside of the legs. |
+| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,904 triangles per body, with seams along the inside of the legs. |
 | `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, painted on a canvas of the female after her form: a pale blue bra with a darker band about 2.5 cm high under the bust, a cup over each breast with one smooth upper edge down to a centre piece between the breasts, and darker straps about 1.2 cm wide from the cups over the shoulders, midway between the neck and the shoulder joint, and straight down the back to the band. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900, on a canvas of the male, moved to the female: pale blue briefs with a darker waistband, lifted out of the male body texture. Roughness 0.8. |
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |

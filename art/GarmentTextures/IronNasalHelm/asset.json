@@ -4,13 +4,13 @@
     "garment": "art/Garments/NasalHelm",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "6a940d92ae77159b808405f443dbe9d8d72f90b95451cb7333a5074334001b2d",
+            "date": "2026-11-22",
+            "sourceSha256": "a15d8ceb227aa4c74a171f87d2ae2494c6b4786002b634b910a200996c71c9d0",
             "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6"
         }
     },
     "export": {
-        "sourceSha256": "6a940d92ae77159b808405f443dbe9d8d72f90b95451cb7333a5074334001b2d",
+        "sourceSha256": "a15d8ceb227aa4c74a171f87d2ae2494c6b4786002b634b910a200996c71c9d0",
         "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6",
         "materials": [
             {

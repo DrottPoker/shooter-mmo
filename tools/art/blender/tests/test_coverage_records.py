@@ -15,8 +15,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from blender_source import BLENDER_ROOT, REPOSITORY_ROOT, load  # noqa: E402
 
 garment = load("art_pipeline/garment.py", "version_name")
-coverage = load("art_pipeline/coverage.py", "write_record", "Motion", "pair_summary", "motion_summary", "DATA_SCHEMA",
-                "REST", "CAGE_REACH", "MAX_LAYERS", garment=garment)
+coverage = load("art_pipeline/coverage.py", "write_record", "Motion", "Pair", "pair_summary", "motion_summary", "DATA_SCHEMA",
+                "REST", "TEST_POSES", "CAGE_REACH", "MAX_LAYERS", "CLIP_TOLERANCE", garment=garment)
 MODELS = REPOSITORY_ROOT / "src" / "Client" / "Assets" / "Art" / "Models" / "Garments"
 
 
@@ -57,8 +57,12 @@ class WriteRecordTests(unittest.TestCase):
         self.assertTrue(raw.endswith(b"}\n"))
 
     def test_what_it_writes_is_json_that_reads_back_as_the_record(self):
-        data = {"schemaVersion": 2, "garment": "Robe", "ints": [3, 1, 2], "floats": [0.25, -1.5], "body": "Male"}
+        data = {"schemaVersion": 2, "garment": "Robe", "ints": [3, 1, 2], "floats": [0.25, -1.5], "body": "Male",
+                "names": ["Boots", "Trousers"]}
         self.assertEqual(json.loads(write(data)), data)
+
+    def test_a_list_of_names_is_written_quoted(self):
+        self.assertIn('        "Boots", "Trousers"', write({"innerTemplates": ["Boots", "Trousers"]}).splitlines())
 
     def test_a_float_is_rounded_to_five_decimals_in_the_file(self):
         self.assertEqual(json.loads(write({"f": [0.123456789]}))["f"], [0.12346])
@@ -108,6 +112,23 @@ class CommittedRecordTests(unittest.TestCase):
                 self.assertEqual(len(data["pullInVertices"]), len(data["pullInDistances"]))
                 self.assertTrue(all(0 <= v < data["bodyVertices"] for v in data["pullInVertices"]))
                 self.assertTrue(all(d >= 0.0 for d in data["pullInDistances"]))
+                self.assertEqual(data["innerTemplates"], sorted(set(data["innerTemplates"])))
+                self.assertEqual(len(data["innerFaceCounts"]), len(data["innerTemplates"]))
+                self.assertEqual(len(data["innerHiddenCounts"]), len(data["innerTemplates"]))
+                self.assertEqual(sum(data["innerHiddenCounts"]), len(data["innerHiddenFaces"]))
+
+    def test_the_hidden_faces_of_every_template_worn_under_a_garment_are_faces_of_that_template(self):
+        records = {file.stem: json.loads(file.read_text(encoding="utf-8")) for file in self.files}
+        for name, data in records.items():
+            first = 0
+            for inner, faces_of, count in zip(data["innerTemplates"], data["innerFaceCounts"], data["innerHiddenCounts"]):
+                faces = data["innerHiddenFaces"][first:first + count]
+                first += count
+                with self.subTest(record=name, inner=inner):
+                    under = records[f"{inner}_{data['body']}"]
+                    self.assertEqual(faces_of, under["garmentFaces"])
+                    self.assertEqual(faces, sorted(set(faces)))
+                    self.assertTrue(all(0 <= face < under["garmentFaces"] for face in faces))
 
     def test_a_record_is_for_the_body_and_garment_its_file_is_named_after(self):
         for file in self.files:
@@ -143,13 +164,43 @@ class MotionReportTests(unittest.TestCase):
         self.assertEqual(text, "Shirt_Male: of the 120 visible vertices under it, 7 come through it in 40 poses and clip frames, "
                                "by at most 4.2 mm (Forearms in arms_up), red on the review sheet")
 
-    def test_an_inner_garment_is_reported_under_the_outer_one(self):
-        self.assertEqual(coverage.pair_summary("Robe", "Shirt", self._motion(label="Female")),
-                         "Shirt under Robe_Female: none of the 120 vertices of it that stay drawn under Robe_Female "
-                         "comes through it in 40 poses and clip frames")
-        text = coverage.pair_summary("Robe", "Shirt", self._motion(through=3, depth=0.01, zone="Torso", where="sit"))
-        self.assertEqual(text, "Shirt under Robe_Male: of the 120 vertices of it that stay drawn under Robe_Male, 3 come "
-                               "through it in 40 poses and clip frames, by at most 10.0 mm (Torso in sit)")
+    @staticmethod
+    def _pair(**fields):
+        values = {"label": "Male", "triangles": 120, "checked": 40,
+                  "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0004, "sit"),
+                            "Walk": (0.0, ""), "Jog": (0.0021, "Jog frame 15")}, **fields}
+        return coverage.Pair(**values)
+
+    def test_an_inner_garment_is_reported_under_the_outer_one_with_its_deepest_place_per_phase(self):
+        self.assertEqual(coverage.pair_summary("Robe", "Shirt", self._pair(label="Female", triangles=0)),
+                         "Shirt under Robe_Female: none of its drawn triangles lies under Robe_Female in 40 poses and "
+                         "clip frames")
+        self.assertEqual(coverage.pair_summary("Shirt", "Trousers", self._pair()),
+                         "Trousers under Shirt_Male: 120 drawn triangles of it lie under Shirt_Male; the deepest they come "
+                         "through it in 40 poses and clip frames: the rest pose 0.00 mm, the test poses 0.40 mm (sit), "
+                         "Walk 0.00 mm, Jog 2.10 mm (frame 15)")
+        text = coverage.pair_summary("Shirt", "Trousers", self._pair(through=3, depth=0.0021, zone="Pelvis", where="Jog frame 15"))
+        self.assertTrue(text.endswith(f"; 3 come through by more than {coverage.CLIP_TOLERANCE * 1000:.0f} mm, by at most "
+                                      "2.1 mm (Pelvis in Jog frame 15)"))
+
+    def test_triangles_that_lie_through_at_rest_break_the_rule_with_the_pair_body_count_depth_and_place(self):
+        self.assertIsNone(self._pair().rest_error("Shirt_Male", "Trousers"))
+        error = self._pair(rest=2, rest_depth=0.00031, rest_place=(0.12, -0.05, 0.95)).rest_error("Shirt_Male", "Trousers")
+        self.assertEqual(error, '2 drawn triangles of Trousers worn under "Shirt_Male" lie through it at rest, where they show '
+                                "in every pose, by up to 0.31 mm at (0.120, -0.050, 0.950) m; shape it or its recipe so it "
+                                "clears Trousers.")
+        one = self._pair(rest=1, rest_depth=0.0001).rest_error("Shirt_Male", "Trousers")
+        self.assertTrue(one.startswith('1 drawn triangle of Trousers worn under "Shirt_Male" lies through it at rest'))
+
+    def test_the_hidden_triangles_are_reported_with_the_most_that_show_per_phase(self):
+        shown = {coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), coverage.TEST_POSES: (4, "stride", (0.1, 0.0, 0.9)),
+                 "Walk": (0, "Walk frame 0", (0.0, 0.0, 0.0)), "Death": (6, "Death frame 30", (0.1, 0.1, 0.5))}
+        text = coverage.pair_summary("Shirt", "Trousers", self._pair(hidden=208, shown=shown))
+        self.assertTrue(text.endswith("; of the 208 triangles it hides, the most that show a hole: the rest pose 0, "
+                                      "the test poses 4 (stride), Walk 0, Death 6 (frame 30)"))
+        alone = coverage.pair_summary("Boots", "Trousers", self._pair(triangles=0, hidden=320, shown={coverage.REST: shown[coverage.REST]}))
+        self.assertEqual(alone, "Trousers under Boots_Male: none of its drawn triangles lies under Boots_Male in 40 poses and "
+                                "clip frames; of the 320 triangles it hides, the most that show a hole: the rest pose 0")
 
     def test_nothing_is_wrong_when_nothing_lies_through_at_rest(self):
         self.assertIsNone(self._motion().rest_error("Shirt_Male", "visible skin vertices"))

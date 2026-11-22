@@ -66,7 +66,8 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
             command.add_argument("--opaque-only", help="Why a garment texture may be exported only when it has no "
-                                                       "transparent parts, whose masks would be checked in clips.")
+                                                       "transparent parts, whose masks would be checked in clips and "
+                                                       "over the templates of lower layers.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
@@ -119,6 +120,9 @@ def _parser() -> argparse.ArgumentParser:
         if name in ("garment-create", "garment-sync"):
             command.add_argument("--manifest", required=True, help="The template's asset.json, with its band and recipe.")
             command.add_argument("--cage-manifest", required=True, help="The asset.json of the template's cage.")
+            command.add_argument("--pair", action="append", default=[],
+                                 help="<file.blend>=<Template>:<band> of a template of a lower layer that it is worn over, "
+                                      "whose real surface its cloth clears where it lies over one.")
         if name == "garment-sync":
             command.add_argument("--weights", action="store_true",
                                  help="Transfer every weight from the bodies again, also those painted by hand.")
@@ -198,6 +202,61 @@ def _pairs(args) -> list[tuple[str, str, str]]:
     return found
 
 
+def _recipe_next_to(path: str):
+    """The recipe of the template whose .blend file this is, from the asset.json next to it."""
+    with open(os.path.join(os.path.dirname(path), "asset.json"), encoding="utf-8") as handle:
+        return json.load(handle)["recipe"]
+
+
+def _hidden_reports(name: str, label: str, coverage_result: coverage.Coverage) -> list[str]:
+    """What a garment hides of every template of a lower layer worn under it on a body."""
+    version = garment.version_name(name, label)
+    return [f"{version} hides {int(hidden.sum())} of the {len(hidden)} faces of {inner} worn under it"
+            for inner, hidden in sorted(coverage_result.hidden.items())]
+
+
+def _choose_hidden(name: str, inner: str, inner_recipe, objects: list, labels: list[str], coverages: dict,
+                   actions: list, recipe, inner_covers: dict) -> list[str]:
+    """Leaves out of the faces a garment hides of a template worn under it, one list for every body,
+    those at which a look past it shows a hole on any body at rest or in any frame of any clip, past
+    what the game draws with the inner template's own cover on each body, and says which it left out
+    and where they first show one."""
+    polygons = [tuple(p.vertices) for p in objects[0].data.polygons]
+    turned = coverage._turned_of(objects[0], inner_recipe)
+    candidates = coverages[labels[0]].hidden[inner]
+    failures, lines = [], []
+    for label, obj in zip(labels, objects):
+        failed, where = coverage.follow_failures(name, coverages[label], obj, candidates, actions, recipe, inner_recipe,
+                                                 inner_covers[label].covered)
+        failures.append(failed)
+        for face, (frame, place) in sorted(where.items()):
+            at = ", ".join(f"{x:.3f}" for x in place)
+            lines.append(f"{garment.version_name(name, label)} would show a hole at face {face} of {inner} in {frame} at ({at}) m, "
+                         "so it leaves that face drawn")
+    chosen = coverage.chosen_hidden(candidates, failures, polygons, turned)
+    for label in labels:
+        coverages[label].hidden[inner] = chosen.copy()
+    dropped = int(candidates.sum()) - int(chosen.sum())
+    if dropped:
+        lines.append(f"{name} hides {int(chosen.sum())} faces of {inner} on every body; {dropped} faces the rest rule would "
+                     "hide stay drawn where a look past it shows a hole")
+    return lines
+
+
+def _margin_reports(name: str, margins: dict[str, list]) -> list[str]:
+    """The hide margins of a garment's open edges on every body, where they reach each template of a
+    lower layer worn under it, as coverage.body_margins gives them per template."""
+    lines = []
+    for inner, per_body in sorted(margins.items()):
+        for label, _inner_version, found in per_body:
+            version = garment.version_name(name, label)
+            over = found.over()
+            lines.append(f"{version} keeps no open edge within its hide margin of {inner}" if not len(over) else
+                         f"{version} keeps a hide margin of {over.min() * 1000:.1f} to {over.max() * 1000:.1f} mm over "
+                         f"{inner} where its open edges lie within it of them")
+    return lines
+
+
 def _clip_libraries(args) -> list[tuple[str, list[str]]]:
     return [(os.path.abspath(path), clips.split("+")) for path, clips in (e.rsplit("=", 1) for e in args.clip_library)]
 
@@ -210,8 +269,9 @@ def _held_attachments(args) -> list[tuple[str, str, str]]:
 def _texture(args) -> int:
     """Validation and export of a garment texture: its image in its template's current UVs, and its
     material. A texture with transparent parts also gets masks of its own on every body, with the
-    skin that comes through the garment in the test poses and the clips, and its export writes them
-    next to the template's models."""
+    skin that comes through the garment in the test poses and the clips and the pair check of every
+    template of a lower layer worn under it, whose hidden faces its holes change, and its export
+    writes them next to the template's models."""
     labels = args.roots.split(",")
     garment_file = os.path.abspath(args.garment_file)
     if args.stage != "texture":
@@ -223,20 +283,34 @@ def _texture(args) -> int:
         return 1
     holes = texture.has_holes(bpy.data.images[texture.image_name(args.texture)])
     if holes and getattr(args, "opaque_only", None):
-        raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked in the clips: {args.opaque_only}.")
+        raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked in the clips and over the "
+                               f"templates of lower layers worn under its template: {args.opaque_only}.")
     # The image is read before the masks open the template's file, and written only once every
     # rule holds.
     image = texture.exported_image(args.texture) if args.command == "export" else None
     results = {}
     if holes:
-        results = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels, args.band,
-                                _clip_libraries(args), not args.covers_nothing)
+        template_recipe = _recipe_next_to(garment_file)
+        _slot, hair = garment.read_wearing(os.path.join(os.path.dirname(garment_file), "asset.json"))
+        inners = [(path, inner, _recipe_next_to(path), band) for path, inner, band in _pairs(args)]
+        margins, results, notes = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels,
+                                                args.band, _clip_libraries(args), not args.covers_nothing, inners,
+                                                template_recipe, hair == "compress")
+        for line in _margin_reports(args.garment, margins):
+            print(f"ART_REPORT {args.texture} on {line}")
+        for line in notes:
+            print(f"ART_REPORT {line}")
         for label in labels:
-            result, motion = results[label]
+            result, motion, pairs = results[label]
+            version = garment.version_name(args.garment, label)
             print(f"ART_REPORT {args.texture} on {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {args.texture} on {coverage.summary(args.garment, result)}")
-            errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label),
-                                                      f"visible skin vertices with {args.texture}")])
+            for line in _hidden_reports(args.garment, label, result):
+                print(f"ART_REPORT {args.texture} on {line}")
+            errors += filter(None, [motion.rest_error(version, f"visible skin vertices with {args.texture}")])
+            for inner, pair in sorted(pairs.items()):
+                print(f"ART_REPORT {args.texture} on {coverage.pair_summary(args.garment, inner, pair)}")
+                errors += filter(None, [pair.rest_error(f"{version} with {args.texture}", inner)])
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
@@ -244,7 +318,7 @@ def _texture(args) -> int:
     exported = texture.export(args.texture, image, args.textures) if image is not None else None
     if holes:
         for label in labels:
-            result, _motion = results[label]
+            result, _motion, _pairs_checked = results[label]
             if exported is not None:
                 data = os.path.join(args.target, f"{args.texture}_{label}.json")
                 coverage.write_record(data, texture.mask_record(args.texture, args.garment, result))
@@ -275,6 +349,11 @@ def _garment(args) -> int:
     slot, hair = garment.read_wearing(args.manifest)
     if band != args.band:
         raise ArtPipelineError(f'The band "{args.band}" is not the band of {args.manifest}.')
+    # Every template of a lower layer worn under this one: its cloth clears their real surface where
+    # its recipe says it lies over one, it hides what of them it covers, and none comes through it. A
+    # hairstyle under headwear that compresses it is worn in its form UnderHeadwear.
+    inners = [(inner, inner_band, _recipe_next_to(path), garment.append_inner(path, inner, labels, compressed=hair == "compress"))
+              for path, inner, inner_band in _pairs(args)]
     errors = garment.stale_errors(args.garment, args.band, recipe, lines, body_list, cage_file)
     errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget, recipe, lines, slot)
     versions = [v for v in (bpy.data.objects.get(garment.version_name(args.garment, label)) for label in labels)
@@ -291,27 +370,50 @@ def _garment(args) -> int:
         raise ArtPipelineError(f'A garment has the review stages model and rig, not "{args.stage}".')
     coverages = {}
     if not errors:
+        # The hide margins of its open edges over each on every body, which the recipes split just beyond
+        # on the first body, and the faces the rest rule hides of each there beyond the margins on every
+        # body, one list for every body.
+        margins = {inner: coverage.body_margins(args.garment, labels, objects, recipe)
+                   for inner, _inner_band, _inner_recipe, objects in inners} if not args.covers_nothing else {}
+        for line in _margin_reports(args.garment, margins):
+            print(f"ART_REPORT {line}")
+        candidates = {inner: coverage.hidden(args.garment, labels[0], args.band, objects[0], recipe, inner_recipe,
+                                             not args.covers_nothing, margins.get(inner))
+                      for inner, _inner_band, inner_recipe, objects in inners}
         for label in labels:
             coverages[label] = coverage.compute(args.garment, label, args.band, not args.covers_nothing)
+            for inner in candidates:
+                coverages[label].hidden[inner] = candidates[inner].copy()
             if args.stage == "model":
                 print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+                for line in _hidden_reports(args.garment, label, coverages[label]):
+                    print(f"ART_REPORT {line}")
     if not errors and args.stage == "rig":
         actions = coverage.load_actions(_clip_libraries(args))
+        # Each template's own cover on every body, whose faces the game removes under the pair too.
+        inner_covers = {inner: {label: coverage.compute(inner, label, inner_band) for label in labels}
+                        for inner, inner_band, _inner_recipe, _objects in inners}
+        # Without the faces at which a look past it shows a hole on any body, at rest or in any frame of
+        # any clip, which stay drawn and are followed like every other drawn face.
+        for inner, _inner_band, inner_recipe, objects in inners if not args.covers_nothing else []:
+            for line in _choose_hidden(args.garment, inner, inner_recipe, objects, labels, coverages, actions, recipe,
+                                       inner_covers[inner]):
+                print(f"ART_REPORT {line}")
         for label in labels:
             motion = coverage.check_motion(args.garment, coverages[label], actions)
             print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+            for line in _hidden_reports(args.garment, label, coverages[label]):
+                print(f"ART_REPORT {line}")
             errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label), "visible skin vertices")])
-        # Every template of a lower layer worn under this one, at this one's openings, a hairstyle
-        # under headwear that compresses it in its form UnderHeadwear.
-        for path, inner, inner_band in _pairs(args):
-            versions_inner = garment.append_inner(path, inner, labels, compressed=hair == "compress")
-            for label, obj in zip(labels, versions_inner):
-                underlay = coverage.compute(inner, label, inner_band).underlay
-                result = coverage.check_pair(args.garment, coverages[label], obj, underlay, actions)
+        # The drawn triangles of every template of a lower layer worn under this one.
+        for inner, inner_band, inner_recipe, objects in inners:
+            for label, obj in zip(labels, objects):
+                own = inner_covers[inner][label]
+                result = coverage.check_pair(args.garment, coverages[label], obj, own.underlay, coverages[label].hidden[inner],
+                                             actions, recipe, inner_recipe, own.covered)
                 print(f"ART_REPORT {coverage.pair_summary(args.garment, inner, result)}")
-                errors += filter(None, [result.rest_error(garment.version_name(args.garment, label),
-                                                          f"vertices of {inner} worn under it")])
+                errors += filter(None, [result.rest_error(garment.version_name(args.garment, label), inner)])
         for library_data in {a.library for a in actions if a.library is not None}:
             bpy.data.libraries.remove(library_data)
     for error in errors:
@@ -441,10 +543,10 @@ def main() -> int:
         band, recipe, lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
         state = "created"
         if args.command == "garment-create":
-            garment.create(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list, cage_file)
+            garment.create(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list, cage_file, _pairs(args))
         else:
             changed, hand, notes = garment.sync(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list,
-                                                cage_file, args.weights, args.rebuild)
+                                                cage_file, args.weights, args.rebuild, _pairs(args))
             state = "synced" if changed else "up-to-date"
             for note in notes:
                 print(f"ART_REPORT {note}")

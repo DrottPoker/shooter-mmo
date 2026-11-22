@@ -22,8 +22,9 @@ Implemented:
   with a skirt and a cloak on the cloth chains, shoulder-length hair with its
   form under headwear, a hood worn up or down, and a nasal helmet. Textures may
   have holes, such as a net shirt or a laced jerkin, and the wool is dyeable.
-- Cover masks, pull-in, and the motion and pair checks that keep skin and inner
-  garments from showing through.
+- Cover masks, pull-in, the faces an outer garment hides of the garments under
+  it, and the motion and pair checks that keep skin and inner garments from
+  showing through.
 - Cloth chains laid in a target pose on every visible body, with springs on the
   bodies largest on the screen.
 - Attachments with hold poses and attack clips: a sword, a shield, a two-handed
@@ -326,8 +327,20 @@ shoulder for a sleeveless top.
 
 Where two garments meet, the outer one ends past the inner one's edge by a fixed
 overlap, about 50 mm, so no gap opens in motion, and the part of the inner
-garment under it is removed by its underlay when the character is put together,
-so no double layer shows. The overlap is the distance between their lines.
+garment under it is removed when the character is put together, so no double
+layer shows and nothing of it can come through: every face that the outer one
+hides, beyond the hide margin inside where it ends, and every face over a body
+face it covers. The overlap is the distance between their lines. The hide
+margin reaches as far as a look into the opening does, so it grows with how far
+the outer garment's edge stands off what lies under it: a boot's rim, which
+stands off the trousers, keeps a wider one than a top's hem, which lies close.
+The inner templates have an edge loop at the outer one's line and loops inside
+it up to just beyond its largest margin, the trousers one more inside a top,
+which holds the top fitted over them closer, so the faces under the outer one go
+face by face as far as the margin around them allows and those nearer its edge
+stay, so a look under a hem, into a boot,
+or into a cuff sees the inner garment. The numbers are in
+[What A Template Covers](ART_PIPELINE.md#what-a-template-covers).
 
 | Where | Inner | Outer |
 | --- | --- | --- |
@@ -335,15 +348,33 @@ so no double layer shows. The overlap is the distance between their lines.
 | Wrist | a long sleeve, to `SleeveLong` | a glove, to `GloveCuff` |
 | Calf | trousers, to `LegAnkle` | a boot, to `BootCalf` |
 
-Over the overlap, the outer garment lies outside the inner one: its band there
-is measured from the inner garment's surface instead of the cage, which its
-recipe says with `over`. The pipeline's pair check puts every template on the
-bodies over every exported template of another visual slot and a lower layer,
-such as a shirt over the trousers, at rest, in the test poses, and in the clips:
-of the inner garment's faces that stay drawn, no vertex that the outer one is
-over at rest may come out through it, and none may already lie outside it at
-rest; see [Garments](ART_PIPELINE.md#garments). Templates of the same slot are
-never worn together, so they are not checked against each other.
+Over the overlap, the outer garment lies outside the inner one, which its recipe
+says with `over`: its cloth there keeps a small gap outside the real surface of
+the templates of lower layers it is worn over, their triangles as the game draws
+them, so a later build of an inner template that comes closer breaks the outer
+one's rule. Every quad of a template built from a recipe splits across the
+diagonal it folds outward across, and a quad and its mirror image across the
+middle plane along mirrored diagonals, so cloth folds alike on both sides of the
+body and an inner quad never bulges out on one hip where its outer one folds in;
+a modeled template keeps the splits its maker gave it. The pipeline's pair check
+puts every template on the bodies over every exported template of another visual
+slot and a lower layer, such as a shirt over the trousers, at rest, in the test
+poses, and in the clips, and follows the inner garment's drawn triangles, those
+the game still draws under the outer one: none may lie through it at rest, and
+the report names the deepest any comes through in each pose and clip. It follows
+the faces the outer one hides too: a look past the outer garment that reaches
+one of them, past only what the game draws there, must end on the front of the
+outer garment's cloth behind it, as it does where a hidden face has come out
+through the cloth, and never on the background or the inside of the body or of
+a garment, at rest or in any frame of any clip the game plays, a corpse's fall
+included. A face where it would is left drawn, on every body alike, so the
+hidden faces are one list for every body, and the report names the test poses.
+What these rules hold is this: on every body at rest, no hidden face lies within
+the hide margin of an open edge; at rest and in every clip, no look within a
+hidden face's cone of rays and the band's reach shows a hole; and in the test
+poses such holes are reported, not ruled out. The numbers and the sampling are in
+[Garments](ART_PIPELINE.md#garments). Templates of the same slot are never worn
+together, so they are not checked against each other.
 
 ### Templates
 
@@ -361,9 +392,12 @@ shoulder guards, or a fur collar, are small templates of their own.
 The pipeline builds a template from its recipe: the cage regions it covers and
 the standard lines where it ends in them, each with the side it keeps, such as
 the `trunk` above `HemHip` and the `arms` toward the trunk from `SleeveShort`,
-its [band](#layer-bands), and its ease. A region without a line is covered
-whole, and a region that is not listed is left open, such as the arms of a
-sleeveless top. The pipeline cuts the cage's faces at the lines, offsets them
+the lines where it only gets an edge loop, such as the trousers at `HemHip` and
+at loops above it inside a top up to just beyond its largest hide margin and one
+past it, its
+[band](#layer-bands), and its ease. A region
+without a line is covered whole, and a region that is not listed is left open,
+such as the arms of a sleeveless top. The pipeline cuts the cage's faces at the lines, offsets them
 into the band, turns every open edge inward by a few millimeters, so a hem shows
 the cloth's thickness instead of a paper edge, and unfolds the UVs along seams
 where clothes have them; see [Building A Template](ART_PIPELINE.md#building-a-template).
@@ -502,6 +536,24 @@ a garment fits, the pipeline computes:
   skin, up to 120 mm.
 - **The underlay**: for every face of the garment, the body face under it, the
   closest body face along the garment's inward normal.
+- **The hidden faces**: for every template of a lower layer that can be worn
+  under the garment, the faces of it that the garment hides, by the cover rule
+  with that template as the surface: every ray of a face's cone meets the
+  garment's cloth where its texture is opaque, and the face lies beyond the hide
+  margin of every place of the open edges of the cloth and of the lines where its
+  texture is cut, a margin that grows with how far the place stands off the
+  surface under it, so a look under its hem, into a boot or a cuff, or through a
+  hole sees the inner garment. The margins hold on every body at rest; the
+  recipes split the inner templates just beyond them on the first body of the
+  cage, and the other bodies' versions are fitted from there. Cloth of the inner
+  garment that swings is never hidden, since it swings out from under what lies
+  over it at rest, so a cloak's back under hair or a hood stays whole. A net
+  shirt hides nothing under its holes, swinging cloth hides nothing, and a
+  garment that covers nothing hides nothing. With the pair check's rule for the
+  hidden faces, in [How Garments Meet](#how-garments-meet), these rules hold
+  that no hidden face lies within a margin at rest and that no look within its
+  cone shows a hole at rest or in a clip; the numbers are in
+  [What A Template Covers](ART_PIPELINE.md#what-a-template-covers).
 - **The pull-in**: for every body vertex that stays visible but lies closer to
   the garment than its band allows, such as the skin right at a tight collar or
   a sleeve hem, how far to move it inward, at most 3 mm, so it cannot poke
@@ -534,9 +586,10 @@ a garment fits, the pipeline computes:
 A mask is 545 bytes for the human bodies (4,358 faces). When the character is
 put together, every body face that a worn garment covers is removed, the
 pull-in vertices move, and every garment face whose underlay face a garment of a
-higher layer covers is removed. A shirt over trousers thereby hides the
-trousers' waist under its hem but keeps their legs, and a floor-length robe
-hides the `legs` slot, so trousers under it are not drawn at all.
+higher layer covers is removed, and so is every face that a worn garment of a
+higher layer hides. A shirt over trousers thereby hides the trousers' waist
+under its hem, from the hide margin inside it, but keeps their legs, and a floor-length
+robe hides the `legs` slot, so trousers under it are not drawn at all.
 
 ### Layer Bands
 
@@ -565,8 +618,8 @@ falls far short of the true one and would call a helmet's nasal too close.
 
 A garment of a higher layer lies in an outer band, so an inner garment never
 reaches through an outer one where the outer one does not hide it. Where
-garments overlap at a meeting line, the outer one's band is measured from the
-inner one, as [How Garments Meet](#how-garments-meet) says.
+garments overlap at a meeting line, the outer one keeps outside the inner one's
+real surface, as [How Garments Meet](#how-garments-meet) says.
 
 ### Transparent Fabric
 
@@ -896,7 +949,7 @@ checks of garments show the cloth as every visible body in the game shows it.
 Cases captured from the client keep the two within 0.01 mm of each other in CI;
 see [Cloth Parity](ART_PIPELINE.md#cloth-parity). The Blender checks of `Robe`
 and `Cloak` in the target pose meet every rule: the legs come through the robe
-only at the hip crease in the fall of `Death`, by up to 56 mm, and through the
+only at the hip crease in the fall of `Death`, by up to 58 mm, and through the
 cloak nowhere.
 
 ### Measuring The Cloth
@@ -939,29 +992,29 @@ how far the frame of a jump moves the chains:
 
 | Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
 | --- | --- | --- | --- | --- | --- | --- |
-| Idle | 6 vertices, 6 mm | none | none | 14 m/s³ | never | |
+| Idle | 5 vertices, 6 mm | none | none | 15 m/s³ | never | |
 | Walk | none | none | none | 4,364 m/s³ | never | |
-| Jog | 13, 48 mm | 13 mm | none | 7,062 m/s³ | 5 frames | |
-| Zig-zag | 49, 63 mm | 14 mm | none | 6,964 m/s³ | 1 frame | |
+| Jog | 13, 48 mm | 13 mm | 2, 3 mm | 7,062 m/s³ | 5 frames | |
+| Zig-zag | 48, 60 mm | 14 mm | none | 6,963 m/s³ | 1 frame | |
 | Network 15 Hz | 49, 65 mm | 14 mm | none | 6,978 m/s³ | 3 frames | |
-| Turn 180 | 42, 52 mm | 15 mm | none | 7,012 m/s³ | 3 frames | |
-| Spin 720 | 12, 7 mm | none | none | 14 m/s³ | never | flares 16.6 cm, settles in 0.6 s |
-| Spin 1440 | 10, 6 mm | none | none | 14 m/s³ | never | flares 16.4 cm, settles in 0.6 s |
-| Spin 2880 | 11, 8 mm | none | none | 14 m/s³ | never | flares 17.6 cm, settles in 0.6 s |
+| Turn 180 | 43, 53 mm | 15 mm | none | 7,012 m/s³ | 3 frames | |
+| Spin 720 | 9, 7 mm | none | none | 15 m/s³ | never | flares 16.6 cm, settles in 0.6 s |
+| Spin 1440 | 8, 6 mm | none | none | 14 m/s³ | never | flares 16.4 cm, settles in 0.6 s |
+| Spin 2880 | 10, 7 mm | none | none | 14 m/s³ | never | flares 17.6 cm, settles in 0.6 s |
 | Jog stop jog | 13, 48 mm | 13 mm | 2, 14 mm | 5,759 m/s³ | 3 frames | settles in 0.7 s |
-| Death | 287, 127 mm | 127 mm | 2, 14 mm | 22,437 m/s³ | 5 frames | |
-| Teleport, snap 3 m | 14, 48 mm | 13 mm | 2, 5 mm | 6,917 m/s³ | 3 frames | the jump moves the chains 121 mm |
-| Snap 180 | 6, 6 mm | none | none | 14 m/s³ | never | the jump moves the chains 2 mm |
+| Death | 292, 126 mm | 126 mm | 2, 14 mm | 22,437 m/s³ | 5 frames | |
+| Teleport, snap 3 m | 14, 48 mm | 13 mm | none | 6,917 m/s³ | 3 frames | the jump moves the chains 121 mm |
+| Snap 180 | 5, 6 mm | none | none | 15 m/s³ | never | the jump moves the chains 2 mm |
 
 The legs come through the cloth no farther than in the target pose alone, since
 no bone of the springs lies nearer the body than it, and never through a cloak;
 `ClothStressMotionTests` holds the legs out of a cloak and within 25 mm of a
 robe while walking and jogging. What still comes through: an arm through a
 cloak's edge at the far end of its swing, after it lifted the edge 8 cm; the
-woman's arms through her robe by up to 8 mm while she stands, spins, or stops;
+woman's arms through her robe by up to 7 mm while she stands, spins, or stops;
 the legs through the waist of a robe in `Death`, where the skirt's roots follow
 the hips while the thighs fold up 90 degrees; and a robe through a cloak by up
-to 14 mm, only in `Death`, in a jog that stops, and in a teleport. The skirt's
+to 14 mm, only in `Death`, in a jog that stops, and by 3 mm in a jog. The skirt's
 chains keep their order in every spin and on the woman in every motion but
 `Death`; on the
 man under a cloak they cross for up to 5 frames while jogging, turning, and
@@ -1295,7 +1348,8 @@ puts the character together again, never per frame:
   their textures where a texture has its own, and moves the pull-in vertices
   inward.
 - It leaves out the garment faces whose underlay a garment of a higher layer
-  covers, and every slot a worn garment hides.
+  covers, the garment faces that a worn garment of a higher layer hides, and
+  every slot a worn garment hides.
 - It draws the hair in its normal or pressed form, or leaves it out under
   headwear that hides it.
 - It joins the body, the garments, and the attachments into one skinned mesh on
@@ -1309,7 +1363,8 @@ into texture arrays that one garment material reads (planned). Unity imports a
 model's triangles in an order of its own, so the body faces are found again by
 position: every body exports its editable mesh next to its model, and the
 appearance catalog maps every triangle of the body's parts and of each garment
-to the face it comes from when the catalog is written in the Editor; see
+to the face it comes from, and the faces a garment hides of a garment under it to
+that garment's triangles, when the catalog is written in the Editor; see
 [Unity Import Rules](ART_PIPELINE.md#unity-import-rules). How the client does
 all this is in [Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 

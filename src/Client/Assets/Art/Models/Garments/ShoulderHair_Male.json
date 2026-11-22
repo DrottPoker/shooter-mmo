@@ -1,5 +1,5 @@
 {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "garment": "ShoulderHair",
     "body": "Male",
     "bodyFaces": 7292,
@@ -88,6 +88,16 @@
     ],
     "pullInVertices": [],
     "pullInDistances": [],
+    "innerTemplates": [
+        "Boots", "Cloak", "Gloves", "LongShirt", "Robe", "Shirt", "Trousers"
+    ],
+    "innerFaceCounts": [
+        704, 454, 920, 1240, 1496, 858, 956
+    ],
+    "innerHiddenCounts": [
+        0, 0, 0, 0, 0, 0, 0
+    ],
+    "innerHiddenFaces": [],
     "garmentVertices": [
         -0.00002, 0.04486, 1.80747, 0.00025, 0.05455, 1.80638, 0.00053, 0.06408, 1.80515, 0.00080, 0.07364, 1.80351, 0.00107, 0.08331, 1.80120, 0.00132,
         0.09284, 1.79867, 0.00158, 0.10242, 1.79491, 0.00183, 0.11183, 1.79104, 0.00207, 0.12053, 1.78558, 0.00231, 0.12899, 1.77971, 0.00253, 0.13660,

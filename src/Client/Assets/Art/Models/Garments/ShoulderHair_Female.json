@@ -1,5 +1,5 @@
 {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "garment": "ShoulderHair",
     "body": "Female",
     "bodyFaces": 7292,
@@ -87,6 +87,16 @@
     ],
     "pullInVertices": [],
     "pullInDistances": [],
+    "innerTemplates": [
+        "Boots", "Cloak", "Gloves", "LongShirt", "Robe", "Shirt", "Trousers"
+    ],
+    "innerFaceCounts": [
+        704, 454, 920, 1240, 1496, 858, 956
+    ],
+    "innerHiddenCounts": [
+        0, 0, 0, 0, 0, 0, 0
+    ],
+    "innerHiddenFaces": [],
     "garmentVertices": [
         -0.00002, 0.06121, 1.71772, 0.00024, 0.07024, 1.71667, 0.00050, 0.07869, 1.71545, 0.00076, 0.08746, 1.71386, 0.00102, 0.09651, 1.71163, 0.00126,
         0.10536, 1.70918, 0.00152, 0.11504, 1.70558, 0.00178, 0.12422, 1.70184, 0.00203, 0.13319, 1.69664, 0.00229, 0.14199, 1.69107, 0.00253, 0.15001,

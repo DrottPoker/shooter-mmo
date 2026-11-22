@@ -292,7 +292,10 @@ namespace Mmorpg.Client.Editor
                     && actual.Covered.SequenceEqual(expected.Covered)
                     && actual.Underlay.SequenceEqual(expected.Underlay)
                     && actual.PullInVertices.SequenceEqual(expected.PullInVertices)
-                    && actual.PullInDistances.SequenceEqual(expected.PullInDistances))
+                    && actual.PullInDistances.SequenceEqual(expected.PullInDistances)
+                    && actual.HiddenInner.Count == expected.HiddenInner.Count
+                    && actual.HiddenInner.Zip(expected.HiddenInner, (a, b) =>
+                        a.Template == b.Template && a.Triangles.SequenceEqual(b.Triangles)).All(same => same))
                     .All(same => same);
         }
 
@@ -507,10 +510,11 @@ namespace Mmorpg.Client.Editor
         // The garments that fit the body, from the lowest layer up: one per exported texture of an
         // exported template that fits the body, named after the texture, with the texture's
         // material and the template's version for the body: its model, and its data with the
-        // underlay of every triangle of the model. A texture with transparent parts brings its own
-        // data for the body, since its holes change what the body shows. A template or a texture
-        // whose export has no version for the body, such as one not exported again since the body
-        // joined its cage, is left out for that body.
+        // underlay of every triangle of the model and, per template of a lower layer worn under it,
+        // the triangles of that template's model it hides. A texture with transparent parts brings
+        // its own data for the body, since its holes change what the body and the garments under it
+        // show. A template or a texture whose export has no version for the body, such as one not
+        // exported again since the body joined its cage, is left out for that body.
         public static BodyAppearanceCatalog.Garment[] GarmentsFor(ArtAssetManifest body)
         {
             return GarmentsFor(body, out _);
@@ -526,6 +530,19 @@ namespace Mmorpg.Client.Editor
                 .Where(garment => ArtAssetManifests.BodiesOf(garment).Contains(body.AssetPath)
                     && garment.export.models.Any(model => model.body == label))
                 .ToDictionary(garment => garment.AssetPath, StringComparer.Ordinal);
+            // The face each triangle of a template's model for the body comes from, by template name.
+            var triangleFaces = new Dictionary<string, int[]>(StringComparer.Ordinal);
+            int[] TriangleFacesOf(ArtAssetManifest garment)
+            {
+                if (!triangleFaces.TryGetValue(garment.Name, out var faces))
+                {
+                    faces = TemplateTriangleFaces(garment, label);
+                    triangleFaces[garment.Name] = faces;
+                }
+
+                return faces;
+            }
+
             var garments = ArtAssetManifests.Textures()
                 .Where(texture => templates.ContainsKey(texture.garment)
                     && (texture.export.masks.Length == 0 || texture.export.masks.Any(mask => mask.body == label)))
@@ -542,15 +559,8 @@ namespace Mmorpg.Client.Editor
                     }
 
                     var record = garment.export.models.Single(model => model.body == label);
-                    var where = garment.path + " " + record.body;
                     var model = AssetDatabase.LoadAssetAtPath<GameObject>(ArtAssetManifests.ToUnityPath(record.target));
-                    var text = AssetDatabase.LoadAssetAtPath<TextAsset>(record.UnityDataPath);
-                    if (model == null || text == null)
-                    {
-                        throw new InvalidOperationException(where + ": the model or its data is not imported.");
-                    }
-
-                    var data = ArtGarmentData.FromJson(text.text);
+                    var data = DataOf(garment, label);
                     var mask = pair.texture.export.masks.SingleOrDefault(entry => entry.body == label);
                     if (mask != null)
                     {
@@ -563,15 +573,14 @@ namespace Mmorpg.Client.Editor
                         data = ArtGarmentData.FromJson(maskText.text);
                     }
 
-                    var topology = new ArtTopologyMaps.Topology(data.garmentVertices, data.garmentFaceSizes, data.garmentFaceVertices);
-                    var renderer = model.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
-                    var sources = ArtTopologyMaps.VertexCandidates(PositionsIn(model.transform, renderer), topology);
-                    if (sources.Any(candidates => candidates.Length == 0))
-                    {
-                        throw new InvalidOperationException(where + ": the model has vertices that are not in its data; export the garment again.");
-                    }
-
-                    var faces = ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, sources, topology, where);
+                    // A texture's masks have the faces of its template.
+                    var faces = TriangleFacesOf(garment);
+                    var hidden = (data.innerTemplates ?? Array.Empty<string>())
+                        .Select(inner => templates.Values.FirstOrDefault(template => template.Name == inner))
+                        .Where(inner => inner != null)
+                        .Select(inner => HiddenTrianglesFor(inner.Name, TriangleFacesOf(inner), DataOf(inner, label).garmentFaces,
+                            data.InnerFaceCountOf(inner.Name), data.HiddenFacesOf(inner.Name), pair.texture.path + " " + label))
+                        .ToArray();
                     var path = GarmentContentPath(body, pair.texture.Name);
                     found.Add(new PieceSpec { Path = path, Address = ContentAddressOf(path), Model = model, Material = material });
                     return new BodyAppearanceCatalog.Garment(
@@ -587,11 +596,83 @@ namespace Mmorpg.Client.Editor
                         data.covered,
                         faces.Select(face => data.underlay[face]).ToArray(),
                         data.pullInVertices,
-                        data.pullInDistances);
+                        data.pullInDistances,
+                        hidden);
                 })
                 .ToArray();
             pieces = found.ToArray();
             return garments;
+        }
+
+        // The data a template exports for the body next to its model.
+        private static ArtGarmentData DataOf(ArtAssetManifest garment, string label)
+        {
+            var record = garment.export.models.Single(model => model.body == label);
+            var text = AssetDatabase.LoadAssetAtPath<TextAsset>(record.UnityDataPath);
+            if (text == null)
+            {
+                throw new InvalidOperationException(garment.path + " " + label + ": the data of the model is not imported.");
+            }
+
+            return ArtGarmentData.FromJson(text.text);
+        }
+
+        // The face of a template each triangle of its model for the body comes from, over the
+        // model's submeshes in order, found by the positions of the faces its data names.
+        public static int[] TemplateTriangleFaces(ArtAssetManifest garment, string label)
+        {
+            var record = garment.export.models.Single(model => model.body == label);
+            var where = garment.path + " " + record.body;
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(ArtAssetManifests.ToUnityPath(record.target));
+            if (model == null)
+            {
+                throw new InvalidOperationException(where + ": the model or its data is not imported.");
+            }
+
+            var data = DataOf(garment, label);
+            var topology = new ArtTopologyMaps.Topology(data.garmentVertices, data.garmentFaceSizes, data.garmentFaceVertices);
+            var renderer = model.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
+            var sources = ArtTopologyMaps.VertexCandidates(PositionsIn(model.transform, renderer), topology);
+            if (sources.Any(candidates => candidates.Length == 0))
+            {
+                throw new InvalidOperationException(where + ": the model has vertices that are not in its data; export the garment again.");
+            }
+
+            return ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, sources, topology, where);
+        }
+
+        // The triangles a garment hides of a template worn under it: every triangle of the
+        // template's model whose face is among the faces the garment's data names, in ascending
+        // order and each once, as the mesh plan walks them. The template's model for the body has
+        // faceCount faces, which must be the count the data recorded for it, so faces of another
+        // export of the template never reach the game.
+        public static BodyAppearanceCatalog.HiddenTriangles HiddenTrianglesFor(string template, IReadOnlyList<int> triangleFaces,
+            int faceCount, int recordedFaceCount, IReadOnlyList<int> hiddenFaces, string where)
+        {
+            if (recordedFaceCount != faceCount)
+            {
+                throw new InvalidOperationException(where + ": the data names the faces it hides of " + template + " with "
+                    + recordedFaceCount + " faces, but its model for the body has " + faceCount
+                    + "; export the garment again after its templates of lower layers.");
+            }
+
+            var hidden = new HashSet<int>(hiddenFaces);
+            if (hidden.Any(face => face < 0 || face >= faceCount))
+            {
+                throw new InvalidOperationException(where + ": the data hides faces that " + template
+                    + " does not have; export the garment again after its templates of lower layers.");
+            }
+
+            var triangles = new List<int>();
+            for (var triangle = 0; triangle < triangleFaces.Count; triangle++)
+            {
+                if (hidden.Contains(triangleFaces[triangle]))
+                {
+                    triangles.Add(triangle);
+                }
+            }
+
+            return new BodyAppearanceCatalog.HiddenTriangles(template, triangles.ToArray());
         }
 
         // The renderer's vertices in the model root's space.
