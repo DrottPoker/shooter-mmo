@@ -15,22 +15,22 @@
         "version": 1,
         "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce",
         "stages": {
-            "model": "f7bd10082969eee4ef9762544223c0b2fc0fed0e2664675a151344bc61aad117"
+            "model": "7d57529a431e75f435c04d8057de912c891a82b506e685584e2afb07c994df75"
         },
         "parts": {
             "materials": "767aff8da4412a2afcff84a4df43e5353a00a017c7db24a890d99459315ade41",
-            "shape": "ac0e3b0207057a09ddea83c9eca007830f708bacba24e2de8cae88a5b7ce1030",
+            "shape": "e9fefb7a76a30b045ca672bd9104c7cc14acd901b21c380df0e5d910285c7182",
             "uv": "8073a10a3c514d50d0f1950c427b8d8c5b5d1a0d8c29b536923ffd31f1ad8048"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-10-31",
-            "contentSha256": "f7bd10082969eee4ef9762544223c0b2fc0fed0e2664675a151344bc61aad117"
+            "contentSha256": "7d57529a431e75f435c04d8057de912c891a82b506e685584e2afb07c994df75"
         }
     },
     "export": {
-        "contentSha256": "f7bd10082969eee4ef9762544223c0b2fc0fed0e2664675a151344bc61aad117",
+        "contentSha256": "7d57529a431e75f435c04d8057de912c891a82b506e685584e2afb07c994df75",
         "targetSha256": "43060214ce07ea9f86e9d0fd5f209c9cf979b77903e60b6e4f96411766a33c74",
         "materials": [
             {
