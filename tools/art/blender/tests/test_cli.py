@@ -152,6 +152,16 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parse("garment-review-file", "--file", "f", "--garment", "G", "--output", "o", "--weights")
 
+    def test_a_garment_is_made_and_synced_over_the_templates_of_lower_layers_it_is_worn_over(self):
+        for command in ("garment-create", "garment-sync"):
+            args = parse(command, "--file", "f", "--garment", "G", "--manifest", "m", "--cage-manifest", "c",
+                         "--pair", "t.blend=Trousers:tight", "--pair", "b.blend=Boots:mid")
+            with self.subTest(command=command):
+                self.assertEqual(cli._pairs(args), [(os.path.abspath("t.blend"), "Trousers", "tight"),
+                                                    (os.path.abspath("b.blend"), "Boots", "mid")])
+                self.assertEqual(cli._pairs(parse(command, "--file", "f", "--garment", "G", "--manifest", "m",
+                                                  "--cage-manifest", "c")), [])
+
     def test_a_library_sync_keeps_its_clips_unless_forced(self):
         args = parse("library-sync", "--library", "l", "--armature", "a", "--rig-source", "s", "--rig-root", "r")
         self.assertFalse(args.force)
@@ -212,6 +222,42 @@ class ListArgumentTests(unittest.TestCase):
         args = parse("validate", "--kind", "x", "--roots", "y", "--body", "no_armature.blend")
         with self.assertRaises(ValueError):
             cli._bodies(args)
+
+
+class PairSourceTests(unittest.TestCase):
+    """A texture's masks name faces of the templates of lower layers worn under its template, so its
+    export records their exports, as a template's does, and the checks hold it to them."""
+
+    @staticmethod
+    def function(name: str) -> str:
+        text = powershell("ArtPipelineCommon.ps1", "Export-ArtAsset.ps1")
+        match = re.search(rf"^function {re.escape(name)}\b.*?(?=^function |\Z)", text, re.S | re.M)
+        assert match is not None, name
+        return match.group(0)
+
+    def test_a_texture_with_masks_records_the_exports_of_the_templates_under_its_template_and_stops_when_one_changed(self):
+        body = self.function("Export-ArtTexture")
+        self.assertIn("Get-ArtGarmentPairs $template", body)
+        self.assertIn("pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })", body)
+        self.assertIn("has changed since its export", body)
+        self.assertIn('"--opaque-only", $opaqueReason', body)
+        self.assertIn("templates of lower layers worn under its template: {args.opaque_only}.", source_text("art_pipeline_cli.py"))
+
+    def test_the_manifest_reads_a_texture_s_pair_sources_only_with_masks_and_writes_them(self):
+        self.assertIn("export.pairSources must list, for a texture with masks", self.function("Read-ArtTextureManifest"))
+        self.assertIn("($maskRecords.Count -gt 0 -or $pairSources.Count -eq 0)", self.function("Read-ArtTextureManifest"))
+        self.assertIn('"pairSources": [', self.function("Write-ArtTextureManifest"))
+
+    def test_the_verification_holds_a_texture_with_masks_to_the_current_exports_of_its_template_s_pairs(self):
+        self.assertIn('Get-ArtPairSourcesProblem $manifest $manifest.Garment "tools/art/Sync-TextureAsset.ps1"',
+                      powershell("Verify-ArtAssets.ps1"))
+        self.assertIn("Get-ArtGarmentPairs $Template", self.function("Get-ArtPairSourcesProblem"))
+
+    def test_a_wrong_split_names_its_entry_and_its_key_and_that_toward_and_offset_come_together(self):
+        body = self.function("Get-ArtGarmentSplitProblem")
+        self.assertIn("recipe.splits entry $($i + 1) (line $([string]$split.line))", body)
+        self.assertIn('""toward"" and ""offset"" come together', body)
+        self.assertIn("Get-ArtGarmentSplitProblem $Json.recipe $cage", powershell("ArtPipelineCommon.ps1"))
 
 
 class ResultLineTests(unittest.TestCase):

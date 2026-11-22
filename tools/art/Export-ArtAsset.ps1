@@ -127,9 +127,11 @@ function Get-ArtClipSourceRecords($Manifest) {
 
 function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
     # A garment texture exports its image and its material, and with transparent parts its masks
-    # per body of its template, checked in the clips of the skeleton's libraries. It records its
-    # template's export, so a new export of the template needs a new export of the texture. The
-    # masks are computed in the template's file, so that file must be the one its export came from.
+    # per body of its template, checked in the clips of the skeleton's libraries, with the faces they
+    # hide of the templates of lower layers worn under its template. It records its template's
+    # export and those of the libraries and the lower templates its masks were made with, so a new
+    # export of any of them needs a new export of the texture. The masks are computed in the
+    # template's file, so that file must be the one its export came from.
     $template = Read-ArtAssetManifest $Manifest.Garment.Directory
     $templateExport = $template.Export
     if ($null -eq $templateExport) {
@@ -158,12 +160,24 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
         throw "$($Manifest.Name) cannot be exported: $reviewProblem."
     }
 
-    # Only the masks of a texture with transparent parts are checked in the clips, so a library that
-    # is not exported from its current file stops only such a texture, in Blender, before anything
-    # is written; whether the texture has them shows only there.
+    # Only the masks of a texture with transparent parts are checked in the clips and name the faces
+    # they hide of the templates of lower layers worn under its template, so a library or such a
+    # template that is not exported from its current file, which Blender reads, stops only such a
+    # texture, in Blender, before anything is written; whether the texture has them shows only there.
     $clipProblem = Get-ArtClipSourceProblem $Manifest
     $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Manifest } else { @() }
-    $opaqueOnly = if ($null -ne $clipProblem) { @("--opaque-only", $clipProblem) } else { @() }
+    $pairProblem = $null
+    $pairSources = @()
+    foreach ($pair in @(Get-ArtGarmentPairs $template)) {
+        if ($null -eq $pairProblem -and (Get-ArtFileSha256 $pair.SourcePath) -ne [string]$pair.Export.sourceSha256) {
+            $pairProblem = "the template $($pair.RelativeDirectory) of a lower layer has changed since its export; review, approve, and export it first"
+        }
+
+        $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; sourceSha256 = [string]$pair.Export.sourceSha256 }
+    }
+
+    $opaqueReason = @($clipProblem, $pairProblem | Where-Object { $null -ne $_ }) -join "; "
+    $opaqueOnly = if ($opaqueReason) { @("--opaque-only", $opaqueReason) } else { @() }
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "texture") + @(
@@ -205,6 +219,7 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
         garmentSourceSha256 = [string]$templateExport.sourceSha256
         masks = $masks
         clipSources = $(if ($masks.Count -gt 0) { $clipSources } else { @() })
+        pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })
         materials = $materials
         textures = $textures
     }

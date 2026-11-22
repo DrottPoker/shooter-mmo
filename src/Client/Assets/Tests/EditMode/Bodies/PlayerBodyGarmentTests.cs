@@ -99,23 +99,122 @@ namespace Mmorpg.Client.Tests.EditMode
                 var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, shirt }, null, meshes.Content);
                 try
                 {
-                    // The trousers' faces over the body faces the shirt covers at the waist go, and
-                    // so do the body faces the shirt covers beyond the trousers.
+                    // The trousers lose the triangles over body faces the shirt covers and those the
+                    // shirt's data hides, each once; the body loses the faces it covers beyond them.
                     var covered = new HashSet<int>(shirt.Covered);
                     var underCovered = new HashSet<int>(under.Covered);
                     var trousersLost = under.Underlay.Count(face => covered.Contains(face));
+                    var hiddenLost = shirt.HiddenTrianglesOf(under.Template)
+                        .Count(triangle => !covered.Contains(under.Underlay[triangle]));
                     var bodyLost = appearance.Catalog.Parts.Sum(part =>
                         part.TriangleFaces.Count(face => covered.Contains(face) && !underCovered.Contains(face)));
                     var garmentTriangles = shirt.Underlay.Count;
                     Assert.That(trousersLost, Is.GreaterThan(0));
                     Assert.That(TriangleCount(both.Mesh),
-                        Is.EqualTo(TriangleCount(alone.Mesh) - trousersLost - bodyLost + garmentTriangles));
+                        Is.EqualTo(TriangleCount(alone.Mesh) - trousersLost - hiddenLost - bodyLost + garmentTriangles));
                 }
                 finally
                 {
                     Object.DestroyImmediate(alone.Mesh);
                     Object.DestroyImmediate(both.Mesh);
                 }
+            });
+        }
+
+        [Test]
+        public void AGarmentOfAHigherLayerHidesTheTrianglesOfALowerTemplateThatItsDataNames()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var parts = Parts(appearance);
+                var catalog = appearance.Catalog;
+                var trousers = catalog.GarmentNamed(Trousers);
+                var shirt = catalog.GarmentNamed(Shirt);
+                // Fixtures: of the trousers' triangles that the underlay rule leaves drawn under the
+                // shirt, the shirt's data names every third as hidden.
+                var covered = new HashSet<int>(shirt.Covered);
+                var hidden = Enumerable.Range(0, trousers.Underlay.Count)
+                    .Where(triangle => !covered.Contains(trousers.Underlay[triangle]) && triangle % 3 == 0)
+                    .ToArray();
+                Assert.That(hidden, Is.Not.Empty);
+                var plain = WithHidden(shirt, shirt.Layer);
+                var hiding = WithHidden(shirt, shirt.Layer, new BodyAppearanceCatalog.HiddenTriangles(trousers.Template, hidden));
+                Assert.That(hiding.HiddenTrianglesOf(trousers.Template), Is.EqualTo(hidden));
+                Assert.That(hiding.HiddenTrianglesOf("Boots"), Is.Empty);
+                var counts = TriangleCounts(parts, appearance, meshes,
+                    new[] { trousers },
+                    new[] { trousers, plain },
+                    new[] { trousers, hiding },
+                    // Taken off again, the trousers are drawn in full.
+                    new[] { trousers },
+                    // A garment hides nothing of a template of a layer as high as its own or higher.
+                    new[] { trousers, WithHidden(shirt, trousers.Layer, new BodyAppearanceCatalog.HiddenTriangles(trousers.Template, hidden)) },
+                    new[] { trousers, WithHidden(shirt, trousers.Layer) },
+                    // Nor of another template than the one its data names.
+                    new[] { trousers, WithHidden(shirt, shirt.Layer, new BodyAppearanceCatalog.HiddenTriangles("Boots", hidden)) });
+                Assert.That(counts[2], Is.EqualTo(counts[1] - hidden.Length));
+                Assert.That(counts[3], Is.EqualTo(counts[0]));
+                Assert.That(counts[4], Is.EqualTo(counts[5]));
+                Assert.That(counts[6], Is.EqualTo(counts[1]));
+            });
+        }
+
+        [Test]
+        public void TwoGarmentsOfHigherLayersHideTogetherWhatEitherNames()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var parts = Parts(appearance);
+                var catalog = appearance.Catalog;
+                var trousers = catalog.GarmentNamed(Trousers);
+                var shirt = catalog.GarmentNamed(Shirt);
+                var boots = catalog.GarmentNamed("LeatherBoots");
+                Assert.That(boots, Is.Not.Null);
+                Assert.That(boots.Layer, Is.GreaterThan(trousers.Layer));
+                // Fixtures: of the trousers' triangles that neither covers by its underlay, the shirt's
+                // data names every second and the boots' every third, so some are named by both.
+                var covered = new HashSet<int>(shirt.Covered.Concat(boots.Covered));
+                var drawn = Enumerable.Range(0, trousers.Underlay.Count).Where(triangle => !covered.Contains(trousers.Underlay[triangle])).ToArray();
+                var byShirt = drawn.Where(triangle => triangle % 2 == 0).ToArray();
+                var byBoots = drawn.Where(triangle => triangle % 3 == 0).ToArray();
+                var either = byShirt.Union(byBoots).Count();
+                Assert.That(either, Is.LessThan(byShirt.Length + byBoots.Length));
+                var counts = TriangleCounts(parts, appearance, meshes,
+                    new[] { trousers, WithHidden(shirt, shirt.Layer), WithHidden(boots, boots.Layer) },
+                    new[]
+                    {
+                        trousers,
+                        WithHidden(shirt, shirt.Layer, new BodyAppearanceCatalog.HiddenTriangles(trousers.Template, byShirt)),
+                        WithHidden(boots, boots.Layer, new BodyAppearanceCatalog.HiddenTriangles(trousers.Template, byBoots)),
+                    });
+                Assert.That(counts[1], Is.EqualTo(counts[0] - either));
+            });
+        }
+
+        // Which triangles a garment hides is the art pipeline's decision, made in Blender: a net's data
+        // names none under its holes. The body build leaves out exactly the triangles the data names,
+        // so every other one, such as one under a hole, stays drawn.
+        [Test]
+        public void TrianglesThatAGarmentsDataDoesNotNameStayDrawnUnderIt()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var parts = Parts(appearance);
+                var catalog = appearance.Catalog;
+                var trousers = catalog.GarmentNamed(Trousers);
+                var net = catalog.GarmentNamed("NetShirt");
+                Assert.That(net, Is.Not.Null);
+                Assert.That(net.Layer, Is.GreaterThan(trousers.Layer));
+                // Fixtures: of the trousers' triangles that the underlay rule leaves drawn, the data
+                // names every second one.
+                var covered = new HashSet<int>(net.Covered);
+                var drawn = Enumerable.Range(0, trousers.Underlay.Count).Where(triangle => !covered.Contains(trousers.Underlay[triangle])).ToArray();
+                var named = drawn.Where(triangle => triangle % 2 == 0).ToArray();
+                var counts = TriangleCounts(parts, appearance, meshes,
+                    new[] { trousers, WithHidden(net, net.Layer) },
+                    new[] { trousers, WithHidden(net, net.Layer, new BodyAppearanceCatalog.HiddenTriangles(trousers.Template, named)) });
+                Assert.That(counts[1], Is.EqualTo(counts[0] - named.Length));
+                Assert.That(counts[1], Is.GreaterThan(counts[0] - drawn.Length));
             });
         }
 
@@ -277,6 +376,33 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(PlayerBodyAppearance.ChainsOf("cloak"), Is.EqualTo(ClothChainKind.Cloak));
             Assert.That(PlayerBodyAppearance.ChainsOf("hood"), Is.EqualTo(ClothChainKind.Hood));
             Assert.That(PlayerBodyAppearance.ChainsOf(string.Empty), Is.Null);
+        }
+
+        // A copy of a garment at a layer, with the triangles it hides of the templates under it.
+        private static BodyAppearanceCatalog.Garment WithHidden(BodyAppearanceCatalog.Garment garment, int layer,
+            params BodyAppearanceCatalog.HiddenTriangles[] hidden)
+        {
+            return new BodyAppearanceCatalog.Garment(garment.Name, garment.Template, garment.Address, garment.Slot, layer,
+                garment.Hides.ToArray(), garment.HidesUnderwear, garment.Hair, garment.Cloth, garment.Covered.ToArray(),
+                garment.Underlay.ToArray(), garment.PullInVertices.ToArray(), garment.PullInDistances.ToArray(), hidden);
+        }
+
+        // The triangles of the body put together with each set of garments.
+        private static int[] TriangleCounts(SkinnedMeshRenderer[] parts, PlayerBodyAppearance appearance, PlayerBodyMeshes meshes,
+            params BodyAppearanceCatalog.Garment[][] looks)
+        {
+            return looks.Select(garments =>
+            {
+                var combined = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, garments, null, meshes.Content);
+                try
+                {
+                    return TriangleCount(combined.Mesh);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(combined.Mesh);
+                }
+            }).ToArray();
         }
 
         private static BodyAppearanceCatalog.Garment CopyOf(BodyAppearanceCatalog.Garment garment, string name, string slot, int layer,

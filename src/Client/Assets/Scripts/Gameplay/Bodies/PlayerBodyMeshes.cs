@@ -12,7 +12,8 @@ namespace Mmorpg.Client.Gameplay
     // as parts, a crowd paid for every part of every body; combined, a body is one skinned
     // renderer with one submesh per material. Putting a body together with garments leaves out
     // the body faces the worn garments cover, moves the pulled-in body vertices inward, leaves out
-    // the garment faces whose underlay a garment of a higher layer covers, leaves out every
+    // the garment faces whose underlay a garment of a higher layer covers and those a worn garment
+    // of a higher layer hides, leaves out every
     // garment of a slot that a worn garment of a higher layer hides, and leaves out the hair
     // under headwear that hides it or draws it in its form under headwear that presses it flat;
     // see docs/EQUIPMENT_VISUALS_DESIGN.md. Attachments, such as a sword, are rigid meshes weighted

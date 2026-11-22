@@ -36,7 +36,7 @@ $arguments = @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "garment-sync",
     "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
-    "--cage-manifest", $manifest.Cage.ManifestPath) + $bodyArguments
+    "--cage-manifest", $manifest.Cage.ManifestPath) + $bodyArguments + (Get-ArtGarmentPairArguments $manifest)
 if ($Weights) {
     $arguments += "--weights"
 }

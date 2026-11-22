@@ -4,13 +4,13 @@
     "garment": "art/Garments/HoodUp",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
+            "date": "2026-11-22",
+            "sourceSha256": "348045a6363bfee5163d383b6e0c136148452090c033a2c13f6d356b0d606d19",
             "garmentSourceSha256": "6738bcf67b3ace3b61032da5e7f819a1501b9ea6d297f1803d49ef251cd5448c"
         }
     },
     "export": {
-        "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
+        "sourceSha256": "348045a6363bfee5163d383b6e0c136148452090c033a2c13f6d356b0d606d19",
         "garmentSourceSha256": "6738bcf67b3ace3b61032da5e7f819a1501b9ea6d297f1803d49ef251cd5448c",
         "materials": [
             {

@@ -251,8 +251,11 @@ class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):
                 continue
             with self.subTest(garment=name):
                 self.assertTrue(set(recipe["regions"]) <= set(cage.REGIONS))
-                for use in recipe["cuts"] + recipe.get("over", []) + recipe.get("hang", []):
+                for use in recipe["cuts"] + recipe.get("over", []) + recipe.get("hang", []) + recipe.get("splits", []):
                     self.assertIn(use["line"], self.lines)
+                for split in recipe.get("splits", []):
+                    self.assertIn(self.lines[split["line"]]["region"], recipe["regions"])
+                    self.assertEqual("offset" in split, "toward" in split)
                 for cut in recipe["cuts"]:
                     self.assertIn(cut["keep"], ("head", "tail"))
                 for over in recipe.get("over", []):
@@ -472,8 +475,9 @@ class BuildOrderTests(unittest.TestCase):
 
     # The build of garment.py, and every function of hang.py, which the build cuts, trims, and hangs
     # loose parts with.
-    BUILD = {"art_pipeline/garment.py": ("build", "_cut", "_cut_curved", "_add_hangs", "_mark_seams", "_unwrap",
-                                         "_lay_hangs", "_turn_edges", "_armpits", "_hang_columns"),
+    BUILD = {"art_pipeline/garment.py": ("build", "_cut", "_cut_curved", "_split", "split_planes", "_add_hangs", "_mark_seams",
+                                         "_unwrap", "_lay_hangs", "_turn_edges", "_armpits", "_hang_columns", "split_starts",
+                                         "mirror_faces", "_turn_corners"),
              "art_pipeline/hang.py": None}
 
     def test_elements_are_taken_once_each_by_index_whatever_order_they_come_in(self):

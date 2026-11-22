@@ -4,14 +4,14 @@
     "garment": "art/Garments/Trousers",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "b2368c168fb98eba2b66805c0945891e068e72f60b65469894dd9e4486103c42",
-            "garmentSourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465"
+            "date": "2026-11-22",
+            "sourceSha256": "a1fe7e410e4844ccb30fe88b3c0ab91282a2b8f89821de80a5ac32c54b4f0f21",
+            "garmentSourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952"
         }
     },
     "export": {
-        "sourceSha256": "b2368c168fb98eba2b66805c0945891e068e72f60b65469894dd9e4486103c42",
-        "garmentSourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465",
+        "sourceSha256": "a1fe7e410e4844ccb30fe88b3c0ab91282a2b8f89821de80a5ac32c54b4f0f21",
+        "garmentSourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952",
         "materials": [
             {
                 "name": "M_Garment_WoolTrousers",
@@ -25,7 +25,7 @@
             {
                 "name": "T_Garment_WoolTrousers",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolTrousers.png",
-                "sha256": "64e3b5abd39b380776481c5e15068fe5e37a140d6a5dcec60db6fdbacd497c47"
+                "sha256": "2404c21a7e2278595cec4aadb0ea9a8fcc93bdef9ad591131754cfada066cb6a"
             }
         ]
     }

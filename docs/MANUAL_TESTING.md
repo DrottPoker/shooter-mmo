@@ -2611,7 +2611,15 @@ woman.
    no skin shows through the jerkin at the shoulder seams.
 2. Drag `Linen Shirt` onto `Body`. Expected result: the linen shirt takes the
    jerkin's place, and the jerkin moves into the shirt's inventory slot, since
-   a body wears one chest piece.
+   a body wears one chest piece. Stand, walk, and jog, and look at both hips up
+   close from the front, the back, and each side. Expected result: no piece of
+   the trousers shows through the shirt above its hem when you stand or walk, on
+   the left hip as on the right; in the jog a sliver of the trousers may show at
+   the back of the hip just above the hem, as
+   [Project Overview](PROJECT_OVERVIEW.md#status-by-area) lists as open. A look
+   up under the hem shows the trousers going on inside, never a hole or the
+   background. Drag the shirt back into the inventory. Expected
+   result: the trousers are whole again up to their waistband.
 3. Choose `Tattoo` on the `Tattoo` row of the Admin menu and drag `Net Shirt`
    onto `Body`. Expected result: the tattoo and the skin show through the
    meshes of the net, and on the woman the bra too, since the net shirt does not
@@ -2648,7 +2656,9 @@ woman.
    row. Expected result: a bald head under the helmet; the hair is part of the
    look, not an item.
 9. Walk, jog, and turn with the hood and with the helmet. Expected result:
-   nothing of the hair or the shirt shows through the hood or the helmet.
+   nothing of the hair or the shirt shows through the hood or the helmet, and a
+   look up under them from below and behind shows the hair and the shirt whole,
+   never a hole or the background.
 
 Drag the items back into the inventory and the bare body is back. What a
 character wears comes from its equipment, so it is the same after a new join.
@@ -2986,7 +2996,10 @@ Pick each body in turn in `Body`.
    and press `Walk`, `Jog`, and `Death`. Expected result: the hair takes its own
    form under the lowered hood, whose bag stays on the upper back, and its
    pressed form under the helmet; the helmet moves with the head, and neither
-   the hair nor the cloak comes through the hood or the helmet.
+   the hair nor the cloak comes through the hood or the helmet. Drag the view
+   below and behind the head while it walks: the hair, the shirt, and the
+   cloak's back show whole under the hood and the helmet, never a hole or the
+   background.
 
 ## World Builder
 

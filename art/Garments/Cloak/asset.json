@@ -30,45 +30,45 @@
     "triangleBudget": 1500,
     "approvals": {
         "model": {
-            "date": "2026-11-21",
-            "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae"
+            "date": "2026-11-22",
+            "sourceSha256": "7a511d1b6911dcdb0387c223dde3f34b012936a768d07df7fdb5562f94e05758"
         },
         "rig": {
-            "date": "2026-11-21",
-            "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae"
+            "date": "2026-11-22",
+            "sourceSha256": "7a511d1b6911dcdb0387c223dde3f34b012936a768d07df7fdb5562f94e05758"
         }
     },
     "export": {
-        "sourceSha256": "84f33e724261082ddf32b42f8bbe9c55c963a6bdf10400b40fc4b3bd66cca6ae",
+        "sourceSha256": "7a511d1b6911dcdb0387c223dde3f34b012936a768d07df7fdb5562f94e05758",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/Cloak_Male.fbx",
-                "sha256": "e27664fe2e41614396c309b4727dd08f3bb3a64e3b3aeed9dd6778341473f2eb",
+                "sha256": "b7934636f2aa6bae9aea2c0ba3e6aad3ae945fe8fdcf6f87af178f11008dd7c5",
                 "data": "src/Client/Assets/Art/Models/Garments/Cloak_Male.json",
-                "dataSha256": "a9aac26767c5c7c994be8ff8f0e6fea73f2121f8ed6d615afcb9cf51954cb38f"
+                "dataSha256": "23d7959194414eeef34ed5dff6629063a51f22e52553eaf2d855749dcad796c9"
             },
             {
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/Cloak_Female.fbx",
-                "sha256": "285fa5ca8552bc2ffc69c402d3ba0c96085ad2f880cbe75e71317b67d76491ce",
+                "sha256": "712db752de6c9f6fa4d1d56dc72fe6d3e0c45aea5db914f2697789ae3715714f",
                 "data": "src/Client/Assets/Art/Models/Garments/Cloak_Female.json",
-                "dataSha256": "e2d77a44c37bba02f3ab0d097751a885c571c680b088b6d955f583b6394387a6"
+                "dataSha256": "8156208771c861c1136a8bf16be8d3683ffaf7928ffd1294dd79fd4efae30e87"
             }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845" },
-            { "garment": "art/Garments/Gloves", "sourceSha256": "d389475bc156098bd5cafb2e73258e3dce792a9040bfb36764ac12ef6347f448" },
-            { "garment": "art/Garments/LongShirt", "sourceSha256": "c0da4b18f7f5784fb5533c7736f5b94f4a6e831c878bc693df08a770c09411f5" },
-            { "garment": "art/Garments/Robe", "sourceSha256": "a639e1e295fa38333df15adf018e4cbf3cb7232e5e7f620bf9d6637ca15a9d13" },
-            { "garment": "art/Garments/Shirt", "sourceSha256": "d60d4853159a997e2862098e1661155b89bf4f54758bac86cbc36f4578784af1" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "daba6b7a52f1293d6d084daa6bf4fe8e1dffb52efd725f66d1ba8c89b6216465" }
+            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
+            { "garment": "art/Garments/Gloves", "sourceSha256": "35f75a398c0ecb980fbb3ed5d7693dea6f1ba4584af5c638338ddd29eba78471" },
+            { "garment": "art/Garments/LongShirt", "sourceSha256": "7f8312b36deed037dbc60139cab146f0c914584496598a6a9455d1e642245f49" },
+            { "garment": "art/Garments/Robe", "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c" },
+            { "garment": "art/Garments/Shirt", "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
         ],
         "materials": [
             {

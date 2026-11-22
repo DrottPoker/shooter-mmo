@@ -61,6 +61,10 @@ param(
     [string]$Cage = "art/Cages/Humanoid",
     [string[]]$Regions = @(),
     [string[]]$Cuts = @(),
+    # garment: edge loops at lines where it is not cut, each <Line> or <Line>:<head|tail>:<offset>,
+    # moved by the offset in meters toward the head or the tail of the line's bone, such as
+    # HemHip:tail:0.01 10 mm inside a top's hem, so a template of a higher layer hides it face by face.
+    [string[]]$Splits = @(),
     # garment: what it lies over beyond a line, each <Line>:<head|tail>:<band>, the side the inner
     # garment keeps and its band, such as Waist:head:mid for a top over trousers.
     [string[]]$Over = @(),
@@ -244,6 +248,18 @@ switch ($Kind) {
 
                         [ordered]@{ line = $parts[0]; keep = $parts[1] }
                     })
+                splits = @($Splits | ForEach-Object {
+                        $parts = $_.Split(":")
+                        if ($parts.Count -eq 1) {
+                            [ordered]@{ line = $parts[0] }
+                        }
+                        elseif ($parts.Count -eq 3) {
+                            [ordered]@{ line = $parts[0]; toward = $parts[1]; offset = [double]::Parse($parts[2], [System.Globalization.CultureInfo]::InvariantCulture) }
+                        }
+                        else {
+                            throw "Pass each -Splits as <Line> or <Line>:<head|tail>:<offset>, such as HemHip:tail:0.01."
+                        }
+                    })
                 over = @($Over | ForEach-Object {
                         $parts = $_.Split(":")
                         if ($parts.Count -ne 3) {
@@ -284,7 +300,7 @@ switch ($Kind) {
         }
 
         if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
-            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>][:<to>] with a flare from 0 to $script:ArtGarmentFlareLimit, across the back a top and a width up to $script:ArtGarmentHangShareLimit, and the line of the legs it ends at, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Splits at lines in those regions, each <Line> or <Line>:<head|tail>:<offset> with an offset above 0 and up to $script:ArtGarmentSplitLimit, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>][:<to>] with a flare from 0 to $script:ArtGarmentFlareLimit, across the back a top and a width up to $script:ArtGarmentHangShareLimit, and the line of the legs it ends at, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
         }
 
         Add-ArtRecipeLines $lines $recipe
@@ -377,6 +393,7 @@ try {
                 "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
                 "--cage-manifest", $manifest.Cage.ManifestPath)
             $arguments += @($manifest.Bodies | ForEach-Object { @("--body", "$($_.SourcePath)=$($_.Root)") })
+            $arguments += Get-ArtGarmentPairArguments $manifest
             $blender = Resolve-ArtBlender $BlenderPath
             $output = Invoke-ArtNative $blender $arguments
             if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART_GARMENT created *" }).Count -eq 0) {

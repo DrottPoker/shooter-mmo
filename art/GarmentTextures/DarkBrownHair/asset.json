@@ -4,13 +4,13 @@
     "garment": "art/Garments/ShoulderHair",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
+            "date": "2026-11-22",
+            "sourceSha256": "eea6bab086dcbd5d91beed45e712b66889242a79e9b30d7f20c7829905ac57d9",
             "garmentSourceSha256": "f8e5ac08529f7ac5146bb7167b1682812b9b351044a202e99898c56fbd2c3b5f"
         }
     },
     "export": {
-        "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
+        "sourceSha256": "eea6bab086dcbd5d91beed45e712b66889242a79e9b30d7f20c7829905ac57d9",
         "garmentSourceSha256": "f8e5ac08529f7ac5146bb7167b1682812b9b351044a202e99898c56fbd2c3b5f",
         "materials": [
             {

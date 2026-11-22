@@ -4,14 +4,14 @@
     "garment": "art/Garments/Boots",
     "approvals": {
         "texture": {
-            "date": "2026-11-21",
-            "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-            "garmentSourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845"
+            "date": "2026-11-22",
+            "sourceSha256": "2901623e219c367b3b8f31bfaf21d4dbc52ec4483e36607013039a23c3ca8895",
+            "garmentSourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e"
         }
     },
     "export": {
-        "sourceSha256": "728d088f18de903d60d2fafa6f8785f2b36fcd5b29ea227572e07df6191cd5a6",
-        "garmentSourceSha256": "a6cdd743a0d05ac403c6d773e6a5b525eef6f22620b98fba8768fe510a46c845",
+        "sourceSha256": "2901623e219c367b3b8f31bfaf21d4dbc52ec4483e36607013039a23c3ca8895",
+        "garmentSourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e",
         "materials": [
             {
                 "name": "M_Garment_LeatherBoots",
@@ -25,7 +25,7 @@
             {
                 "name": "T_Garment_LeatherBoots",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LeatherBoots.png",
-                "sha256": "d6b3cbad4ed6a008a95e78dafc10e825def9af54cb94fd49714d6c3603dc53ae"
+                "sha256": "61b4af0443aae4014a73a8538d14a3b7bb7b44141e9b0e13598e9836de4955a9"
             }
         ]
     }

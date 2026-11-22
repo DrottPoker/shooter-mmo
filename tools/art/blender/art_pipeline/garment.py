@@ -9,16 +9,18 @@ cage's version Cage_<Label> on every body, taken from the cage's file, whose SHA
 keeps. The first body's version is the template a person shapes.
 
 A recipe builds the first version from the first body's cage: the faces of its regions, cut at its
-standard lines, offset into the band along the cage's normals, with more room at the armpits, its
-UVs unfolded along seams where clothes have them, and every open edge turned inward. A turned edge
+standard lines, its UVs unfolded along seams where clothes have them, edge loops at its splits,
+which interpolate the UVs, offset into the band along the cage's normals, with more room at the
+armpits, and every open edge turned inward; last, every quad's corners start so that it splits
+across the diagonal it folds outward across, a quad and its mirror image alike. A turned edge
 is always laid from its cloth, on every version and at every sync, and never settled on its own:
 its rim lies the hem's depth inside the cloth, or as deep as the cloth lies off the cage if that is
 less, and its flap runs back along the inside of the cloth at that depth, or as deep as the cloth
 lies off the cage at its top if that is less. Where the
 recipe says the template lies over an inner garment beyond a standard line, such as a top over the
-trousers below the waistband, its band there is measured from the inner garment's surface: it is
-lifted by the inner band's distance from the cage, fading in over a few centimeters before the
-line. A modeled
+trousers below the waistband, it is built lifted by the inner band's distance from the cage, fading
+in over a few centimeters before the line, and its cloth keeps OVER_GAP outside the real surface of
+the templates of lower layers it lies over there, their triangles as the game draws them. A modeled
 template's first version is modeled by hand instead. Every other version is fitted from the first
 through the cage: each vertex is bound to a triangle of the first body's cage, by barycentric
 coordinates and an offset in the triangle's frame, and placed at the same triangle and offset of the
@@ -99,6 +101,22 @@ LEAN_ROUNDING = 1e-4
 # A cage vertex this close to a line moves onto it before the cut, so the cut leaves no slivers and
 # the edge runs straight.
 LINE_SNAP = 0.008
+# A split runs through a vertex this close to its plane instead of cutting a sliver beside it. A
+# split moves no vertex: it comes after the UVs are unfolded, so a texture keeps its place, and the
+# UVs of its new vertices are interpolated along the edges they cut.
+SPLIT_SNAP = 0.001
+# Where a template lies over the real surface of a template of a lower layer, as the game draws its
+# triangles, its cloth keeps at least this far outside it.
+OVER_GAP = 0.0015
+# How far beyond a point of the template's cloth, outward from the cage, the surface of a template it
+# lies over still counts as under it, so the point is pushed out over it.
+OVER_REACH = 0.03
+# A quad that bends less than this across its diagonals, the distance between them, is flat and
+# splits along its shorter diagonal.
+FLAT_BEND = 1e-5
+# Two faces are mirror images of each other across the middle plane when every corner of one,
+# mirrored, lies this close to a corner of the other.
+MIRROR_MATCH = 0.001
 # A template that lies over an inner garment beyond a line rises to it over this distance before
 # the line.
 OVER_FADE = 0.03
@@ -162,7 +180,8 @@ def file_sha256(path: str) -> str:
 
 def recipe_text(recipe) -> str:
     """A recipe as the file keeps it, with its numbers as floats, so 0 and 0.0 read alike, and
-    without an empty list of what it lies over, so a recipe from before that field reads alike."""
+    without an empty list of what it lies over, of its loose parts, or of its splits, so a recipe
+    from before such a field reads alike."""
     if isinstance(recipe, dict):
         recipe = {**recipe, "ease": float(recipe["ease"]), "hem": float(recipe["hem"])}
         if not recipe.get("over"):
@@ -172,7 +191,26 @@ def recipe_text(recipe) -> str:
                               for part in recipe["hang"]]
         else:
             recipe.pop("hang", None)
+        if recipe.get("splits"):
+            recipe["splits"] = [{**split, **({"offset": float(split["offset"])} if "offset" in split else {})}
+                                for split in recipe["splits"]]
+        else:
+            recipe.pop("splits", None)
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
+
+
+def split_planes(recipe, lines: list[dict], label: str) -> list[tuple[dict, str, Vector, Vector]]:
+    """The planes of a recipe's splits on a body: per split and side the line, the side, and the
+    line's plane moved by the split's offset toward its bone's head or tail along the line's normal,
+    which points toward the tail."""
+    by_name = {line["name"]: line for line in lines}
+    planes = []
+    for split in recipe.get("splits", []) if isinstance(recipe, dict) else []:
+        line = by_name[split["line"]]
+        offset = float(split.get("offset", 0.0)) * (1.0 if split.get("toward", "tail") == "tail" else -1.0)
+        for side, point, normal in cage.line_planes(label, line):
+            planes.append((line, side, point + normal * offset, normal))
+    return planes
 
 
 def recipe_regions(recipe) -> tuple[str, ...] | None:
@@ -218,11 +256,70 @@ def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.n
 
 
 def band_limits(recipe, lines: list[dict], label: str, points: np.ndarray, band: str) -> tuple[np.ndarray, np.ndarray | None]:
-    """The band of each point of a template on a body, from the cage: the recipe's band, measured
-    from the inner garment's surface where the template lies over one."""
+    """The band of each point of a template on a body, from the cage: the recipe's band, and where
+    the recipe says the template lies over an inner garment, a least distance that clears the real
+    surface of the templates of lower layers it lies over there by OVER_GAP, and a largest distance
+    lifted by the inner garment's band, as far as the recipe builds it off the cage."""
     low, high = BANDS[band]
     lift = over_lift(recipe, lines, label, points)
-    return low + lift, (high + lift if high is not None else None)
+    over = lift > 0.0
+    lows = np.where(over, np.maximum(low, under_lows(recipe, label, points, over)), low) if over.any() else \
+        np.full(len(points), float(low))
+    return lows, (high + lift if high is not None else None)
+
+
+def lain_over(label: str) -> list[bpy.types.Object]:
+    """The versions on a body of the templates of lower layers that a template is worn over, which a
+    sync or a check put into the collection Pairs, by name."""
+    collection = bpy.data.collections.get(PAIR_COLLECTION)
+    if collection is None:
+        return []
+    return sorted((o for o in collection.objects if o.type == "MESH" and o.parent is not None and o.parent.name == label),
+                  key=lambda o: o.name)
+
+
+def under_lows(recipe, label: str, points: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Per point of a template on a body where mask is set, the least distance from the cage that
+    keeps it OVER_GAP outside the real surface of every template of a lower layer it lies over: of
+    their triangles as the game draws them, the farthest outer side that the straight line from the
+    cage's nearest point out through the point meets within OVER_REACH beyond the point, plus the
+    gap; -inf where no such surface lies under it."""
+    lows = np.full(len(points), -np.inf)
+    inners = lain_over(label)
+    if not inners or not mask.any():
+        return lows
+    shell = Surface(cage_object(label), [], recipe_regions(recipe))
+    trees = [BVHTree.FromPolygons([tuple(p) for p in bodies.world_positions(obj)], [t[1:] for t in _triangles(obj.data)])
+             for obj in inners]
+    for i in np.nonzero(mask)[0]:
+        point = Vector(points[i])
+        found, normal, _index, _distance = shell.tree.find_nearest(point)
+        if found is None:
+            continue
+        offset = point - found
+        direction = offset.normalized() if offset.dot(normal) > 1e-9 else normal
+        reach = max(offset.dot(direction), 0.0) + OVER_REACH
+        for tree in trees:
+            farthest = outer_side(tree, found, direction, reach)
+            if farthest is not None:
+                lows[i] = max(lows[i], farthest + OVER_GAP)
+    return lows
+
+
+def outer_side(tree: BVHTree, origin: Vector, direction: Vector, reach: float) -> float | None:
+    """How far along a ray the last outer side of a surface lies within the reach, where the ray
+    leaves it toward its normal, or None when it leaves it nowhere."""
+    farthest, start, travelled = None, origin, 0.0
+    for _ in range(8):
+        location, normal, _index, distance = tree.ray_cast(start, direction, reach - travelled)
+        if location is None:
+            break
+        travelled += distance
+        if normal.dot(direction) > 0.0:
+            farthest = travelled
+        start = location + direction * 1e-6
+        travelled += 1e-6
+    return farthest
 
 
 def field_place(source: np.ndarray, target: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -301,6 +398,175 @@ def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
         for i in range(1, len(corners) - 1):
             found.append((polygon.index, corners[0], corners[i], corners[i + 1]))
     return found
+
+
+def quad_bend(corners) -> float:
+    """How far a quad folds outward across its diagonal from its first corner to its third: the
+    distance between its two diagonals, positive when the two triangles of that split make a ridge
+    toward the quad's normal, negative when they make a valley; the other diagonal folds the other
+    way by as much. A flat quad bends by nothing."""
+    p0, p1, p2, p3 = (np.asarray(c, float) for c in corners)
+    across = np.cross(p2 - p0, p3 - p1)
+    length = float(np.linalg.norm(across))
+    if length < 1e-30:
+        return 0.0
+    return float(-np.dot(p1 - p0, np.cross(p2 - p0, p3 - p0)) / length)
+
+
+def mirror_faces(co, polygons: list[tuple[int, ...]], tolerance: float = MIRROR_MATCH) -> list:
+    """For every face its mirror image across the middle plane, x = 0, as the face and, per corner of
+    the face, the corner of the image it mirrors to, every corner within the tolerance; None for a
+    face without one. A face in the middle plane may be its own image."""
+    co = np.asarray(co, float)
+    flip = np.array([-1.0, 1.0, 1.0])
+    centres = np.array([co[list(p)].mean(axis=0) for p in polygons]).reshape(-1, 3)
+    grid: dict[tuple[int, ...], list[int]] = {}
+    for face, key in enumerate(np.floor(centres / tolerance).astype(np.int64)):
+        grid.setdefault(tuple(int(k) for k in key), []).append(face)
+    found = []
+    for face, polygon in enumerate(polygons):
+        target = centres[face] * flip
+        base = np.floor(target / tolerance).astype(np.int64)
+        match = None
+        for offset in np.ndindex(3, 3, 3):
+            for other in grid.get(tuple(int(b + o - 1) for b, o in zip(base, offset)), []):
+                if match is not None or len(polygons[other]) != len(polygon) or \
+                        np.abs(centres[other] - target).max() > tolerance:
+                    continue
+                corners = co[list(polygons[other])]
+                mapping = []
+                for vertex in polygon:
+                    distances = np.linalg.norm(corners - co[vertex] * flip, axis=1)
+                    nearest = int(np.argmin(distances))
+                    if distances[nearest] > tolerance:
+                        break
+                    mapping.append(nearest)
+                if len(mapping) == len(polygon) and len(set(mapping)) == len(mapping):
+                    match = (other, mapping)
+        found.append(match)
+    return found
+
+
+def _diagonal_key(a: np.ndarray, b: np.ndarray) -> tuple[float, ...]:
+    """What decides between two diagonals of the same length, by their geometry alone and alike on
+    both sides of the middle plane: the steeper one, then the one whose lower end lies farther from
+    the middle, lower, and farther forward, and then the same of its upper end. Two diagonals with
+    the same key are mirror images of each other across the middle plane."""
+    length = max(float(np.linalg.norm(b - a)), 1e-30)
+    lower, upper = sorted((a, b), key=lambda p: (float(p[2]), -abs(float(p[0])), -float(p[1])))
+    return (round(abs(float(a[2] - b[2])) / length, 9),
+            *(value for end in (lower, upper) for value in (round(abs(float(end[0])), 9), round(-float(end[2]), 9),
+                                                            round(float(end[1]), 9))))
+
+
+def _diagonals(co: np.ndarray, polygon: tuple[int, ...]) -> tuple[float, list[float], list[tuple[float, ...]]]:
+    """A quad's bend across its first diagonal, and per diagonal, first to third corner and second
+    to fourth, its length and its key."""
+    p = co[list(polygon)]
+    return (quad_bend(p), [float(np.linalg.norm(p[2] - p[0])), float(np.linalg.norm(p[3] - p[1]))],
+            [_diagonal_key(p[0], p[2]), _diagonal_key(p[1], p[3])])
+
+
+def split_starts(co, polygons: list[tuple[int, ...]]) -> list[int]:
+    """The corner every face starts from, so that a quad splits from it to its third corner across
+    the diagonal it folds outward across, 0 for its first diagonal and 1 for its second, and every
+    other face from its first corner. A quad and its mirror image across the middle plane are decided
+    together, from both their bends, so they split along mirrored diagonals. A flat quad, one that
+    bends by less than FLAT_BEND, splits along its shorter diagonal, and two of the same length by
+    their geometry."""
+    co = np.asarray(co, float)
+    mirrors = mirror_faces(co, polygons)
+    starts = [0] * len(polygons)
+    decided = [False] * len(polygons)
+    for face, polygon in enumerate(polygons):
+        if len(polygon) != 4 or decided[face]:
+            continue
+        bend, lengths, keys = _diagonals(co, polygon)
+        pair = mirrors[face]
+        other, same, count = None, True, 1
+        if pair is not None and pair[0] != face:
+            other, mapping = pair
+            # Whether the image's first diagonal mirrors this one's first diagonal.
+            same = mapping[0] % 2 == 0
+            other_bend, other_lengths, other_keys = _diagonals(co, polygons[other])
+            if not same:
+                other_bend, other_lengths, other_keys = -other_bend, other_lengths[::-1], other_keys[::-1]
+            bend += other_bend
+            lengths = [a + b for a, b in zip(lengths, other_lengths)]
+            keys = [tuple(x + y for x, y in zip(a, b)) for a, b in zip(keys, other_keys)]
+            count = 2
+        if bend / count > FLAT_BEND:
+            diagonal = 0
+        elif bend / count < -FLAT_BEND:
+            diagonal = 1
+        elif abs(lengths[0] - lengths[1]) > 1e-9:
+            diagonal = 0 if lengths[0] < lengths[1] else 1
+        else:
+            diagonal = 0 if keys[0] >= keys[1] else 1
+        starts[face], decided[face] = diagonal, True
+        if other is not None:
+            starts[other], decided[other] = (diagonal if same else 1 - diagonal), True
+    return starts
+
+
+def mirror_split_error(version: str, co, polygons: list[tuple[int, ...]]) -> str | None:
+    """The rule of a recipe template's quads: a quad and its mirror image across the middle plane
+    split along mirrored diagonals, so the cloth folds alike on both sides of the body."""
+    pairs, wrong = mirror_split_faces(co, polygons)
+    if not wrong:
+        return None
+    centre = np.asarray(co, float)[list(polygons[wrong[0]])].mean(axis=0)
+    return (f'"{version}" splits {len(wrong)} of its {pairs} pairs of mirrored quads along diagonals that are not '
+            f"mirror images of each other, such as the face {wrong[0]} at ({', '.join(f'{x:.3f}' for x in centre)}) m; "
+            "build it again with tools/art/Sync-GarmentAsset.ps1 -Rebuild.")
+
+
+def mirror_split_faces(co, polygons: list[tuple[int, ...]]) -> tuple[int, list[int]]:
+    """How many pairs of mirrored quads a mesh has, and the first face of every pair whose splits,
+    each from its first corner to its third, are not mirror images of each other. A quad that is its
+    own mirror image, across the middle plane, is no pair: its diagonals are each their own image or
+    each other's, and in the second case no split of it is mirrored."""
+    pairs, wrong = 0, []
+    for face, pair in enumerate(mirror_faces(co, polygons)):
+        if pair is None or len(polygons[face]) != 4 or pair[0] <= face:
+            continue
+        pairs += 1
+        if pair[1][0] % 2:
+            wrong.append(face)
+    return pairs, wrong
+
+
+# The components and the property of a corner attribute's data, by its type.
+_CORNER_DATA = {"FLOAT": ("value", 1, np.float32), "INT": ("value", 1, np.int32), "BOOLEAN": ("value", 1, bool),
+                "INT8": ("value", 1, np.int32), "FLOAT2": ("vector", 2, np.float32),
+                "FLOAT_VECTOR": ("vector", 3, np.float32), "FLOAT_COLOR": ("color", 4, np.float32),
+                "BYTE_COLOR": ("color", 4, np.float32)}
+
+
+def _turn_corners(mesh: bpy.types.Mesh, starts: list[int]) -> None:
+    """Turns the corners of every face to start from the given corner, with the data of its corners,
+    their UVs among them, so the face, its winding, and its look stay as they were."""
+    if not any(starts):
+        return
+    order = np.arange(len(mesh.loops))
+    for polygon, start in zip(mesh.polygons, starts):
+        if start:
+            first, total = polygon.loop_start, polygon.loop_total
+            order[first:first + total] = first + (np.arange(total) + start) % total
+    names = {attribute.name for attribute in mesh.attributes}
+    if ".corner_vert" not in names:
+        for name in ("vertex_index", "edge_index"):
+            values = np.empty(len(mesh.loops), np.int32)
+            mesh.loops.foreach_get(name, values)
+            mesh.loops.foreach_set(name, values[order])
+    for attribute in [a for a in mesh.attributes if a.domain == "CORNER"]:
+        if attribute.data_type not in _CORNER_DATA:
+            raise ArtPipelineError(f'The corner attribute "{attribute.name}" of {attribute.data_type} cannot be turned.')
+        key, size, kind = _CORNER_DATA[attribute.data_type]
+        values = np.empty(len(mesh.loops) * size, kind)
+        attribute.data.foreach_get(key, values)
+        attribute.data.foreach_set(key, values.reshape(len(mesh.loops), size)[order].reshape(-1))
+    mesh.update()
 
 
 class Surface:
@@ -630,6 +896,25 @@ def append_inner(template_file: str, template: str, labels: list[str], compresse
     return found
 
 
+def append_lain_over(pairs: list[tuple[str, str, str]], labels: list[str]) -> None:
+    """The templates of lower layers a template is worn over, put on the bodies of its file, so its
+    cloth clears their real surface where its recipe says it lies over one."""
+    for path, inner, _band in pairs:
+        append_inner(path, inner, labels)
+
+
+def remove_inner() -> None:
+    """Takes the templates of lower layers out of the file again, with everything that came with
+    them, before a sync saves it."""
+    collection = bpy.data.collections.get(PAIR_COLLECTION)
+    if collection is None:
+        return
+    for obj in list(collection.objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.data.collections.remove(collection)
+    bpy.data.orphans_purge(do_recursive=True)
+
+
 def _first_version(name: str, labels: list[str]) -> bpy.types.Object:
     obj = bpy.data.objects.get(version_name(name, labels[0]))
     if obj is None or obj.type != "MESH":
@@ -725,14 +1010,35 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
     return bm
 
 
-def _cut_curved(bm: bmesh.types.BMesh, faces: list, line: dict, point: Vector, normal: Vector, keep: str) -> None:
+def _split(bm: bmesh.types.BMesh, recipe: dict, lines: list[dict], arm: bpy.types.Object) -> None:
+    """Edge loops at the recipe's splits, each a standard line moved by its offset, through the faces
+    of the line's region and side without cutting the template there, so a template of a higher
+    layer that ends at that line hides the cloth beyond it face by face. A split runs through a vertex
+    within SPLIT_SNAP of its plane and moves none, and the UVs of its new vertices are interpolated
+    along the edges they cut, so a texture keeps its place."""
+    region_layer = bm.faces.layers.int.get("region")
+    for line, side, point, normal in split_planes(recipe, lines, arm.name):
+        region = cage.REGIONS.index(line["region"])
+        faces = [f for f in bm.faces if f[region_layer] == region and (not side or cage.side_of(f.calc_center_median().x) == side)]
+        if not faces:
+            continue
+        _index_update(bm)
+        if line.get("rise"):
+            _cut_curved(bm, faces, line, point, normal, None, SPLIT_SNAP)
+            continue
+        geom = _by_index(e for f in faces for e in f.edges) + _by_index(v for f in faces for v in f.verts) + faces
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=SPLIT_SNAP, plane_co=point, plane_no=normal)
+
+
+def _cut_curved(bm: bmesh.types.BMesh, faces: list, line: dict, point: Vector, normal: Vector, keep: str | None,
+                near: float = 1e-6) -> None:
     """Cuts faces at a curved standard line, as bisect_plane cuts at a plane: every edge that crosses
     the line is split where it does, every face crossed joins its two points on the line, and the
-    faces on the side the cut does not keep go."""
+    faces on the side the cut does not keep go; with no side to keep, both stay. A vertex this near
+    the line counts as on it."""
     def offset(co: Vector) -> float:
         return float(cage.line_offsets(line, point, normal, np.array(co))[()])
 
-    near = 1e-6
     on = {v for f in faces for v in f.verts if abs(offset(v.co)) <= near}
     _index_update(bm)
     for edge in _by_index(e for f in faces for e in f.edges):
@@ -748,6 +1054,8 @@ def _cut_curved(bm: bmesh.types.BMesh, faces: list, line: dict, point: Vector, n
         if len(corners) == 2 and not any(set(e.verts) == set(corners) for e in face.edges):
             other, _edge = bmesh.utils.face_split(face, corners[0], corners[1])
             pieces.append(other)
+    if keep is None:
+        return
     beyond = [f for f in pieces if (offset(f.calc_center_median()) > 0.0) == (keep == "head")]
     bmesh.ops.delete(bm, geom=beyond, context="FACES")
 
@@ -1309,13 +1617,20 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
     mesh = bpy.data.meshes.new(version_name(name, label))
     bm.to_mesh(mesh)
     bm.free()
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    _unwrap(mesh)
+    # The splits come after the UVs are unfolded, so they interpolate them and change none.
+    if recipe.get("splits"):
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        _split(bm, recipe, lines, arm)
+        bm.to_mesh(mesh)
+        bm.free()
     # The cage's own attributes stay with the cage.
     for attribute in cage.OWN_ATTRIBUTES:
         if attribute in mesh.attributes:
             mesh.attributes.remove(mesh.attributes[attribute])
-    for polygon in mesh.polygons:
-        polygon.use_smooth = True
-    _unwrap(mesh)
 
     # Into the band along the cage's normals, with more room at the armpits; loose parts hang
     # where their scaffold lays them.
@@ -1357,6 +1672,10 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
         mesh.vertices.foreach_set("co", co.reshape(-1))
         mesh.update()
     mesh.validate()
+    # Every quad splits across the diagonal it folds outward across, a quad and its mirror image alike.
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    _turn_corners(mesh, split_starts(co.reshape(-1, 3), [tuple(p.vertices) for p in mesh.polygons]))
     return mesh
 
 
@@ -1583,16 +1902,19 @@ def _new_first_version(name: str, band: str, recipe, lines: list[dict], first: b
 
 
 def create(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]],
-           cage_file: str) -> None:
+           cage_file: str, pairs: list[tuple[str, str, str]] = ()) -> None:
     """Writes the first file of a template: the bodies, their cages, and the first version as the
-    recipe builds it, fitted to every body; a modeled template gets no first version, which a person
-    models on the first body."""
+    recipe builds it, fitted to every body, clear of the templates of lower layers in pairs where it
+    lies over them; a modeled template gets no first version, which a person models on the first
+    body."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     arms = [body_files.append_body(path, root, collection_name(root)) for path, root in body_list]
     append_cages(cage_file, [a.name for a in arms])
+    append_lain_over(list(pairs), [a.name for a in arms])
     if recipe != MODELED:
         _new_first_version(name, band, recipe, lines, arms[0])
         _apply(_plan(name, arms, band, recipe, lines, transfer_all=True), name, arms)
+    remove_inner()
     _show_first(arms)
     relative_image_paths()
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
@@ -1634,13 +1956,16 @@ def _carry_over(old: bpy.types.Object, new: bpy.types.Object, recipe) -> int:
 
 
 def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str,
-         transfer_all: bool = False, rebuild: bool = False) -> tuple[bool, int, list[str]]:
+         transfer_all: bool = False, rebuild: bool = False,
+         pairs: list[tuple[str, str, str]] = ()) -> tuple[bool, int, list[str]]:
     """Appends the bodies and the cages again that changed in their own files, moving the first
     version with its cage, builds the first version again from a changed recipe when asked, keeping
     its handmade shape, fits every other version again from the first, and gives every version its
     weights, keeping the corrections and the weights painted by hand, unless every weight is
-    transferred again. Returns whether the file changed, the number of vertices with weights painted
-    by hand, and notes for the report. An unchanged file is not saved, so its approvals stay valid."""
+    transferred again. Where the recipe says it lies over an inner garment, its cloth clears the real
+    surface of the templates of lower layers in pairs, which the file never keeps. Returns whether
+    the file changed, the number of vertices with weights painted by hand, and notes for the report.
+    An unchanged file is not saved, so its approvals stay valid."""
     bpy.ops.wm.open_mainfile(filepath=file)
     labels = [root for _path, root in body_list]
     notes = []
@@ -1659,6 +1984,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
         for child in list(obj.children_recursive):
             bpy.data.objects.remove(child, do_unlink=True)
         bpy.data.objects.remove(obj, do_unlink=True)
+    append_lain_over(list(pairs), labels)
 
     first = bpy.data.objects.get(version_name(name, labels[0]))
     if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file) or any(
@@ -1705,7 +2031,8 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
             else:
                 notes.append(f"{first.name} stays where it is: its regions of the changed cage did not move.")
 
-    if recipe != MODELED and (first is None or rebuild):
+    built = recipe != MODELED and (first is None or rebuild)
+    if built:
         new = _new_first_version(name, band, recipe, lines, arms[0])
         if first is not None:
             shaped = _carry_over(first, new, recipe)
@@ -1724,9 +2051,14 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     # The first version's turned edges come from its cloth as it now lies, also after a rebuild that
     # carried a handmade shape over, or a move with its cage.
     _lay_first(first, recipe, lines, labels[0], band)
+    if built:
+        # A new build splits its quads by the shape it ends with, with the handmade shape carried
+        # over, so none splits along the valley that shape folds it into.
+        _turn_corners(first.data, split_starts(bodies.world_positions(first), [tuple(p.vertices) for p in first.data.polygons]))
 
     plan = _plan(name, arms, band, recipe, lines, transfer_all)
     _apply(plan, name, arms)
+    remove_inner()
     if not removed and _state(name, labels) == before:
         return False, plan["hand"], notes
     _show_first(arms)
@@ -1846,6 +2178,8 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
     except ArtPipelineError as error:
         errors.append(str(error))
         turned = []
+    if isinstance(recipe, dict):
+        errors += filter(None, [mirror_split_error(first.name, bodies.world_positions(first), polygons)])
     low, high = BANDS[band]
     for label in labels:
         obj = bpy.data.objects.get(version_name(name, label))
@@ -1886,7 +2220,8 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
                     worst.append(f"the closest {straight[near].min() * 1000:.1f} mm")
                 if far.any():
                     worst.append(f"the farthest {distances[far].max() * 1000:.1f} mm")
-                over = " (measured from the inner garment where it lies over one)" if (lows > low).any() else ""
+                over = (f" (keeping {OVER_GAP * 1000:.1f} mm outside the templates it lies over, where it lies over one)"
+                        if (lows > low + ROUNDING).any() else "")
                 errors.append(f'"{obj.name}"{form} leaves its {band} band{over} of {low * 1000:.0f} to '
                               f'{"any" if high is None else f"{high * 1000:.0f}"} mm from the cage at {int((near | far).sum())} '
                               f"vertices and face centres ({int(near.sum())} too close, {int(far.sum())} too far; "
