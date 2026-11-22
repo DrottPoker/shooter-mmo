@@ -410,14 +410,14 @@ def _keyframe_enums(points, field: str) -> list:
 def _clip(action: bpy.types.Action) -> dict:
     """An animation clip as the export bakes it: its curves by slot, path, and channel, with their
     keys, handles, interpolation, easing with its back, amplitude, and period, extrapolation, and
-    modifiers, its frame range, its custom properties, such as loop, and the scene's frame rate it
+    modifiers, the samples of a curve converted to samples, its frame range, its custom properties, such as loop, and the scene's frame rate it
     plays at."""
     curves = []
     for slot in action.slots:
         channelbag = anim_utils.action_get_channelbag_for_slot(action, slot)
         for fc in (channelbag.fcurves if channelbag is not None else []):
             points = fc.keyframe_points
-            curves.append({
+            curve = {
                 "slot": slot.identifier, "path": fc.data_path, "index": fc.array_index,
                 "keys": _floats(points, "co", 2), "left": _floats(points, "handle_left", 2),
                 "right": _floats(points, "handle_right", 2), "interpolation": _keyframe_enums(points, "interpolation"),
@@ -428,7 +428,11 @@ def _clip(action: bpy.types.Action) -> dict:
                 "mute": fc.mute,
                 "modifiers": [_settings(m, f"Action {action.name}, curve {fc.data_path}[{fc.array_index}]")
                               for m in fc.modifiers],
-            })
+            }
+            # A curve converted to samples has no keys: the export bakes its samples instead.
+            if len(fc.sampled_points):
+                curve["samples"] = _floats(fc.sampled_points, "co", 2)
+            curves.append(curve)
     curves.sort(key=lambda c: (c["slot"], c["path"], c["index"]))
     scene = bpy.context.scene
     return {"frameRange": list(action.frame_range), "manualRange": action.use_frame_range, "cyclic": action.use_cyclic,
