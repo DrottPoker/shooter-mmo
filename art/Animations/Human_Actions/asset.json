@@ -13,37 +13,37 @@
         "version": 1,
         "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f",
         "stages": {
-            "animation": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa"
+            "animation": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c"
         },
         "parts": {
-            "clip:BowShot": "c08121912fc0f2bc63313386eff7297bb53b3c7b640628d71223bb7be7f3fcc9",
-            "clip:Cast": "bdbd7ddd9dcc05f906a55873812b565005fd2e41777f75f4908839f3a5808909",
-            "clip:Chop": "5a2c1012d5433176b5e1cf6f304f75812f6ea7ed30b96440b0f97768bf2585f0",
-            "clip:Death": "b7aea6a9b5cc8db90997893a40b9d6c1af2f2b1b9a8f678ac4c18e89f1fd8aa8",
-            "clip:GreataxeSwing": "270f8a38c67661e9fc5f3a52d3a388be07128bc6f3279c0ea111d531a1bddf79",
-            "clip:Grip": "18b6e2754fc860e50898cbd76b90be2e2034d4b4817ac06972694598cf3211cf",
-            "clip:HoldBow": "2a3c8390076a945f73acb132bc4994d3e578767f93430f6962d09eb75e4aa5b9",
-            "clip:HoldGreataxe": "5b51a5b253a37416c6de0bd0ccb0e03e69fe9d17dd4aec692ca948504a7eabf2",
-            "clip:HoldStaff": "0db9fbd357eeab700b067a5ace72812586bf214b5552b9d53879bcccd11e10b4",
-            "clip:Idle": "059d37292adc00449fb5a8e988c46a7880b1f3a40b27878837a1dc3fe12dc560",
-            "clip:Jog": "e46709de6779718f9c77a0e00c0912c77a83c8c5c355b332c0a056baf8aaaf86",
-            "clip:Mine": "125a5d2fdc450c54b38b995f38551c552b3ba9004bac7a148fbfee02ce3fcaab",
-            "clip:OneHandStrike": "a99ea941d13315c3d2d14c96572a59605dbb787cc30958b86f93c2d6813a2252",
-            "clip:SwordSlash": "af486b57d24edc0024256227e514fd8d7284a9850ff90b5198fae9bb48fef50c",
-            "clip:Walk": "1052ff807f8765111c1079a563d97d87f8e48e1326caaeb516352f602597d756",
-            "skeleton": "3669654767512f75198e03ce2c980c04341c804634914d985356b1ec74aa26bc"
+            "clip:BowShot": "6348e463831fc2f9c12d103dc739401762a12dfd7b7023bc04954d677d255704",
+            "clip:Cast": "88672a050a365209cc3b815d14960e1581cd9fa543b128aae00376c1b7d9af98",
+            "clip:Chop": "48cb8b5804de1515ea6e797f370e29a1f709c8f6c61abeac5977bfe0ef8715f4",
+            "clip:Death": "66ae0b0f0763eca0ab8a9914f629e52219b9ca148b61b6931e91a0efb0e05d73",
+            "clip:GreataxeSwing": "298d3f900bd5e6856710f60f62d687263b816910568eeb214a35374233d2722a",
+            "clip:Grip": "d8141e63791d11746f8a058041788d3310308d2c83908eb865b1c3f7ea343a99",
+            "clip:HoldBow": "41657f173568d3234ee344e5399adf9e1ac2c80b65bc2ad8705661576a87e79d",
+            "clip:HoldGreataxe": "76f135b1705456487b772620e89a8645d483a43c666d4bc693231cf0cfdd8cec",
+            "clip:HoldStaff": "dfbab6ea8e15b61cd58c54c136939413b045fbcb0f01bfdc9ff4546c52365dea",
+            "clip:Idle": "ff7c25a20101c2f7664567341fba460453fc9e8be59c6bc3a802a6713ded7bab",
+            "clip:Jog": "1d09c5ae1c0ae728ca368a40055ae7921a169720395a9f82dd13e09785cb4738",
+            "clip:Mine": "16b295e34976707c66fc034fd74e1f511a05f4ea83522906df77f896ed97ade5",
+            "clip:OneHandStrike": "b17735e280ae5ce22a499932fe54eba24a1ba21733815e510ecd7ff734848ffd",
+            "clip:SwordSlash": "377da87ba5671ce14f634f6d09c3ee285dfc7c838f9fcca3db02f2f94360911f",
+            "clip:Walk": "1d772f6534eaf1e495702ad8b8ec213ff5a764bb97ff5b6a82d23e4e8e910666",
+            "skeleton": "6735f9155d074ae1a0bd463ff9eb23f1ebbc327c96247f6c2b5e1188035b0ec6"
         }
     },
     "approvals": {
         "animation": {
             "date": "2026-11-20",
-            "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa"
+            "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c"
         }
     },
     "export": {
-        "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa",
+        "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c",
         "targetSha256": "6eb43c267da9ecaeaf98808d1f3898272b09e713fd616b965c9d020956148543",
-        "rigContentSha256": "6f48f87de46c3edf0ecd31b40287d42eef989890bdd598fa3bf076fc1fe2f71e",
+        "rigContentSha256": "9c3833a85407ac8e5e687c8059c596039a29964f5f3dcf44e848e84679fb571b",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
             { "name": "Idle", "frames": 120, "loop": true },

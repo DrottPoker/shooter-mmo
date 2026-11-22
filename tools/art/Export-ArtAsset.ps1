@@ -59,9 +59,11 @@ function Export-ArtPaint([string]$Blender, $Manifest) {
     # full paint layout, the fingerprint of the body it was moved to, and how it was moved, and the
     # smoothness and metallic of its paint, and the cage's file when a body was moved through it.
     $folder = $script:ArtPaintTextureFolder
+    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "paint") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+    Assert-ArtExportedContent $Manifest $results $sourceSha256
     $textures = ConvertTo-ArtPaintTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
             ForEach-Object {
                 $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
@@ -188,10 +190,12 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
     $opaqueReason = @($clipProblem, $pairProblem | Where-Object { $null -ne $_ }) -join "; "
     $opaqueOnly = if ($opaqueReason) { @("--opaque-only", $opaqueReason) } else { @() }
     $folder = $script:ArtGarmentTextureFolder
+    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "texture") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder),
             "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)) + $opaqueOnly)
+    Assert-ArtExportedContent $Manifest $results $sourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_TEXTURE_MASK *" } |
             ForEach-Object { $_.Substring("ART_TEXTURE_MASK ".Length) | ConvertFrom-Json })
     $masks = @(if ($reported.Count -gt 0) {
@@ -246,6 +250,7 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
     # It records the approved file of its cage and the exports of the bodies and the animation
     # libraries it was checked against, so a change of any of them needs a new export of the
     # template.
+    $null = Update-ArtContentRecord $Blender $Manifest.Cage
     $cageProblem = Get-ArtCageGateProblem $Manifest.Cage
     if ($null -ne $cageProblem) {
         throw "$($Manifest.Name) cannot be exported before its cage $($Manifest.Cage.RelativeDirectory) is approved: $cageProblem."
@@ -273,10 +278,12 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
             [ordered]@{ garment = $_.RelativeDirectory; contentSha256 = [string]$_.Export.contentSha256 }
         })
     $folder = $script:ArtGarmentTextureFolder
+    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
             "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder),
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+    Assert-ArtExportedContent $Manifest $results $sourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_GARMENT_FBX *" } |
             ForEach-Object { $_.Substring("ART_GARMENT_FBX ".Length) | ConvertFrom-Json })
     $models = @($Manifest.Models | ForEach-Object {
@@ -361,9 +368,11 @@ foreach ($manifest in $manifests) {
     }
 
     $textureFolder = Get-ArtTextureFolder $manifest.Target
+    $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
     $results = Invoke-ArtBlender $blender $manifest (
         @("export") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + @(
             "--target", $manifest.TargetPath, "--textures", (Join-Path $script:ArtRepositoryRoot $textureFolder)))
+    Assert-ArtExportedContent $manifest $results $sourceSha256
     $materials = @()
     if ($manifest.Kind -ne "animations") {
         $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |

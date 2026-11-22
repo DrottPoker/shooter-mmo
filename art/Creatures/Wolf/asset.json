@@ -12,39 +12,39 @@
         "version": 1,
         "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a",
         "stages": {
-            "model": "4e00e4756cd34027bdc8082d41d3e856318020509d90df47331bccb9e8c16cce",
-            "rig": "b6524c368dac1ad43648131fdd62e0c0e2ab7ac09d702c83ae39610c8f190043",
-            "animation": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc"
+            "model": "6d20cf5c0b8bafe94f20aa50dcc556f8168107acff77514932678eb519be952b",
+            "rig": "453f4338d13aa75bcc0350f3454e21d7523572e0d0c0f932ecc0a4e82ab56a6d",
+            "animation": "5cae1a74c37bb9ee492114b259fc35a141b67b64ca1a9d504ff9bed50d36c4db"
         },
         "parts": {
-            "clip:Attack": "d2936e162bdd599e81ce5e7f25121f06492efa2abecbdf217da12215b45ed268",
-            "clip:Death": "1f46719eb4d09d6588487423440a50048be1fc8be5c421c019313ec12fd754cf",
-            "clip:Idle": "a77f43ca895aa77fa65009db22d5833a4d793260589ca620053a78a09697cd1d",
-            "clip:Run": "1d42a73ef4765a4aef13541a865f9be812ba5c809d83910bd2ec882ad4208bf1",
-            "clip:Walk": "21925077d1c3b8597634c989f81cc4bf3b389d9fe2b844dbaeb985efe75e1c6c",
+            "clip:Attack": "87ebf4302bc3622fc7976ac4912a7933a6aee5f559b22617e55994073acb5b3f",
+            "clip:Death": "ee67a009a11c15f7e6b56f7b90d2821ced747fb3da0b88efd273b4c03104d41d",
+            "clip:Idle": "a101f9cd3e4e2d3442e5c12c0e2dbe81cfb1a3547cde6987151ffff6db864e91",
+            "clip:Run": "788c721e19e8866294ba4bfe35fa325045b3ba563a627d650926a8f21fa48e32",
+            "clip:Walk": "3c123f5437b14c097ca9df8fe57bdac25be4625a82eea97df5f5047fb0a1dc7a",
             "materials": "ee5b1997647c16a1b28bb7546399e0b05618f47ae82ac91021243081912e45f6",
-            "shape": "940e6c581b82d99542ad1d59e04500f7ba7dbb446cd47014c983bfb5866ea4e8",
+            "shape": "e91e169cd091b85ed4c79bf51d6ef920182119644e16b3c514f9d786d7d94020",
             "skeleton": "49c6fafb7d9952c1325cd424073df8afc48244c61cf162323de2178460578374",
             "uv": "fa9f3fd1dab6febbbe67b37bc021100ad8c025965ec8cc96d9d5b23c38073a5f",
-            "weights": "ec58080dbee651f4aafa3efe4ee24004684d5cf6aa61c56891f0ada5371d95b7"
+            "weights": "f10277ead7a58af78f26164b7ba98954a0720d2bf9f18f1c628e2ac409c6e78b"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-10-30",
-            "contentSha256": "4e00e4756cd34027bdc8082d41d3e856318020509d90df47331bccb9e8c16cce"
+            "contentSha256": "6d20cf5c0b8bafe94f20aa50dcc556f8168107acff77514932678eb519be952b"
         },
         "rig": {
             "date": "2026-10-30",
-            "contentSha256": "b6524c368dac1ad43648131fdd62e0c0e2ab7ac09d702c83ae39610c8f190043"
+            "contentSha256": "453f4338d13aa75bcc0350f3454e21d7523572e0d0c0f932ecc0a4e82ab56a6d"
         },
         "animation": {
             "date": "2026-10-30",
-            "contentSha256": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc"
+            "contentSha256": "5cae1a74c37bb9ee492114b259fc35a141b67b64ca1a9d504ff9bed50d36c4db"
         }
     },
     "export": {
-        "contentSha256": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc",
+        "contentSha256": "5cae1a74c37bb9ee492114b259fc35a141b67b64ca1a9d504ff9bed50d36c4db",
         "targetSha256": "9efc9e96f09021be37df39abe8865776684538bb32d399f2ceb2d8623f0ef32d",
         "materials": [
             {

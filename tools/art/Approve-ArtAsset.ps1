@@ -38,8 +38,12 @@ for ($i = 0; $i -lt $stageIndex; $i++) {
     }
 }
 
-# A template is approved only on an approved cage that was fitted to the current bodies.
+$blender = Resolve-ArtBlender $BlenderPath
+
+# A template is approved only on an approved cage that was fitted to the current bodies, with the
+# cage's content record made current first.
 if ($manifest.Kind -eq "garment") {
+    $null = Update-ArtContentRecord $blender $manifest.Cage
     $cageProblem = Get-ArtCageGateProblem $manifest.Cage
     if ($null -ne $cageProblem) {
         throw "Approve the cage $($manifest.Cage.RelativeDirectory) of $($manifest.Name) first: $cageProblem."
@@ -47,10 +51,14 @@ if ($manifest.Kind -eq "garment") {
 }
 
 # Only an asset that meets the export rules can be approved. The validation also reads the content of
-# the file, which the record and the approval take.
-$blender = Resolve-ArtBlender $BlenderPath
+# the file, which the record takes, and the approval binds to the content this run reported.
+$sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage))
-$null = Update-ArtContentRecord $blender $manifest $validation
+$null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
+$reported = Read-ArtContentLine $validation
+if (-not (Test-ArtSameStages $manifest $reported)) {
+    throw "$($manifest.Name).blend changed while it was approved; run the command again."
+}
 
 # Every earlier stage's approval must hold for this content.
 for ($i = 0; $i -lt $stageIndex; $i++) {
@@ -62,7 +70,7 @@ for ($i = 0; $i -lt $stageIndex; $i++) {
 
 $manifest.Approvals[$Stage] = [ordered]@{
     date = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
-    contentSha256 = $manifest.Content.stages[$Stage]
+    contentSha256 = [string]$reported.stages.$Stage
 }
 
 # An approved cage records the exports of the bodies it was fitted to.

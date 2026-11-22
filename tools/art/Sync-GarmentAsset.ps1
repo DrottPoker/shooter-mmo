@@ -87,16 +87,19 @@ Write-Host "Review file with the test poses (play the timeline): $reviewFile"
 
 # Every rule of both stages, so a broken one shows before the review, and what the garment covers
 # at rest and in motion.
+$sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]))
 foreach ($line in @($validation | Where-Object { $_ -like "ART_REPORT *" })) {
     Write-Host $line.Substring("ART_REPORT ".Length)
 }
 
-$null = Update-ArtContentRecord $blender $manifest $validation
+$null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
 foreach ($line in @(Get-ArtStageReport $manifest)) {
     Write-Host $line
 }
 
+# The cage's own record, which its gate reads.
+$null = Update-ArtContentRecord $blender $manifest.Cage
 $cageProblem = Get-ArtCageGateProblem $manifest.Cage
 if ($null -ne $cageProblem) {
     Write-Host "Its cage $($manifest.Cage.RelativeDirectory) waits for its approval: $cageProblem."

@@ -59,8 +59,9 @@ Invoke-ArtBlender $blender $manifest @("preview", "--output", $sheet, "--kind", 
 Write-Host "Review sheet: $sheet"
 
 # Every rule of the cage, so a broken one shows before the review, and the content of the file.
+$sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "model"))
-$null = Update-ArtContentRecord $blender $manifest $validation
+$null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
 foreach ($line in @(Get-ArtStageReport $manifest)) {
     Write-Host $line
 }

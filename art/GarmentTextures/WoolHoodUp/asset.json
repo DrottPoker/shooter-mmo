@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "5ab884ce658bac32a222bfd65368ae36feee900a0bd584cc98bcb7d4bb46b9b6",
-        "garmentContentSha256": "2943abe8a8f2505af5e2c6b57a1e5900869bb18673c604499034de86cdec85cd",
+        "garmentContentSha256": "11fde37294fe15e3fbb7d2b79425e1f16d704ea916a0e2cf0c33f8ee0fc72660",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodUp",

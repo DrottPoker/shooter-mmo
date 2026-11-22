@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "e0fb65a8c08976bef36f08914d0da6522d427cac337323a0701bf7c8deaac0a0",
-        "garmentContentSha256": "040d12931b9bc6802271bfae4929e564a6e655ae9feec9a19fc426f20c8b252f",
+        "garmentContentSha256": "ccca32c1312c6f51eac7dc8d149c87e127ce6251166f1f88e1686f30a04042fa",
         "materials": [
             {
                 "name": "M_Garment_LeatherBoots",

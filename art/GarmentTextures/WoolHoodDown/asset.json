@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "09f85a52acd57b4adce9d90b8fb1ff0bce2541c85cbf02bb622dfe7fe52143d4",
-        "garmentContentSha256": "6c355e949f1ca95fd1fcfe5f2b0d32cd0a0db39290c872bf1e6809ea148904b0",
+        "garmentContentSha256": "6894b48471555e486eb94daebf8fd2e04a28a5e38ae67b7a3d5203ab36cc3133",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodDown",

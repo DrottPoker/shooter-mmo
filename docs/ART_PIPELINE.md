@@ -389,14 +389,14 @@ assets can depend on one part, as a garment texture does on its template's `uv`.
 
 | Kind | Stage | Parts |
 | --- | --- | --- |
-| `static` | `model` | `shape`: every object of the `Export` collection with its type, data name, parent, world matrix, rotation mode, its switch `Disable in Viewports`, which the FBX writes as its visibility, its custom properties, its modifiers but an armature modifier, which belongs to the weights, its constraints, drivers, and material slots, and every mesh with its vertices, edges, faces, and corners in their order, its corner normals, every attribute but the UV maps and the seams, its shape keys, and its custom properties. `uv`: the UV maps of every mesh in their order, with which is active and which renders. `materials`: the materials of the meshes by name, each node with its image, the values of its unlinked inputs, and the settings that say what it does, every link, and the pixels of every image a node uses. |
+| `static` | `model` | `shape`: every object of the `Export` collection with its type, data name, parent, world matrix, rotation mode, its switch `Disable in Viewports`, which the FBX writes as its visibility, its custom properties, its modifiers but an armature modifier, which belongs to the weights, its constraints, the drivers of the object and its data, and its material slots, with every input of a modifier, constraint, or driver as [Modifier Inputs](#modifier-inputs) reads it; every mesh with its vertices, edges, faces, and corners in their order, its corner normals, every attribute but the UV maps and the seams, its shape keys, its custom properties, and its vertex groups with their weights when a modifier reads one; and the scene settings the FBX export reads: the unit system and unit scale, which the export applies and Unity takes as the file's scale, and the Simplify switch with its subdivision levels. `uv`: the UV maps of every mesh in their order, with which is active and which renders. `materials`: the materials of the meshes by name, each node with its image, the values of its unlinked inputs, and the settings that say what it does, every link, and the pixels of every image a node uses. |
 | `skinned` | `model` | `shape`, `uv`, and `materials` as for a static asset, of the `Export` collection and the editable source body in the `Source` collection, whose zones, paint UVs, and weights the export reads; an armature's custom properties belong to its skeleton, and `materials` also holds every variant image `T_<Part>_<Label>_<Option>` of a painted material. |
-| `skinned` | `rig` | `skeleton`: every bone by name with its parent, deform and connect flags, rest matrix, length, how it inherits its parent's motion, and its custom properties, every pose bone's rotation mode and constraints, the armature's pose position, and the armature's custom properties, such as the landmarks a body's rig keeps. `weights`: every mesh's vertex groups by name with every vertex's weight in them, and its armature modifiers. |
-| `skinned` | `animation` | `clip:<Name>` for every clip of `clips`: the action's curves by slot, path, and channel with their keys, handles, interpolation, easing, extrapolation, and modifiers, its frame range, its custom properties, such as `loop`, and the frame rate the scene plays it at. |
-| `animations` | `animation` | `skeleton`: the armature the clips are keyed on, placed as the export places it, with its rest pose as a skinned asset's `skeleton` without its custom properties; and `clip:<Name>` for every clip. |
+| `skinned` | `rig` | `skeleton`: every bone by name with its parent, deform and connect flags, rest matrix, length, how it inherits its parent's motion, and its custom properties, every pose bone's rotation mode and constraints, the armature's pose position, and the armature's custom properties, such as the landmarks a body's rig keeps. `weights`: every mesh's vertex groups by name with every vertex's weight in them, and its armature modifiers with the vertex group they are limited to; the armature by name, the asset's own, whose rest pose is its `skeleton`. |
+| `skinned` | `animation` | `clip:<Name>` for every clip of `clips`: the action's curves by slot, path, and channel with their keys, handles, interpolation, easing with its back, amplitude, and period, extrapolation, and modifiers, its frame range, its custom properties, such as `loop`, and the frame rate the scene plays it at. |
+| `animations` | `animation` | `skeleton`: the armature the clips are keyed on, placed as the export places it, with its rest pose as a skinned asset's `skeleton` without its custom properties, and the scene settings the export reads, as in a static asset's `shape`; and `clip:<Name>` for every clip. |
 | `paint` | `paint` | `canvas`: the canvas, `Canvas`, with its UV maps, the rig's landmarks it keeps, and the body it was copied from, and its cage version `Canvas_Cage`. `paint`: the canvas's image `T_Paint_<Name>` with its roughness and metallic. `body:<Label>` for every body: the paint moved to it, `T_Paint_<Name>_<Label>`, with its crop and layout, as the export writes it. |
-| `garment` | `model` | `shape`: every body's version `<Name>_<Label>` with its object, mesh, and attributes as a static asset's, such as what the sync fitted it to, and every UV map but the first version's active one. `uv`: the fingerprint of the first version's faces and UVs, exactly the `template_uvs` that a texture painted in them records. `materials`: the template's material. |
-| `garment` | `rig` | `weights`: every version's vertex groups and weights and its armature modifier. |
+| `garment` | `model` | `shape`: every body's version `<Name>_<Label>` with its object, mesh, and attributes as a static asset's, such as what the sync fitted it to, every UV map but the first version's active one, and the scene settings the export reads. `uv`: the fingerprint of the first version's faces and UVs, exactly the `template_uvs` that a texture painted in them records. `materials`: the template's material. |
+| `garment` | `rig` | `weights`: every version's vertex groups and weights and its armature modifier, whose armature, the body's rig that the garment keeps a copy of, counts by name. |
 | `cage` | `model` | `net`: the reference `Cage` with its attributes, weights, figure scale, and lines, and its rig `CageRig` with its rest pose and landmarks. `fit:<Label>` for every body: the cage's version `Cage_<Label>` fitted to it, with its attributes. |
 | `texture` | `texture` | `image`: the pixels of `T_Garment_<Name>` and of its dye mask, each with its size, channels, color space, and alpha mode. `material`: the roughness, metallic, and dye colors the export reads, and the material that shows them. `templateUv`: the `template_uvs` the texture is painted in. A texture holds for its template while its `templateUv` is the template's `uv`. |
 
@@ -423,6 +423,36 @@ matrices, normals, UVs, key values, and handles to 6 decimals, weights to 5,
 with negative zero made positive. An 8-bit image counts by its 8-bit values and
 a float image by its values rounded to 6 decimals.
 
+#### Modifier Inputs
+
+What a modifier, a constraint, or a driver of an own object reads shapes the
+export, so it is content too, and the reader never leaves one out:
+
+- An object it points to counts by name when it is one of the asset's own
+  objects; any other object counts with its record and, for a mesh or a curve,
+  its data, and a collection with every object in it.
+- A Geometry Nodes modifier counts with its node group, every node with its
+  settings and the values of its unlinked inputs and of its outputs, every link,
+  the group's interface, and the modifier's own value or attribute for every
+  input and output; a group node counts with its group.
+- A material, an image, a custom profile, such as a bevel's, and a curve
+  mapping, such as a falloff curve, count with what they hold.
+- A mesh whose modifier is limited to a vertex group counts with its vertex
+  groups and weights in its `shape`.
+- An armature modifier belongs to the `weights`, with its armature by name.
+- Anything else a setting points to, such as a texture of a displacement, and a
+  list setting with entries, such as the targets of an armature constraint,
+  stops the reader with an error that names the object, the modifier or
+  constraint, and the setting, such as `Object Blade, modifier Displace points
+  to a CloudsTexture in its setting texture, which the content fingerprint has
+  no rule for.` Give the reader a rule for it, in `content.py`, before such an
+  asset can be approved.
+
+When the reader got these rules, the assets had no modifier but armature
+modifiers on their own objects, and no constraint or driver there; the only
+constraints were those of the animation library's preview body, which is a
+copy.
+
 The fingerprints have one version, `VERSION` in `content_core.py` and
 `$script:ArtContentVersion` in `tools/art/ArtPipelineCommon.ps1`, which a Python
 test holds equal. A record of another version is not current, so its approvals
@@ -434,8 +464,9 @@ fingerprints.
 `tools/art/Test-ArtContent.ps1 -All` proves the fingerprints with Blender on
 copies of the files: every file opened and saved again has another file hash
 and the same parts and stages, and on one asset of each kind a moved vertex, a
-changed UV, material value, pixel, weight, bone, or key changes exactly the part
-it touches with its stage and every later one, while a selection, an active
+changed UV, material value, pixel, weight, bone, key, key's easing, or unit
+scale changes exactly the part it touches with its stage and every later one,
+while a selection, an active
 object, hiding, another current frame, an unused datablock, or an edit of a
 copied body changes nothing. Expected result: a `PASS` line per asset and edit,
 `Resave: <n> of <n> asset(s) keep every fingerprint.`, and `Proved the content of
@@ -448,7 +479,22 @@ image, with a `SKIP` line.
 
 Every script that saves a `.blend` file reads its content and writes the record
 itself, and `Approve-ArtAsset.ps1` and `Export-ArtAsset.ps1` do so before they
-check anything, so a file saved by hand in Blender needs no step before them.
+check anything, for the asset, for the cage of a garment, and for the other
+assets whose exports an export records, so a file saved by hand in Blender
+needs no step before them.
+
+A record pairs the content Blender read with the hash of the file it read, so a
+script takes the file's hash before the Blender run whose content it records and
+again after it, and stops when they differ: `<Name>.blend was saved while it was
+read; run the command again.` An approval binds to the content its own
+validation run reported, and stops with `<Name>.blend changed while it was
+approved; run the command again.` when that is not the record's. Every export
+run reports the content it exported too; when that is not the content the gate
+accepted, or the file's hash changed during the run, the export stops with
+`<Name>.blend changed while it was exported; run the export again.` before it
+writes its record, so the files it wrote match no record and
+`Verify-ArtAssets.ps1` fails until the export runs again.
+
 `Verify-ArtAssets.ps1` cannot read a file's content without Blender; after a
 file was saved by hand, record its content and see which approvals hold:
 

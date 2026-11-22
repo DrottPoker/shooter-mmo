@@ -35,11 +35,11 @@ $proofAssets = [ordered]@{
 # The edits of content of every kind and the part each changes; <clip> is the first clip by name and
 # <body> the first body. A copy of another asset is not content.
 $contentEdits = @{
-    static = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; pixel = "materials" }
-    skinned = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; pixel = "materials"; weight = "weights"; bone = "skeleton"; key = "clip:<clip>" }
-    animations = [ordered]@{ bone = "skeleton"; key = "clip:<clip>"; copy = "" }
+    static = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; pixel = "materials"; "unit-scale" = "shape" }
+    skinned = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; pixel = "materials"; "unit-scale" = "shape"; weight = "weights"; bone = "skeleton"; key = "clip:<clip>"; "key-easing" = "clip:<clip>" }
+    animations = [ordered]@{ bone = "skeleton"; "unit-scale" = "skeleton"; key = "clip:<clip>"; "key-easing" = "clip:<clip>"; copy = "" }
     paint = [ordered]@{ vertex = "canvas"; pixel = "paint"; "body-pixel" = "body:<body>"; copy = "" }
-    garment = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; weight = "weights"; copy = "" }
+    garment = [ordered]@{ vertex = "shape"; uv = "uv"; material = "materials"; "unit-scale" = "shape"; weight = "weights"; copy = "" }
     cage = [ordered]@{ vertex = "fit:<body>"; "net-vertex" = "net"; copy = "" }
     texture = [ordered]@{ pixel = "image"; material = "material"; copy = "" }
 }

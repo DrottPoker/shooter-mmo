@@ -18,35 +18,35 @@
         "version": 1,
         "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0",
         "stages": {
-            "model": "fcc42b0c742a73a2c95cc566886f3341ed81de82cb287ab2863808b4f3ad7e2b",
-            "rig": "736793508ad701a9238bc709f3de87d7a682c9d52f0db9a099df7e242e239590",
-            "animation": "aa90cf700fe2ff84728877829dce2cad5ed8a3f4db12debce93ba28cdf2125ec"
+            "model": "3f34c2e059fce656a9debbdea954c82c8490185480370f0a4b6c875f938fbb12",
+            "rig": "8fc86ba159e1448097735a9310414ac15076a443912c19f35cb1db1c7eacad53",
+            "animation": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443"
         },
         "parts": {
-            "clip:Draw": "7954cca7f409785f4f0e90f20131ab77a6c032934cc0127fefe76d9dd9beda6c",
+            "clip:Draw": "70a12421c4cf1e8588d4dce10a2474c1c29127b78f84f7d2caea4ab8ae61a784",
             "materials": "747dac0b82ff24446a714eadee7448972106649cde11dc48e7218adb0c686bef",
-            "shape": "a410392bc38d0afecc6e970ea93d25c250d550a54376361d03ba4066f9004ba7",
+            "shape": "8e6671f293080877ad0afcbc57627f4808c5567b8fce6018d2abcc0b663b2673",
             "skeleton": "883a111668d0a90656352f25c45ca628a14879b77248c22466c5fb4bbd78f5e8",
             "uv": "85c85860d7f903fee5b422b5ebdd31e97076f16f6194457dc086b7f57d22ceaf",
-            "weights": "5d09b4a9f8cfe25dad640b75824b293656a267529a4fb4f84729a6207565f880"
+            "weights": "2cb793e19d05266548e9b391498b0089ab943f35df0a834c7476d5584af0dd2b"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-10-31",
-            "contentSha256": "fcc42b0c742a73a2c95cc566886f3341ed81de82cb287ab2863808b4f3ad7e2b"
+            "contentSha256": "3f34c2e059fce656a9debbdea954c82c8490185480370f0a4b6c875f938fbb12"
         },
         "rig": {
             "date": "2026-10-31",
-            "contentSha256": "736793508ad701a9238bc709f3de87d7a682c9d52f0db9a099df7e242e239590"
+            "contentSha256": "8fc86ba159e1448097735a9310414ac15076a443912c19f35cb1db1c7eacad53"
         },
         "animation": {
             "date": "2026-10-31",
-            "contentSha256": "aa90cf700fe2ff84728877829dce2cad5ed8a3f4db12debce93ba28cdf2125ec"
+            "contentSha256": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443"
         }
     },
     "export": {
-        "contentSha256": "aa90cf700fe2ff84728877829dce2cad5ed8a3f4db12debce93ba28cdf2125ec",
+        "contentSha256": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443",
         "targetSha256": "e5c47734f1edaaf091ca232a9e190269c9f9cc2725fbb69b91a7f0fc5084aacc",
         "materials": [
             {

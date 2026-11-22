@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "a4d2a8f2217e1337440e4f955c5ee33a4c1371c596536af51bb56e9dba0c522c",
-        "garmentContentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df",
+        "garmentContentSha256": "97f91dd7320f3b06aab2679bf57f996d663dcfcfd1f66debf8f466035129e5fd",
         "materials": [
             {
                 "name": "M_Garment_WoolRobe",

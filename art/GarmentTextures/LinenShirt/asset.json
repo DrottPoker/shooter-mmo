@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "b776acaa00b01d301c3f43bd62d3086bcdc2aa0105de47f08a8cfee37c0e7755",
-        "garmentContentSha256": "802587e55dbcab0463b369cbe9f9578e69d5d1ae7e87ea7999440689b837891a",
+        "garmentContentSha256": "429891ebba30a63df9a9b3d89f62cb878f0e357198c625b8281e55ad7cddce4f",
         "materials": [
             {
                 "name": "M_Garment_LinenShirt",

@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "d5db1a5966f71099801ad6859549e3af089a7e4f9328c9d3f4ff4a782a045528",
-        "garmentContentSha256": "c894192ef20007a562bdaf34576975e3d389e9cd61b252c9e58c3482532a80c9",
+        "garmentContentSha256": "f8477366c1693f53ca70c67d2aa55dcbb562d376461dcec760d4d2ba5f315c38",
         "materials": [
             {
                 "name": "M_Garment_LeatherGloves",

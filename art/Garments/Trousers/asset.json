@@ -35,28 +35,28 @@
         "version": 1,
         "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c",
         "stages": {
-            "model": "10324a33fe1b4bc38a22de557bab054e10d4f7eb93d2461e4bc86b0a30163fd3",
-            "rig": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb"
+            "model": "b7b420035c9198ac2787cc16e6368191f7e72f31a48c65628b7b61e780c394dc",
+            "rig": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5"
         },
         "parts": {
             "materials": "eadcfc4e06e4109a67091659e661bd0c41cdc213fb239442c1646cf45a64bb6a",
-            "shape": "75386a2cd5b7ca29de5e7c1ff6a1ae60e27e5f841a336fbe0cb8290f581183c8",
+            "shape": "c2ecbe39b3960983c65c431250781c82b885b166cba7ba508c78059f4c83dc61",
             "uv": "53439746ddbbb154c76c224d963d08557065ff958c3ef581e4c983f9008d223f",
-            "weights": "1c032cab43b196145535ffc36b2b65ef60da9147fc6e96aa79ffe529b14e43c2"
+            "weights": "b56a201fe5a24b6172a5155457d927d32f5b22feb4d2066eff2b63e0e8fedd6d"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "contentSha256": "10324a33fe1b4bc38a22de557bab054e10d4f7eb93d2461e4bc86b0a30163fd3"
+            "contentSha256": "b7b420035c9198ac2787cc16e6368191f7e72f31a48c65628b7b61e780c394dc"
         },
         "rig": {
             "date": "2026-11-22",
-            "contentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb"
+            "contentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5"
         }
     },
     "export": {
-        "contentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb",
+        "contentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
@@ -77,7 +77,7 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c" }
         ],
         "materials": [
             {

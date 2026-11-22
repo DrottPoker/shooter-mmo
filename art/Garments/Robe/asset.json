@@ -33,28 +33,28 @@
         "version": 1,
         "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c",
         "stages": {
-            "model": "b0e728f3b253d612780ea3dd2d568d6eacb89cc0ee29244c6194018df6a50a65",
-            "rig": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df"
+            "model": "9db128c550d2a3bceb7c97aba2d61f63fe15463f06ccd46421d74317acd4b0f4",
+            "rig": "97f91dd7320f3b06aab2679bf57f996d663dcfcfd1f66debf8f466035129e5fd"
         },
         "parts": {
             "materials": "62858d224264310423b72fa24674be7d96a44f1ca38a6a9c75ee0cd1e637ebdd",
-            "shape": "4a5b0457462cc8e24083873585b591793ceac59da42f591b99da0ef0537b5df2",
+            "shape": "54f6008cefa4a2a6ceb9cfb16b6d6e69c465645aede341730d0b03f4886e78b6",
             "uv": "e21868f5edaa464924a08e5e57209be350ee37fe82a0b3337b67e72b921cb061",
-            "weights": "804d45964488fc00230a4affc1ad42f3d5032c5eca98f0c7f0a90eca362fcb36"
+            "weights": "d0ca111866bd6e0544f9764cb66973aab3fde8cf53dfc8bab1d7a5e1078151fd"
         }
     },
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "contentSha256": "b0e728f3b253d612780ea3dd2d568d6eacb89cc0ee29244c6194018df6a50a65"
+            "contentSha256": "9db128c550d2a3bceb7c97aba2d61f63fe15463f06ccd46421d74317acd4b0f4"
         },
         "rig": {
             "date": "2026-11-22",
-            "contentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df"
+            "contentSha256": "97f91dd7320f3b06aab2679bf57f996d663dcfcfd1f66debf8f466035129e5fd"
         }
     },
     "export": {
-        "contentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df",
+        "contentSha256": "97f91dd7320f3b06aab2679bf57f996d663dcfcfd1f66debf8f466035129e5fd",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
@@ -75,10 +75,10 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "contentSha256": "040d12931b9bc6802271bfae4929e564a6e655ae9feec9a19fc426f20c8b252f" }
+            { "garment": "art/Garments/Boots", "contentSha256": "ccca32c1312c6f51eac7dc8d149c87e127ce6251166f1f88e1686f30a04042fa" }
         ],
         "materials": [
             {

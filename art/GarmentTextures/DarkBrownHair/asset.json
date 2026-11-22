@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "b79d7eee9882d0731c15d54003b5fe13ab99b2cad7e9f6e0afbc455e2ab73a15",
-        "garmentContentSha256": "81e140440fe42fb97c9dcd5adf36c13e720b7ec7e117f38ba8386df97c249c12",
+        "garmentContentSha256": "1b03820fb96487842449ce5362f99e1f02f1b53ffdd0a35caf3e2486355ea9e2",
         "materials": [
             {
                 "name": "M_Garment_DarkBrownHair",

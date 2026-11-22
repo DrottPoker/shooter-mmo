@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "24a0cfaf68a4d701c38c1f0188403fa6940414a6aff9c54253610d0514276170",
-        "garmentContentSha256": "46ae39b206bfeb5bdfad6dc852ee649c5c60bd037fd163bde2998ca9764c3414",
+        "garmentContentSha256": "5f314455b670e1a1b6313a4e9782e624c51a48f0b6ef3b15350d1e3eb418bd6a",
         "materials": [
             {
                 "name": "M_Garment_LinenLongShirt",

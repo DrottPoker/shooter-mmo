@@ -22,7 +22,7 @@
     },
     "export": {
         "contentSha256": "4edce6dc6d0669dcd01ef156c7da47a587c1fad52db147770864cfe488d9381c",
-        "garmentContentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb",
+        "garmentContentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5",
         "materials": [
             {
                 "name": "M_Garment_WoolTrousers",

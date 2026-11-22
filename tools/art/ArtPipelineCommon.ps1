@@ -2891,18 +2891,57 @@ function Read-ArtContentLine([string[]]$Results) {
     return $line.Substring("ART_CONTENT ".Length) | ConvertFrom-Json
 }
 
-function Update-ArtContentRecord([string]$Blender, $Manifest, [string[]]$Results) {
+function Assert-ArtFileUnchanged($Manifest, [string]$SourceSha256Before, [string]$Problem, [string]$Again = "run the command again") {
+    # Throws when the asset's file has another hash than before a Blender run read it, so no record
+    # pairs the content of one version of the file with the hash of another.
+    if ([string]::IsNullOrEmpty($SourceSha256Before)) {
+        throw "The hash of $($Manifest.Name).blend before Blender read it is missing."
+    }
+
+    if ((Get-ArtFileSha256 $Manifest.SourcePath) -cne $SourceSha256Before) {
+        throw "$($Manifest.Name).blend $Problem; $Again."
+    }
+}
+
+function Test-ArtSameStages($Manifest, $Read) {
+    # Whether the stages Blender reported are those of the content record.
+    return $null -ne $Read -and $null -ne $Manifest.Content -and $Read.version -eq $Manifest.Content.version -and
+        @($Manifest.Stages | Where-Object { [string]$Read.stages.$_ -cne $Manifest.Content.stages[$_] }).Count -eq 0
+}
+
+function Assert-ArtExportedContent($Manifest, [string[]]$Results, [string]$SourceSha256Before) {
+    # Throws, before the export record is written, when the file changed while it was exported: the
+    # content the export run reported must be the record the gate accepted, and the file's hash before
+    # and after the run that record's. The files the run wrote then match no record, so the
+    # verification fails until the export runs again.
+    $problem = "changed while it was exported"
+    if ($SourceSha256Before -cne $Manifest.Content.sourceSha256 -or -not (Test-ArtSameStages $Manifest (Read-ArtContentLine $Results))) {
+        throw "$($Manifest.Name).blend $problem; run the export again."
+    }
+
+    Assert-ArtFileUnchanged $Manifest $SourceSha256Before $problem "run the export again"
+}
+
+function Update-ArtContentRecord([string]$Blender, $Manifest, [string[]]$Results, [string]$SourceSha256Before) {
     # Makes the content record of an asset current and returns whether it wrote asset.json: nothing
     # to do when the record was read from the file as it is now, otherwise the ART_CONTENT line of
-    # Results, which a validation of the file as it is now printed, or of a content run.
+    # Results, which a Blender run on the file printed, such as a validation, with
+    # SourceSha256Before the file's hash before that run, or else of a content run. A file saved
+    # while Blender read it is refused.
+    $read = $null
+    if (@($Results).Count -gt 0) {
+        Assert-ArtFileUnchanged $Manifest $SourceSha256Before "was saved while it was read"
+        $read = Read-ArtContentLine $Results
+    }
+
     if ($null -eq (Get-ArtContentProblem $Manifest)) {
         return $false
     }
 
     $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
-    $read = Read-ArtContentLine $Results
     if ($null -eq $read) {
         $read = Read-ArtContentLine (Invoke-ArtBlender $Blender $Manifest (@("content") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1])))
+        Assert-ArtFileUnchanged $Manifest $sourceSha256 "was saved while it was read"
     }
 
     if ($null -eq $read -or [int]$read.version -ne $script:ArtContentVersion) {

@@ -21,9 +21,21 @@ SOURCE_COLLECTION = "Source"
 UV_SEAM = "uv_seam"
 # A part whose object or image the file lacks, so its fingerprint differs from any real one.
 MISSING = "missing"
-# Settings of modifiers and constraints that only the interface uses.
+# Settings of modifiers, constraints, and F-curve modifiers that only the interface uses.
 _UI_SETTINGS = {"rna_type", "show_expanded", "show_in_editmode", "show_on_cage", "is_active", "active",
                 "is_override_data_editable", "persistent_uid", "execution_time", "use_apply_on_spline"}
+# And of nodes: where a node lies and how it looks in the editor, and its frame.
+_NODE_LAYOUT = _UI_SETTINGS | {
+    "location", "location_absolute", "width", "height", "dimensions", "select", "hide", "show_options",
+    "show_preview", "show_texture", "color", "color_tag", "use_custom_color", "parent", "label", "bl_description",
+    "bl_icon", "bl_label", "bl_static_type", "bl_width_default", "bl_width_min", "bl_width_max", "bl_height_default",
+    "bl_height_min", "bl_height_max", "internal_links", "warning_propagation"}
+# Lists that hold interface state, and a node's sockets, which _node_tree reads apart.
+_UI_LISTS = {"panels", "node_warnings"}
+_NODE_LISTS = _UI_LISTS | {"inputs", "outputs"}
+# The objects of the asset's own content while read() runs, which a setting that points to one names,
+# and the objects being read now, so an object that points back is named, not read again.
+_reading = {"own": set(), "visiting": set()}
 # The field and width of every attribute data type.
 _ATTRIBUTE_FIELDS = {
     "FLOAT": ("value", 1, np.float64), "INT": ("value", 1, np.int32), "BOOLEAN": ("value", 1, np.bool_),
@@ -55,20 +67,27 @@ def _properties(owner) -> dict:
     return {str(key): _plain(owner[key]) for key in owner.keys()}
 
 
-def _settings(struct) -> dict:
-    """What a modifier, constraint, or F-curve modifier does: its type and every setting that is not
-    interface state, with other datablocks by name."""
+def _settings(struct, where: str, skip: set[str] = _UI_SETTINGS, lists: set[str] = _UI_LISTS) -> dict:
+    """What a modifier, constraint, node, or F-curve modifier does: its type and every setting that is
+    not interface state, with what each setting points to read by the rules of _pointer. A list
+    setting with entries fails, since no rule reads it; where names the owner in that message."""
     found = {"type": getattr(struct, "type", type(struct).__name__)}
+    nodes_modifier = isinstance(struct, bpy.types.NodesModifier)
     for prop in struct.bl_rna.properties:
         key = prop.identifier
-        if key in _UI_SETTINGS or prop.is_readonly or prop.type == "COLLECTION":
+        # A Geometry Nodes modifier keeps its inputs in "properties", which are read below.
+        if key in skip or (nodes_modifier and key == "properties"):
             continue
         value = getattr(struct, key, None)
+        if prop.type == "COLLECTION":
+            if key not in lists and value is not None and len(value):
+                raise ArtPipelineError(f"{where} has entries in its setting {key}, which the content fingerprint has no "
+                                       "rule for.")
+            continue
         if prop.type == "POINTER":
-            if isinstance(value, bpy.types.ID):
-                found[key] = value.name
-            elif value is None:
-                found[key] = None
+            found[key] = _pointer(value, where, key)
+            continue
+        if prop.is_readonly:
             continue
         if prop.type == "ENUM" and prop.is_enum_flag:
             found[key] = sorted(value)
@@ -78,14 +97,161 @@ def _settings(struct) -> dict:
             found[key] = [int(v) for v in value]
         else:
             found[key] = value
+    if nodes_modifier and struct.properties is not None:
+        # Each input and output socket of the node group: its value, or the attribute it reads or writes.
+        found["inputs"] = _sockets(struct.properties.inputs, f"{where}, inputs")
+        found["outputs"] = _sockets(struct.properties.outputs, f"{where}, outputs")
     return found
 
 
-def _drivers(owner) -> list:
+def _sockets(struct, where: str) -> dict:
+    """The sockets of a Geometry Nodes modifier, each with its settings, what it points to read by
+    the rules of _pointer."""
+    found = {}
+    for prop in struct.bl_rna.properties:
+        if prop.identifier in ("rna_type", "name"):
+            continue
+        socket = getattr(struct, prop.identifier)
+        entry = {}
+        for key in socket.bl_rna.properties:
+            if key.identifier == "rna_type":
+                continue
+            value = getattr(socket, key.identifier)
+            if key.type == "POINTER":
+                entry[key.identifier] = _pointer(value, where, prop.identifier)
+            elif hasattr(value, "__len__") and not isinstance(value, str):
+                entry[key.identifier] = np.array(value, np.float64).reshape(-1)
+            else:
+                entry[key.identifier] = value
+        found[prop.identifier] = entry
+    return found
+
+
+def _pointer(value, where: str, setting: str):
+    """What a setting of a modifier, constraint, node, or driver points to, read as content: an own
+    object by name, any other object with its record and data, a collection with its objects, a node
+    group with its tree, a material, an image, a custom profile, and a curve mapping. Anything else
+    fails, so the fingerprint never leaves an input out."""
+    if value is None:
+        return None
+    if isinstance(value, bpy.types.Object):
+        return _referenced_object(value, where, setting)
+    if isinstance(value, bpy.types.Collection):
+        return {"collection": value.name, "objects": {o.name: _referenced_object(o, where, setting)
+                                                      for o in sorted(value.all_objects, key=lambda o: o.name)}}
+    if isinstance(value, bpy.types.NodeTree):
+        return {"nodeTree": value.name, "tree": _node_tree(value, f"{where}, node group {value.name}")}
+    if isinstance(value, bpy.types.Material):
+        images = {n.image.name: n.image for n in (value.node_tree.nodes if value.node_tree is not None else [])
+                  if getattr(n, "image", None) is not None}
+        return {"material": value.name, "tree": _material(value),
+                "images": {name: _image(image) for name, image in images.items()}}
+    if isinstance(value, bpy.types.Image):
+        return {"image": value.name, "pixels": _image(value)}
+    if isinstance(value, bpy.types.CurveProfile):
+        return {"profile": _settings(value, f"{where}, {setting}", lists=_UI_LISTS | {"points", "segments"}),
+                "points": [[list(p.location), p.handle_type_1, p.handle_type_2] for p in value.points]}
+    if isinstance(value, bpy.types.CurveMapping):
+        return {"mapping": _settings(value, f"{where}, {setting}", lists=_UI_LISTS | {"curves"}),
+                "curves": [[[list(p.location), p.handle_type] for p in curve.points] for curve in value.curves]}
+    if isinstance(value, bpy.types.CurveMap):
+        return [[list(p.location), p.handle_type] for p in value.points]
+    raise ArtPipelineError(f"{where} points to a {type(value).__name__} in its setting {setting}, which the content "
+                           "fingerprint has no rule for.")
+
+
+def _referenced_object(obj: bpy.types.Object, where: str, setting: str):
+    """An object a setting points to: an own object, or one being read now, by name; any other with its
+    record and, for a mesh or a curve, its data, since what it points to shapes the asset."""
+    if obj.name in _reading["own"] or obj.name in _reading["visiting"]:
+        return {"object": obj.name}
+    _reading["visiting"].add(obj.name)
+    try:
+        record = {"object": obj.name, "record": _object(obj)}
+        if obj.type == "MESH":
+            record["mesh"] = _mesh(obj, uv_maps=True)
+        elif obj.type == "CURVE":
+            record["curve"] = _curve(obj.data, f"{where}, object {obj.name}")
+        elif obj.type != "EMPTY":
+            raise ArtPipelineError(f"{where} points to the {obj.type.lower()} object {obj.name} in its setting "
+                                   f"{setting}, whose data the content fingerprint has no rule for.")
+        return record
+    finally:
+        _reading["visiting"].discard(obj.name)
+
+
+def _curve(curve: bpy.types.Curve, where: str) -> dict:
+    """A curve's splines with their points, and the settings that shape it."""
+    for setting in ("bevel_object", "taper_object"):
+        if getattr(curve, setting, None) is not None:
+            raise ArtPipelineError(f"{where} has a {setting}, which the content fingerprint has no rule for.")
+    splines = [{"type": s.type, "cyclic": [s.use_cyclic_u, s.use_cyclic_v], "order": [s.order_u, s.order_v],
+                "resolution": [s.resolution_u, s.resolution_v], "smooth": s.use_smooth,
+                "points": _floats(s.points, "co", 4), "radius": _floats(s.points, "radius", 1),
+                "tilt": _floats(s.points, "tilt", 1), "bezier": _floats(s.bezier_points, "co", 3),
+                "left": _floats(s.bezier_points, "handle_left", 3), "right": _floats(s.bezier_points, "handle_right", 3),
+                "bezierRadius": _floats(s.bezier_points, "radius", 1), "bezierTilt": _floats(s.bezier_points, "tilt", 1)}
+               for s in curve.splines]
+    return {"splines": splines, "dimensions": curve.dimensions, "resolution": [curve.resolution_u, curve.resolution_v],
+            "offset": curve.offset, "extrude": curve.extrude, "bevelDepth": curve.bevel_depth,
+            "bevelResolution": curve.bevel_resolution, "bevelMode": curve.bevel_mode, "twist": curve.twist_mode,
+            "fill": curve.fill_mode, "properties": _properties(curve)}
+
+
+def _node_tree(tree: bpy.types.NodeTree, where: str) -> dict:
+    """A node group: its interface with the default value of every socket, every node with its
+    settings and the values of its unlinked inputs and of its outputs, and every link."""
+    if tree.name in _reading["visiting"]:
+        return {"nodeTree": tree.name}
+    _reading["visiting"].add(tree.name)
+    try:
+        interface = [{"name": item.name, "type": item.item_type, "inOut": getattr(item, "in_out", None),
+                      "socket": getattr(item, "socket_type", None), "identifier": getattr(item, "identifier", None),
+                      "default": _socket(item, f"{where}, interface")}
+                     for item in tree.interface.items_tree]
+        nodes = []
+        for node in tree.nodes:
+            label = f"{where}, node {node.name}"
+            nodes.append({
+                "name": node.name, "settings": _settings(node, label, _NODE_LAYOUT, _NODE_LISTS),
+                "inputs": {s.identifier: _socket(s, label) for s in node.inputs if not s.is_linked},
+                "outputs": {s.identifier: _socket(s, label) for s in node.outputs},
+            })
+        nodes.sort(key=lambda n: n["name"])
+        links = sorted([link.from_node.name, link.from_socket.identifier, link.to_node.name, link.to_socket.identifier,
+                        link.is_muted] for link in tree.links)
+        return {"type": tree.bl_idname, "interface": interface, "nodes": nodes, "links": links,
+                "properties": _properties(tree)}
+    finally:
+        _reading["visiting"].discard(tree.name)
+
+
+def _socket(socket, where: str):
+    """The value a socket holds when nothing is linked to it, with a datablock read by _pointer."""
+    if not hasattr(socket, "default_value"):
+        return None
+    value = socket.default_value
+    if isinstance(value, bpy.types.ID):
+        return _pointer(value, where, f"socket {getattr(socket, 'identifier', socket.name)}")
+    return _node_value(socket)
+
+
+def _drivers(owner, where: str) -> list:
+    """The drivers of a datablock with their expressions and the targets of their variables, a target
+    read by the rules of _pointer."""
     data = getattr(owner, "animation_data", None)
     if data is None:
         return []
-    return sorted([d.data_path, d.array_index, d.driver.type, d.driver.expression] for d in data.drivers)
+    found = []
+    for driver in data.drivers:
+        variables = [{"name": v.name, "type": v.type, "targets": [
+            {"id": _pointer(t.id, f"{where}, driver {driver.data_path}", f"variable {v.name}"), "path": t.data_path,
+             "bone": t.bone_target, "transform": t.transform_type, "space": t.transform_space,
+             "rotationMode": t.rotation_mode} for t in v.targets]} for v in driver.driver.variables]
+        found.append([driver.data_path, driver.array_index, driver.driver.type, driver.driver.expression, variables,
+                      [_settings(m, f"{where}, driver {driver.data_path}") for m in driver.modifiers]])
+    found.sort(key=lambda d: (d[0], d[1]))
+    return found
 
 
 def _floats(collection, field: str, width: int) -> np.ndarray:
@@ -118,11 +284,14 @@ def _attribute(attribute) -> dict:
 def _object(obj: bpy.types.Object, properties: bool = True) -> dict:
     """An object as the export places it: its type, data, parent, world matrix, rotation mode, its
     viewport switch, which the FBX writes as its visibility, its custom properties, its modifiers
-    but the armature's, its constraints, drivers, and material slots."""
+    but the armature's, which the weights hold, its constraints, the drivers of the object and its
+    data, and its material slots, with what the modifiers, constraints, and drivers point to."""
     parent = obj.parent
+    where = f"Object {obj.name}"
+    data = obj.data
     return {
         "type": obj.type,
-        "data": obj.data.name if obj.data is not None else None,
+        "data": data.name if data is not None else None,
         "parent": parent.name if parent is not None else None,
         "parentType": obj.parent_type if parent is not None else None,
         "parentBone": obj.parent_bone if parent is not None and obj.parent_type == "BONE" else None,
@@ -130,9 +299,10 @@ def _object(obj: bpy.types.Object, properties: bool = True) -> dict:
         "rotationMode": obj.rotation_mode,
         "hideViewport": obj.hide_viewport,
         "properties": _properties(obj) if properties else {},
-        "modifiers": [_settings(m) for m in obj.modifiers if m.type != "ARMATURE"],
-        "constraints": [_settings(c) for c in obj.constraints],
-        "drivers": _drivers(obj),
+        "modifiers": [_settings(m, f"{where}, modifier {m.name}") for m in obj.modifiers if m.type != "ARMATURE"],
+        "constraints": [_settings(c, f"{where}, constraint {c.name}") for c in obj.constraints],
+        "drivers": _drivers(obj, where) + (_drivers(data, f"{where}, data {data.name}") if data is not None else [])
+        + (_drivers(data.shape_keys, f"{where}, shape keys") if getattr(data, "shape_keys", None) is not None else []),
         "materials": [[slot.link, slot.material.name if slot.material is not None else None] for slot in obj.material_slots],
     }
 
@@ -172,6 +342,11 @@ def _mesh(obj: bpy.types.Object, uv_maps: bool = False) -> dict:
     }
     if uv_maps:
         record["uvMaps"] = _uvs(obj)
+    # A modifier that reads a vertex group shapes the mesh by its weights.
+    if any(isinstance(getattr(m, prop.identifier, None), str) and getattr(m, prop.identifier)
+           for m in obj.modifiers if m.type != "ARMATURE"
+           for prop in m.bl_rna.properties if prop.type == "STRING" and "vertex_group" in prop.identifier):
+        record["vertexGroups"] = _weights(obj)
     return record
 
 
@@ -192,9 +367,12 @@ def _weights(obj: bpy.types.Object) -> dict:
         for group in vertex.groups:
             if group.group in column:
                 weights[vertex.index, column[group.group]] = group.weight
+    # The armature by name: the asset's own, whose skeleton is a part, or a body's rig that a garment
+    # keeps a copy of, which is not content.
     armatures = [{"name": m.name, "object": m.object.name if m.object is not None else None,
                   "vertexGroups": m.use_vertex_groups, "envelopes": m.use_bone_envelopes,
                   "preserveVolume": m.use_deform_preserve_volume, "multiModifier": m.use_multi_modifier,
+                  "maskGroup": m.vertex_group, "invertMask": m.invert_vertex_group,
                   "viewport": m.show_viewport, "render": m.show_render}
                  for m in obj.modifiers if m.type == "ARMATURE"]
     return {"groups": names, "weights": core.Rounded(weights, core.WEIGHT_DECIMALS), "armatures": armatures}
@@ -217,7 +395,9 @@ def _skeleton(arm: bpy.types.Object, properties: bool) -> dict:
         "relativeParent": bone.use_relative_parent,
         "properties": _properties(bone),
     } for bone in arm.data.bones}
-    pose = {pb.name: {"rotationMode": pb.rotation_mode, "constraints": [_settings(c) for c in pb.constraints],
+    pose = {pb.name: {"rotationMode": pb.rotation_mode,
+                      "constraints": [_settings(c, f"Object {arm.name}, bone {pb.name}, constraint {c.name}")
+                                      for c in pb.constraints],
                       "properties": _properties(pb)} for pb in arm.pose.bones} if arm.pose is not None else {}
     return {"data": arm.data.name, "bones": bones, "pose": pose, "posePosition": arm.data.pose_position,
             "dataProperties": _properties(arm.data), "properties": _properties(arm) if properties else {}}
@@ -229,8 +409,9 @@ def _keyframe_enums(points, field: str) -> list:
 
 def _clip(action: bpy.types.Action) -> dict:
     """An animation clip as the export bakes it: its curves by slot, path, and channel, with their
-    keys, handles, interpolation, extrapolation, and modifiers, its frame range, its custom
-    properties, such as loop, and the scene's frame rate it plays at."""
+    keys, handles, interpolation, easing with its back, amplitude, and period, extrapolation, and
+    modifiers, its frame range, its custom properties, such as loop, and the scene's frame rate it
+    plays at."""
     curves = []
     for slot in action.slots:
         channelbag = anim_utils.action_get_channelbag_for_slot(action, slot)
@@ -240,9 +421,13 @@ def _clip(action: bpy.types.Action) -> dict:
                 "slot": slot.identifier, "path": fc.data_path, "index": fc.array_index,
                 "keys": _floats(points, "co", 2), "left": _floats(points, "handle_left", 2),
                 "right": _floats(points, "handle_right", 2), "interpolation": _keyframe_enums(points, "interpolation"),
-                "easing": _keyframe_enums(points, "easing"), "leftType": _keyframe_enums(points, "handle_left_type"),
+                "easing": _keyframe_enums(points, "easing"), "back": _floats(points, "back", 1),
+                "amplitude": _floats(points, "amplitude", 1), "period": _floats(points, "period", 1),
+                "leftType": _keyframe_enums(points, "handle_left_type"),
                 "rightType": _keyframe_enums(points, "handle_right_type"), "extrapolation": fc.extrapolation,
-                "mute": fc.mute, "modifiers": [_settings(m) for m in fc.modifiers],
+                "mute": fc.mute,
+                "modifiers": [_settings(m, f"Action {action.name}, curve {fc.data_path}[{fc.array_index}]")
+                              for m in fc.modifiers],
             })
     curves.sort(key=lambda c: (c["slot"], c["path"], c["index"]))
     scene = bpy.context.scene
@@ -314,9 +499,19 @@ def _collection_objects(name: str) -> list[bpy.types.Object]:
     return sorted(collection.all_objects, key=lambda o: o.name) if collection is not None else []
 
 
+def _scene() -> dict:
+    """The scene settings the FBX export reads: the unit system and scale, which it applies and Unity
+    takes as the file's scale, and the Simplify switch with its subdivision levels, which the meshes
+    it evaluates follow."""
+    scene = bpy.context.scene
+    return {"unitSystem": scene.unit_settings.system, "scaleLength": scene.unit_settings.scale_length,
+            "simplify": scene.render.use_simplify, "simplifySubdivision": scene.render.simplify_subdivision,
+            "simplifySubdivisionRender": scene.render.simplify_subdivision_render}
+
+
 def _model_parts(objects: list[bpy.types.Object], variant_prefixes: bool = False) -> dict:
-    """The parts of a model stage: shape, uv, and materials. An armature's custom properties belong to
-    its skeleton."""
+    """The parts of a model stage: shape, with the scene settings the export reads, uv, and
+    materials. An armature's custom properties belong to its skeleton."""
     shape = {}
     for obj in objects:
         entry = {"object": _object(obj, properties=obj.type != "ARMATURE")}
@@ -324,7 +519,7 @@ def _model_parts(objects: list[bpy.types.Object], variant_prefixes: bool = False
             entry["mesh"] = _mesh(obj)
         shape[obj.name] = entry
     uv = {obj.name: _uvs(obj) for obj in objects if obj.type == "MESH"}
-    return {"shape": shape, "uv": uv, "materials": _materials(objects, variant_prefixes)}
+    return {"shape": {"objects": shape, "scene": _scene()}, "uv": uv, "materials": _materials(objects, variant_prefixes)}
 
 
 def _clip_parts(args) -> dict:
@@ -333,15 +528,34 @@ def _clip_parts(args) -> dict:
     return {f"clip:{name}": _clip(bpy.data.actions[name]) if name in bpy.data.actions else MISSING for name in names}
 
 
+def own_objects(args) -> list[bpy.types.Object]:
+    """The objects of the asset's own content by kind; every other object of the file is a copy of
+    another asset or a reference."""
+    exported = _collection_objects(EXPORT_COLLECTION)
+    names = []
+    if args.kind == "static":
+        return exported
+    if args.kind == "skinned":
+        return exported + [o for o in _collection_objects(SOURCE_COLLECTION) if o not in exported]
+    if args.kind == "animations":
+        return [o for o in exported if o.type == "ARMATURE"]
+    if args.kind == "garment":
+        names = [f"{args.garment}_{label}" for label in args.roots.split(",")]
+    elif args.kind == "paint":
+        names = ["Canvas", "Canvas_Cage"]
+    elif args.kind == "cage":
+        names = ["Cage", "CageRig"] + [f"Cage_{label}" for label in args.roots.split(",")]
+    return [bpy.data.objects[n] for n in names if n in bpy.data.objects]
+
+
 def _static(args) -> dict:
-    return _model_parts(_collection_objects(EXPORT_COLLECTION))
+    return _model_parts(own_objects(args))
 
 
 def _skinned(args, has_clips: bool) -> dict:
     """The exported objects and the editable source body, whose zones, paint UVs, and weights the
     export reads."""
-    exported = _collection_objects(EXPORT_COLLECTION)
-    objects = exported + [o for o in _collection_objects(SOURCE_COLLECTION) if o not in exported]
+    objects = own_objects(args)
     parts = _model_parts(objects, variant_prefixes=True)
     parts["skeleton"] = {o.name: _skeleton(o, properties=True) for o in objects if o.type == "ARMATURE"}
     parts["weights"] = {o.name: _weights(o) for o in objects if o.type == "MESH"}
@@ -354,8 +568,9 @@ def _animations(args) -> dict:
     """The armature the clips are keyed on, placed as the export places it, and the clips. The bodies
     that show the clips are copies of other assets."""
     armatures = [o for o in _collection_objects(EXPORT_COLLECTION) if o.type == "ARMATURE"]
-    parts = {"skeleton": {o.name: {"object": _object(o, properties=False), "rig": _skeleton(o, properties=False)}
-                          for o in armatures}}
+    parts = {"skeleton": {"armatures": {o.name: {"object": _object(o, properties=False),
+                                                 "rig": _skeleton(o, properties=False)} for o in armatures},
+                          "scene": _scene()}}
     parts.update(_clip_parts(args))
     return parts
 
@@ -381,7 +596,8 @@ def _garment(args) -> dict:
         weights[key] = _weights(version)
     present = [v for v in versions if v is not None and v.type == "MESH"]
     uv = texture.uv_fingerprint(first.data) if first is not None and first.type == "MESH" else core.fingerprint(MISSING)
-    return {"shape": shape, "uv": uv, "materials": _materials(present), "weights": weights}
+    return {"shape": {"versions": shape, "scene": _scene()}, "uv": uv, "materials": _materials(present),
+            "weights": weights}
 
 
 def _texture(args) -> dict:
@@ -440,6 +656,8 @@ def read(args) -> dict:
     """The content record of the open file: its version, its stage fingerprints, and its parts."""
     # The world matrices of a file just opened are evaluated with its view layer.
     bpy.context.view_layer.update()
+    _reading["own"] = {o.name for o in own_objects(args)}
+    _reading["visiting"] = set()
     has_clips = bool([c for c in (getattr(args, "clips", "") or "").split(",") if c])
     stages = core.stages_of(args.kind, has_clips)
     if args.kind == "static":
@@ -465,8 +683,8 @@ def read(args) -> dict:
 
 # The scripted edits of the proof in tools/art/Test-ArtContent.ps1, which makes them on copies: edits
 # of content that change exactly the parts they touch, and edits of what is not content.
-PROOF_EDITS = ("vertex", "net-vertex", "uv", "material", "pixel", "body-pixel", "weight", "bone", "key", "copy",
-               "select", "active", "hide", "frame", "unused")
+PROOF_EDITS = ("vertex", "net-vertex", "uv", "material", "pixel", "body-pixel", "weight", "bone", "key", "key-easing",
+               "unit-scale", "copy", "select", "active", "hide", "frame", "unused")
 
 
 def _own_meshes(args) -> list[bpy.types.Object]:
@@ -552,11 +770,16 @@ def proof_edit(case: str, args) -> None:
             bone.head.z += 0.001
             bone.tail.z += 0.001
             bpy.ops.object.mode_set(mode="OBJECT")
-    elif case == "key":
+    elif case in ("key", "key-easing"):
         action = _first(sorted(bpy.data.actions, key=lambda a: a.name), "a clip")
         channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
         curve = sorted(channelbag.fcurves, key=lambda c: (c.data_path, c.array_index))[0]
-        curve.keyframe_points[0].co.y += 0.01
+        if case == "key":
+            curve.keyframe_points[0].co.y += 0.01
+        else:
+            curve.keyframe_points[0].back += 0.5
+    elif case == "unit-scale":
+        bpy.context.scene.unit_settings.scale_length *= 0.5
     elif case == "select":
         for obj in bpy.context.view_layer.objects:
             obj.select_set(True)
