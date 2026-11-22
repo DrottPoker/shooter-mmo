@@ -281,11 +281,12 @@ def _attribute(attribute) -> dict:
     return record
 
 
-def _object(obj: bpy.types.Object, properties: bool = True) -> dict:
+def _object(obj: bpy.types.Object, properties: bool = True, armatures: bool = False) -> dict:
     """An object as the export places it: its type, data, parent, world matrix, rotation mode, its
     viewport switch, which the FBX writes as its visibility, its custom properties, its modifiers
     but the armature's, which the weights hold, its constraints, the drivers of the object and its
-    data, and its material slots, with what the modifiers, constraints, and drivers point to."""
+    data, and its material slots, with what the modifiers, constraints, and drivers point to. With
+    armatures its armature modifiers too, for an asset without a weights part."""
     parent = obj.parent
     where = f"Object {obj.name}"
     data = obj.data
@@ -299,7 +300,8 @@ def _object(obj: bpy.types.Object, properties: bool = True) -> dict:
         "rotationMode": obj.rotation_mode,
         "hideViewport": obj.hide_viewport,
         "properties": _properties(obj) if properties else {},
-        "modifiers": [_settings(m, f"{where}, modifier {m.name}") for m in obj.modifiers if m.type != "ARMATURE"],
+        "modifiers": [_settings(m, f"{where}, modifier {m.name}") for m in obj.modifiers
+                      if armatures or m.type != "ARMATURE"],
         "constraints": [_settings(c, f"{where}, constraint {c.name}") for c in obj.constraints],
         "drivers": _drivers(obj, where) + (_drivers(data, f"{where}, data {data.name}") if data is not None else [])
         + (_drivers(data.shape_keys, f"{where}, shape keys") if getattr(data, "shape_keys", None) is not None else []),
@@ -321,11 +323,12 @@ def _shape_keys(mesh: bpy.types.Mesh):
     }
 
 
-def _mesh(obj: bpy.types.Object, uv_maps: bool = False) -> dict:
+def _mesh(obj: bpy.types.Object, uv_maps: bool = False, armatures: bool = False) -> dict:
     """A mesh as the export sees it: its vertices, edges, faces and corners in their order, its corner
     normals, every attribute but the UV maps and the seams, which only unwrapping reads, its shape
     keys, and its custom properties. With uv_maps also its UV maps; without them they are a part of
-    their own."""
+    their own. With armatures also its weights when an armature modifier deforms it, for an asset
+    without a weights part."""
     mesh = obj.data
     uv_names = {layer.name for layer in mesh.uv_layers} | {UV_SEAM}
     record = {
@@ -342,10 +345,11 @@ def _mesh(obj: bpy.types.Object, uv_maps: bool = False) -> dict:
     }
     if uv_maps:
         record["uvMaps"] = _uvs(obj)
-    # A modifier that reads a vertex group shapes the mesh by its weights.
-    if any(isinstance(getattr(m, prop.identifier, None), str) and getattr(m, prop.identifier)
-           for m in obj.modifiers if m.type != "ARMATURE"
-           for prop in m.bl_rna.properties if prop.type == "STRING" and "vertex_group" in prop.identifier):
+    # A modifier that reads a vertex group shapes the mesh by its weights, as an armature modifier does.
+    if (armatures and any(m.type == "ARMATURE" for m in obj.modifiers)) or any(
+            isinstance(getattr(m, prop.identifier, None), str) and getattr(m, prop.identifier)
+            for m in obj.modifiers if m.type != "ARMATURE"
+            for prop in m.bl_rna.properties if prop.type == "STRING" and "vertex_group" in prop.identifier):
         record["vertexGroups"] = _weights(obj)
     return record
 
@@ -513,14 +517,15 @@ def _scene() -> dict:
             "simplifySubdivisionRender": scene.render.simplify_subdivision_render}
 
 
-def _model_parts(objects: list[bpy.types.Object], variant_prefixes: bool = False) -> dict:
+def _model_parts(objects: list[bpy.types.Object], variant_prefixes: bool = False, armatures: bool = False) -> dict:
     """The parts of a model stage: shape, with the scene settings the export reads, uv, and
-    materials. An armature's custom properties belong to its skeleton."""
+    materials. An armature's custom properties belong to its skeleton. With armatures the shape also
+    holds the armature modifiers and the weights they read, for an asset without a weights part."""
     shape = {}
     for obj in objects:
-        entry = {"object": _object(obj, properties=obj.type != "ARMATURE")}
+        entry = {"object": _object(obj, properties=obj.type != "ARMATURE", armatures=armatures)}
         if obj.type == "MESH":
-            entry["mesh"] = _mesh(obj)
+            entry["mesh"] = _mesh(obj, armatures=armatures)
         shape[obj.name] = entry
     uv = {obj.name: _uvs(obj) for obj in objects if obj.type == "MESH"}
     return {"shape": {"objects": shape, "scene": _scene()}, "uv": uv, "materials": _materials(objects, variant_prefixes)}
@@ -553,7 +558,9 @@ def own_objects(args) -> list[bpy.types.Object]:
 
 
 def _static(args) -> dict:
-    return _model_parts(own_objects(args))
+    """A static asset has no rig stage, so an armature modifier of its meshes, which the export
+    applies, belongs to its shape with the weights it reads."""
+    return _model_parts(own_objects(args), armatures=True)
 
 
 def _skinned(args, has_clips: bool) -> dict:
