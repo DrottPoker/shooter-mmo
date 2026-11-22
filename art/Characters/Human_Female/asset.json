@@ -11,18 +11,33 @@
         { "material": "M_Eye_Female", "images": ["T_Eye_Female_Hazel"] },
         { "material": "M_Face_Female", "images": ["T_Face_Female_Freckles"] }
     ],
+    "content": {
+        "version": 1,
+        "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d",
+        "stages": {
+            "model": "798d850416b140613d62ce40afe3af30f28e5948bbb153ee210563fc0be566cd",
+            "rig": "763083d39ddf3e416377a9d1a5ee3324b2c90d2ebc4ccf797e9b66b7fd696fa3"
+        },
+        "parts": {
+            "materials": "30d9e905170ddebdfb4caa7762d0cf9b35611c0d8c39d5c4bfc973ee9731c66b",
+            "shape": "0929e5054b4183732331671d3b9fd4782d83bc1865cde356e3b26aade537ba40",
+            "skeleton": "88e13e033a5d302b58830c4a7d5691c36efd4df18b05befff6c3aa7ccc57722a",
+            "uv": "e9a6b7a536c526251a0af381c93c7e5d3adab19a2b0b01264e624d19cfefb429",
+            "weights": "ebd1075d42c294097f1c39d91b8d582ca4a9b1a249ac25b577d07763295a7b75"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-20",
-            "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d"
+            "contentSha256": "798d850416b140613d62ce40afe3af30f28e5948bbb153ee210563fc0be566cd"
         },
         "rig": {
             "date": "2026-11-20",
-            "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d"
+            "contentSha256": "763083d39ddf3e416377a9d1a5ee3324b2c90d2ebc4ccf797e9b66b7fd696fa3"
         }
     },
     "export": {
-        "sourceSha256": "ac94d840235a804f478766377878234c426ec4c607a3ae1cf274dd423fc98e4d",
+        "contentSha256": "763083d39ddf3e416377a9d1a5ee3324b2c90d2ebc4ccf797e9b66b7fd696fa3",
         "targetSha256": "1774b99b351578adffe6f0a52eff7fae48450d6b2b857cfcf4112460c9d7fc50",
         "dataSha256": "cecb0fb014832a71cb2e279a3464934e43c93ec893c024af7ab1c6ece9ef9782",
         "fitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",

@@ -38,6 +38,22 @@ $script:ArtImplementedStages = @{
     texture = @("texture")
 }
 
+# An approval binds to the content of its stage: a fingerprint of the parts the stage holds, chained
+# to the earlier stage's, which tools/art/blender/art_pipeline/content.py reads from the .blend file
+# and records in asset.json as "content". The version of the fingerprints, which content_core.py keeps
+# too, and the parts of every stage as <stage>/<part>; a part that ends in ":" stands for one part per
+# item, a clip, or a body of a paint layer or the cage. See docs/ART_PIPELINE.md, Review Stages.
+$script:ArtContentVersion = 1
+$script:ArtContentParts = @{
+    static = @("model/materials", "model/shape", "model/uv")
+    skinned = @("model/materials", "model/shape", "model/uv", "rig/skeleton", "rig/weights", "animation/clip:")
+    animations = @("animation/clip:", "animation/skeleton")
+    paint = @("paint/body:", "paint/canvas", "paint/paint")
+    garment = @("model/materials", "model/shape", "model/uv", "rig/weights")
+    cage = @("model/fit:", "model/net")
+    texture = @("texture/image", "texture/material", "texture/templateUv")
+}
+
 # The regions of the garment cage and the range of its figure scale in meters; see
 # docs/EQUIPMENT_VISUALS_DESIGN.md.
 $script:ArtCageRegions = @("neck", "trunk", "arms", "legs", "hands", "feet", "head")
@@ -85,6 +101,7 @@ $script:ArtAnimatedKinds = @("skinned", "animations")
 $script:ArtNamePattern = '^[A-Za-z][A-Za-z0-9_]*$'
 $script:ArtShaPattern = '^[0-9a-f]{64}$'
 $script:ArtDatePattern = '^\d{4}-\d{2}-\d{2}$'
+$script:ArtPartPattern = '^[A-Za-z][A-Za-z0-9]*(:[A-Za-z][A-Za-z0-9_]*)?$'
 
 function Get-ArtRelativePath([string]$Path) {
     $full = [System.IO.Path]::GetFullPath($Path)
@@ -120,19 +137,32 @@ function Resolve-ArtAssetDirectory([string]$Asset) {
     throw "No art asset found at '$Asset'. Pass the asset folder, for example art/WorldActors/Resource_IronVein."
 }
 
+$script:ArtFileHashes = @{}
+
 function Get-ArtFileSha256([string]$Path) {
     # A Git LFS pointer names the SHA-256 of the real content, so CI checks hashes without
-    # downloading the .blend files.
+    # downloading the .blend files. A file is hashed once until it changes.
     $item = Get-Item -LiteralPath $Path
+    $key = "$($item.FullName)|$($item.Length)|$($item.LastWriteTimeUtc.Ticks)"
+    if ($script:ArtFileHashes.ContainsKey($key)) {
+        return $script:ArtFileHashes[$key]
+    }
+
+    $hash = $null
     if ($item.Length -lt 1024) {
         $text = [System.IO.File]::ReadAllText($item.FullName)
         $match = [regex]::Match($text, '^version https://git-lfs\.github\.com/spec/v1\s+oid sha256:([0-9a-f]{64})\s')
         if ($match.Success) {
-            return $match.Groups[1].Value
+            $hash = $match.Groups[1].Value
         }
     }
 
-    return (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($null -eq $hash) {
+        $hash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+
+    $script:ArtFileHashes[$key] = $hash
+    return $hash
 }
 
 function Format-ArtNumber([double]$Value) {
@@ -339,6 +369,99 @@ function ConvertTo-ArtVariantRecords($Records) {
     }
 
     return , $result.ToArray()
+}
+
+function Get-ArtUpdateContentHint([string]$RelativeDirectory) {
+    return "run tools/art/Update-ArtContent.ps1 -Asset $RelativeDirectory"
+}
+
+function ConvertTo-ArtContentRecord($Record) {
+    # Returns the content record of asset.json, $null for a new asset whose file was never read, or
+    # throws what is malformed: its version, the sourceSha256 of the file it was read from, and the
+    # fingerprints of its stages and parts.
+    if ($null -eq $Record) {
+        return $null
+    }
+
+    $version = $Record.version
+    if (-not ($version -is [int] -or $version -is [long]) -or $version -lt 1 -or
+        [string]$Record.sourceSha256 -cnotmatch $script:ArtShaPattern -or $null -eq $Record.stages -or $null -eq $Record.parts) {
+        throw "content must be null or hold its version, the sourceSha256 of the file it was read from, and the fingerprints of its stages and parts"
+    }
+
+    $stages = [ordered]@{}
+    foreach ($property in $Record.stages.PSObject.Properties) {
+        if ([string]$property.Value -cnotmatch $script:ArtShaPattern) {
+            throw "content.stages.$($property.Name) must be a SHA-256"
+        }
+
+        $stages[$property.Name] = [string]$property.Value
+    }
+
+    $parts = [ordered]@{}
+    foreach ($property in $Record.parts.PSObject.Properties) {
+        if ($property.Name -cnotmatch $script:ArtPartPattern -or [string]$property.Value -cnotmatch $script:ArtShaPattern) {
+            throw "content.parts must name each part, such as shape or clip:Idle, with a SHA-256; '$($property.Name)' does not"
+        }
+
+        $parts[$property.Name] = [string]$property.Value
+    }
+
+    return [ordered]@{ version = [int]$version; sourceSha256 = [string]$Record.sourceSha256; stages = $stages; parts = $parts }
+}
+
+function Read-ArtApprovals($Json, [string[]]$Stages, [string]$Kind, [string]$RelativeDirectory, $Problems) {
+    # The approvals of an asset's review stages, each with its date and the contentSha256 of its
+    # stage, the first stages in order. An approval from before approvals recorded the content of
+    # their stage names the sourceSha256 of a file instead; the stage is approved again.
+    $approvals = [ordered]@{}
+    if ($null -eq $Json.approvals) {
+        return $approvals
+    }
+
+    foreach ($property in $Json.approvals.PSObject.Properties) {
+        $value = $property.Value
+        if ($null -ne $value -and $value -isnot [string] -and
+            ($null -ne $value.PSObject.Properties["sourceSha256"] -or $null -ne $value.PSObject.Properties["garmentSourceSha256"])) {
+            $Problems.Add("approvals.$($property.Name) names the hash of a file (sourceSha256): this asset.json is from before approvals recorded the content of their stage; remove approvals.$($property.Name), review the asset, and approve the stage again with tools/art/Approve-ArtAsset.ps1 -Asset $RelativeDirectory -Stage $($property.Name)")
+            continue
+        }
+
+        if ($null -ne $Stages -and $Stages -notcontains $property.Name) {
+            $Problems.Add("approvals.$($property.Name) is not a review stage of a $Kind asset")
+            continue
+        }
+
+        if ([string]$value.date -notmatch $script:ArtDatePattern -or [string]$value.contentSha256 -cnotmatch $script:ArtShaPattern) {
+            $Problems.Add("approvals.$($property.Name) needs a date (yyyy-MM-dd) and the contentSha256 of its stage")
+            continue
+        }
+
+        $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; contentSha256 = [string]$value.contentSha256 }
+    }
+
+    # Stages are approved in order, so the approvals are always the first stages of the kind.
+    if ($null -ne $Stages) {
+        $approvedPrefix = @($Stages | Select-Object -First $approvals.Count)
+        if (@($approvals.Keys | Where-Object { $approvedPrefix -notcontains $_ }).Count -gt 0) {
+            $Problems.Add("approvals must cover the first review stages in order: $($Stages -join ', ')")
+        }
+    }
+
+    return $approvals
+}
+
+function Get-ArtOldExportProblem($Export, [string]$RelativeDirectory) {
+    # Returns $null unless an export record names the sourceSha256 of .blend files, as records did
+    # before they named the content of the exported stages, otherwise the reason it is stale.
+    $old = @("sourceSha256", "rigSourceSha256", "garmentSourceSha256" | Where-Object { $null -ne $Export.PSObject.Properties[$_] })
+    $old += @(@($Export.clipSources) + @($Export.pairSources) | Where-Object { $null -ne $_ -and $null -ne $_.PSObject.Properties["sourceSha256"] } |
+            Select-Object -First 1 | ForEach-Object { "sourceSha256" })
+    if ($old.Count -gt 0) {
+        return "export names the hash of files ($($old[0])): this asset.json is from before exports recorded the content of their sources; set export to null and export the asset again with tools/art/Export-ArtAsset.ps1 -Asset $RelativeDirectory"
+    }
+
+    return $null
 }
 
 function Read-ArtSkeleton([string]$Name) {
@@ -549,23 +672,23 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         $problems.Add("bodies must name one or more skinned assets of one skeleton, each once, the painted body first")
     }
 
-    $approvals = [ordered]@{}
-    if ($null -ne $Json.approvals) {
-        foreach ($property in $Json.approvals.PSObject.Properties) {
-            $value = $property.Value
-            if ($property.Name -ne "paint" -or [string]$value.date -notmatch $script:ArtDatePattern -or
-                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-                $problems.Add("approvals of a paint layer hold the 'paint' stage with a date (yyyy-MM-dd) and a sourceSha256")
-                continue
-            }
-
-            $approvals["paint"] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
-        }
+    $relativeDirectory = Get-ArtRelativePath $AssetDirectory
+    $content = $null
+    try {
+        $content = ConvertTo-ArtContentRecord $Json.content
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
     }
 
+    $approvals = Read-ArtApprovals $Json $script:ArtReviewStages["paint"] "paint" $relativeDirectory $problems
     $export = $null
     $exportProblem = $null
-    if ($null -ne $Json.export) {
+    $oldExport = if ($null -ne $Json.export) { Get-ArtOldExportProblem $Json.export $relativeDirectory } else { $null }
+    if ($null -ne $oldExport) {
+        $problems.Add($oldExport)
+    }
+    elseif ($null -ne $Json.export) {
         $textures = ConvertTo-ArtPaintTextureRecords $Json.export.textures $script:ArtPaintTextureFolder
         # An export from before paint layers kept their place in the bodies' paint UVs has plain
         # texture records; it is stale, and the next export replaces it.
@@ -578,8 +701,8 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         $metallic = $Json.export.metallic
         $cageSha = $Json.export.cageSourceSha256
         $throughCage = @($textures | Where-Object { $_.move -ceq "cage" }).Count -gt 0
-        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256")
+        if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs the contentSha256 of the exported stage")
         }
         elseif ($null -eq $textures -or ((@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ",") -cne $expected) {
             $problems.Add("export.textures must list T_Paint_${name}_<Label> of every body once with its target ($script:ArtPaintTextureFolder/<name>.png), sha256, layout, rect starting at whole blocks of $script:ArtPaintCropBlock texels, move (topology or cage), and bodyPaintSha256")
@@ -593,7 +716,7 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         }
         else {
             $export = [ordered]@{
-                sourceSha256 = [string]$Json.export.sourceSha256
+                contentSha256 = [string]$Json.export.contentSha256
                 cageSourceSha256 = if ($throughCage) { [string]$cageSha } else { $null }
                 textures = $textures
                 smoothness = [double]$smoothness
@@ -635,6 +758,7 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         Part = $part
         Layer = [int]$Json.layer
         Bodies = $bodies
+        Content = $content
         Approvals = $approvals
         Export = $export
         ExportProblem = $exportProblem
@@ -710,7 +834,33 @@ function Add-ArtPaintTextureLines($Lines, $Textures, [string]$Comma) {
     $Lines.Add("        ]$Comma")
 }
 
+function Add-ArtContentLines($Lines, $Manifest) {
+    # The content record, before the approvals that bind to it.
+    $content = $Manifest.Content
+    if ($null -eq $content) {
+        $Lines.Add('    "content": null,')
+        return
+    }
+
+    $Lines.Add('    "content": {')
+    $Lines.Add("        `"version`": $($content.version),")
+    $Lines.Add("        `"sourceSha256`": `"$($content.sourceSha256)`",")
+    foreach ($field in @("stages", "parts")) {
+        $names = @($content[$field].Keys)
+        $Lines.Add("        `"$field`": {")
+        for ($i = 0; $i -lt $names.Count; $i++) {
+            $comma = if ($i -lt $names.Count - 1) { "," } else { "" }
+            $Lines.Add("            `"$($names[$i])`": `"$($content[$field][$names[$i]])`"$comma")
+        }
+
+        $Lines.Add("        }$(if ($field -eq 'stages') { ',' } else { '' })")
+    }
+
+    $Lines.Add('    },')
+}
+
 function Add-ArtApprovalLines($Lines, $Manifest) {
+    Add-ArtContentLines $Lines $Manifest
     $approvedStages = @($Manifest.Stages | Where-Object { $Manifest.Approvals.Contains($_) })
     if ($approvedStages.Count -eq 0) {
         $Lines.Add('    "approvals": {},')
@@ -723,14 +873,7 @@ function Add-ArtApprovalLines($Lines, $Manifest) {
         $comma = if ($i -lt $approvedStages.Count - 1) { "," } else { "" }
         $Lines.Add("        `"$($approvedStages[$i])`": {")
         $Lines.Add("            `"date`": `"$($approval.date)`",")
-        if ($approval.Contains("garmentSourceSha256") -and -not [string]::IsNullOrEmpty($approval.garmentSourceSha256)) {
-            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`",")
-            $Lines.Add("            `"garmentSourceSha256`": `"$($approval.garmentSourceSha256)`"")
-        }
-        else {
-            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`"")
-        }
-
+        $Lines.Add("            `"contentSha256`": `"$($approval.contentSha256)`"")
         $Lines.Add("        }$comma")
     }
     $Lines.Add("    },")
@@ -750,24 +893,13 @@ function Write-ArtPaintManifest($Manifest) {
     $bodies = (@($Manifest.Bodies) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
     $lines.Add("    `"bodies`": [$bodies],")
     $lines.Add("    `"layer`": $($Manifest.Layer),")
-    if ($Manifest.Approvals.Contains("paint")) {
-        $lines.Add('    "approvals": {')
-        $lines.Add('        "paint": {')
-        $lines.Add("            `"date`": `"$($Manifest.Approvals.paint.date)`",")
-        $lines.Add("            `"sourceSha256`": `"$($Manifest.Approvals.paint.sourceSha256)`"")
-        $lines.Add('        }')
-        $lines.Add('    },')
-    }
-    else {
-        $lines.Add('    "approvals": {},')
-    }
-
+    Add-ArtApprovalLines $lines $Manifest
     if ($null -eq $Manifest.Export) {
         $lines.Add('    "export": null')
     }
     else {
         $lines.Add('    "export": {')
-        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
         if (-not [string]::IsNullOrEmpty($Manifest.Export.cageSourceSha256)) {
             $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
         }
@@ -823,9 +955,9 @@ function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
     # Returns $null when the export of a garment template, or a texture's masks, was checked in the
     # current exports of the animation libraries of its skeleton, otherwise the reason it was not.
     $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
+            [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.contentSha256 } else { "" })
         } | Sort-Object)
-    $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
+    $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.contentSha256)" } | Sort-Object)
     if (($libraries -join ",") -cne ($recorded -join ",")) {
         return "was checked in other clips than the current exports of the $($Manifest.Skeleton) animation libraries; run $Sync, review and approve it, then run tools/art/Export-ArtAsset.ps1"
     }
@@ -971,8 +1103,8 @@ function Get-ArtPairSourcesProblem($Manifest, $Template, [string]$Sync) {
         $Sync = "tools/art/Sync-GarmentAsset.ps1"
     }
 
-    $current = @(Get-ArtGarmentPairs $Template | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.sourceSha256)" } | Sort-Object)
-    $recorded = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.garment)=$($_.sourceSha256)" } | Sort-Object)
+    $current = @(Get-ArtGarmentPairs $Template | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.contentSha256)" } | Sort-Object)
+    $recorded = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.garment)=$($_.contentSha256)" } | Sort-Object)
     if (($current -join ",") -cne ($recorded -join ",")) {
         return "was checked over other templates of a lower layer than the current exports of its cage's templates; run $Sync, review it, then run tools/art/Export-ArtAsset.ps1"
     }
@@ -1310,24 +1442,16 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
     }
 
     $stages = $script:ArtReviewStages["garment"]
-    $approvals = [ordered]@{}
-    if ($null -ne $Json.approvals) {
-        foreach ($property in $Json.approvals.PSObject.Properties) {
-            $value = $property.Value
-            if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
-                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-                $problems.Add("approvals of a garment hold its stages $($stages -join ' and ') with a date (yyyy-MM-dd) and a sourceSha256")
-                continue
-            }
-
-            $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
-        }
+    $relativeDirectory = Get-ArtRelativePath $AssetDirectory
+    $content = $null
+    try {
+        $content = ConvertTo-ArtContentRecord $Json.content
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
     }
 
-    if (@($approvals.Keys | Where-Object { @($stages | Select-Object -First $approvals.Count) -notcontains $_ }).Count -gt 0) {
-        $problems.Add("approvals must cover the first review stages in order: $($stages -join ', ')")
-    }
-
+    $approvals = Read-ArtApprovals $Json $stages "garment" $relativeDirectory $problems
     $models = @($bodies | ForEach-Object {
             $target = Get-ArtGarmentModelTarget $name $_.Root
             $data = Get-ArtGarmentDataTarget $name $_.Root
@@ -1342,7 +1466,11 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         })
 
     $export = $null
-    if ($null -ne $Json.export) {
+    $oldExport = if ($null -ne $Json.export) { Get-ArtOldExportProblem $Json.export $relativeDirectory } else { $null }
+    if ($null -ne $oldExport) {
+        $problems.Add($oldExport)
+    }
+    elseif ($null -ne $Json.export) {
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
         $records = @($Json.export.models | Where-Object { $null -ne $_ })
@@ -1364,27 +1492,27 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
         $clipSourcesMatch = @($clipSources | Where-Object {
                 [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
-                [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+                [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
-        # The templates of a lower layer it was checked over, with the sourceSha256 of their exports.
+        # The templates of a lower layer it was checked over, with the contentSha256 of their exports.
         $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
         $pairSourcesMatch = @($pairSources | Where-Object {
                 [string]$_.garment -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
-                [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+                [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($pairSources | ForEach-Object { [string]$_.garment } | Sort-Object -Unique).Count -eq $pairSources.Count
 
         $baseMaps = (@($materials | Where-Object { $null -ne $_ -and $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) | Sort-Object) -join ","
-        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or $cageSourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256 and the cageSourceSha256 of the approved cage file it was fitted to")
+        if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or $cageSourceSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs the contentSha256 of the exported stage and the cageSourceSha256 of the approved cage file it was fitted to")
         }
         elseif (-not $modelsMatch) {
             $problems.Add("export.models must list the model of each body once with its body, the bodyFitSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
-            $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export")
+            $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the contentSha256 of its export")
         }
         elseif (-not $pairSourcesMatch) {
-            $problems.Add("export.pairSources must list every template of a lower layer the garment was checked over once, with its garment (art/Garments/<Name>) and the sourceSha256 of its export")
+            $problems.Add("export.pairSources must list every template of a lower layer the garment was checked over once, with its garment (art/Garments/<Name>) and the contentSha256 of its export")
         }
         elseif ($null -eq $materials -or @($materials | Where-Object { $_.name -cne "M_Garment_$name" }).Count -gt 0) {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseColor (#RRGGBB), metallic, and smoothness")
@@ -1394,7 +1522,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
         else {
             $export = [ordered]@{
-                sourceSha256 = [string]$Json.export.sourceSha256
+                contentSha256 = [string]$Json.export.contentSha256
                 cageSourceSha256 = $cageSourceSha256
                 models = @($records | ForEach-Object {
                         # A record from before the fingerprint names the body's export sourceSha256
@@ -1409,8 +1537,8 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                             dataSha256 = [string]$_.dataSha256
                         }
                     })
-                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
-                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; sourceSha256 = [string]$_.sourceSha256 } })
+                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; contentSha256 = [string]$_.contentSha256 } })
+                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; contentSha256 = [string]$_.contentSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -1430,7 +1558,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         Name = $name
         Directory = $AssetDirectory
         ManifestPath = Join-Path $AssetDirectory "asset.json"
-        RelativeDirectory = Get-ArtRelativePath $AssetDirectory
+        RelativeDirectory = $relativeDirectory
         SourcePath = $sourcePath
         Kind = "garment"
         Stages = $stages
@@ -1458,6 +1586,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         Cloth = if ($null -ne $cloth) { [string]$cloth } else { $null }
         Dyes = [int]$Json.dyes
         Models = $models
+        Content = $content
         Approvals = $approvals
         Export = $export
         ExportProblem = $null
@@ -1549,7 +1678,7 @@ function Write-ArtGarmentManifest($Manifest) {
     }
     else {
         $lines.Add('    "export": {')
-        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
         $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
         $lines.Add('        "models": [')
         $models = @($Manifest.Export.models)
@@ -1574,7 +1703,7 @@ function Write-ArtGarmentManifest($Manifest) {
         $sources = @($Manifest.Export.clipSources)
         for ($i = 0; $i -lt $sources.Count; $i++) {
             $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
-            $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
+            $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"contentSha256`": `"$($sources[$i].contentSha256)`" }$comma")
         }
         $lines.Add('        ],')
         $pairs = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ })
@@ -1582,7 +1711,7 @@ function Write-ArtGarmentManifest($Manifest) {
             $lines.Add('        "pairSources": [')
             for ($i = 0; $i -lt $pairs.Count; $i++) {
                 $comma = if ($i -lt $pairs.Count - 1) { "," } else { "" }
-                $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"sourceSha256`": `"$($pairs[$i].sourceSha256)`" }$comma")
+                $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"contentSha256`": `"$($pairs[$i].contentSha256)`" }$comma")
             }
             $lines.Add('        ],')
         }
@@ -1697,20 +1826,15 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
     }
 
     $stages = $script:ArtReviewStages["cage"]
-    $approvals = [ordered]@{}
-    if ($null -ne $Json.approvals) {
-        foreach ($property in $Json.approvals.PSObject.Properties) {
-            $value = $property.Value
-            if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
-                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-                $problems.Add("approvals of a cage hold its stage $($stages -join ', ') with a date (yyyy-MM-dd) and a sourceSha256")
-                continue
-            }
-
-            $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
-        }
+    $content = $null
+    try {
+        $content = ConvertTo-ArtContentRecord $Json.content
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
     }
 
+    $approvals = Read-ArtApprovals $Json $stages "cage" (Get-ArtRelativePath $AssetDirectory) $problems
     $sourcePath = Join-Path $AssetDirectory "$name.blend"
     if (-not $AllowMissingSource -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         $problems.Add("the source file $name.blend is missing next to asset.json")
@@ -1743,6 +1867,7 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         Figure = [double]$figure
         Lines = $lines.ToArray()
         FittedTo = $fittedTo.ToArray()
+        Content = $content
         Approvals = $approvals
         Export = $null
         ExportProblem = $null
@@ -1836,30 +1961,25 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
             [pscustomobject]@{ Body = $_; Data = $data; DataPath = Join-Path $script:ArtRepositoryRoot $data }
         })
 
+    # A texture is reviewed on its template; its content records the template's UVs it is painted in,
+    # which Get-ArtTextureTemplateProblem compares with the template's content.
     $stages = $script:ArtReviewStages["texture"]
-    $approvals = [ordered]@{}
-    if ($null -ne $Json.approvals) {
-        foreach ($property in $Json.approvals.PSObject.Properties) {
-            $value = $property.Value
-            # A texture is reviewed on its template, so its approval records the template's file too;
-            # an approval without it is stale, which Get-ArtTextureTemplateProblem reports.
-            if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
-                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern -or
-                ($null -ne $value.garmentSourceSha256 -and [string]$value.garmentSourceSha256 -cnotmatch $script:ArtShaPattern)) {
-                $problems.Add("approvals of a garment texture hold its stage texture with a date (yyyy-MM-dd), a sourceSha256, and the garmentSourceSha256 of the template file it was reviewed on")
-                continue
-            }
-
-            $approvals[$property.Name] = [ordered]@{
-                date = [string]$value.date
-                sourceSha256 = [string]$value.sourceSha256
-                garmentSourceSha256 = [string]$value.garmentSourceSha256
-            }
-        }
+    $relativeDirectory = Get-ArtRelativePath $AssetDirectory
+    $content = $null
+    try {
+        $content = ConvertTo-ArtContentRecord $Json.content
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
     }
 
+    $approvals = Read-ArtApprovals $Json $stages "texture" $relativeDirectory $problems
     $export = $null
-    if ($null -ne $Json.export) {
+    $oldExport = if ($null -ne $Json.export) { Get-ArtOldExportProblem $Json.export $relativeDirectory } else { $null }
+    if ($null -ne $oldExport) {
+        $problems.Add($oldExport)
+    }
+    elseif ($null -ne $Json.export) {
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
         # The masks may name other bodies than the template has now, after a body joined or left its
@@ -1879,27 +1999,27 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         $clipSourcesMatch = ($maskRecords.Count -gt 0 -or $clipSources.Count -eq 0) -and
             @($clipSources | Where-Object {
                     [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
-                    [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+                    [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
         # Masks name the faces they hide of the templates of lower layers worn under the template,
-        # with the sourceSha256 of the exports they were made with.
+        # with the contentSha256 of the exports they were made with.
         $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
         $pairSourcesMatch = ($maskRecords.Count -gt 0 -or $pairSources.Count -eq 0) -and
             @($pairSources | Where-Object {
                     [string]$_.garment -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
-                    [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+                    [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($pairSources | ForEach-Object { [string]$_.garment } | Sort-Object -Unique).Count -eq $pairSources.Count
-        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or [string]$Json.export.garmentSourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256 and the garmentSourceSha256 of its template's export")
+        if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or [string]$Json.export.garmentContentSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs the contentSha256 of the exported stage and the garmentContentSha256 of its template's export")
         }
         elseif (-not $masksMatch) {
             $problems.Add("export.masks must be empty for an opaque texture, or list the masks of each body once with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
-            $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")
+            $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the contentSha256 of its export, and be empty without masks")
         }
         elseif (-not $pairSourcesMatch) {
-            $problems.Add("export.pairSources must list, for a texture with masks, every template of a lower layer its masks hide faces of once, with its garment (art/Garments/<Name>) and the sourceSha256 of its export, and be empty without masks")
+            $problems.Add("export.pairSources must list, for a texture with masks, every template of a lower layer its masks hide faces of once, with its garment (art/Garments/<Name>) and the contentSha256 of its export, and be empty without masks")
         }
         elseif ($null -eq $materials -or $materials.Count -ne 1 -or $materials[0].name -cne "M_Garment_$name" -or $materials[0].baseMap -cne "T_Garment_$name") {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness, and for a dyeable texture its dyeMap T_Garment_${name}_Dye and dyeColors")
@@ -1910,11 +2030,11 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
         else {
             $export = [ordered]@{
-                sourceSha256 = [string]$Json.export.sourceSha256
-                garmentSourceSha256 = [string]$Json.export.garmentSourceSha256
+                contentSha256 = [string]$Json.export.contentSha256
+                garmentContentSha256 = [string]$Json.export.garmentContentSha256
                 masks = @($maskRecords | ForEach-Object { [ordered]@{ body = [string]$_.body; data = [string]$_.data; dataSha256 = [string]$_.dataSha256 } })
-                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
-                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; sourceSha256 = [string]$_.sourceSha256 } })
+                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; contentSha256 = [string]$_.contentSha256 } })
+                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; contentSha256 = [string]$_.contentSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -1934,7 +2054,7 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         Name = $name
         Directory = $AssetDirectory
         ManifestPath = Join-Path $AssetDirectory "asset.json"
-        RelativeDirectory = Get-ArtRelativePath $AssetDirectory
+        RelativeDirectory = $relativeDirectory
         SourcePath = $sourcePath
         Kind = "texture"
         Stages = $stages
@@ -1951,6 +2071,7 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         Variants = @()
         Garment = $template
         Masks = $masks
+        Content = $content
         Approvals = $approvals
         Export = $export
         ExportProblem = $null
@@ -1969,8 +2090,8 @@ function Write-ArtTextureManifest($Manifest) {
     }
     else {
         $lines.Add('    "export": {')
-        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
-        $lines.Add("        `"garmentSourceSha256`": `"$($Manifest.Export.garmentSourceSha256)`",")
+        $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
+        $lines.Add("        `"garmentContentSha256`": `"$($Manifest.Export.garmentContentSha256)`",")
         # An opaque texture uses its template's masks and has none of its own.
         $masks = @($Manifest.Export.masks | Where-Object { $null -ne $_ })
         if ($masks.Count -gt 0) {
@@ -1985,7 +2106,7 @@ function Write-ArtTextureManifest($Manifest) {
             $sources = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ })
             for ($i = 0; $i -lt $sources.Count; $i++) {
                 $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
-                $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
+                $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"contentSha256`": `"$($sources[$i].contentSha256)`" }$comma")
             }
 
             $lines.Add('        ],')
@@ -1994,7 +2115,7 @@ function Write-ArtTextureManifest($Manifest) {
                 $lines.Add('        "pairSources": [')
                 for ($i = 0; $i -lt $pairs.Count; $i++) {
                     $comma = if ($i -lt $pairs.Count - 1) { "," } else { "" }
-                    $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"sourceSha256`": `"$($pairs[$i].sourceSha256)`" }$comma")
+                    $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"contentSha256`": `"$($pairs[$i].contentSha256)`" }$comma")
                 }
 
                 $lines.Add('        ],')
@@ -2295,40 +2416,28 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         $problems.Add("only an animation library has a rig and previews")
     }
 
-    $approvals = [ordered]@{}
-    if ($null -ne $json.approvals) {
-        foreach ($property in $json.approvals.PSObject.Properties) {
-            if ($null -ne $stages -and $stages -notcontains $property.Name) {
-                $problems.Add("approvals.$($property.Name) is not a review stage of a $($json.kind) asset")
-                continue
-            }
-
-            $value = $property.Value
-            if ([string]$value.date -notmatch $script:ArtDatePattern -or [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-                $problems.Add("approvals.$($property.Name) needs a date (yyyy-MM-dd) and a sourceSha256")
-                continue
-            }
-
-            $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
-        }
+    $relativeDirectory = Get-ArtRelativePath $AssetDirectory
+    $content = $null
+    try {
+        $content = ConvertTo-ArtContentRecord $json.content
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
     }
 
-    # Stages are approved in order, so the approvals are always the first stages of the kind.
-    if ($null -ne $stages) {
-        $approvedPrefix = @($stages | Select-Object -First $approvals.Count)
-        if (@($approvals.Keys | Where-Object { $approvedPrefix -notcontains $_ }).Count -gt 0) {
-            $problems.Add("approvals must cover the first review stages in order: $($stages -join ', ')")
-        }
-    }
-
+    $approvals = Read-ArtApprovals $json $stages ([string]$json.kind) $relativeDirectory $problems
     $export = $null
     $exportProblem = $null
-    if ($null -ne $json.export -and $kind -eq "animations") {
+    $oldExport = if ($null -ne $json.export) { Get-ArtOldExportProblem $json.export $relativeDirectory } else { $null }
+    if ($null -ne $oldExport) {
+        $problems.Add($oldExport)
+    }
+    elseif ($null -ne $json.export -and $kind -eq "animations") {
         $clipRecords = ConvertTo-ArtClipRecords $json.export.clips $clips
-        if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+        if ([string]$json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or
             [string]$json.export.targetSha256 -cnotmatch $script:ArtShaPattern -or
-            [string]$json.export.rigSourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256, a targetSha256, and the rigSourceSha256 of the rig's export")
+            [string]$json.export.rigContentSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs the contentSha256 of the exported stage, a targetSha256, and the rigContentSha256 of the rig's export")
         }
         elseif ($null -ne $json.export.materials -or $null -ne $json.export.textures) {
             $problems.Add("the export of an animation library has no materials or textures")
@@ -2342,9 +2451,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             }
 
             $export = [ordered]@{
-                sourceSha256 = [string]$json.export.sourceSha256
+                contentSha256 = [string]$json.export.contentSha256
                 targetSha256 = [string]$json.export.targetSha256
-                rigSourceSha256 = [string]$json.export.rigSourceSha256
+                rigContentSha256 = [string]$json.export.rigContentSha256
                 materials = @()
                 textures = @()
                 clips = $clipRecords
@@ -2372,9 +2481,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
         $textureNames = (@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ","
 
-        if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+        if ([string]$json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or
             [string]$json.export.targetSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256 and a targetSha256")
+            $problems.Add("export needs the contentSha256 of the exported stage and a targetSha256")
         }
         elseif ($null -eq $materials) {
             $problems.Add("export.materials must list every exported material once with its name, baseColor (#RRGGBB), optional baseMap, metallic, and smoothness")
@@ -2402,7 +2511,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
         else {
             $export = [ordered]@{
-                sourceSha256 = [string]$json.export.sourceSha256
+                contentSha256 = [string]$json.export.contentSha256
                 targetSha256 = [string]$json.export.targetSha256
                 dataSha256 = if ($null -ne $json.export.dataSha256) { [string]$json.export.dataSha256 } else { $null }
                 # An export from before the fingerprint has none; the garment cage and garments then
@@ -2462,6 +2571,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         Previews = $previews
         Clips = [string[]]$clips
         Variants = $variants
+        Content = $content
         Approvals = $approvals
         Export = $export
         ExportProblem = $exportProblem
@@ -2584,15 +2694,15 @@ function Write-ArtAssetManifest($Manifest) {
     }
     elseif ($Manifest.Kind -eq "animations") {
         $lines.Add('    "export": {')
-        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
         $lines.Add("        `"targetSha256`": `"$($Manifest.Export.targetSha256)`",")
-        $lines.Add("        `"rigSourceSha256`": `"$($Manifest.Export.rigSourceSha256)`",")
+        $lines.Add("        `"rigContentSha256`": `"$($Manifest.Export.rigContentSha256)`",")
         Add-ArtClipLines $lines @($Manifest.Export.clips)
         $lines.Add("    }")
     }
     else {
         $lines.Add('    "export": {')
-        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
         $lines.Add("        `"targetSha256`": `"$($Manifest.Export.targetSha256)`",")
         if ($Manifest.Export.Contains("dataSha256") -and $null -ne $Manifest.Export.dataSha256) {
             $lines.Add("        `"dataSha256`": `"$($Manifest.Export.dataSha256)`",")
@@ -2656,13 +2766,185 @@ function Get-ArtCageBodyProblem($Manifest) {
     return $null
 }
 
+function Get-ArtContentItems($Manifest) {
+    # The items that have a part each in the content record: the clips of a skinned asset or an
+    # animation library, the bodies of a paint layer or the cage.
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
+        return [string[]]@($Manifest.Clips)
+    }
+
+    if (@("paint", "cage") -contains $Manifest.Kind) {
+        return [string[]]@($Manifest.Bodies | ForEach-Object { $_.Root })
+    }
+
+    return [string[]]@()
+}
+
+function Get-ArtContentPartNames($Manifest) {
+    # The parts the content record of the asset holds, sorted by name, as content.py writes them.
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $script:ArtContentParts[$Manifest.Kind]) {
+        $stage, $part = $entry.Split("/", 2)
+        if ($Manifest.Stages -notcontains $stage) {
+            continue
+        }
+
+        if ($part.EndsWith(":")) {
+            foreach ($item in (Get-ArtContentItems $Manifest)) {
+                $names.Add("$part$item")
+            }
+        }
+        else {
+            $names.Add($part)
+        }
+    }
+
+    $sorted = [string[]]$names.ToArray()
+    [Array]::Sort($sorted, [StringComparer]::Ordinal)
+    return , $sorted
+}
+
+function Get-ArtContentProblem($Manifest) {
+    # Returns $null when the content record was read from the .blend file as it is, with the current
+    # version of the fingerprints, for the stages and items of asset.json, otherwise the reason it is
+    # not current. A Git LFS pointer names the hash of its file, so this works without the files.
+    $hint = Get-ArtUpdateContentHint $Manifest.RelativeDirectory
+    $content = $Manifest.Content
+    if ($null -eq $content) {
+        return "the content of $($Manifest.Name).blend was never read; $hint"
+    }
+
+    if ($content.version -ne $script:ArtContentVersion) {
+        return "the content of $($Manifest.Name).blend was read with version $($content.version) of the fingerprints, not $script:ArtContentVersion; $hint"
+    }
+
+    if (-not (Test-Path -LiteralPath $Manifest.SourcePath -PathType Leaf) -or
+        (Get-ArtFileSha256 $Manifest.SourcePath) -cne $content.sourceSha256) {
+        return "$($Manifest.Name).blend was saved after its content was read; $hint"
+    }
+
+    $expected = (Get-ArtContentPartNames $Manifest) -join ","
+    if ((@($content.stages.Keys) -join ",") -cne (@($Manifest.Stages) -join ",") -or (@($content.parts.Keys) -join ",") -cne $expected) {
+        return "the content of $($Manifest.Name).blend was read for other review stages, clips, or bodies than asset.json names; $hint"
+    }
+
+    return $null
+}
+
+function Test-ArtStageHolds($Manifest, [string]$Stage) {
+    # Whether the stage is approved and its approval holds: the content record is current and the
+    # stage's content is the approved one.
+    return $Manifest.Approvals.Contains($Stage) -and $null -eq (Get-ArtContentProblem $Manifest) -and
+        $Manifest.Approvals[$Stage].contentSha256 -ceq $Manifest.Content.stages[$Stage]
+}
+
+function Get-ArtStageReport($Manifest) {
+    # One line per review stage: whether it is approved and whether its approval holds.
+    $contentProblem = Get-ArtContentProblem $Manifest
+    return @($Manifest.Stages | ForEach-Object {
+            if (-not $Manifest.Approvals.Contains($_)) {
+                "$($Manifest.Name): the '$_' stage is not approved yet."
+            }
+            elseif ($null -ne $contentProblem) {
+                "$($Manifest.Name): the '$_' approval cannot be checked: $contentProblem."
+            }
+            elseif (Test-ArtStageHolds $Manifest $_) {
+                "$($Manifest.Name): the '$_' approval holds."
+            }
+            else {
+                "$($Manifest.Name): the '$_' content changed after its approval; review it and approve it again with tools/art/Approve-ArtAsset.ps1 -Asset $($Manifest.RelativeDirectory) -Stage $_."
+            }
+        })
+}
+
+function Get-ArtExportedContent($Manifest) {
+    # The content of the last review stage, which an export records.
+    return [string]$Manifest.Content.stages[$Manifest.Stages[-1]]
+}
+
+function Get-ArtExportChangeProblem($Manifest) {
+    # Returns $null when another asset whose export an export records, such as an animation library,
+    # is exported from its current content, otherwise the reason it is not.
+    $contentProblem = Get-ArtContentProblem $Manifest
+    if ($null -ne $contentProblem) {
+        return $contentProblem
+    }
+
+    if ($null -eq $Manifest.Export) {
+        return "$($Manifest.RelativeDirectory) is not exported"
+    }
+
+    if ($Manifest.Export.contentSha256 -cne (Get-ArtExportedContent $Manifest)) {
+        return "$($Manifest.RelativeDirectory) has changed since its export; review, approve, and export it first"
+    }
+
+    return $null
+}
+
+function Read-ArtContentLine([string[]]$Results) {
+    # The content record of an ART_CONTENT line from Blender, or $null without one.
+    $line = @($Results | Where-Object { $_ -like "ART_CONTENT *" }) | Select-Object -First 1
+    if ($null -eq $line) {
+        return $null
+    }
+
+    return $line.Substring("ART_CONTENT ".Length) | ConvertFrom-Json
+}
+
+function Update-ArtContentRecord([string]$Blender, $Manifest, [string[]]$Results) {
+    # Makes the content record of an asset current and returns whether it wrote asset.json: nothing
+    # to do when the record was read from the file as it is now, otherwise the ART_CONTENT line of
+    # Results, which a validation of the file as it is now printed, or of a content run.
+    if ($null -eq (Get-ArtContentProblem $Manifest)) {
+        return $false
+    }
+
+    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
+    $read = Read-ArtContentLine $Results
+    if ($null -eq $read) {
+        $read = Read-ArtContentLine (Invoke-ArtBlender $Blender $Manifest (@("content") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1])))
+    }
+
+    if ($null -eq $read -or [int]$read.version -ne $script:ArtContentVersion) {
+        throw "Blender did not report the content of $($Manifest.Name) with version $script:ArtContentVersion of the fingerprints."
+    }
+
+    $stages = [ordered]@{}
+    foreach ($stage in $Manifest.Stages) {
+        $stages[$stage] = [string]$read.stages.$stage
+    }
+
+    $parts = [ordered]@{}
+    foreach ($property in $read.parts.PSObject.Properties) {
+        $parts[$property.Name] = [string]$property.Value
+    }
+
+    $Manifest.Content = [ordered]@{ version = [int]$read.version; sourceSha256 = $sourceSha256; stages = $stages; parts = $parts }
+    $problem = Get-ArtContentProblem $Manifest
+    if ($null -ne $problem) {
+        throw "The content Blender reported for $($Manifest.Name) does not fit its asset.json: $problem."
+    }
+
+    Write-ArtAssetManifest $Manifest
+    return $true
+}
+
 function Get-ArtTextureTemplateProblem($Manifest) {
-    # Returns $null when the approved texture was reviewed on its template's current file, otherwise
-    # the reason it was not; a texture's fit and masks depend on the template's shape, not only on
-    # its UVs.
-    $approval = $Manifest.Approvals["texture"]
-    if ($null -ne $approval -and $approval.garmentSourceSha256 -ne (Get-ArtFileSha256 $Manifest.Garment.SourcePath)) {
-        return "it was approved on another file of its template $($Manifest.Garment.RelativeDirectory); run tools/art/Sync-TextureAsset.ps1, review and approve it again"
+    # Returns $null when the texture is painted in its template's current UVs: the UVs its content
+    # records are the template's, otherwise the reason it is not. A texture whose own content record
+    # is not current is reported by its gate.
+    $template = $Manifest.Garment
+    if ($null -ne (Get-ArtContentProblem $Manifest)) {
+        return $null
+    }
+
+    $templateProblem = Get-ArtContentProblem $template
+    if ($null -ne $templateProblem) {
+        return "its template $($template.RelativeDirectory) cannot be compared: $templateProblem"
+    }
+
+    if ($Manifest.Content.parts["templateUv"] -cne $template.Content.parts["uv"]) {
+        return "its template's UVs changed; run tools/art/Sync-TextureAsset.ps1, and review and approve it again if the sync changes it"
     }
 
     return $null
@@ -2670,8 +2952,8 @@ function Get-ArtTextureTemplateProblem($Manifest) {
 
 function Get-ArtCageGateProblem($Cage) {
     # Returns $null when garment templates may be approved and exported on the cage: its stage is
-    # approved for its current file, and its bodies still have the exports it was approved on.
-    $problem = Get-ArtExportGateProblem $Cage (Get-ArtFileSha256 $Cage.SourcePath)
+    # approved for its current content, and its bodies still have the exports it was approved on.
+    $problem = Get-ArtExportGateProblem $Cage
     if ($null -eq $problem) {
         $problem = Get-ArtCageBodyProblem $Cage
     }
@@ -2691,18 +2973,24 @@ function Get-ArtCageBodies($Manifest) {
         })
 }
 
-function Get-ArtExportGateProblem($Manifest, [string]$SourceSha256) {
-    # Returns $null when every review stage is approved and the last approval covers the
-    # current source file, otherwise the reason the asset may not be exported.
+function Get-ArtExportGateProblem($Manifest) {
+    # Returns $null when every review stage is approved and every approval holds for the content of
+    # the current source file, otherwise the reason the asset may not be exported.
     foreach ($stage in $Manifest.Stages) {
         if (-not $Manifest.Approvals.Contains($stage)) {
             return "the '$stage' review stage is not approved"
         }
     }
 
-    $finalStage = $Manifest.Stages[-1]
-    if ($Manifest.Approvals[$finalStage].sourceSha256 -ne $SourceSha256) {
-        return "$($Manifest.Name).blend changed after the '$finalStage' approval"
+    $contentProblem = Get-ArtContentProblem $Manifest
+    if ($null -ne $contentProblem) {
+        return $contentProblem
+    }
+
+    foreach ($stage in $Manifest.Stages) {
+        if (-not (Test-ArtStageHolds $Manifest $stage)) {
+            return "the '$stage' content of $($Manifest.Name).blend changed after its approval"
+        }
     }
 
     return $null
@@ -2714,17 +3002,23 @@ function Test-ArtAssetInReview($Manifest) {
     return @($Manifest.Stages | Where-Object { -not $Manifest.Approvals.Contains($_) }).Count -gt 0
 }
 
-function Get-ArtReviewProblem($Manifest, [string]$SourceSha256) {
-    # Returns $null when an asset in review has its latest approval on the current source file,
-    # so the repository only holds approved states, otherwise the reason it does not.
+function Get-ArtReviewProblem($Manifest) {
+    # Returns $null when every approval of an asset in review holds for the content of the current
+    # source file, so the repository only holds approved states, otherwise the reason it does not.
     $approved = @($Manifest.Stages | Where-Object { $Manifest.Approvals.Contains($_) })
     if ($approved.Count -eq 0) {
         return "no review stage is approved; approve the '$($Manifest.Stages[0])' stage with tools/art/Approve-ArtAsset.ps1"
     }
 
-    $latest = $approved[-1]
-    if ($Manifest.Approvals[$latest].sourceSha256 -ne $SourceSha256) {
-        return "$($Manifest.Name).blend changed after the '$latest' approval"
+    $contentProblem = Get-ArtContentProblem $Manifest
+    if ($null -ne $contentProblem) {
+        return $contentProblem
+    }
+
+    foreach ($stage in $approved) {
+        if (-not (Test-ArtStageHolds $Manifest $stage)) {
+            return "the '$stage' content of $($Manifest.Name).blend changed after its approval"
+        }
     }
 
     return $null

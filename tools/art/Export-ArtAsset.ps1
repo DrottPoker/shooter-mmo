@@ -1,13 +1,13 @@
 # Exports approved art assets from art/ to their FBX target below src/Client/Assets/Art/Models,
 # with the images of painted materials as PNG files below src/Client/Assets/Art/Textures, and
-# records the hashes of the approved source and the written files, the materials, and the
-# animation clips in asset.json. An asset
-# whose review stages are not all approved for the current .blend file is refused. An animation
-# library exports its armature and clips only, and records the export of the rig it was authored
-# on, so it is exported after that rig. A paint layer exports its images only, and a garment one
-# model per body below src/Client/Assets/Art/Models/Garments. The garment cage has no export, so
-# -All leaves it out. Unity imports the FBX with the rules in ArtModelImportRules. See
-# docs/ART_PIPELINE.md.
+# records the content fingerprint of the exported stage, the hashes of the written files, the
+# materials, and the animation clips in asset.json. It first makes the content records of the assets
+# and of those whose exports it records current, then refuses an asset whose review stages are not
+# all approved for the content of the current .blend file. An animation library exports its armature
+# and clips only, and records the export of the rig it was authored on, so it is exported after that
+# rig. A paint layer exports its images only, and a garment one model per body below
+# src/Client/Assets/Art/Models/Garments. The garment cage has no export, so -All leaves it out. Unity
+# imports the FBX with the rules in ArtModelImportRules. See docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
@@ -38,14 +38,23 @@ $manifests = @($read | Where-Object { @("animations", "garment", "texture") -not
     @($read | Where-Object { $_.Kind -eq "animations" }) +
     @($read | Where-Object { $_.Kind -eq "garment" } | Sort-Object -Property Layer, Name) +
     @($read | Where-Object { $_.Kind -eq "texture" })
+$blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
-    $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
+    $null = Update-ArtContentRecord $blender $manifest
+    $problem = Get-ArtExportGateProblem $manifest
     if ($null -ne $problem) {
         throw "$($manifest.Name) cannot be exported: $problem. Review it with Render-ArtPreview.ps1 or in Blender, then record the approval with Approve-ArtAsset.ps1."
     }
 }
 
-function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
+function Get-ArtCurrentManifest([string]$Blender, [string]$Directory) {
+    # Another asset whose export an export records, with its content record made current.
+    $other = Read-ArtAssetManifest $Directory
+    $null = Update-ArtContentRecord $Blender $other
+    return $other
+}
+
+function Export-ArtPaint([string]$Blender, $Manifest) {
     # A paint layer exports one image per body, cropped to its paint, with its place in the body's
     # full paint layout, the fingerprint of the body it was moved to, and how it was moved, and the
     # smoothness and metallic of its paint, and the cage's file when a body was moved through it.
@@ -73,7 +82,7 @@ function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
     }
 
     $Manifest.Export = [ordered]@{
-        sourceSha256 = $SourceSha256
+        contentSha256 = Get-ArtExportedContent $Manifest
         cageSourceSha256 = if ($null -ne $surface.cageSourceSha256) { [string]$surface.cageSourceSha256 } else { $null }
         textures = $textures
         smoothness = [double]$surface.smoothness
@@ -96,51 +105,48 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
     }
 }
 
-function Get-ArtClipSourceProblem($Manifest) {
-    # Returns $null when every animation library of the skeleton is exported from its current file,
-    # otherwise the reason it is not. Blender reads the libraries' current files for the motion
-    # check, so each must be the file of its export.
+function Get-ArtClipSourceProblem([string]$Blender, $Manifest) {
+    # Returns $null when every animation library of the skeleton is exported from its current
+    # content, otherwise the reason it is not. Blender reads the libraries' current files for the
+    # motion check, so each must hold the content of its export.
     foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
-        if ($null -eq $library.Export) {
-            return "the animation library $($library.Asset) is not exported"
-        }
-
-        if ((Get-ArtFileSha256 $library.SourcePath) -ne [string]$library.Export.sourceSha256) {
-            return "the animation library $($library.Asset) has changed since its export; review, approve, and export it first"
+        $current = Get-ArtCurrentManifest $Blender (Join-Path $script:ArtRepositoryRoot $library.Asset)
+        $problem = Get-ArtExportChangeProblem $current
+        if ($null -ne $problem) {
+            return "the animation library $problem"
         }
     }
 
     return $null
 }
 
-function Get-ArtClipSourceRecords($Manifest) {
+function Get-ArtClipSourceRecords([string]$Blender, $Manifest) {
     # The exports of the animation libraries whose clips a garment or a texture's masks are checked in.
-    $problem = Get-ArtClipSourceProblem $Manifest
+    $problem = Get-ArtClipSourceProblem $Blender $Manifest
     if ($null -ne $problem) {
         throw "$($Manifest.Name) cannot be exported while $problem."
     }
 
     return @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            [ordered]@{ library = $_.Asset; sourceSha256 = [string]$_.Export.sourceSha256 }
+            [ordered]@{ library = $_.Asset; contentSha256 = [string]$_.Export.contentSha256 }
         })
 }
 
-function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
+function Export-ArtTexture([string]$Blender, $Manifest) {
     # A garment texture exports its image and its material, and with transparent parts its masks
     # per body of its template, checked in the clips of the skeleton's libraries, with the faces they
     # hide of the templates of lower layers worn under its template. It records its template's
     # export and those of the libraries and the lower templates its masks were made with, so a new
     # export of any of them needs a new export of the texture. The masks are computed in the
-    # template's file, so that file must be the one its export came from.
-    $template = Read-ArtAssetManifest $Manifest.Garment.Directory
+    # template's file, so that file must hold the content its export came from.
+    $template = Get-ArtCurrentManifest $Blender $Manifest.Garment.Directory
     $templateExport = $template.Export
     if ($null -eq $templateExport) {
         throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported."
     }
 
-    $templateSha256 = Get-ArtFileSha256 $template.SourcePath
-    $templateProblem = Get-ArtExportGateProblem $template $templateSha256
-    if ($null -eq $templateProblem -and $templateExport.sourceSha256 -ne $templateSha256) {
+    $templateProblem = Get-ArtExportGateProblem $template
+    if ($null -eq $templateProblem -and $templateExport.contentSha256 -cne (Get-ArtExportedContent $template)) {
         $templateProblem = "$($template.Name).blend changed after its export"
     }
 
@@ -155,6 +161,8 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
         throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported again: it $dependencyProblem."
     }
 
+    # The texture is painted in its template's current UVs, which their content records compare.
+    $Manifest.Garment = $template
     $reviewProblem = Get-ArtTextureTemplateProblem $Manifest
     if ($null -ne $reviewProblem) {
         throw "$($Manifest.Name) cannot be exported: $reviewProblem."
@@ -162,18 +170,19 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
 
     # Only the masks of a texture with transparent parts are checked in the clips and name the faces
     # they hide of the templates of lower layers worn under its template, so a library or such a
-    # template that is not exported from its current file, which Blender reads, stops only such a
+    # template that is not exported from its current content, which Blender reads, stops only such a
     # texture, in Blender, before anything is written; whether the texture has them shows only there.
-    $clipProblem = Get-ArtClipSourceProblem $Manifest
-    $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Manifest } else { @() }
+    $clipProblem = Get-ArtClipSourceProblem $Blender $Manifest
+    $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Blender $Manifest } else { @() }
     $pairProblem = $null
     $pairSources = @()
     foreach ($pair in @(Get-ArtGarmentPairs $template)) {
-        if ($null -eq $pairProblem -and (Get-ArtFileSha256 $pair.SourcePath) -ne [string]$pair.Export.sourceSha256) {
-            $pairProblem = "the template $($pair.RelativeDirectory) of a lower layer has changed since its export; review, approve, and export it first"
+        $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)
+        if ($null -eq $pairProblem -and $null -ne $problem) {
+            $pairProblem = "the template of a lower layer $problem"
         }
 
-        $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; sourceSha256 = [string]$pair.Export.sourceSha256 }
+        $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; contentSha256 = [string]$pair.Export.contentSha256 }
     }
 
     $opaqueReason = @($clipProblem, $pairProblem | Where-Object { $null -ne $_ }) -join "; "
@@ -215,8 +224,8 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
     }
 
     $Manifest.Export = [ordered]@{
-        sourceSha256 = $SourceSha256
-        garmentSourceSha256 = [string]$templateExport.sourceSha256
+        contentSha256 = Get-ArtExportedContent $Manifest
+        garmentContentSha256 = [string]$templateExport.contentSha256
         masks = $masks
         clipSources = $(if ($masks.Count -gt 0) { $clipSources } else { @() })
         pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })
@@ -232,7 +241,7 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
     Write-Host "Exported $($Manifest.Name) to $(@($textures | ForEach-Object { $_.target }) -join ', ') with its material $($materials[0].name)$maskNote."
 }
 
-function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
+function Export-ArtGarment([string]$Blender, $Manifest) {
     # A garment template exports one model per body, each with that body's armature and its data.
     # It records the approved file of its cage and the exports of the bodies and the animation
     # libraries it was checked against, so a change of any of them needs a new export of the
@@ -252,15 +261,16 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
         $bodyExports[$body.Root] = [string]$bodyExport.fitSha256
     }
 
-    $clipSources = Get-ArtClipSourceRecords $Manifest
-    # The templates of a lower layer it is checked over, each exported from its current file, since
-    # Blender reads their current files.
+    $clipSources = Get-ArtClipSourceRecords $Blender $Manifest
+    # The templates of a lower layer it is checked over, each exported from its current content,
+    # since Blender reads their current files.
     $pairSources = @(Get-ArtGarmentPairs $Manifest | ForEach-Object {
-            if ((Get-ArtFileSha256 $_.SourcePath) -ne [string]$_.Export.sourceSha256) {
-                throw "$($Manifest.Name) cannot be exported while the template $($_.RelativeDirectory) of a lower layer has changed since its export; review, approve, and export it first."
+            $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $_.Directory)
+            if ($null -ne $problem) {
+                throw "$($Manifest.Name) cannot be exported while the template of a lower layer $problem."
             }
 
-            [ordered]@{ garment = $_.RelativeDirectory; sourceSha256 = [string]$_.Export.sourceSha256 }
+            [ordered]@{ garment = $_.RelativeDirectory; contentSha256 = [string]$_.Export.contentSha256 }
         })
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
@@ -307,7 +317,7 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     }
 
     $Manifest.Export = [ordered]@{
-        sourceSha256 = $SourceSha256
+        contentSha256 = Get-ArtExportedContent $Manifest
         cageSourceSha256 = Get-ArtFileSha256 $Manifest.Cage.SourcePath
         models = $models
         clipSources = $clipSources
@@ -324,31 +334,29 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') with their data ($triangles)."
 }
 
-$blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
-    $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-    $rigSourceSha256 = $null
+    $rigContentSha256 = $null
     if ($manifest.Kind -eq "animations") {
         $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
         if ($null -eq $rigExport) {
             throw "$($manifest.Name) cannot be exported before its rig $($manifest.Rig.Asset) is exported."
         }
 
-        $rigSourceSha256 = $rigExport.sourceSha256
+        $rigContentSha256 = $rigExport.contentSha256
     }
 
     if ($manifest.Kind -eq "paint") {
-        Export-ArtPaint $blender $manifest $sourceSha256
+        Export-ArtPaint $blender $manifest
         continue
     }
 
     if ($manifest.Kind -eq "garment") {
-        Export-ArtGarment $blender $manifest $sourceSha256
+        Export-ArtGarment $blender $manifest
         continue
     }
 
     if ($manifest.Kind -eq "texture") {
-        Export-ArtTexture $blender $manifest $sourceSha256
+        Export-ArtTexture $blender $manifest
         continue
     }
 
@@ -422,12 +430,12 @@ foreach ($manifest in $manifests) {
     }
 
     $manifest.Export = [ordered]@{
-        sourceSha256 = $sourceSha256
+        contentSha256 = Get-ArtExportedContent $manifest
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
         dataSha256 = $dataSha256
         fitSha256 = $fitSha256
         paintSha256 = $paintSha256
-        rigSourceSha256 = $rigSourceSha256
+        rigContentSha256 = $rigContentSha256
         materials = $materials
         textures = $textures
         clips = $clipRecords

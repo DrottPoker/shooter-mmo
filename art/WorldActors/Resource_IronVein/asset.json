@@ -7,14 +7,26 @@
         "Depleted"
     ],
     "triangleBudget": 1500,
+    "content": {
+        "version": 1,
+        "sourceSha256": "6201bca3d1f3053df8cd325fc3707b291c1cdc42e7193a3ba447e3de3c33843a",
+        "stages": {
+            "model": "da062149ff5213aa30c008034b8484dc7ac72462e74be713541042a81983333f"
+        },
+        "parts": {
+            "materials": "5bdfabb60e42bd140b1c527231635f9e6f1b9766fdc8e9416452b6af4a3708ed",
+            "shape": "7a2b584ea48543118ea258aa991133d5648cbd7212f5cdf46e0445eb0bb4c944",
+            "uv": "8e308ef44a96fdb1ca766779bc118b005ee58a246a5b38c827905a22b302203e"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-20",
-            "sourceSha256": "6201bca3d1f3053df8cd325fc3707b291c1cdc42e7193a3ba447e3de3c33843a"
+            "contentSha256": "da062149ff5213aa30c008034b8484dc7ac72462e74be713541042a81983333f"
         }
     },
     "export": {
-        "sourceSha256": "6201bca3d1f3053df8cd325fc3707b291c1cdc42e7193a3ba447e3de3c33843a",
+        "contentSha256": "da062149ff5213aa30c008034b8484dc7ac72462e74be713541042a81983333f",
         "targetSha256": "9c6db133abd97cf11e6ae4e99028c625d460e15d08fbe043daf5b8e4773051c1",
         "materials": [
             {

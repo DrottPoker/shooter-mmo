@@ -8,22 +8,43 @@
     "triangleBudget": 6600,
     "skeleton": "Quadruped",
     "clips": ["Idle", "Walk", "Run", "Attack", "Death"],
+    "content": {
+        "version": 1,
+        "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a",
+        "stages": {
+            "model": "4e00e4756cd34027bdc8082d41d3e856318020509d90df47331bccb9e8c16cce",
+            "rig": "b6524c368dac1ad43648131fdd62e0c0e2ab7ac09d702c83ae39610c8f190043",
+            "animation": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc"
+        },
+        "parts": {
+            "clip:Attack": "d2936e162bdd599e81ce5e7f25121f06492efa2abecbdf217da12215b45ed268",
+            "clip:Death": "1f46719eb4d09d6588487423440a50048be1fc8be5c421c019313ec12fd754cf",
+            "clip:Idle": "a77f43ca895aa77fa65009db22d5833a4d793260589ca620053a78a09697cd1d",
+            "clip:Run": "1d42a73ef4765a4aef13541a865f9be812ba5c809d83910bd2ec882ad4208bf1",
+            "clip:Walk": "21925077d1c3b8597634c989f81cc4bf3b389d9fe2b844dbaeb985efe75e1c6c",
+            "materials": "ee5b1997647c16a1b28bb7546399e0b05618f47ae82ac91021243081912e45f6",
+            "shape": "940e6c581b82d99542ad1d59e04500f7ba7dbb446cd47014c983bfb5866ea4e8",
+            "skeleton": "49c6fafb7d9952c1325cd424073df8afc48244c61cf162323de2178460578374",
+            "uv": "fa9f3fd1dab6febbbe67b37bc021100ad8c025965ec8cc96d9d5b23c38073a5f",
+            "weights": "ec58080dbee651f4aafa3efe4ee24004684d5cf6aa61c56891f0ada5371d95b7"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-30",
-            "sourceSha256": "54aba03788faa3990928326ce0b6332a1bd70f927a30a64c03f37acb3e61c1b9"
+            "contentSha256": "4e00e4756cd34027bdc8082d41d3e856318020509d90df47331bccb9e8c16cce"
         },
         "rig": {
             "date": "2026-10-30",
-            "sourceSha256": "7cb12de5f8cf071f8386089ecb98788c601e218b674ef6c92018bcfb4d88e724"
+            "contentSha256": "b6524c368dac1ad43648131fdd62e0c0e2ab7ac09d702c83ae39610c8f190043"
         },
         "animation": {
             "date": "2026-10-30",
-            "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a"
+            "contentSha256": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc"
         }
     },
     "export": {
-        "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a",
+        "contentSha256": "d9fdbb090473f47bf3167b1c550510f2516f04d571944ad6379f42fa718066dc",
         "targetSha256": "9efc9e96f09021be37df39abe8865776684538bb32d399f2ceb2d8623f0ef32d",
         "materials": [
             {

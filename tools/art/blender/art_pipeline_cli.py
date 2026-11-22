@@ -1,7 +1,11 @@
 """Blender entry point for the art pipeline scripts in tools/. Run it inside Blender:
 
     blender --background --factory-startup <asset.blend> --python-exit-code 1 \
-        --python tools/art/blender/art_pipeline_cli.py -- <validate|export|preview> [options]
+        --python tools/art/blender/art_pipeline_cli.py -- <validate|export|content|preview> [options]
+
+content prints the content record of the open file, which validate and export print too, and
+content-proof prints it after a scripted edit that it saves into the open file, for the proof in
+tools/art/Test-ArtContent.ps1, which runs it on copies.
 
 new-static writes the first file of a static asset, library-sync builds or updates an animation
 library, paint-sync a paint layer, garment-create and garment-sync a garment template,
@@ -22,8 +26,8 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import (bodies, body_files, cage, clip_video, coverage, garment, library, paint, preview,  # noqa: E402
-                          reference, skinned, texture)
+from art_pipeline import (bodies, body_files, cage, clip_video, content, coverage, garment, library, paint,  # noqa: E402
+                          preview, reference, skinned, texture)
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -34,7 +38,8 @@ from art_pipeline.validate import validate  # noqa: E402
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="art_pipeline_cli")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "export"):
+    # content takes the arguments of a validation, and content-proof too, with the edit it makes.
+    for name in ("validate", "export", "content", "content-proof"):
         command = commands.add_parser(name)
         command.add_argument("--kind", required=True)
         command.add_argument("--roots", required=True, help="Comma-separated root object names.")
@@ -62,6 +67,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--dyes", type=int, default=0, help="The dye channels a texture's template allows.")
         command.add_argument("--pair", action="append", default=[],
                              help="<file.blend>=<Template>:<band> of a template of a lower layer that a garment is checked over.")
+        if name == "content-proof":
+            command.add_argument("--edit", required=True, choices=content.PROOF_EDITS,
+                                 help="The scripted edit tools/art/Test-ArtContent.ps1 makes to a copy of the file.")
         if name == "export":
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
@@ -464,8 +472,23 @@ def _cage(args) -> int:
     return 0
 
 
+def _print_content(args) -> None:
+    print(f"ART_CONTENT {json.dumps(content.read(args), separators=(',', ':'))}")
+
+
 def main() -> int:
     args = parse_args(_parser())
+    # The content of the file as it was opened, before a validation or export opens other files.
+    if args.command in ("validate", "export", "content"):
+        _print_content(args)
+        if args.command == "content":
+            return 0
+    if args.command == "content-proof":
+        content.proof_edit(args.edit, args)
+        bpy.ops.wm.save_mainfile()
+        bpy.ops.wm.open_mainfile(filepath=bpy.data.filepath)
+        _print_content(args)
+        return 0
     if args.command == "preview":
         if args.kind == "texture":
             # A texture with transparent parts also shows its own masks.

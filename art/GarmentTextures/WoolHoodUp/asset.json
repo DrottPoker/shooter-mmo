@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/HoodUp",
+    "content": {
+        "version": 1,
+        "sourceSha256": "348045a6363bfee5163d383b6e0c136148452090c033a2c13f6d356b0d606d19",
+        "stages": {
+            "texture": "5ab884ce658bac32a222bfd65368ae36feee900a0bd584cc98bcb7d4bb46b9b6"
+        },
+        "parts": {
+            "image": "5a53f251017d75dfe2700a77aee90c71c4a3bfa063f990163e234b4eafa3e770",
+            "material": "90eec6c85747c9e7f387444881bf2e8e22b5aea462b821b157c7e9119bff96d0",
+            "templateUv": "fb0a5057e3ee2024e4505e0fc37adde8d99002be1272045bf8fed47978525147"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "348045a6363bfee5163d383b6e0c136148452090c033a2c13f6d356b0d606d19",
-            "garmentSourceSha256": "6738bcf67b3ace3b61032da5e7f819a1501b9ea6d297f1803d49ef251cd5448c"
+            "contentSha256": "5ab884ce658bac32a222bfd65368ae36feee900a0bd584cc98bcb7d4bb46b9b6"
         }
     },
     "export": {
-        "sourceSha256": "348045a6363bfee5163d383b6e0c136148452090c033a2c13f6d356b0d606d19",
-        "garmentSourceSha256": "6738bcf67b3ace3b61032da5e7f819a1501b9ea6d297f1803d49ef251cd5448c",
+        "contentSha256": "5ab884ce658bac32a222bfd65368ae36feee900a0bd584cc98bcb7d4bb46b9b6",
+        "garmentContentSha256": "2943abe8a8f2505af5e2c6b57a1e5900869bb18673c604499034de86cdec85cd",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodUp",

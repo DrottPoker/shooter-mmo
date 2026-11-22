@@ -31,18 +31,32 @@
     "cloth": null,
     "dyes": 0,
     "triangleBudget": 2000,
+    "content": {
+        "version": 1,
+        "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c",
+        "stages": {
+            "model": "10324a33fe1b4bc38a22de557bab054e10d4f7eb93d2461e4bc86b0a30163fd3",
+            "rig": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb"
+        },
+        "parts": {
+            "materials": "eadcfc4e06e4109a67091659e661bd0c41cdc213fb239442c1646cf45a64bb6a",
+            "shape": "75386a2cd5b7ca29de5e7c1ff6a1ae60e27e5f841a336fbe0cb8290f581183c8",
+            "uv": "53439746ddbbb154c76c224d963d08557065ff958c3ef581e4c983f9008d223f",
+            "weights": "1c032cab43b196145535ffc36b2b65ef60da9147fc6e96aa79ffe529b14e43c2"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c"
+            "contentSha256": "10324a33fe1b4bc38a22de557bab054e10d4f7eb93d2461e4bc86b0a30163fd3"
         },
         "rig": {
             "date": "2026-11-22",
-            "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c"
+            "contentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb"
         }
     },
     "export": {
-        "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c",
+        "contentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
@@ -63,7 +77,7 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa" }
         ],
         "materials": [
             {

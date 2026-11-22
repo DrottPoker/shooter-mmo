@@ -5,14 +5,27 @@
     "part": "Body",
     "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
     "layer": 210,
+    "content": {
+        "version": 1,
+        "sourceSha256": "e100f42f7ba2dcf347873f9e1a88e0333920060bafbee72ac05be643fe43323f",
+        "stages": {
+            "paint": "4963c95e182dc5579873a4ce982ce581c4e6f2eb18c7b566cc44566fa3f066fa"
+        },
+        "parts": {
+            "body:Female": "d43fb67d72f3e0ccbe16736ee3c2029cc5ca2ad9220dd4ca4d450633971c7b69",
+            "body:Male": "27206fbc6df53b03a802703401853d009390da4502e2ccbfd11ed2e482e9a5ea",
+            "canvas": "409a0882e0cff1cc0fbf283fdde007fac08252141802c4cb1b7a5276df71f3d4",
+            "paint": "957f5f0b82cd2ec4cc2a7ec5a3103c438b42c99e46b37e4c0ec415557889faea"
+        }
+    },
     "approvals": {
         "paint": {
             "date": "2026-11-21",
-            "sourceSha256": "e100f42f7ba2dcf347873f9e1a88e0333920060bafbee72ac05be643fe43323f"
+            "contentSha256": "4963c95e182dc5579873a4ce982ce581c4e6f2eb18c7b566cc44566fa3f066fa"
         }
     },
     "export": {
-        "sourceSha256": "e100f42f7ba2dcf347873f9e1a88e0333920060bafbee72ac05be643fe43323f",
+        "contentSha256": "4963c95e182dc5579873a4ce982ce581c4e6f2eb18c7b566cc44566fa3f066fa",
         "textures": [
             {
                 "name": "T_Paint_ForearmRunes_Male",

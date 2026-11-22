@@ -29,18 +29,32 @@
     "cloth": "robe",
     "dyes": 1,
     "triangleBudget": 4000,
+    "content": {
+        "version": 1,
+        "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c",
+        "stages": {
+            "model": "b0e728f3b253d612780ea3dd2d568d6eacb89cc0ee29244c6194018df6a50a65",
+            "rig": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df"
+        },
+        "parts": {
+            "materials": "62858d224264310423b72fa24674be7d96a44f1ca38a6a9c75ee0cd1e637ebdd",
+            "shape": "4a5b0457462cc8e24083873585b591793ceac59da42f591b99da0ef0537b5df2",
+            "uv": "e21868f5edaa464924a08e5e57209be350ee37fe82a0b3337b67e72b921cb061",
+            "weights": "804d45964488fc00230a4affc1ad42f3d5032c5eca98f0c7f0a90eca362fcb36"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c"
+            "contentSha256": "b0e728f3b253d612780ea3dd2d568d6eacb89cc0ee29244c6194018df6a50a65"
         },
         "rig": {
             "date": "2026-11-22",
-            "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c"
+            "contentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df"
         }
     },
     "export": {
-        "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c",
+        "contentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
@@ -61,10 +75,10 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" }
+            { "garment": "art/Garments/Boots", "contentSha256": "040d12931b9bc6802271bfae4929e564a6e655ae9feec9a19fc426f20c8b252f" }
         ],
         "materials": [
             {

@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/Robe",
+    "content": {
+        "version": 1,
+        "sourceSha256": "e991cec5d6d7ef81104d6a8a0ed0c2d0969d8170bf7b3bff8ba14ce3f9b0a89c",
+        "stages": {
+            "texture": "a4d2a8f2217e1337440e4f955c5ee33a4c1371c596536af51bb56e9dba0c522c"
+        },
+        "parts": {
+            "image": "0cbeeccc927791bf563ffaee27806442871f3ba79a9db13a405c79992f9744a2",
+            "material": "0ccbdd88146c744325bab29207009dfd11383b75846fa407c5439f1922b3abcd",
+            "templateUv": "e21868f5edaa464924a08e5e57209be350ee37fe82a0b3337b67e72b921cb061"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "e991cec5d6d7ef81104d6a8a0ed0c2d0969d8170bf7b3bff8ba14ce3f9b0a89c",
-            "garmentSourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c"
+            "contentSha256": "a4d2a8f2217e1337440e4f955c5ee33a4c1371c596536af51bb56e9dba0c522c"
         }
     },
     "export": {
-        "sourceSha256": "e991cec5d6d7ef81104d6a8a0ed0c2d0969d8170bf7b3bff8ba14ce3f9b0a89c",
-        "garmentSourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c",
+        "contentSha256": "a4d2a8f2217e1337440e4f955c5ee33a4c1371c596536af51bb56e9dba0c522c",
+        "garmentContentSha256": "0e3d52ba886217a8c40b6cdbf759fae347f4b15f4e838071cd779d3d8444a9df",
         "materials": [
             {
                 "name": "M_Garment_WoolRobe",

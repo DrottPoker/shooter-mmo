@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/LongShirt",
+    "content": {
+        "version": 1,
+        "sourceSha256": "b3ee2db9d5656352ac6867803e2e4b52ef4e94597204155c7e1888a5e60e1a2f",
+        "stages": {
+            "texture": "24a0cfaf68a4d701c38c1f0188403fa6940414a6aff9c54253610d0514276170"
+        },
+        "parts": {
+            "image": "5558012486e22d4a01b6bafa9196661300e4f504b3d021378137722eabc2a87f",
+            "material": "35abdac149a5864d16758346eb6a1520b4640ad887fd7db73ff6220513b19d2d",
+            "templateUv": "8e764ba0e6decf721769cc5d2fca693f9ffb0531ebd04ceded7d3595f347fc98"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "b3ee2db9d5656352ac6867803e2e4b52ef4e94597204155c7e1888a5e60e1a2f",
-            "garmentSourceSha256": "7f8312b36deed037dbc60139cab146f0c914584496598a6a9455d1e642245f49"
+            "contentSha256": "24a0cfaf68a4d701c38c1f0188403fa6940414a6aff9c54253610d0514276170"
         }
     },
     "export": {
-        "sourceSha256": "b3ee2db9d5656352ac6867803e2e4b52ef4e94597204155c7e1888a5e60e1a2f",
-        "garmentSourceSha256": "7f8312b36deed037dbc60139cab146f0c914584496598a6a9455d1e642245f49",
+        "contentSha256": "24a0cfaf68a4d701c38c1f0188403fa6940414a6aff9c54253610d0514276170",
+        "garmentContentSha256": "46ae39b206bfeb5bdfad6dc852ee649c5c60bd037fd163bde2998ca9764c3414",
         "materials": [
             {
                 "name": "M_Garment_LinenLongShirt",

@@ -1,9 +1,9 @@
 # Brings a garment texture up to date with its template and checks it: when the template's faces or
 # UVs changed, the texture moves to the new UVs by correspondence: its preview, which keeps the UVs
 # it was painted in, follows the template, and every texel takes the paint of the nearest point of
-# the moved preview. A file that this leaves as it was is not saved, so its approval stays valid. Then
-# it writes the review sheet, the texture on every body of its template, and checks every rule of
-# the texture. See docs/ART_PIPELINE.md.
+# the moved preview. A file that this leaves as it was is not saved. Then it writes the review sheet,
+# the texture on every body of its template, checks every rule of the texture, records the content of
+# the file, and says whether its approval holds. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -49,11 +49,17 @@ $sheet = Join-Path $script:ArtRepositoryRoot "artifacts/art-previews/$($manifest
 & (Join-Path $PSScriptRoot "Render-ArtPreview.ps1") -Asset $manifest.Directory -Output $sheet -BlenderPath $blender | Out-Null
 Write-Host "Review sheet: $sheet"
 
-# Every rule of the texture, so a broken one shows before the review.
-Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "texture")) | Out-Null
-if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)) -and
-    $null -eq (Get-ArtTextureTemplateProblem $manifest)) {
-    Write-Host "$($manifest.Name) meets every rule, and its stage is approved for this file on the current file of $($manifest.Garment.Name)."
+# Every rule of the texture, so a broken one shows before the review, and the content of the file,
+# and of its template's, whose UVs it is compared with.
+$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "texture"))
+$null = Update-ArtContentRecord $blender $manifest $validation
+$null = Update-ArtContentRecord $blender $manifest.Garment
+foreach ($line in @(Get-ArtStageReport $manifest)) {
+    Write-Host $line
+}
+
+if ($null -eq (Get-ArtExportGateProblem $manifest) -and $null -eq (Get-ArtTextureTemplateProblem $manifest)) {
+    Write-Host "$($manifest.Name) meets every rule, and its stage is approved for this content in the current UVs of $($manifest.Garment.Name)."
 }
 else {
     Write-Host "$($manifest.Name) meets every rule. Review it, then record the approval with tools/art/Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage texture."

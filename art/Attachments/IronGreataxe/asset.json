@@ -11,14 +11,26 @@
     "holdClip": "HoldGreataxe",
     "attackClip": "GreataxeSwing",
     "attackRelease": 0.6,
+    "content": {
+        "version": 1,
+        "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce",
+        "stages": {
+            "model": "de342c5ddf15102122e3cda5479d0c80dc69f5fcf55936ea26604b65181d0a64"
+        },
+        "parts": {
+            "materials": "767aff8da4412a2afcff84a4df43e5353a00a017c7db24a890d99459315ade41",
+            "shape": "ff0f9c4a49b49c1f5844f99971fb50f7eae48c76647c150d6b881bdaf8fd7deb",
+            "uv": "8073a10a3c514d50d0f1950c427b8d8c5b5d1a0d8c29b536923ffd31f1ad8048"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-31",
-            "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce"
+            "contentSha256": "de342c5ddf15102122e3cda5479d0c80dc69f5fcf55936ea26604b65181d0a64"
         }
     },
     "export": {
-        "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce",
+        "contentSha256": "de342c5ddf15102122e3cda5479d0c80dc69f5fcf55936ea26604b65181d0a64",
         "targetSha256": "43060214ce07ea9f86e9d0fd5f209c9cf979b77903e60b6e4f96411766a33c74",
         "materials": [
             {

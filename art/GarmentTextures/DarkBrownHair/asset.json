@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/ShoulderHair",
+    "content": {
+        "version": 1,
+        "sourceSha256": "eea6bab086dcbd5d91beed45e712b66889242a79e9b30d7f20c7829905ac57d9",
+        "stages": {
+            "texture": "b79d7eee9882d0731c15d54003b5fe13ab99b2cad7e9f6e0afbc455e2ab73a15"
+        },
+        "parts": {
+            "image": "92befbc2773d09d4f9b673bc513b263ab71275457ee8e92ac242bdd7401a681e",
+            "material": "c79af03dcf1ecec613c9743bc82f4a2fcd954e01a39ef5ecd38eb67d42283e59",
+            "templateUv": "9d0a564b5bc63abe09c7d489c1c42a0f7d2cb8261f692ae0fcec27996313381f"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "eea6bab086dcbd5d91beed45e712b66889242a79e9b30d7f20c7829905ac57d9",
-            "garmentSourceSha256": "f8e5ac08529f7ac5146bb7167b1682812b9b351044a202e99898c56fbd2c3b5f"
+            "contentSha256": "b79d7eee9882d0731c15d54003b5fe13ab99b2cad7e9f6e0afbc455e2ab73a15"
         }
     },
     "export": {
-        "sourceSha256": "eea6bab086dcbd5d91beed45e712b66889242a79e9b30d7f20c7829905ac57d9",
-        "garmentSourceSha256": "f8e5ac08529f7ac5146bb7167b1682812b9b351044a202e99898c56fbd2c3b5f",
+        "contentSha256": "b79d7eee9882d0731c15d54003b5fe13ab99b2cad7e9f6e0afbc455e2ab73a15",
+        "garmentContentSha256": "81e140440fe42fb97c9dcd5adf36c13e720b7ec7e117f38ba8386df97c249c12",
         "materials": [
             {
                 "name": "M_Garment_DarkBrownHair",

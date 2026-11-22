@@ -9,16 +9,41 @@
     "rig": "art/Characters/Human_Male",
     "previews": ["art/Characters/Human_Female"],
     "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop", "HoldStaff", "Cast", "HoldGreataxe", "GreataxeSwing", "HoldBow", "BowShot", "SwordSlash", "OneHandStrike"],
+    "content": {
+        "version": 1,
+        "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f",
+        "stages": {
+            "animation": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa"
+        },
+        "parts": {
+            "clip:BowShot": "c08121912fc0f2bc63313386eff7297bb53b3c7b640628d71223bb7be7f3fcc9",
+            "clip:Cast": "bdbd7ddd9dcc05f906a55873812b565005fd2e41777f75f4908839f3a5808909",
+            "clip:Chop": "5a2c1012d5433176b5e1cf6f304f75812f6ea7ed30b96440b0f97768bf2585f0",
+            "clip:Death": "b7aea6a9b5cc8db90997893a40b9d6c1af2f2b1b9a8f678ac4c18e89f1fd8aa8",
+            "clip:GreataxeSwing": "270f8a38c67661e9fc5f3a52d3a388be07128bc6f3279c0ea111d531a1bddf79",
+            "clip:Grip": "18b6e2754fc860e50898cbd76b90be2e2034d4b4817ac06972694598cf3211cf",
+            "clip:HoldBow": "2a3c8390076a945f73acb132bc4994d3e578767f93430f6962d09eb75e4aa5b9",
+            "clip:HoldGreataxe": "5b51a5b253a37416c6de0bd0ccb0e03e69fe9d17dd4aec692ca948504a7eabf2",
+            "clip:HoldStaff": "0db9fbd357eeab700b067a5ace72812586bf214b5552b9d53879bcccd11e10b4",
+            "clip:Idle": "059d37292adc00449fb5a8e988c46a7880b1f3a40b27878837a1dc3fe12dc560",
+            "clip:Jog": "e46709de6779718f9c77a0e00c0912c77a83c8c5c355b332c0a056baf8aaaf86",
+            "clip:Mine": "125a5d2fdc450c54b38b995f38551c552b3ba9004bac7a148fbfee02ce3fcaab",
+            "clip:OneHandStrike": "a99ea941d13315c3d2d14c96572a59605dbb787cc30958b86f93c2d6813a2252",
+            "clip:SwordSlash": "af486b57d24edc0024256227e514fd8d7284a9850ff90b5198fae9bb48fef50c",
+            "clip:Walk": "1052ff807f8765111c1079a563d97d87f8e48e1326caaeb516352f602597d756",
+            "skeleton": "3669654767512f75198e03ce2c980c04341c804634914d985356b1ec74aa26bc"
+        }
+    },
     "approvals": {
         "animation": {
             "date": "2026-11-20",
-            "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f"
+            "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa"
         }
     },
     "export": {
-        "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f",
+        "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa",
         "targetSha256": "6eb43c267da9ecaeaf98808d1f3898272b09e713fd616b965c9d020956148543",
-        "rigSourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a",
+        "rigContentSha256": "6f48f87de46c3edf0ecd31b40287d42eef989890bdd598fa3bf076fc1fe2f71e",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
             { "name": "Idle", "frames": 120, "loop": true },

@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/Gloves",
+    "content": {
+        "version": 1,
+        "sourceSha256": "f9620762dc9652fedfe7710112b5919cedc2fde95ec745a504a9b27e7a555dd9",
+        "stages": {
+            "texture": "d5db1a5966f71099801ad6859549e3af089a7e4f9328c9d3f4ff4a782a045528"
+        },
+        "parts": {
+            "image": "f08b8d5883a918819970849f8a666a5ef6125ce5511ce4aee2c740d42f063753",
+            "material": "6d5d5e2a8105a093acb36616cefe86bdd55c1b70db4a23fc770682872e2afcd8",
+            "templateUv": "73e7252331c93469abe59642e98674311ef1b18c57759bcf100215c5aaf174b8"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "f9620762dc9652fedfe7710112b5919cedc2fde95ec745a504a9b27e7a555dd9",
-            "garmentSourceSha256": "35f75a398c0ecb980fbb3ed5d7693dea6f1ba4584af5c638338ddd29eba78471"
+            "contentSha256": "d5db1a5966f71099801ad6859549e3af089a7e4f9328c9d3f4ff4a782a045528"
         }
     },
     "export": {
-        "sourceSha256": "f9620762dc9652fedfe7710112b5919cedc2fde95ec745a504a9b27e7a555dd9",
-        "garmentSourceSha256": "35f75a398c0ecb980fbb3ed5d7693dea6f1ba4584af5c638338ddd29eba78471",
+        "contentSha256": "d5db1a5966f71099801ad6859549e3af089a7e4f9328c9d3f4ff4a782a045528",
+        "garmentContentSha256": "c894192ef20007a562bdaf34576975e3d389e9cd61b252c9e58c3482532a80c9",
         "materials": [
             {
                 "name": "M_Garment_LeatherGloves",

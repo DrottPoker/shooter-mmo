@@ -18,9 +18,9 @@ art/<Category>/<Name>/<Name>.blend      source, edited in Blender (Git LFS)
         |  Render-ArtPreview.ps1        review sheet, or live review in Blender
         v
 reviewer approves each review stage
-        |  Approve-ArtAsset.ps1         records the date and the SHA-256 of the .blend
+        |  Approve-ArtAsset.ps1         records the date and the content fingerprint of the stage
         v
-        |  Export-ArtAsset.ps1          refuses unapproved or changed sources
+        |  Export-ArtAsset.ps1          refuses unapproved or changed content
         v
 src/Client/Assets/Art/Models/<Category>/<Name>.fbx       with its clips, if skinned
 src/Client/Assets/Art/Textures/<Category>/<Image>.png    painted materials only
@@ -30,9 +30,12 @@ src/Client/Assets/Art/Textures/<Category>/<Image>.png    painted materials only
 Assets/Prefabs/... Prefab Variant of the model -> presentation registry or player -> game
 ```
 
-The reviewer approves every asset before it is exported. Nothing reaches Unity
-without an approval of the exact source file that was exported, and CI checks
-the whole chain without Blender.
+The reviewer approves every asset before it is exported. An approval binds to the
+content of its review stage, what the stage shows and the export writes, read
+from the `.blend` file as a fingerprint, not to the file's bytes; see
+[Review Stages](#review-stages). Nothing reaches Unity without an approval of
+the exact content that was exported, and CI checks the whole chain without
+Blender.
 
 Every asset's `.blend` file is its source, and a person edits it in Blender.
 Scripts only write what follows from the source, such as the body parts of the
@@ -66,6 +69,7 @@ art has one how-to:
 | Make a garment template, the form of clothes or armor, from a recipe on the cage | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](#make-a-garment) |
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
+| Record the content of a file saved by hand and see which approvals still hold | `Update-ArtContent.ps1` | [Update The Content Record](#update-the-content-record) |
 | Confirm that every source, approval, and export is current, such as after an edit of the bodies | the sync scripts and their review sheets | [Check That The Art Sources Are Current](#check-that-the-art-sources-are-current) |
 | Measure how closely a model follows its reference pictures | `Compare-ArtReference.ps1` | [Compare A Model With Its Reference Pictures](#compare-a-model-with-its-reference-pictures) |
 | Look at clothes and cloth in motion and tune the cloth's springs | `MMORPG > Tools > Art Pipeline > Wardrobe` in Unity | [The Wardrobe](#the-wardrobe) |
@@ -148,7 +152,7 @@ only you run Claude Code, and save your work before a live session.
 | Path | Responsibility |
 | --- | --- |
 | `art/<Category>/<Name>/<Name>.blend` | Source of truth for one asset, stored in Git LFS. The folder name is the asset name. |
-| `art/<Category>/<Name>/asset.json` | The [asset manifest](#asset-manifest): kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, approvals, and the export record. |
+| `art/<Category>/<Name>/asset.json` | The [asset manifest](#asset-manifest): kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, the content record, approvals, and the export record. |
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
@@ -170,6 +174,8 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`. |
 | `tools/art/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
+| `tools/art/Update-ArtContent.ps1`, `tools/art/blender/art_pipeline/content.py`, `content_core.py` | Reads the [content of the review stages](#content-of-a-stage) from a `.blend` file into the content record of `asset.json`, for a file saved by hand: `content.py` reads the parts in Blender, `content_core.py` rounds, hashes, and chains them without Blender. |
+| `tools/art/Test-ArtContent.ps1` | Proves the content fingerprints on copies of the files: a file saved again keeps every fingerprint, and scripted edits change exactly the parts they touch. It changes no file below `art/` and is not part of CI. |
 | `tools/art/Sync-AnimationLibrary.ps1`, `tools/art/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
 | `tools/art/Compare-ArtReference.ps1`, `tools/art/blender/art_pipeline/reference.py` | Compares a model with the reference pictures in its file: the overlap of their silhouettes per picture and an overlay image. It changes no file. |
 | `tools/art/Render-ArtClips.ps1`, `tools/art/blender/art_pipeline/clip_video.py` | Renders the clips of an animation library or a skinned asset as videos and measures their motion. It changes no file. |
@@ -244,10 +250,12 @@ any `clips` of its own are written by hand when an asset is created.
 | `cloth` | Garments only: the cloth profile of its loose parts, `robe` for the skirt chains, `cloak` for the cloak chains, or `hood`, or `null`. |
 | `dyes` | Garment templates only: the number of dye channels, 0 to 3, that its textures may use. `Cloak`, `Robe`, `HoodUp`, and `HoodDown` have one, for their wool. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Clean"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
-| `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. A garment texture's approval also records the `garmentSourceSha256` of its template's file, since it is reviewed on the template. |
+| `content` | The [content of the review stages](#content-of-a-stage), written only by the scripts that ran Blender on the file, `null` for a new asset whose file was never read: its `version`, the version of the fingerprints; the `sourceSha256` of the `.blend` file it was read from; `stages`, one fingerprint per review stage in order; and `parts`, the fingerprints of the parts the stages are made of, by name. It is current when its `sourceSha256` is the hash of the committed file, which CI reads from the Git LFS pointer, its version is the pipeline's, and it holds the stages, clips, and bodies of `asset.json`. |
+| `approvals` | One entry per approved review stage: the `date` and the `contentSha256`, the fingerprint of the stage's content that was approved. An approval holds while the content record is current and the stage's fingerprint is the approved one. An `asset.json` from before approvals recorded the content of their stage, whose approvals name the `sourceSha256` of a file or whose export names files' hashes, is rejected: such an approval is removed and the stage approved again with `tools/art/Approve-ArtAsset.ps1`, and such an export is set to `null` and the asset exported again with `tools/art/Export-ArtAsset.ps1`. |
 | `export` | The record of the last export, `null` before the first; see below. |
 
-The `export` record holds the `sourceSha256` of the exported `.blend` file, the
+The `export` record holds the `contentSha256` of the exported content, the
+fingerprint of the asset's last review stage at the export, the
 `targetSha256` of the written FBX, and `materials`: the approved look of every
 exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`,
 and `smoothness` (1 - Roughness), and for a glowing material its `emission`. A
@@ -264,7 +272,7 @@ length in `frames`, and whether it should `loop`. Beyond that:
   it, its meshes joined with their faces, materials, zones, digits, and paint UV
   map, and its rig's landmarks.
 - An animation library has no materials or textures; it records its `clips` and
-  the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was
+  the `rigContentSha256`, the `export.contentSha256` of its rig when it was
   exported.
 - A paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body
   below `src/Client/Assets/Art/Textures/Paint`, each with its `layout`, the width
@@ -279,12 +287,12 @@ length in `frames`, and whether it should `loop`. Beyond that:
   was fitted to; its `models`, one per body of the cage in order with its `body`
   label, the `bodyFitSha256` of the body's export it was fitted to, the model's
   `target` and `sha256`, and its `data` file and `dataSha256`; its
-  `clipSources`, every animation library of its skeleton with the `sourceSha256`
+  `clipSources`, every animation library of its skeleton with the `contentSha256`
   of the export whose clips it was checked in; its `pairSources`, every template
-  of another visual slot and a lower layer of its cage with the `sourceSha256` of
+  of another visual slot and a lower layer of its cage with the `contentSha256` of
   the export it was checked over, when there are any; its one material
   `M_Garment_<Name>` without an image; and no textures.
-- A garment texture records the `garmentSourceSha256` of its template's export,
+- A garment texture records the `garmentContentSha256` of its template's export,
   its `masks` with their `body`, `data`, and `dataSha256` and their
   `clipSources` and `pairSources` when it has transparent parts, the
   `pairSources` as a template's, for the templates of lower layers worn under its
@@ -298,9 +306,12 @@ length in `frames`, and whether it should `loop`. Beyond that:
 
 An asset passes its review stages in order. Each stage ends with the reviewer
 looking at the asset, on the review sheet or in Blender, and approving it with
-`Approve-ArtAsset.ps1`. The approval stores the SHA-256 of the `.blend` file, so
-saving the file again, even without a visible change, needs a new approval. Only
-an asset that meets the rules of the stage can be approved.
+`Approve-ArtAsset.ps1`. The approval binds to the content of its stage, a
+fingerprint of what the stage shows and the export writes, which
+[Content Of A Stage](#content-of-a-stage) describes. A file saved again with the
+same content, or rebuilt to the same content, keeps its approvals; a change of
+the content, however small, needs a new approval. Only an asset that meets the
+rules of the stage can be approved.
 
 | Kind | Stages |
 | --- | --- |
@@ -320,31 +331,137 @@ file on a checkered ground and on its review sheet, and
 `Sync-AnimationLibrary.ps1` reports how far a foot on the ground slides in the
 `Idle`, `Walk`, and `Jog` clips when the game moves the body at their speeds.
 
-Stages are approved in order, and a new approval of an earlier stage reopens
-every later stage. `Export-ArtAsset.ps1` exports only when every stage is
-approved and the last approval covers the current `.blend` file. It then records
-the hashes of the source and the written files.
+Stages are approved in order: `Approve-ArtAsset.ps1` approves a stage only while
+the approval of every earlier stage holds. A stage's fingerprint is chained to
+the earlier stage's, so a change of the content of an earlier stage changes every
+later stage too, and their approvals no longer hold until they are approved
+again; a new approval of an earlier stage whose content did not change leaves
+the later approvals holding. After an approval the script says which later
+stages still hold. `Export-ArtAsset.ps1` exports only when every stage is
+approved and every approval holds for the content of the current `.blend` file.
+It then records the content it exported and the hashes of the written files.
 
 An asset is in review while a later stage still waits, such as a skinned model
-before its rig. It has no export record and no FBX yet, and its latest approval
-must cover the committed `.blend` file, so the repository only holds approved
+before its rig. It has no export record and no FBX yet, and every approval it has
+must hold for the committed `.blend` file, so the repository only holds approved
 states: work on the next stage stays on its branch until that stage is approved.
 
 `Verify-ArtAssets.ps1` runs in the CI backend job and in `tools/Test-Changes.ps1`
-for a change below `art/` or `tools/art/`. It fails when an approval is missing
-or stale, when an animation library was exported against another export of its
-rig, when an asset in review has an export or an FBX, when the garment cage's
-approval does not cover its committed file or one of its bodies has another
-export than the cage was approved on, when a paint layer was moved to another
-export of a body or through another file of the cage, when a garment template
-was fitted to another file of its cage or exported for other bodies than its
-cage has, when a garment texture was exported against another export of its
-template or has masks for other bodies than its template, when two assets export
-a material of the same name, when the committed FBX, data, or a committed texture
-differs from the recorded export, or when a model below
-`src/Client/Assets/Art/Models` or a texture below `src/Client/Assets/Art/Textures`
-has no asset. Every problem names the script to run. It reads the SHA-256 of a
+for a change below `art/` or `tools/art/`. It fails when a content record was
+read from another version of the committed `.blend` file, with another version
+of the fingerprints, or for other stages, clips, or bodies than `asset.json`
+names, when an approval is missing or the content of any approved stage changed
+after its approval, when an `asset.json` still records file hashes from before
+content records, when an export comes from other content than the current one,
+when an animation library was exported against another export of its rig, when
+an asset in review has an export or an FBX, when one of the garment cage's bodies
+has another export than the cage was approved on, when a paint layer was moved
+to another export of a body or through another file of the cage, when a garment
+template was fitted to another file of its cage or exported for other bodies
+than its cage has, when a garment texture was exported against another export of
+its template, is painted in other UVs than its template's current ones, or has
+masks for other bodies than its template, when two assets export a material of
+the same name, when the committed FBX, data, or a committed texture differs from
+the recorded export, or when a model below `src/Client/Assets/Art/Models` or a
+texture below `src/Client/Assets/Art/Textures` has no asset. Every problem names
+the script to run, such as `Wolf.blend was saved after its content was read;
+run tools/art/Update-ArtContent.ps1 -Asset art/Creatures/Wolf` or `the 'rig'
+content of Wolf.blend changed after its approval`. It reads the SHA-256 of a
 `.blend` file from its Git LFS pointer, so CI does not download the sources.
+
+### Content Of A Stage
+
+The content of an asset is its own data: what the export writes, what the
+review shows, and what another asset reads from the file. Blender reads it with
+`tools/art/blender/art_pipeline/content.py` as parts, each a SHA-256 of plain
+data, and `content_core.py` chains them into one fingerprint per review stage:
+
+```text
+stage[k] = SHA-256("art-content/<version>/<kind>/<stage>\n" + stage[k-1] + "\n"
+                   + "<part>=<fingerprint>\n" for each part of the stage, by name)
+```
+
+So a change of a model's shape changes the `model` stage and every later one, a
+change of only the weights leaves `model` as it is and changes `rig` and
+`animation`, and a change of one clip changes only `animation`. The record in
+`asset.json` keeps the parts too, so a report can say what changed and other
+assets can depend on one part, as a garment texture does on its template's `uv`.
+
+| Kind | Stage | Parts |
+| --- | --- | --- |
+| `static` | `model` | `shape`: every object of the `Export` collection with its type, data name, parent, world matrix, rotation mode, its switch `Disable in Viewports`, which the FBX writes as its visibility, its custom properties, its modifiers but an armature modifier, which belongs to the weights, its constraints, drivers, and material slots, and every mesh with its vertices, edges, faces, and corners in their order, its corner normals, every attribute but the UV maps and the seams, its shape keys, and its custom properties. `uv`: the UV maps of every mesh in their order, with which is active and which renders. `materials`: the materials of the meshes by name, each node with its image, the values of its unlinked inputs, and the settings that say what it does, every link, and the pixels of every image a node uses. |
+| `skinned` | `model` | `shape`, `uv`, and `materials` as for a static asset, of the `Export` collection and the editable source body in the `Source` collection, whose zones, paint UVs, and weights the export reads; an armature's custom properties belong to its skeleton, and `materials` also holds every variant image `T_<Part>_<Label>_<Option>` of a painted material. |
+| `skinned` | `rig` | `skeleton`: every bone by name with its parent, deform and connect flags, rest matrix, length, how it inherits its parent's motion, and its custom properties, every pose bone's rotation mode and constraints, the armature's pose position, and the armature's custom properties, such as the landmarks a body's rig keeps. `weights`: every mesh's vertex groups by name with every vertex's weight in them, and its armature modifiers. |
+| `skinned` | `animation` | `clip:<Name>` for every clip of `clips`: the action's curves by slot, path, and channel with their keys, handles, interpolation, easing, extrapolation, and modifiers, its frame range, its custom properties, such as `loop`, and the frame rate the scene plays it at. |
+| `animations` | `animation` | `skeleton`: the armature the clips are keyed on, placed as the export places it, with its rest pose as a skinned asset's `skeleton` without its custom properties; and `clip:<Name>` for every clip. |
+| `paint` | `paint` | `canvas`: the canvas, `Canvas`, with its UV maps, the rig's landmarks it keeps, and the body it was copied from, and its cage version `Canvas_Cage`. `paint`: the canvas's image `T_Paint_<Name>` with its roughness and metallic. `body:<Label>` for every body: the paint moved to it, `T_Paint_<Name>_<Label>`, with its crop and layout, as the export writes it. |
+| `garment` | `model` | `shape`: every body's version `<Name>_<Label>` with its object, mesh, and attributes as a static asset's, such as what the sync fitted it to, and every UV map but the first version's active one. `uv`: the fingerprint of the first version's faces and UVs, exactly the `template_uvs` that a texture painted in them records. `materials`: the template's material. |
+| `garment` | `rig` | `weights`: every version's vertex groups and weights and its armature modifier. |
+| `cage` | `model` | `net`: the reference `Cage` with its attributes, weights, figure scale, and lines, and its rig `CageRig` with its rest pose and landmarks. `fit:<Label>` for every body: the cage's version `Cage_<Label>` fitted to it, with its attributes. |
+| `texture` | `texture` | `image`: the pixels of `T_Garment_<Name>` and of its dye mask, each with its size, channels, color space, and alpha mode. `material`: the roughness, metallic, and dye colors the export reads, and the material that shows them. `templateUv`: the `template_uvs` the texture is painted in. A texture holds for its template while its `templateUv` is the template's `uv`. |
+
+What is not content changes nothing:
+
+- Copies of other assets that a sync keeps current: the bodies of a garment, of
+  the cage, and of a paint layer with their armatures, the cage versions in a
+  garment file, the template's preview and its cage in a texture file, and the
+  rig and preview bodies of an animation library, beyond the rest pose its clips
+  are keyed on.
+- Bookkeeping of another asset's state, such as the scene property `cage_sha256`
+  of a garment or the `paint_layout` of a paint layer's body.
+- View and editor state: the selection, the active object, hiding in the
+  viewport, display types, the current frame, the 3D cursor, and the seams,
+  which only unwrapping reads.
+- Datablocks nothing uses, the order of named things such as objects, bones,
+  vertex groups, materials, images, and clips, file paths, Blender's version,
+  and dates.
+
+The order of a mesh's vertices, faces, and corners is content, since the game's
+data files name faces and vertices by index. Numbers are rounded before they
+are hashed, so noise far below what anyone could see changes nothing: positions,
+matrices, normals, UVs, key values, and handles to 6 decimals, weights to 5,
+with negative zero made positive. An 8-bit image counts by its 8-bit values and
+a float image by its values rounded to 6 decimals.
+
+The fingerprints have one version, `VERSION` in `content_core.py` and
+`$script:ArtContentVersion` in `tools/art/ArtPipelineCommon.ps1`, which a Python
+test holds equal. A record of another version is not current, so its approvals
+cannot hold. A change of how any part is read raises the version and ships with
+a conversion that first proves every record under the old version, reading each
+committed file, and only then binds the existing approvals to the new
+fingerprints.
+
+`tools/art/Test-ArtContent.ps1 -All` proves the fingerprints with Blender on
+copies of the files: every file opened and saved again has another file hash
+and the same parts and stages, and on one asset of each kind a moved vertex, a
+changed UV, material value, pixel, weight, bone, or key changes exactly the part
+it touches with its stage and every later one, while a selection, an active
+object, hiding, another current frame, an unused datablock, or an edit of a
+copied body changes nothing. Expected result: a `PASS` line per asset and edit,
+`Resave: <n> of <n> asset(s) keep every fingerprint.`, and `Proved the content of
+<n> art asset(s).`, after several minutes; it is not part of CI. With `-Asset` it
+proves the named assets and the edits on the first of each kind among them, and
+skips an edit the file has nothing for, such as a pixel of a model without an
+image, with a `SKIP` line.
+
+### Update The Content Record
+
+Every script that saves a `.blend` file reads its content and writes the record
+itself, and `Approve-ArtAsset.ps1` and `Export-ArtAsset.ps1` do so before they
+check anything, so a file saved by hand in Blender needs no step before them.
+`Verify-ArtAssets.ps1` cannot read a file's content without Blender; after a
+file was saved by hand, record its content and see which approvals hold:
+
+```powershell
+.\tools\art\Update-ArtContent.ps1 -Asset art/WorldActors/Resource_IronVein
+```
+
+Expected result: `art/WorldActors/Resource_IronVein: recorded its content.` or
+`... its content record is current.`, then a line per stage, such as
+`Resource_IronVein: the 'model' approval holds.` for a file saved without a
+change, or `Resource_IronVein: the 'model' content changed after its approval;
+review it and approve it again with tools/art/Approve-ArtAsset.ps1 ...` after a
+real edit. `-All` updates every asset.
 
 ### Review, Approve, And Export An Asset
 
@@ -370,8 +487,10 @@ To look around freely, open the source in Blender:
 Hold the middle mouse button to turn the view, scroll to zoom, and use the eye
 icons in the Outliner to switch between `Available` and `Depleted`. The
 `Reference` collection holds a 1.8 m mannequin and a wireframe of the vein's
-interaction bounds; it is never exported. Close Blender without saving, since a
-saved file needs a new approval.
+interaction bounds; it is never exported. Saving the file keeps its approvals as
+long as its content is the same: switching the eye icons, selecting, or moving
+to another frame changes no content, so closing Blender without saving is no
+longer needed for the approvals.
 
 When the reviewer approves the model, record the approval, export, and verify:
 
@@ -394,12 +513,14 @@ several assets at once, or `-All` for every asset but the cage, and exports them
 in the order their records need: animation libraries after their rigs, garment
 templates from the lowest layer up, and textures last.
 
-To see the guard work, save the `.blend` file again without changing anything
-and export once more. Expected result: the export stops with
-`Resource_IronVein cannot be exported: Resource_IronVein.blend changed after the
-'model' approval. ...`, and `Verify-ArtAssets.ps1` reports the same problem.
-Restore the file with
-`git checkout -- art/WorldActors/Resource_IronVein/Resource_IronVein.blend`.
+To see the guard work, open the `.blend` file, move one vertex of `Available` a
+little in Edit Mode, save, and export once more. Expected result: the export
+records the new content first and then stops with `Resource_IronVein cannot be
+exported: the 'model' content of Resource_IronVein.blend changed after its
+approval. ...`, and `Verify-ArtAssets.ps1` reports the same problem. Saving the
+file again without a change instead keeps the approval: the export records the
+same content and goes through. Restore the file and its record with
+`git checkout -- art/WorldActors/Resource_IronVein`.
 
 ### Check That The Art Sources Are Current
 
@@ -413,9 +534,10 @@ reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
    `.\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/<Name>` and
    `.\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/<Name>` for
    each garment and texture. Expected result: the human base reports each body
-   as unchanged with its committed file kept, and every other asset is up to
-   date and meets every rule with its stages approved for this file, such as
-   `Shirt meets every rule, and both stages are approved for this file.` The
+   as unchanged with its committed file kept and every approval holding, and
+   every other asset is up to date and meets every rule with its stages approved
+   for this content, such as `Shirt: the 'rig' approval holds.` and
+   `Shirt meets every rule, and both stages are approved for this content.` The
    garment reports also state how much skin comes through in motion; skin that
    comes through a garment at rest stops the sync.
 2. Open the review sheets that the scripts write below `artifacts`, such as
@@ -1204,7 +1326,9 @@ one Blender process per step:
    its bones and pose, materials with their node links, textures with whether
    they are packed, and custom properties). Blender's files differ in their
    bytes from run to run, so the script replaces a committed file only when its
-   content changed, and an unchanged file keeps its approval.
+   content changed, and an unchanged file stays as it is. The script then
+   records the content of both files and says which approvals hold, which
+   depends only on the [content of each stage](#content-of-a-stage).
 5. The review files `Human_Base.blend`, both characters side by side, and
    `Human_Base_Rig.blend`, with the test poses as an animation that ends by
    closing the eyes on a skeleton with eyelids, and the review
@@ -1285,9 +1409,11 @@ beside the neck.
    then the paths of the review files `artifacts\human-base\Human_Base.blend`
    and `artifacts\human-base\Human_Base_Rig.blend`, the review sheets in
    `artifacts\human-base\review`, and `artifacts\human-base\report.txt`, and for
-   each asset either `Human_Male: unchanged, the committed file is kept; its
-   approval covers the file.` or `Human_Male: updated; Human_Male.blend changed
-   after the 'rig' approval.` A step that finds a broken rule stops the script
+   each asset `Human_Male: unchanged, the committed file is kept.` or
+   `Human_Male: updated.` with a line per stage, such as `Human_Male: the 'model'
+   approval holds.` or `Human_Male: the 'rig' content changed after its approval;
+   review it and approve it again ...`: an edit of only the weights leaves the
+   `model` approval holding. A step that finds a broken rule stops the script
    and names the rule and the step's log, such as `bodies differ in topology`
    or `Male_Body: mirror error ...`.
 4. Review the sheets and the review files; press Space in Blender to play the
@@ -1785,8 +1911,8 @@ with the commands of
 Expected result: a line per step with its time, and the script names the review
 file `artifacts/human-base/Human_Base_Rig.blend`, the sheets in
 `artifacts/human-base/review`, and the report, and says of each body that it
-was updated and that its file changed after its last approval, such as
-`Human_Male: updated; Human_Male.blend changed after the 'rig' approval.` The
+was updated and which approvals no longer hold, such as `Human_Male: updated.`
+and `Human_Male: the 'rig' content changed after its approval; ...`. The
 report gives each lid's closed turn and how far the closed lids lie apart. Look
 closest at `<Asset>_rig_face.png`, with the jaw opening and the lids closing,
 `<Asset>_rig_arms.png`, `<Asset>_rig_hips.png`, `<Asset>_rig_hands.png`, and
@@ -1917,7 +2043,7 @@ In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 library changes its export, which every garment template and every garment
 texture with masks records as a clip source it was checked in, so they are
 exported again after it: `Export-ArtAsset.ps1` checks them in the new clip, and
-their approvals stay, since their files do not change.
+their approvals stay, since their content does not change.
 
 ### Make A Clip
 
@@ -1928,9 +2054,11 @@ their approvals stay, since their files do not change.
    ```
 
    Expected result: `Human_Actions is up to date: its armature is the current
-   rig of art/Characters/Human_Male.`, or after a rig change `Synced
-   Human_Actions from art/Characters/Human_Male: ...` followed by the reminder
-   to review and approve the clips again, and one line per locomotion clip with
+   rig of art/Characters/Human_Male.` and `Human_Actions: the 'animation'
+   approval holds.`, or after a rig change `Synced Human_Actions from
+   art/Characters/Human_Male: ...` followed by `Human_Actions: the 'animation'
+   content changed after its approval; ...` and the reminder to review and
+   approve the clips again, and one line per locomotion clip with
    how far a foot on the ground slides, such as `Humanoid Walk: 28 frames,
    1.4 m/s, hips 0.810 to 0.824 m, largest slip of a foot on the ground
    8.4 mm`. To start a locomotion clip from the gait model instead of an empty
@@ -1960,8 +2088,10 @@ their approvals stay, since their files do not change.
    button in the Action Editor), so Blender keeps it when no armature plays it,
    and add its name to `clips` in `asset.json`. Then clear the armature's active
    action, reset its pose to the rest pose (`Alt+G`, `Alt+R` on every bone), and
-   save. Until the library is exported again, `Verify-ArtAssets.ps1` reports its
-   export record as stale.
+   save. The approval in the next step records the library's new content; until
+   then `Verify-ArtAssets.ps1` reports that the file was saved after its content
+   was read, and until the library is exported again, its export record as
+   stale.
 4. Render the review sheet, review it and the clip in Blender, then approve,
    export, and verify:
 
@@ -1984,7 +2114,7 @@ their approvals stay, since their files do not change.
    is not the current rig "Male" ...`; sync it first. Commit the `.blend` file,
    `asset.json`, the FBX, and its `.meta` file together.
 5. Export every garment template and texture again, since they record the
-   library export they were checked in; their files do not change, so their
+   library export they were checked in; their content does not change, so their
    approvals stay:
 
    ```powershell
@@ -2276,7 +2406,9 @@ describes.
 
    Expected result: `Tattoo is up to date: every body is there and shows the
    current paint of the canvas.`, or `Synced Tattoo: ...` for a new or changed
-   file. `-Force` rebuilds the bodies even when the file is current.
+   file, then whether the approval holds for the content, such as `Tattoo: the
+   'paint' approval holds.`, and the command that approves it when it does not.
+   `-Force` rebuilds the bodies even when the file is current.
 2. Open the file in Blender. Expected result: the Outliner holds `Canvas >
    Canvas`, to the left of the bodies, and `Reference` with `Paint_Male`,
    `Paint_Female`, and the ground. Select `Canvas`, switch to Texture Paint, and
@@ -2371,7 +2503,8 @@ Its file holds:
   triangles at the crown, with the same point attributes. `Sync-CageAsset.ps1`
   adds a region the reference lacks, built on the first body. The figure scale
   and the lines it was last fitted with are custom properties of `Cage`, so
-  changing them in `asset.json` changes the file and needs a new approval.
+  changing them in `asset.json` changes the cage's content after a sync and
+  needs a new approval.
 - Per body, the collection `Fit_<Label>` with the body's armature and the cage's
   version `Cage_<Label>` on it, and in the `Reference` collection the body's
   source body, eyes, teeth, and tongue. The file opens with the male and its
@@ -2480,8 +2613,8 @@ the regions added to the cage changed none of its other vertices:
 
 A version corrected by hand keeps its corrections, because the point attribute
 `fitted` holds the shape the last fitting gave, and the difference to it is
-applied again. A file that a sync leaves as it was is not saved, so its approval
-stays valid.
+applied again. A file that a sync leaves as it was is not saved, and a sync that
+saves the file says whether the approval still holds for its content.
 
 Its `model` stage checks that the bodies are the current ones of their files,
 that the cage was fitted with the figure scale and the lines of `asset.json` and
@@ -2526,8 +2659,9 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    Expected result: one report line per body, such as `Cage_Male: <n> faces,
    <near> to <far> mm from the skin, median <m> mm, <k> vertices span pits more
    than 5 mm deep`, `Synced Humanoid: ...` or `Humanoid is up to date: ...`, the
-   path of the review sheet, and `Humanoid meets every rule, and its stage is
-   approved for this file.` or the command that approves it. A cage that lacks a
+   path of the review sheet, whether the approval holds, such as `Humanoid: the
+   'model' approval holds.`, and `Humanoid meets every rule, and its stage is
+   approved for this content.` or the command that approves it. A cage that lacks a
    region the pipeline has first prints `Added the regions <regions> to the
    cage, built on Male.`; its other vertices stay exactly where they were. A
    second run prints `Humanoid is up to date: ...` and leaves the file as it is.
@@ -2554,8 +2688,9 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    Expected result: the male body in `Cage_Male`; the female and `Cage_Female`
    are hidden in the Outliner below `Fit_Female`, and the reference below
    `CageReference`. Correct a version in Edit Mode only where the fitting needs
-   help, save, and run the sync again; it keeps the correction. Close Blender
-   without saving otherwise.
+   help, save, and run the sync again; it keeps the correction and records the
+   new content. Close Blender without saving otherwise, so the file stays as it
+   is.
 4. Approve it and verify:
 
    ```powershell
@@ -2566,8 +2701,9 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    Expected result: `Approved the 'model' stage of Humanoid (faces=<n>).` and
    then the problems of the garment templates fitted to the old cage file. The
    cage has no export; commit the `.blend` file and `asset.json` together. Every
-   template on the cage records its approved file, so sync, review, approve, and
-   export its templates again, in the order of their layers, and their textures
+   template on the cage records the cage's file in `cageSourceSha256`, so sync,
+   review, approve, and export its templates again, in the order of their
+   layers, and their textures
    after them, as [Make A Garment](#make-a-garment) and
    [Make A Garment Texture](#make-a-garment-texture) describe; a template whose
    regions did not move keeps its shape, its weights, and its exported files.
@@ -2712,7 +2848,9 @@ the point attribute `fitted_under_headwear`.
   three times, each time halfway to the mean of its neighbours, as the rig evens
   the skin's weights, and the weights keep four bones. The rule reaches only the
   trousers today; every other template's fixed cloth lies outside the band.
-- A file that this leaves as it was is not saved, so its approvals stay valid.
+- A file that this leaves as it was is not saved. A sync that saves the file
+  records its content and says which approvals still hold: an edit of only the
+  weights, for example, leaves the `model` approval holding.
 
 ### Turned Edges
 
@@ -3011,8 +3149,8 @@ topology, which the body's export writes next to its model: its editable mesh's
 shows a template only with a texture.
 
 A template is exported after its cage is approved and after its bodies and the
-animation libraries of its skeleton are exported from their current files, and
-it records the cage's approved file and their exports, so `Verify-ArtAssets.ps1`
+animation libraries of its skeleton are exported from their current content, and
+it records the cage's file and their exports, so `Verify-ArtAssets.ps1`
 fails when the cage's file changed or a body or a library has a newer export
 than the one the template was fitted to and checked in: sync, review, and export
 the template again. It also records the exports of the templates it was checked
@@ -3097,7 +3235,8 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes, and the faces each hides of a template worn under it are faces of that template, whose face count it records; the sentences of the motion and pair reports, each with the deepest place per phase, the pair's with the most hidden triangles that show a hole per phase, and the rules of the skin and of a pair at rest. |
 | `test_rig_tables.py` | The test poses, the rig's zone, chain, and hinge tables, and the gait model against the Humanoid skeleton, the exported clips, and the Unity locomotion speeds. |
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
-| `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
+| `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns, the version of the content fingerprints and the parts of every stage, and that every content record and approval of an `asset.json` has the parts, stages, and fields of its kind. |
+| `test_content_core.py` | The content fingerprints that approvals bind to: rounding, with negative zero, noise below the rounding, and a change above it; named things in any order; the chain of the stages, a shape that changes every stage, weights that keep the model, and a clip that changes only the animation. It needs numpy. |
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the exports of the templates under its template and that name a wrong split's entry and key. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
@@ -3106,7 +3245,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
 | `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth; the one hidden list for every body; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the body's drawn faces split as the game splits them, which the pull-in and the motion check follow inside; the phases of its report; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the eight files that need it are skipped and the run says `skipped=8`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the nine files that need it are skipped and the run says `skipped=9`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -3220,7 +3359,8 @@ slot, so a shirt and a jerkin replace each other.
    such as `Tunic_Male hides <h> of the <f> faces of Trousers worn under it`,
    the pair check over them, such as `Trousers under Tunic_Male: <t> drawn
    triangles of it lie under Tunic_Male; the deepest they come through it in
-   <k> poses and clip frames: the rest pose 0.00 mm, the test poses ...`, and
+   <k> poses and clip frames: the rest pose 0.00 mm, the test poses ...`, a line
+   per stage, such as `Tunic: the 'model' stage is not approved yet.`, and
    `Tunic meets every rule. Review it, ...`. A second run prints
    `Tunic is up to date: ...` and leaves the file as it is. A broken rule stops
    it with the list of rules, such as a version that leaves its band, with the
@@ -3347,15 +3487,19 @@ export a material of the same name.
   transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
   the format of the template's data. The masks are computed in the template's
   file with its bodies, cage, and clips, so the export runs only when the
-  template is approved and exported from its current file, its export still
-  matches its cage, its bodies, and the clips of its skeleton, and the texture
-  was approved on that file of the template, since its fit and masks change with
-  the template's shape and not only with its UVs. An animation library that is
-  not exported from its current file stops only a texture with transparent
-  parts, before anything is written. The export records the
-  `export.sourceSha256` of the template's export it was checked against, so
+  template is approved and exported from its current content, its export still
+  matches its cage, its bodies, and the clips of its skeleton, and the texture is
+  painted in the template's current UVs: the `templateUv` part of its content is
+  the template's `uv` part. An animation library that is not exported from its
+  current content stops only a texture with transparent parts, before anything
+  is written. The export records the `export.contentSha256` of the template's
+  export it was checked against in `garmentContentSha256`, so
   `Verify-ArtAssets.ps1` fails when the template has a newer export: sync,
-  review, and export the texture again.
+  review, and export the texture again. A change of the template's shape that
+  keeps its UVs leaves the texture's approval holding and needs only a new export
+  of the texture, whose masks follow the shape; a change of its UVs needs
+  `Sync-TextureAsset.ps1`, and a new review and approval when the sync changes
+  the texture.
 
 In Unity, `Create Missing Materials` creates
 `Assets/Art/Materials/Garments/M_Garment_<Name>.mat` with the garment shader,
@@ -3428,11 +3572,13 @@ at the front where the skin shows between the laces.
    .\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolTunic
    ```
 
-   Expected result: the path of the review sheet and `WoolTunic meets every
-   rule. Review it, then record the approval with tools/art/Approve-ArtAsset.ps1
-   -Asset art/GarmentTextures/WoolTunic -Stage texture.` After the template's
-   UVs changed, such as after a rebuild, it first prints `Moved WoolTunic to the
-   new UVs of Tunic: ...` and the notes of the move.
+   Expected result: the path of the review sheet, `WoolTunic: the 'texture'
+   stage is not approved yet.`, and `WoolTunic meets every rule. Review it, then
+   record the approval with tools/art/Approve-ArtAsset.ps1 -Asset
+   art/GarmentTextures/WoolTunic -Stage texture.` After the template's UVs
+   changed, such as after a rebuild, it first prints `Moved WoolTunic to the new
+   UVs of Tunic: ...` and the notes of the move. A move that keeps the image as it
+   is, because only the template's shape changed, leaves the approval holding.
 3. Look at `artifacts\art-previews\WoolTunic.png`, the sheet that
    [Garment Textures](#garment-textures) describes. Expected result: the
    texture lies on both bodies as painted, with its trim at the template's hems,

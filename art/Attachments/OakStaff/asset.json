@@ -11,14 +11,26 @@
     "attackClip": "Cast",
     "attackRelease": 0.15,
     "launchPoint": [0.0, 0.7, 0.0],
+    "content": {
+        "version": 1,
+        "sourceSha256": "3fbb9ff9b4fc777e2f7bd8119dab7292c72921e50dd4848b0d2db6c96863b713",
+        "stages": {
+            "model": "6d6b4b0d04b914d26bb7038789fd7ff6669c53dd830ccfb9ab71ac46e851619b"
+        },
+        "parts": {
+            "materials": "ea2130aecfe6346e2c92683bd85cc5139bc9700c6c7b30135b0a6a497cea75da",
+            "shape": "e30965ab3a0de6ca7709075a6a9b9ea243ef46b92ac43ead9a688d3d09b81a8d",
+            "uv": "778ddcf73650e78110c3a1fe12daeebb2a4d6616626a93ef866bcddbdaf54dc5"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-27",
-            "sourceSha256": "3fbb9ff9b4fc777e2f7bd8119dab7292c72921e50dd4848b0d2db6c96863b713"
+            "contentSha256": "6d6b4b0d04b914d26bb7038789fd7ff6669c53dd830ccfb9ab71ac46e851619b"
         }
     },
     "export": {
-        "sourceSha256": "3fbb9ff9b4fc777e2f7bd8119dab7292c72921e50dd4848b0d2db6c96863b713",
+        "contentSha256": "6d6b4b0d04b914d26bb7038789fd7ff6669c53dd830ccfb9ab71ac46e851619b",
         "targetSha256": "f4d2e696213ff74ea821758c8671ec3ea038a62661ea7bdf2f64737bef0c6998",
         "materials": [
             {

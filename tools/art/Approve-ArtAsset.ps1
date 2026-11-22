@@ -1,7 +1,9 @@
 # Records the approval of one review stage of an art asset in its asset.json, after the
 # reviewer has looked at the model in Blender or on the Render-ArtPreview.ps1 sheet. The
-# approval stores the SHA-256 of the .blend file, so any later change to the file needs a new
-# approval before Export-ArtAsset.ps1 accepts it. See docs/ART_PIPELINE.md.
+# approval stores the content fingerprint of its stage, which the validation reads from the .blend
+# file, so a change of that content, or of an earlier stage's, needs a new approval before
+# Export-ArtAsset.ps1 accepts it, while a file saved again with the same content keeps it. See
+# docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -44,18 +46,23 @@ if ($manifest.Kind -eq "garment") {
     }
 }
 
-# Only an asset that meets the export rules can be approved.
+# Only an asset that meets the export rules can be approved. The validation also reads the content of
+# the file, which the record and the approval take.
 $blender = Resolve-ArtBlender $BlenderPath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage))
+$null = Update-ArtContentRecord $blender $manifest $validation
+
+# Every earlier stage's approval must hold for this content.
+for ($i = 0; $i -lt $stageIndex; $i++) {
+    $earlier = $manifest.Stages[$i]
+    if (-not (Test-ArtStageHolds $manifest $earlier)) {
+        throw "The '$earlier' content of $($manifest.Name).blend changed after its approval; review it and approve the '$earlier' stage again before '$Stage'."
+    }
+}
 
 $manifest.Approvals[$Stage] = [ordered]@{
     date = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
-    sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-}
-
-# A texture is reviewed on its template, so its approval records the template's file.
-if ($manifest.Kind -eq "texture") {
-    $manifest.Approvals[$Stage].garmentSourceSha256 = Get-ArtFileSha256 $manifest.Garment.SourcePath
+    contentSha256 = $manifest.Content.stages[$Stage]
 }
 
 # An approved cage records the exports of the bodies it was fitted to.
@@ -63,12 +70,12 @@ if ($manifest.Kind -eq "cage") {
     $manifest.FittedTo = Get-ArtCageBodies $manifest
 }
 
-# A new approval of an earlier stage reopens every later stage.
-for ($i = $stageIndex + 1; $i -lt $manifest.Stages.Count; $i++) {
-    $manifest.Approvals.Remove($manifest.Stages[$i])
-}
-
 Write-ArtAssetManifest $manifest
 $triangles = ($validation | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
 $what = if ($manifest.Kind -eq "animations") { "clips=$($manifest.Clips -join ',')" } else { $triangles }
 Write-Host "Approved the '$Stage' stage of $($manifest.Name) ($what)."
+
+# A later stage keeps its approval, which holds as long as the content up to it is the approved one.
+foreach ($line in @(Get-ArtStageReport $manifest | Select-Object -Skip ($stageIndex + 1))) {
+    Write-Host $line
+}

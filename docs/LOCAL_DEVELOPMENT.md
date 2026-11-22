@@ -853,10 +853,11 @@ Expected result:
   projects, local package paths, Unity lock coverage, one LiteNetLib version as
   [Dependency Updates](#dependency-updates) requires, and no tracked client
   builds.
-- `Verified <n> art asset(s).`: every asset below `art/` is approved for its
-  current `.blend` file, and every model below `src/Client/Assets/Art/Models` is
-  the recorded export of one of them. It needs no Blender and reads the `.blend`
-  hashes from Git LFS pointers when the files are not downloaded;
+- `Verified <n> art asset(s).`: the approvals of every asset below `art/` hold
+  for the content of its current `.blend` file, and every model below
+  `src/Client/Assets/Art/Models` is the recorded export of one of them. It needs
+  no Blender and reads the `.blend` hashes from Git LFS pointers when the files
+  are not downloaded;
   [Art Pipeline](ART_PIPELINE.md#review-stages) describes the approvals.
 - The art pipeline's Python tests pass.
 - `Observability verification passed: collector, Prometheus, alert tests, and

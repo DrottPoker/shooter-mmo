@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/HoodDown",
+    "content": {
+        "version": 1,
+        "sourceSha256": "575530fd9f2c18247f3739c38374a6405889300b50e1392f0426c20ade7f76bf",
+        "stages": {
+            "texture": "09f85a52acd57b4adce9d90b8fb1ff0bce2541c85cbf02bb622dfe7fe52143d4"
+        },
+        "parts": {
+            "image": "5c1868d69cd9d509c8ddeeedeeb8d44519df31882f8f2c7a9fc87f46dedadd95",
+            "material": "076152d95f35676b7eb1b8523c4b54bcee841677566b57eaef645a8c6ffa2c61",
+            "templateUv": "f292c1f32a0011aa89df34987e4435ec3ec1da1742ea4f9133d482df36f28599"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "575530fd9f2c18247f3739c38374a6405889300b50e1392f0426c20ade7f76bf",
-            "garmentSourceSha256": "a10466ca64fd233666c3dcbfe2be60f2e2733c874071ed8ca3eadc73733f02c3"
+            "contentSha256": "09f85a52acd57b4adce9d90b8fb1ff0bce2541c85cbf02bb622dfe7fe52143d4"
         }
     },
     "export": {
-        "sourceSha256": "575530fd9f2c18247f3739c38374a6405889300b50e1392f0426c20ade7f76bf",
-        "garmentSourceSha256": "a10466ca64fd233666c3dcbfe2be60f2e2733c874071ed8ca3eadc73733f02c3",
+        "contentSha256": "09f85a52acd57b4adce9d90b8fb1ff0bce2541c85cbf02bb622dfe7fe52143d4",
+        "garmentContentSha256": "6c355e949f1ca95fd1fcfe5f2b0d32cd0a0db39290c872bf1e6809ea148904b0",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodDown",

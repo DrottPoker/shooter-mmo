@@ -3,7 +3,8 @@
 # to key the clips on, and in the Reference collection the rig's body bound to it, every preview
 # character copying its pose, and a ground grid. A library whose armature is already the current
 # rig is left as it is. Otherwise its armature and bodies are replaced and every action is kept,
-# so the file changes and needs a new review and approval. -Refit also moves every clip from the
+# so the content changes and needs a new review and approval; the script records the content of the
+# file and says whether the approval holds. -Refit also moves every clip from the
 # rest pose of the old rig to the new rig's, for a rig whose joints moved, so the clips look as
 # they did, and keeps the library as it was below artifacts/animation-libraries. -Generate adds
 # clips of the human gait model, and the hand pose Grip fitted to the body's hand, that the library
@@ -160,6 +161,11 @@ else {
     }
 }
 
-if ($changed -and @($manifest.Clips).Count -gt 0) {
+$null = Update-ArtContentRecord $blender $manifest
+foreach ($line in @(Get-ArtStageReport $manifest)) {
+    Write-Host $line
+}
+
+if (@($manifest.Clips).Count -gt 0 -and -not (Test-ArtStageHolds $manifest "animation")) {
     Write-Host "Review the clips, then record the approval with tools/art/Approve-ArtAsset.ps1 -Stage animation."
 }

@@ -4,7 +4,8 @@
 # collection from it, with its normals and weights. -Weights also solves the skin weights again from
 # the joints the files have, and -Rig places the joints again from the models first. Then it checks
 # both characters, replaces a committed file only when its content changed, and writes review
-# files, review sheets, and a quality report. A changed file needs a new review and approval with
+# files, review sheets, and a quality report. It records the content of both files and says which
+# approvals hold; a stage whose content changed needs a new review and approval with
 # Approve-ArtAsset.ps1. A body that the build wrote has no rig yet: its first rig is -Rig. See
 # docs/ART_PIPELINE.md.
 [CmdletBinding(DefaultParameterSetName = "Parts")]
@@ -140,12 +141,13 @@ $toReview = 0
 foreach ($character in $characters) {
     $state = if ($character.Changed) { "updated" } else { "unchanged, the committed file is kept" }
     $manifest = Read-ArtAssetManifest (Split-Path -Parent $character.Source)
-    $problem = Get-ArtReviewProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
-    if ($null -eq $problem) {
-        Write-Host "$($character.Asset): $state; its approval covers the file."
+    $null = Update-ArtContentRecord $blender $manifest
+    Write-Host "$($character.Asset): $state."
+    foreach ($line in @(Get-ArtStageReport $manifest)) {
+        Write-Host $line
     }
-    else {
-        Write-Host "$($character.Asset): $state; $problem."
+
+    if (@($manifest.Stages | Where-Object { -not (Test-ArtStageHolds $manifest $_) }).Count -gt 0) {
         $toReview++
     }
 }

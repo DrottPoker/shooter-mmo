@@ -25,18 +25,32 @@
     "cloth": null,
     "dyes": 0,
     "triangleBudget": 3000,
+    "content": {
+        "version": 1,
+        "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
+        "stages": {
+            "model": "4b274e49e44e7c0ab6fbe8d56eab29b3f3b53ba083b3e9cc7bb7bb9609761bea",
+            "rig": "802587e55dbcab0463b369cbe9f9578e69d5d1ae7e87ea7999440689b837891a"
+        },
+        "parts": {
+            "materials": "79ee4467f75428bdebabdb632c84b4bd5583f7282ee23266f433f36d49e12212",
+            "shape": "3cfae07415f490279a54282d5e89c0414a8ef35523589c43a3fe493f47470ddd",
+            "uv": "ede52ba0341d2d7287d47f29f3e1f16fcf7449a2b2221c8224b9b226aed1237b",
+            "weights": "db98a77484d2d9b535b0c7112e47b32d5c0e1a5e6d5fe1585a3ffa861c6cc082"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-22",
-            "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62"
+            "contentSha256": "4b274e49e44e7c0ab6fbe8d56eab29b3f3b53ba083b3e9cc7bb7bb9609761bea"
         },
         "rig": {
             "date": "2026-11-22",
-            "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62"
+            "contentSha256": "802587e55dbcab0463b369cbe9f9578e69d5d1ae7e87ea7999440689b837891a"
         }
     },
     "export": {
-        "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
+        "contentSha256": "802587e55dbcab0463b369cbe9f9578e69d5d1ae7e87ea7999440689b837891a",
         "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
         "models": [
             {
@@ -57,11 +71,11 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "678b56d74528924933abc6b5458fa0d56c32da33a5ded4ff759cd43d058712aa" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c" }
+            { "garment": "art/Garments/Boots", "contentSha256": "040d12931b9bc6802271bfae4929e564a6e655ae9feec9a19fc426f20c8b252f" },
+            { "garment": "art/Garments/Trousers", "contentSha256": "30536cec7a570224d2659daab9e074c4a3810ee2a6d34233d459212e1d17a3fb" }
         ],
         "materials": [
             {

@@ -6,14 +6,26 @@
     "part": "Body",
     "bodies": ["art/Characters/Human_Female"],
     "layer": 910,
+    "content": {
+        "version": 1,
+        "sourceSha256": "4eea11313aabfc184ab0e5500fd6e8f95ee2006c0fe563b1c12b1c122088bc7a",
+        "stages": {
+            "paint": "18da662e32dee8e065ae5a60ba0db92f298001f8a64e95af999bd6b46223f9d7"
+        },
+        "parts": {
+            "body:Female": "d0d8708b046c5c7b9add2ceea3dcac55b7bc4031e80fb88f3a3c3150070ef3f2",
+            "canvas": "8e9afad4d4b88e72e7f4d8ca7e47948f09bf3b2a8d195968e474c6216ea19125",
+            "paint": "2b6a332346fac45891c18f706765b404dc01d338b1802989be9e005b1de167c2"
+        }
+    },
     "approvals": {
         "paint": {
             "date": "2026-11-21",
-            "sourceSha256": "4eea11313aabfc184ab0e5500fd6e8f95ee2006c0fe563b1c12b1c122088bc7a"
+            "contentSha256": "18da662e32dee8e065ae5a60ba0db92f298001f8a64e95af999bd6b46223f9d7"
         }
     },
     "export": {
-        "sourceSha256": "4eea11313aabfc184ab0e5500fd6e8f95ee2006c0fe563b1c12b1c122088bc7a",
+        "contentSha256": "18da662e32dee8e065ae5a60ba0db92f298001f8a64e95af999bd6b46223f9d7",
         "textures": [
             {
                 "name": "T_Paint_Bra_Female",

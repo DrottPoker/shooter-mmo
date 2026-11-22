@@ -5,14 +5,27 @@
     "part": "Face",
     "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
     "layer": 100,
+    "content": {
+        "version": 1,
+        "sourceSha256": "28a7eba09b3cff87a97680f3c13307dc7f337c9ea592843e7b761b5271672afa",
+        "stages": {
+            "paint": "aaac0b3e4eb05b3f5545fbc0ac04b8f9db2b814ead643cff409300d5d3459a91"
+        },
+        "parts": {
+            "body:Female": "247110437b6354b79f389877b5ed5eb3e60208d662e215175f2843be325f7e0a",
+            "body:Male": "740731d984f8f5ea3f2cba015d2e57349a904fde1b30c2899bad48aeee72cf6e",
+            "canvas": "7f3c60c176d4dd7296fa4498ed1e6ce5e2f45a2707d504177d843a2bdb90fd44",
+            "paint": "ed27379f16a656f930dc3d7b57deedc57d73e35fd565d632a66188312df2de10"
+        }
+    },
     "approvals": {
         "paint": {
             "date": "2026-11-21",
-            "sourceSha256": "28a7eba09b3cff87a97680f3c13307dc7f337c9ea592843e7b761b5271672afa"
+            "contentSha256": "aaac0b3e4eb05b3f5545fbc0ac04b8f9db2b814ead643cff409300d5d3459a91"
         }
     },
     "export": {
-        "sourceSha256": "28a7eba09b3cff87a97680f3c13307dc7f337c9ea592843e7b761b5271672afa",
+        "contentSha256": "aaac0b3e4eb05b3f5545fbc0ac04b8f9db2b814ead643cff409300d5d3459a91",
         "textures": [
             {
                 "name": "T_Paint_Scar_Male",

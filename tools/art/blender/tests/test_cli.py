@@ -20,11 +20,13 @@ from blender_source import BLENDER_ROOT, REPOSITORY_ROOT, load, source_text  # n
 ART_SCRIPTS = REPOSITORY_ROOT / "tools" / "art"
 # What Blender itself takes before the "--" that hands the rest to the script.
 BLENDER_OPTIONS = {"--background", "--factory-startup", "--python-use-system-env", "--python-exit-code", "--python",
-                   "--disable-autoexec", "--version"}
+                   "--python-expr", "--disable-autoexec", "--version"}
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError", "parse_args")
 texture = load("art_pipeline/texture.py", "DYE_LEVEL")
-cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture)
+content = load("art_pipeline/content.py", "PROOF_EDITS")
+cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture,
+           content=content)
 
 
 def subcommands() -> dict[str, argparse.ArgumentParser]:
@@ -78,7 +80,7 @@ class ParserTests(unittest.TestCase):
     def test_every_command_the_scripts_start_exists_and_every_command_is_started_by_a_script(self):
         text = all_powershell()
         started = set(re.findall(r'"--",\s*"([a-z][a-z-]+)"', text))
-        started |= set(re.findall(r'@\("(validate|export|preview|reference|clips)"', text))
+        started |= set(re.findall(r'@\("(validate|export|content|content-proof|preview|reference|clips)"', text))
         self.assertEqual(started, set(subcommands()))
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
@@ -239,7 +241,8 @@ class PairSourceTests(unittest.TestCase):
         body = self.function("Export-ArtTexture")
         self.assertIn("Get-ArtGarmentPairs $template", body)
         self.assertIn("pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })", body)
-        self.assertIn("has changed since its export", body)
+        self.assertIn("Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)", body)
+        self.assertIn("has changed since its export", self.function("Get-ArtExportChangeProblem"))
         self.assertIn('"--opaque-only", $opaqueReason', body)
         self.assertIn("templates of lower layers worn under its template: {args.opaque_only}.", source_text("art_pipeline_cli.py"))
 
