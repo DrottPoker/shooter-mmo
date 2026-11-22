@@ -3253,3 +3253,186 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
 
     return $arguments
 }
+
+function Get-ArtCacheArguments([string]$Blender, $Manifest, [switch]$NoCache, [switch]$Preview, [object[]]$Pairs) {
+    # The fingerprints by which the cache of the checks of a garment template or a garment texture keys
+    # their results, from the content records of the other assets they read, each made current first:
+    # the fit of every body from its export while that export is current, the content of every clip
+    # library and of every template of a lower layer, and for a preview or a texture the cage's content,
+    # which a template's validation already passes, and for a texture's preview its image, whose file
+    # the preview does not open. Blender reads the content of the file it opens itself. A fingerprint
+    # left out leaves the units that need it computed and not cached. -NoCache computes every unit and
+    # neither reads nor writes the cache. -Pairs gives the templates of lower layers when the caller
+    # has them, as Get-ArtGarmentPairs gives them. The cache never stops a command: an asset whose
+    # fingerprint cannot be had is left out with a line that says why, and its own commands report its
+    # problems. See docs/ART_PIPELINE.md, Cache Of The Garment Checks.
+    if (@("garment", "texture") -notcontains $Manifest.Kind) {
+        return @()
+    }
+
+    if ($NoCache) {
+        return @("--no-cache")
+    }
+
+    $template = if ($Manifest.Kind -eq "texture") { $Manifest.Garment } else { $Manifest }
+    $arguments = @()
+    foreach ($body in @($template.Bodies)) {
+        try {
+            $bodyManifest = Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)
+            $null = Update-ArtContentRecord $Blender $bodyManifest
+            $problem = Get-ArtExportChangeProblem $bodyManifest
+            if ($null -eq $problem -and [string]::IsNullOrEmpty($bodyManifest.Export.fitSha256)) {
+                $problem = "its export records no fit"
+            }
+
+            if ($null -ne $problem) {
+                Write-ArtUncached $body.Asset $problem
+                continue
+            }
+
+            $arguments += @("--body-fit", "$($body.Root)=$([string]$bodyManifest.Export.fitSha256)")
+        }
+        catch {
+            Write-ArtUncached $body.Asset $_.Exception.Message
+        }
+    }
+
+    $libraries = @()
+    try {
+        $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | Where-Object { $_.Clips.Count -gt 0 })
+    }
+    catch {
+        Write-ArtUncached "the animation libraries of $($Manifest.Skeleton)" $_.Exception.Message
+    }
+
+    foreach ($library in $libraries) {
+        try {
+            $current = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $library.Asset)
+            $null = Update-ArtContentRecord $Blender $current
+            $problem = Get-ArtContentProblem $current
+            if ($null -ne $problem) {
+                Write-ArtUncached $library.Asset $problem
+                continue
+            }
+
+            $arguments += @("--clip-content", "$($library.SourcePath)=$(Get-ArtExportedContent $current)")
+        }
+        catch {
+            Write-ArtUncached $library.Asset $_.Exception.Message
+        }
+    }
+
+    if (-not $PSBoundParameters.ContainsKey("Pairs")) {
+        try {
+            $Pairs = @(Get-ArtGarmentPairs $template)
+        }
+        catch {
+            $Pairs = @()
+            Write-ArtUncached "the templates of lower layers under $($template.Name)" $_.Exception.Message
+        }
+    }
+
+    foreach ($pair in @($Pairs)) {
+        try {
+            $current = $pair
+            if ($null -ne (Get-ArtContentProblem $current)) {
+                $current = Read-ArtAssetManifest $pair.Directory
+                $null = Update-ArtContentRecord $Blender $current
+            }
+
+            $problem = Get-ArtContentProblem $current
+            if ($null -ne $problem) {
+                Write-ArtUncached $pair.RelativeDirectory $problem
+                continue
+            }
+
+            $arguments += @("--pair-content", "$($current.Name)=$([string]$current.Content.stages['rig'])")
+        }
+        catch {
+            Write-ArtUncached $pair.RelativeDirectory $_.Exception.Message
+        }
+    }
+
+    if ($Preview -or $Manifest.Kind -eq "texture") {
+        try {
+            $null = Update-ArtContentRecord $Blender $template.Cage
+            $arguments += @("--cage-content", (Get-ArtCageContent $template.Cage))
+        }
+        catch {
+            Write-ArtUncached "the cage of $($template.Name)" $_.Exception.Message
+        }
+    }
+
+    if ($Preview -and $Manifest.Kind -eq "garment") {
+        $arguments += @("--roots", ($Manifest.RootObjects -join ","))
+    }
+
+    if ($Preview -and $Manifest.Kind -eq "texture") {
+        try {
+            $null = Update-ArtContentRecord $Blender $Manifest
+            $problem = Get-ArtContentProblem $Manifest
+            if ($null -eq $problem) {
+                $arguments += @("--texture-content", [string]$Manifest.Content.parts["image"])
+            }
+            else {
+                Write-ArtUncached $Manifest.RelativeDirectory $problem
+            }
+        }
+        catch {
+            Write-ArtUncached $Manifest.RelativeDirectory $_.Exception.Message
+        }
+    }
+
+    return $arguments
+}
+
+function Invoke-ArtGarmentSheet([string]$Blender, $Manifest, [string]$Output, [switch]$NoCache) {
+    # Renders the review sheet of a garment template with what it covers on every body, its own checks
+    # through the cache of the checks, and returns Blender's result lines.
+    return Invoke-ArtBlender $Blender $Manifest (@("preview", "--output", $Output, "--kind", "garment", "--garment", $Manifest.Name) +
+        (Get-ArtGarmentCoverArguments $Manifest) + (Get-ArtGarmentClipArguments $Manifest) +
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
+}
+
+function Invoke-ArtTextureSheet([string]$Blender, $Manifest, [string]$Output, [switch]$NoCache) {
+    # Renders the review sheet of a garment texture in its template's file, with the texture on every
+    # version and, when it has transparent parts, its own masks through the cache of the checks, and
+    # returns Blender's result lines.
+    return Invoke-ArtBlender $Blender $Manifest.Garment (@("preview", "--output", $Output, "--kind", "texture",
+            "--roots", ($Manifest.RootObjects -join ","), "--garment", $Manifest.Garment.Name, "--texture", $Manifest.Name,
+            "--texture-file", $Manifest.SourcePath) + (Get-ArtGarmentCoverArguments $Manifest.Garment) +
+        (Get-ArtGarmentClipArguments $Manifest) + (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
+}
+
+function Write-ArtUncached([string]$Asset, [string]$Reason) {
+    # The line that says which checks the cache leaves out, and why: the checks that read the asset are
+    # computed and not cached.
+    Write-Host "The checks that read $Asset are not cached: $($Reason.Trim().TrimEnd('.'))."
+}
+
+function Format-ArtElapsed([string]$Name, [System.Diagnostics.Stopwatch]$Watch, [string[]]$Results) {
+    # The line that ends the work on an asset: the seconds it took and, when its Blender runs checked a
+    # garment template or a masked texture, how many of the units of those checks came from their cache.
+    $seconds = $Watch.Elapsed.TotalSeconds.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+    $units = 0
+    $cached = 0
+    $notes = New-Object System.Collections.Generic.List[string]
+    foreach ($line in @($Results | Where-Object { $_ -like "ART_CACHE *" })) {
+        $report = $line.Substring("ART_CACHE ".Length) | ConvertFrom-Json
+        $units += [int]$report.units
+        $cached += [int]$report.cached
+        # A sync's sheet and validation may give the same note; it is said once.
+        foreach ($note in @($report.notes | Where-Object { $null -ne $_ })) {
+            if (-not $notes.Contains([string]$note)) {
+                $notes.Add([string]$note)
+            }
+        }
+    }
+
+    if ($units -eq 0) {
+        return "$Name took $seconds s."
+    }
+
+    $why = if ($notes.Count -gt 0) { " Not cached, since $($notes -join '; ')." } else { "" }
+    return "$Name took $seconds s; $cached of $units check units came from the cache.$why"
+}

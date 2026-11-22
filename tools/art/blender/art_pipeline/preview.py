@@ -7,6 +7,7 @@ from the front right and from the back left, with the tools used in a clip held 
 and in the test poses. The sheet of a paint layer shows it on every body as the game does, up close
 where it paints, and its canvas's image."""
 
+import functools
 import math
 import os
 import tempfile
@@ -444,15 +445,25 @@ def _review_grid(versions: list[bpy.types.Object]) -> None:
         material.node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
 
 
+def _own_cover(name: str, band: str, covers: bool, actions: list, label: str) -> coverage.Coverage:
+    """What a garment version covers on its body with the skin that comes through it in motion."""
+    result = coverage.compute(name, label, band, covers)
+    coverage.check_motion(name, result, actions)
+    return result
+
+
 def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
                          libraries: list[tuple[str, list[str]]] | None = None, template: str | None = None,
-                         covers: bool = True) -> str:
+                         covers: bool = True, checked=None) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
     with its torso, or the garment itself when it is a glove or a boot, up close, then the test poses
     that bend it, and with the garment's name and band the body without it, colored: orange the
     covered faces, yellow the skin at the garment's edges that stays visible, blue the pulled-in
     vertices, and red the skin that comes through the garment in the test poses and the clips of the
-    libraries. template names the garment's template where name is left out, for the close-ups."""
+    libraries. template names the garment's template where name is left out, for the close-ups.
+    checked, given a body's armature name, gives what the garment covers there with the skin that
+    comes through it, its own check, such as from the cache of the checks; without it the sheet
+    computes it."""
     template = template or name
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
@@ -492,7 +503,8 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 return (near + far) / 2.0, max((far - near).length * 0.6, 0.08), (270.0, 180.0)
         return Vector((center.x, center.y, low.z + height * 0.68)), height * 0.22, (180.0, 0.0)
 
-    actions = coverage.load_actions(libraries or []) if name else []
+    if name and checked is None:
+        checked = functools.partial(_own_cover, name, band, covers, coverage.load_actions(libraries or []))
     with tempfile.TemporaryDirectory() as scratch:
         for index, arm in enumerate(armatures):
             shown = set(descendants(arm))
@@ -521,9 +533,7 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 body = bodies.source_body(arm.name)
                 version = bpy.data.objects[garment.version_name(name, arm.name)]
                 materials = list(body.data.materials)
-                result = coverage.compute(name, arm.name, band, covers)
-                coverage.check_motion(name, result, actions)
-                mask = _mask_material(body, result)
+                mask = _mask_material(body, checked(arm.name))
                 for slot in range(len(body.data.materials)):
                     body.data.materials[slot] = mask
                 version.hide_render = True
