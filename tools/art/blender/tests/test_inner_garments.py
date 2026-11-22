@@ -8,6 +8,7 @@ fold opposite ways, a face under a hem, a face at the margin. It needs numpy; se
 import json
 import pathlib
 import sys
+import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -24,7 +25,7 @@ garment = load("art_pipeline/garment.py", "quad_bend", "mirror_faces", "split_st
                numpy=True)
 coverage = load("art_pipeline/coverage.py", "margin_slack", "edge_margins", "beyond_margin", "turned_follow", "chosen_hidden",
                 "triangle_samples", "overlay_weights", "phase_of", "HIDE_MARGIN", "HIDE_ROUNDING", "TRIANGLE_SPACING", "REST",
-                "TEST_POSES", "DEPTH_ROUNDING", "EDGE_GAPS", "removed_under", numpy=True)
+                "TEST_POSES", "DEPTH_ROUNDING", "EDGE_GAPS", "removed_under", "drawn_triangles", numpy=True)
 texture = load("art_pipeline/texture.py", "same_corners", "refines", "in_uv_face", "places_match", numpy=True)
 
 ART = REPOSITORY_ROOT / "art"
@@ -344,6 +345,15 @@ class TriangleSampleTests(unittest.TestCase):
 
     def test_a_degenerate_triangle_has_no_places(self):
         self.assertEqual(coverage.overlay_weights(np.zeros((3, 3)), np.ones((1, 3)), np.ones((1, 2, 3))).shape, (0, 3))
+
+    def test_the_drawn_faces_of_the_body_split_as_the_game_splits_them(self):
+        # Unity's import splits every exported quad from its first corner to its third, and a larger
+        # face as a fan from its first corner; a covered face is not drawn.
+        polygons = [types.SimpleNamespace(index=0, vertices=(4, 5, 6, 7)), types.SimpleNamespace(index=1, vertices=(0, 1, 2)),
+                    types.SimpleNamespace(index=2, vertices=(1, 2, 3, 8, 9))]
+        body = types.SimpleNamespace(data=types.SimpleNamespace(polygons=polygons))
+        self.assertEqual(list(coverage.drawn_triangles(body, np.array([False, True, False]))),
+                         [(0, (4, 5, 6)), (0, (4, 6, 7)), (2, (1, 2, 3)), (2, (1, 3, 8)), (2, (1, 8, 9))])
 
 
 class PhaseTests(unittest.TestCase):

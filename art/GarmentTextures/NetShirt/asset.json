@@ -13,15 +13,15 @@
         "sourceSha256": "6185ec90a65c147b019f6371c5c3567f42801b49271cd6a549dd114ad4e0095d",
         "garmentSourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "fcc44079dcec728d3781a488f4a9ffa0538f624b7d7529f288c775d42591432e" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "cb9cebc6fd819dd0c3d7bb400b66cca66e31b23739927b2f86d28a1cdc49b8cb" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "1f360fd48a8ad69bc5bbfa8ade2703e348ca2d738563f657df32eaf453ae2249" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "a612bc20e9f6442f9460bb391a02766752ec84e3efdccceacf58ec55a8b2a12e" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
         ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c" }
         ],
         "materials": [
             {

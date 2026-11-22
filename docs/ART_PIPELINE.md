@@ -2696,6 +2696,22 @@ the point attribute `fitted_under_headwear`.
   hand keeps them, also in the other versions. `-Weights` transfers every weight
   again. A turned vertex takes its weights from its cloth instead, as
   [Turned Edges](#turned-edges) describes.
+- At the crotch the fixed cloth, never a loose part, then follows the skin's
+  crotch rule of `human_base/rig.py`, which holds a rebuilt body's crotch with
+  the pelvis. Its hold, the share of its thighs' weights, of both upper and lower
+  legs, that moves to its other bones in their proportions, or to `Hips` where
+  it has none, goes by its distance across the body from the middle plane: whole
+  within the skin's held half width of 15 mm and nothing from the skin's
+  `CROTCH_RADIUS` of 70 mm on, smoothly between. It holds within a band about the
+  crotch, the lowest vertex of the body's middle line under the trunk within
+  50 mm of the hip joints' depth: wholly from 120 mm behind it to 60 mm in front
+  and from 40 mm below it to 30 mm above, fading smoothly to nothing at 170 mm
+  behind, 100 mm in front, 90 mm below, and 60 mm above. The lengths are those
+  of a body of the rig's reference height, 1.785 m, and scale with a body's
+  height, as the skin's do. The hold is then evened out over the cloth's edges
+  three times, each time halfway to the mean of its neighbours, as the rig evens
+  the skin's weights, and the weights keep four bones. The rule reaches only the
+  trousers today; every other template's fixed cloth lies outside the band.
 - A file that this leaves as it was is not saved, so its approvals stay valid.
 
 ### Turned Edges
@@ -2781,12 +2797,20 @@ normals.
 The `rig` stage adds the rig rules of skinned assets for each version on its
 armature, the motion check, and the pair check:
 
-- The motion check follows every visible body vertex under the template through
-  the rest pose, the test poses, and every frame of every clip of the skeleton's
-  animation libraries, as [Cover Masks](EQUIPMENT_VISUALS_DESIGN.md#cover-masks)
-  describes. Skin that comes through at rest breaks the rule; skin that comes
-  through in motion is reported with how many vertices and the deepest place,
-  and the review sheet shows their faces red.
+- The motion check follows the drawn skin under the template, at every visible
+  body vertex and inside every drawn body face, through the rest pose, the test
+  poses, and every frame of every clip of the skeleton's animation libraries, as
+  [Cover Masks](EQUIPMENT_VISUALS_DESIGN.md#cover-masks) describes and
+  [What A Template Covers](#what-a-template-covers) measures. A face whose skin
+  lies through at rest breaks the rule; skin that comes through in motion is
+  reported per phase, the rest pose, the test poses, and each clip, as the pair
+  check reports, so a fault in the jog is not hidden behind a deeper one in
+  `Death`, with how many faces come through by more than 1 mm and the deepest
+  place of all, such as `Trousers_Female: 143 drawn faces of the body lie under
+  it, with 147 visible vertices; the deepest their skin comes through it in 518
+  poses and clip frames: the rest pose 0.00 mm, the test poses 5.87 mm (sit),
+  Death 10.39 mm (frame 28), Idle 0.00 mm, Walk 0.00 mm, Jog 6.31 mm (frame 5),
+  ...`, and the review sheet shows those faces red.
 - The pair check puts every exported template of another visual slot and a
   lower layer of the cage, such as the trousers under a shirt, on the bodies from
   its own file, works out which of its faces this template hides, as
@@ -2810,9 +2834,9 @@ armature, the motion check, and the pair check:
   deepest place in millimeters, and its position. The report names, per phase,
   the rest pose, the test poses, and each clip, the deepest any of them comes
   through and where, and how many come through by more than 1 mm, such as
-  `Trousers under Shirt_Male: 102 drawn triangles of it lie under Shirt_Male; the
+  `Trousers under Shirt_Male: 193 drawn triangles of it lie under Shirt_Male; the
   deepest they come through it in 518 poses and clip frames: the rest pose 0.00
-  mm, the test poses 0.64 mm (sit), Death 5.41 mm (frame 25), Idle 0.00 mm, ...`.
+  mm, the test poses 1.04 mm (sit), Death 6.53 mm (frame 25), Idle 0.00 mm, ...`.
   The faces this template hides, but for their turned edges, are followed too,
   by the cover rule that hid them: in the rest pose with the chains laid, every
   test pose, and every clip frame, from each of a face's samples, held where they
@@ -2887,7 +2911,14 @@ in the faces and vertices of the body's editable mesh:
   normal, or the nearest one.
 - **The pull-in**: a visible body vertex closer to the garment than the band's
   smallest distance, and at least 3 mm, moves inward by the difference, at most
-  3 mm.
+  3 mm. Inside a drawn face, split as the game splits it, points every 3 mm are
+  measured too, and the closest of them counts for all three corners of its
+  triangle, which move inward by what it lacks, at most 3 mm, so the middle of a
+  face under a hem keeps its room as its corners do. The pull-in is measured at
+  rest only; skin that comes through in motion is reported by the motion check
+  below, not pulled in. Unity's import splits every exported quad from its first
+  corner to its third: a check in the Editor found every quad of both bodies, the
+  trousers, and the shirt split that way and none the other way.
 - **The hidden faces**: per template of a lower layer worn under the garment,
   the ones the pair check takes, the faces of it that the garment hides, by the
   cover rule with that template as the surface. From the centre of a face and a
@@ -2929,18 +2960,29 @@ in the faces and vertices of the body's editable mesh:
   hole past what the game draws; and in the test poses such holes are reported,
   not ruled out. A look from outside the cone, or one that reaches farther than
   the band's reach, is not checked.
-- **Motion**: every visible vertex that the garment is over at rest keeps the
-  point of the garment over it, and so does one that already lies outside the
-  garment at rest, with the point of the garment just inward of it, at most
-  50 mm inward. A point of the garment only counts when no body lies between it
-  and the vertex, outward or inward, so the hair that the ray from an eye's
-  corner meets beyond the face is not over the eye. The body, with the pull-in
-  applied, is measured at rest and in every test pose and every frame of every
-  clip, and a vertex comes through the garment when it lies more than 1 mm
+- **Motion**: the skin is followed at every visible vertex, along its normal,
+  and at places inside every drawn face, split as the game splits it, along the
+  triangle's normal: points every 3 mm along its edges and inside it, and the
+  places where the corners and the edges of the garment's triangles near it lie
+  over it, where the cloth can lie deepest, as the pair check follows a drawn
+  triangle. Every such place that the garment is over at rest keeps the point of
+  the garment over it, and so does one that already lies outside the garment at
+  rest, with the point of the garment just inward of it, at most 50 mm inward
+  for a vertex and 10 mm for a place inside a face, as the pair check takes a
+  drawn triangle: farther in, the outer side belongs to cloth elsewhere, such as
+  a hood's side seen from behind an ear.
+  A point of the garment only counts when no body lies between it and the place,
+  outward or inward, so the hair that the ray from an eye's corner meets beyond
+  the face is not over the eye. The body, with the pull-in applied, is measured
+  at rest and in every test pose and every frame of every clip, a place inside
+  a face where the game's triangle puts it between its corners, and a face comes
+  through the garment when a place of it, or a vertex of it, lies more than 1 mm
   outside the cloth at its point with the cloth between it and the inside. The
-  rule needs the clips, so it runs at the template's `rig` stage, which its
-  export runs, and a texture with transparent parts checks its own masks the
-  same way before its export writes anything.
+  report names the deepest place per phase, and a face that lies through by more
+  than 1 mm at rest breaks the rule. The rule needs the clips, so it runs at the
+  template's `rig` stage,
+  which its export runs, and a texture with transparent parts checks its own
+  masks the same way before its export writes anything.
 
 The faces that only the cone of rays leaves visible are the garment's openings,
 and the review sheet shows the mask with the skin kept visible at the garment's
@@ -3052,7 +3094,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
-| `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes, and the faces each hides of a template worn under it are faces of that template, whose face count it records; the sentences of the motion and pair reports, with the most hidden triangles that show a hole per phase, and the rule of a pair at rest. |
+| `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes, and the faces each hides of a template worn under it are faces of that template, whose face count it records; the sentences of the motion and pair reports, each with the deepest place per phase, the pair's with the most hidden triangles that show a hole per phase, and the rules of the skin and of a pair at rest. |
 | `test_rig_tables.py` | The test poses, the rig's zone, chain, and hinge tables, and the gait model against the Humanoid skeleton, the exported clips, and the Unity locomotion speeds. |
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
@@ -3063,8 +3105,8 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_rig_landmarks.py` | The bodies' landmarks from the build's named vertices, the eyelids' weights, the lips that meet, the jaw's share of the skin at the mouth, the neck's share of the head's skin, and the turn of the test poses' arms for another bind pose. It needs numpy. |
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
-| `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth; the one hidden list for every body; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the phases of its report; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the eight files that need it are skipped and the run says `skipped=8`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth; the one hidden list for every body; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the body's drawn faces split as the game splits them, which the pull-in and the motion check follow inside; the phases of its report; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the eight files that need it are skipped and the run says `skipped=8`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,

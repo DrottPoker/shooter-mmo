@@ -45,7 +45,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/Shirt_Male.fbx",
                 "sha256": "a52525b2a1845ed141d785c3da1011d58884def40a7e0bfaa306fcaf87891cfd",
                 "data": "src/Client/Assets/Art/Models/Garments/Shirt_Male.json",
-                "dataSha256": "e526d7ba1909d9bf8f3934f2e5521ab8b0e55448c7410f1d7bccce6cb95efe17"
+                "dataSha256": "aabb9430593abe80c89e0ee50cbabd7000bc23216cba40df742a6daf30c80868"
             },
             {
                 "body": "Female",
@@ -53,7 +53,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/Shirt_Female.fbx",
                 "sha256": "dc9c3ac3846093cbefa5c2fed1c7a60b4c65c9fbe4010b10c1423907786a71b3",
                 "data": "src/Client/Assets/Art/Models/Garments/Shirt_Female.json",
-                "dataSha256": "19f67a0b3adb786b5b0500537b900b6553b4f3f4495b9dbc88987a3a9dce7230"
+                "dataSha256": "3bffb68499c0f31fbd740a86a21f1b6ec30c6411a43a2aaeeffdcf8c44c15201"
             }
         ],
         "clipSources": [
@@ -61,7 +61,7 @@
         ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c" }
         ],
         "materials": [
             {

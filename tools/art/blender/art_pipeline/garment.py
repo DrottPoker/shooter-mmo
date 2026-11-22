@@ -33,7 +33,10 @@ version, so a new build of a changed recipe carries the handmade shape over.
 
 Every vertex takes the weights of the nearest skin of the body part its cage face lies on, the
 region and side of the cage, interpolated from the corners of the skin's triangle and not smoothed,
-so it moves like the skin it covers: a sleeve's inside at the armpit moves with the arm. The attribute
+so it moves like the skin it covers: a sleeve's inside at the armpit moves with the arm. At the
+crotch the cloth follows the skin's rule instead, which holds the crotch with the pelvis: within a
+band about the crotch the thighs' share of its weights moves to the pelvis by its distance across
+the body, so cloth that spans the legs stays under the held skin; see CROTCH_BAND_DEPTH. The attribute
 "transferred_weights" holds a checksum of the weights the last transfer gave each vertex of the first
 version; a vertex whose weights differ from it was painted by hand and keeps them, also in the other
 versions.
@@ -57,6 +60,8 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
+
+from human_base import rig
 
 from . import bodies, body_files, cage, cloth, hang, poses
 from .scene import ArtPipelineError, relative_image_paths
@@ -141,6 +146,37 @@ ALPHA_CUT = 0.5
 # this share of the point's distance from it.
 FIELD_WIDTH = 0.015
 FIELD_GROWTH = 0.7
+# Cloth that spans the crotch, such as trousers between the legs, lies centimeters below the skin
+# there, and the skin nearest to it is the inner thighs', so a plain transfer gives it the thighs'
+# weights: a leg that swings takes the cloth under the crotch along and presses it up into the skin,
+# which a rebuilt body holds with the pelvis (CROTCH_MIDDLE_REBUILT in human_base/rig.py). The fixed
+# cloth in a band under, behind, and just in front of the crotch follows the skin's rule instead:
+# the share of its weights that it moves from the thighs to the pelvis, its hold, goes by its
+# distance across the body from the middle plane, wholly within the skin's held half width and not
+# at all from the skin's CROTCH_RADIUS on, smoothly between. The band lies about the crotch, the
+# lowest place of the skin's middle line under the trunk within CROTCH_SEARCH of the hip joints'
+# depth, as two ranges per axis, of the depth from behind to in front and of the height from below
+# to above: within the first range the rule holds wholly, beyond the second not at all, and between
+# them it fades smoothly. Behind, it reaches the cloth over the buttocks' cleft, where the skin the
+# cover rule leaves drawn lies up to 9 cm behind the crotch; in front, the cloth under the male
+# body's bulge, whose skin came through 4 cm in front, and fades out before the front of the
+# thighs, which a sitting body raises into it; down, the cloth that spans the legs, down to 4 to
+# 5 cm below the crotch, and fades out over the inner thighs below, whose cloth moves with them;
+# up, the pelvis, whose skin has little of the thighs. The lengths are a body's of the rig's
+# reference height and scale with a body's height, as the skin's do. The hold is then evened out
+# over the cloth's edges CROTCH_EVENING times, each time halfway to the mean of its neighbours, as
+# the rig evens the skin's weights: the cloth's faces between the legs are up to 6 cm tall, and a
+# hold that changes much across one of them shears it until it turns inside out when the legs
+# move. Only the hold is evened, never the weights, so no bone of the cloth's neighbours mixes in;
+# evening the weights spread the hold up the buttock and opened a gap there. Three passes keep
+# every face whole; more spread the hold farther down the inner thighs, where it lets the skin come
+# through in Death.
+CROTCH_SEARCH = 0.05
+CROTCH_BAND_DEPTH = ((-0.12, 0.06), (-0.17, 0.10))
+CROTCH_BAND_HEIGHT = ((-0.04, 0.03), (-0.09, 0.06))
+CROTCH_EVENING = 3
+# The body's middle line is the vertices this close to its middle plane, as the rig takes it.
+MIDDLE_PLANE = 1e-5
 REVIEW_GREY = (0.62, 0.62, 0.62, 1.0)
 # The review file places the bodies side by side, this far apart.
 REVIEW_OFFSET = 0.8
@@ -799,6 +835,91 @@ def _store(mesh: bpy.types.Mesh, name: str, values: np.ndarray, kind: str = "FLO
 def _rounded_weights(weights: np.ndarray) -> np.ndarray:
     # As vertex groups store them.
     return weights.astype(np.float32).astype(np.float64)
+
+
+def band_fade(values, ranges) -> np.ndarray:
+    """1 within the first of two ranges, 0 outside the second, which holds the first, and a smooth
+    step between them, per value."""
+    (low, high), (lowest, highest) = ranges
+    values = np.asarray(values, float)
+    rise = np.clip((values - lowest) / max(low - lowest, 1e-12), 0.0, 1.0)
+    fall = np.clip((highest - values) / max(highest - high, 1e-12), 0.0, 1.0)
+    t = np.minimum(rise, fall)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def crotch_point(co, middle, hip_depth: float, scale: float) -> np.ndarray:
+    """A body's crotch: of the vertices of its middle line under the trunk, given by index, the lowest
+    within CROTCH_SEARCH of the hip joints' depth, at the body's scale."""
+    co, middle = np.asarray(co, float), np.asarray(middle, np.int64)
+    near = middle[np.abs(co[middle, 1] - hip_depth) <= CROTCH_SEARCH * scale]
+    if not len(near):
+        raise ArtPipelineError("The body has no middle line under its trunk near the depth of its hip joints.")
+    return co[near[np.argmin(co[near, 2])]]
+
+
+def crotch_hold(points, crotch, scale: float, held: float = rig.CROTCH_MIDDLE_REBUILT[0],
+                full: float = rig.CROTCH_RADIUS) -> np.ndarray:
+    """How much of the thighs' share of each point's weights moves to the pelvis by the crotch rule:
+    by the point's distance across the body from the middle plane, wholly within held and not at all
+    from full on, the skin's own distances, within the band about the crotch and fading out with it.
+    The lengths are at the rig's reference height and scale with the body's."""
+    points = np.asarray(points, float)
+    t = np.clip((np.abs(points[:, 0]) - held * scale) / ((full - held) * scale), 0.0, 1.0)
+    across = 1.0 - t * t * (3.0 - 2.0 * t)
+    offset = (points - np.asarray(crotch, float)) / scale
+    return across * band_fade(offset[:, 1], CROTCH_BAND_DEPTH) * band_fade(offset[:, 2], CROTCH_BAND_HEIGHT)
+
+
+def evened_hold(hold, polygons: list[tuple[int, ...]], times: int = CROTCH_EVENING) -> np.ndarray:
+    """The hold evened out over the edges of the faces this many times, each time halfway to the mean
+    of every vertex's neighbours, as the rig evens the skin's weights at the crotch."""
+    evened = np.array(hold, float)
+    if not np.any(evened > 0.0):
+        return evened
+    return rig.evened_out(evened, np.arange(len(evened)), polygons, times)
+
+
+def held_weights(weights, hold, legs: list[int], pelvis: int) -> np.ndarray:
+    """The weights with the share hold of each row's leg bones moved to its other bones, in their
+    proportions, or to the pelvis where it has none, as the skin's crotch rule moves them, and
+    limited to four bones again."""
+    out = np.array(weights, float)
+    hold = np.asarray(hold, float)
+    for row in np.nonzero(hold > 0.0)[0]:
+        taken = out[row, legs].sum() * hold[row]
+        if taken <= 0.0:
+            continue
+        out[row, legs] *= 1.0 - hold[row]
+        rest = out[row].copy()
+        rest[legs] = 0.0
+        total = rest.sum()
+        if total > 1e-9:
+            out[row] += rest / total * taken
+        else:
+            out[row, pelvis] += taken
+        out[row] = _limited(out[row])
+    return out
+
+
+def _held_at_crotch(weights: np.ndarray, positions: np.ndarray, polygons: list[tuple[int, ...]], arm: bpy.types.Object,
+                    names: list[str], fixed: np.ndarray) -> np.ndarray:
+    """The weights of a version on the arm's body with the crotch rule applied to its fixed cloth,
+    the vertices marked fixed, at the positions they have there, its hold evened over its faces."""
+    body = bodies.source_body(arm.name)
+    co = bodies.world_positions(body)
+    zones = bodies.zones_of(body)
+    pelvis = bodies.ZONES.index("Pelvis")
+    under = np.unique([v for p in body.data.polygons if zones[p.index] == pelvis for v in p.vertices])
+    middle = under[np.abs(co[under, 0]) < MIDDLE_PLANE]
+    scale = float(co[:, 2].max()) / rig.REFERENCE_HEIGHT
+    hip = arm.matrix_world @ arm.data.bones["UpperLeg_R"].head_local
+    hold = evened_hold(crotch_hold(positions, crotch_point(co, middle, hip.y, scale), scale), polygons)
+    hold = np.where(fixed, hold, 0.0)
+    if not np.any(hold > 0.0):
+        return weights
+    legs = [names.index(f"{bone}_{side}") for bone in ("UpperLeg", "LowerLeg") for side in ("L", "R")]
+    return _rounded_weights(held_weights(weights, hold, legs, names.index("Hips")))
 
 
 def under_positions(obj: bpy.types.Object) -> np.ndarray | None:
@@ -1716,14 +1837,18 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     turned = _turned(recipe, polygons)
     folded = turned_mask(len(co), turned)
 
-    def weights_on(skin: RegionSkin, positions: np.ndarray) -> np.ndarray:
-        return _rounded_weights(np.array([skin.weights(keys[t], Vector(p)) for p, (t, _w, _o) in zip(positions, binding)]))
+    loose = _loose(first.data)
 
-    transferred = weights_on(RegionSkin(bodies.source_body(labels[0]), names), co)
+    def weights_on(skin: RegionSkin, positions: np.ndarray, arm: bpy.types.Object) -> np.ndarray:
+        # The skin's weights, and at the crotch its rule, on the fixed cloth; loose parts take
+        # theirs from their scaffolds below.
+        found = _rounded_weights(np.array([skin.weights(keys[t], Vector(p)) for p, (t, _w, _o) in zip(positions, binding)]))
+        return _held_at_crotch(found, positions, polygons, arm, names, ~loose)
+
+    transferred = weights_on(RegionSkin(bodies.source_body(labels[0]), names), co, arms[0])
     # Loose parts hang on scaffolds instead of the cage: on the first body each of their vertices is
     # bound to the scaffold there and takes its weights, the chains', from it.
     entries = hang.parts(recipe)
-    loose = _loose(first.data)
     values = _attribute(first.data, hang.HANG, "INT")
     members = [np.nonzero(values == number + 1)[0] for number in range(len(entries))]
     columns = [_hang_columns(first.data, number) for number in range(len(entries))]
@@ -1774,7 +1899,7 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
                 np.array([own.place(t, w, o) for t, w, o in under_binding])
             under = _settle_band(under, polygons, own, recipe, lines, arm.name, band, loose | folded)
         skin = RegionSkin(bodies.source_body(arm.name), names)
-        weights = weights_on(skin, positions)
+        weights = weights_on(skin, positions, arm)
         # Then the loose parts, on this body's scaffolds from where their edges now lie.
         for number, part in enumerate(entries):
             edge, rings = columns[number]

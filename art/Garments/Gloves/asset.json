@@ -43,7 +43,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/Gloves_Male.fbx",
                 "sha256": "f407583e940b70a7cfdeeb6c7a10007b8a8f54b2b92a250dbf3727ed0b04e9f8",
                 "data": "src/Client/Assets/Art/Models/Garments/Gloves_Male.json",
-                "dataSha256": "73aebfb51374574cc85c1a5221c737da8547f4fbe917d1b38871ac60c509b619"
+                "dataSha256": "95cf72552745f71b677cd02a77de0a23b6f65873997756ad0e9db9bcc3449662"
             },
             {
                 "body": "Female",
@@ -51,7 +51,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/Gloves_Female.fbx",
                 "sha256": "840d04c016d78ae21834bc852e2222024f76046ff8bff782eda18410842e5107",
                 "data": "src/Client/Assets/Art/Models/Garments/Gloves_Female.json",
-                "dataSha256": "1684c84c7f6eac73a390d9885bd10cf3c0c94c4f6cdad6731929d2de5dd581d5"
+                "dataSha256": "84b32ec58135a6101e94c3709e0ec74ebc327c8258febfe6deaaf56b7dee6d9f"
             }
         ],
         "clipSources": [
@@ -62,7 +62,7 @@
             { "garment": "art/Garments/LongShirt", "sourceSha256": "7f8312b36deed037dbc60139cab146f0c914584496598a6a9455d1e642245f49" },
             { "garment": "art/Garments/Robe", "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c" },
             { "garment": "art/Garments/Shirt", "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "ed8fa903ee8f5c786569ae20fa6d0fc8bb648f7f89713d45b75b6f6a54071952" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c" }
         ],
         "materials": [
             {

@@ -307,7 +307,7 @@ def _texture(args) -> int:
             print(f"ART_REPORT {args.texture} on {coverage.summary(args.garment, result)}")
             for line in _hidden_reports(args.garment, label, result):
                 print(f"ART_REPORT {args.texture} on {line}")
-            errors += filter(None, [motion.rest_error(version, f"visible skin vertices with {args.texture}")])
+            errors += filter(None, [motion.rest_error(version, f"drawn faces of the body with {args.texture}")])
             for inner, pair in sorted(pairs.items()):
                 print(f"ART_REPORT {args.texture} on {coverage.pair_summary(args.garment, inner, pair)}")
                 errors += filter(None, [pair.rest_error(f"{version} with {args.texture}", inner)])
@@ -405,7 +405,7 @@ def _garment(args) -> int:
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
             for line in _hidden_reports(args.garment, label, coverages[label]):
                 print(f"ART_REPORT {line}")
-            errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label), "visible skin vertices")])
+            errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label), "drawn faces of the body")])
         # The drawn triangles of every template of a lower layer worn under this one.
         for inner, inner_band, inner_recipe, objects in inners:
             for label, obj in zip(labels, objects):
