@@ -4,10 +4,10 @@
 # one joined mesh in its rest pose, drawn with the paint over its skin, and its image
 # T_Paint_<Name>_<Label>: the canvas's paint moved to the body by projection, exactly through the
 # shared topology or through the garment cage for a body of another topology, and cropped to its
-# paint. A file whose bodies and cage are as their files hold them and whose moved paint is current
-# is left as it is. Run it again after painting the canvas, so the bodies show the new paint; then
-# the file needs a new review and approval. It records the content of the file and says whether its
-# approval holds. See docs/ART_PIPELINE.md.
+# paint. A file whose bodies are as their files hold them, whose cage versions come from the cage's
+# current content, and whose moved paint is current is left as it is. Run it again after painting
+# the canvas, so the bodies show the new paint; then the file needs a new review and approval. It
+# records the content of the file and says whether its approval holds. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -34,6 +34,7 @@ function Assert-ArtFileDownloaded([string]$Path) {
     }
 }
 
+$blender = Resolve-ArtBlender $BlenderPath
 $arguments = @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "paint-sync",
@@ -44,11 +45,12 @@ foreach ($body in @($manifest.Bodies)) {
 }
 
 # The canvas keeps its body's version of the garment cage, and a body of another topology than the
-# canvas is reached through the cage.
+# canvas is reached through the cage, whose content the file records, from its record made current.
 $cage = @(Get-ArtPaintCage $manifest) | Select-Object -First 1
 if ($null -ne $cage) {
     Assert-ArtFileDownloaded $cage.SourcePath
-    $arguments += @("--cage", $cage.SourcePath)
+    $null = Update-ArtContentRecord $blender $cage
+    $arguments += @("--cage", $cage.SourcePath, "--cage-content", (Get-ArtCageContent $cage))
 }
 
 if (-not [string]::IsNullOrEmpty($Canvas)) {
@@ -65,7 +67,6 @@ if ($Force) {
     $arguments += "--force"
 }
 
-$blender = Resolve-ArtBlender $BlenderPath
 $output = Invoke-ArtNative $blender $arguments
 $errors = @($output | Where-Object { $_ -like "ART_PIPELINE_ERROR *" } |
     ForEach-Object { $_.Substring("ART_PIPELINE_ERROR ".Length) })

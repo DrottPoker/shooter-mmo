@@ -20,7 +20,7 @@ cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manife
 hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", "_gap", "LEAVE", "EDGE_GAP", "MARGINS", "ROOT_BLEND",
             ArtPipelineError=scene.ArtPipelineError)
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
-               "collection_name", "version_name", "material_name", "image_name", "file_sha256", "recipe_text",
+               "collection_name", "version_name", "material_name", "image_name", "recipe_text",
                "recipe_regions", "export_paths", "read_wearing", "read_manifests", "turned_edges", "fold_error",
                "border_vertices", "MIN_FOLD", "SETTLE_MARGIN", "HEM_ROOM", "ROUNDING", "_by_index", cage=cage, hang=hang,
                ArtPipelineError=scene.ArtPipelineError)
@@ -212,16 +212,6 @@ class ManifestReadingTests(unittest.TestCase):
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "HoodUp" / "asset.json")), ("head", "compress"))
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "HoodDown" / "asset.json")), ("head", "show"))
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "Robe" / "asset.json")), ("body", None))
-
-    def test_the_sha256_of_a_file_is_its_digest_whatever_its_size(self):
-        with tempfile.TemporaryDirectory() as folder:
-            small, large = pathlib.Path(folder) / "small", pathlib.Path(folder) / "large"
-            small.write_bytes(b"abc")
-            large.write_bytes(b"x" * ((1 << 20) * 2 + 5))
-            self.assertEqual(garment.file_sha256(str(small)),
-                             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-            import hashlib
-            self.assertEqual(garment.file_sha256(str(large)), hashlib.sha256(large.read_bytes()).hexdigest())
 
 
 class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):

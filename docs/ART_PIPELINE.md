@@ -280,15 +280,17 @@ length in `frames`, and whether it should `loop`. Beyond that:
   that layout as x, y, width, and height in texels from the bottom left, x and y
   in whole blocks of 4 texels, its `move`, `topology` for the exact move through
   the shared topology or `cage` for the move through the garment cage, and the
-  `bodyPaintSha256` of the body's export it was moved to; the `cageSourceSha256`
-  of the cage file when a body was moved through the cage; and the `smoothness`
-  and `metallic` of the paint, without a `targetSha256`.
-- A garment template records the `cageSourceSha256` of the approved cage file it
-  was fitted to; its `models`, one per body of the cage in order with its `body`
-  label, the `bodyFitSha256` of the body's export it was fitted to, the model's
-  `target` and `sha256`, and its `data` file and `dataSha256`; its
-  `clipSources`, every animation library of its skeleton with the `contentSha256`
-  of the export whose clips it was checked in; its `pairSources`, every template
+  `bodyPaintSha256` of the body's export it was moved to; the
+  `cageContentSha256`, the content of the garment cage's `model` stage, when a
+  body was moved through the cage; and the `smoothness` and `metallic` of the
+  paint, without a `targetSha256`.
+- A garment template records the `cageContentSha256` of the approved cage, the
+  content of its `model` stage that the template was fitted to; its `models`,
+  one per body of the cage in order with its `body` label, the `bodyFitSha256`
+  of the body's export it was fitted to, the model's `target` and `sha256`, and
+  its `data` file and `dataSha256`; its `clipSources`, every animation library
+  of its skeleton with the `contentSha256` of the export whose clips it was
+  checked in; its `pairSources`, every template
   of another visual slot and a lower layer of its cage with the `contentSha256` of
   the export it was checked over, when there are any; its one material
   `M_Garment_<Name>` without an image; and no textures.
@@ -356,12 +358,12 @@ content records, when an export comes from other content than the current one,
 when an animation library was exported against another export of its rig, when
 an asset in review has an export or an FBX, when one of the garment cage's bodies
 has another export than the cage was approved on, when a paint layer was moved
-to another export of a body or through another file of the cage, when a garment
-template was fitted to another file of its cage or exported for other bodies
-than its cage has, when a garment texture was exported against another export of
-its template, is painted in other UVs than its template's current ones, or has
-masks for other bodies than its template, when two assets export a material of
-the same name, when the committed FBX, data, or a committed texture differs from
+to another export of a body or through other content of the cage, when a
+garment template was fitted to other content of its cage or exported for other
+bodies than its cage has, when a garment texture was exported against another
+export of its template, is painted in other UVs than its template's current
+ones, or has masks for other bodies than its template, when two assets export a
+material of the same name, when the committed FBX, data, or a committed texture differs from
 the recorded export, or when a model below `src/Client/Assets/Art/Models` or a
 texture below `src/Client/Assets/Art/Textures` has no asset. Every problem names
 the script to run, such as `Wolf.blend was saved after its content was read;
@@ -407,8 +409,9 @@ What is not content changes nothing:
   garment file, the template's preview and its cage in a texture file, and the
   rig and preview bodies of an animation library, beyond the rest pose its clips
   are keyed on.
-- Bookkeeping of another asset's state, such as the scene property `cage_sha256`
-  of a garment or the `paint_layout` of a paint layer's body.
+- Bookkeeping of another asset's state, such as the scene property
+  `cage_content` of a garment, the content of the cage it was fitted to, or the
+  `paint_layout` of a paint layer's body.
 - View and editor state: the selection, the active object, hiding in the
   viewport, display types, the current frame, the 3D cursor, and the seams,
   which only unwrapping reads.
@@ -2363,8 +2366,9 @@ ways:
   rims, the lips, the nose, the chin, the wrists, and the finger tips, and laid
   onto the body's skin of the same region, side, and finger. Each of the body's
   texels then takes the nearest point of the canvas so fitted. The file keeps
-  the body's cage version as `Cage_<Label>`, and the export records the cage's
-  file.
+  the body's cage version as `Cage_<Label>` and the content of the cage it was
+  taken from in the scene property `cage_content`, and the export records that
+  content.
 
 The cage keeps the paint's place along the bones: an armband that the woman
 would get from the man's canvas through the cage, as a body of another topology
@@ -2745,15 +2749,18 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    ```
 
    Expected result: `Approved the 'model' stage of Humanoid (faces=<n>).` and
-   then the problems of the garment templates fitted to the old cage file. The
-   cage has no export; commit the `.blend` file and `asset.json` together. Every
-   template on the cage records the cage's file in `cageSourceSha256`, so sync,
+   then the problems of the garment templates fitted to the old content of the
+   cage. The cage has no export; commit the `.blend` file and `asset.json`
+   together. Every template on the cage records the content of the cage's
+   `model` stage in `cageContentSha256`, so after a change of that content sync,
    review, approve, and export its templates again, in the order of their
    layers, and their textures
    after them, as [Make A Garment](#make-a-garment) and
    [Make A Garment Texture](#make-a-garment-texture) describe; a template whose
    regions did not move keeps its shape, its weights, and its exported files.
-   Expected result: `Verified <n> art asset(s).` once they are all exported.
+   Expected result: `Verified <n> art asset(s).` once they are all exported. A
+   cage file saved again without a change of its content keeps its approval
+   and leaves every template and paint layer as it is.
 
 ## Garments
 
@@ -2770,9 +2777,11 @@ with an Armature modifier and the material `M_Garment_<Name>`, a neutral grey.
 The bodies' source bodies, eyes, teeth, and tongues are in the `Reference`
 collection, unselectable, so they show the body and the fitting reads them, and
 the cage's versions `Cage_<Label>` are in the `Cage` collection, taken from the
-cage's file, whose SHA-256 the file keeps. The first body's version is the one a
-person shapes; the file opens with the other bodies hidden, because they stand
-at the same place.
+cage's file, and the scene property `cage_content` keeps the content of the
+cage's `model` stage they were taken from, which the scripts pass to Blender
+from the cage's content record after making it current. The first body's
+version is the one a person shapes; the file opens with the other bodies hidden,
+because they stand at the same place.
 
 ### Recipes
 
@@ -2799,10 +2808,10 @@ the point attribute `fitted_under_headwear`.
 
 `tools/art/Sync-GarmentAsset.ps1` brings the file up to date:
 
-- A body or a cage version that changed in its own file is taken in again. The
-  first version is bound to the old cage and placed on the new one, so it
-  follows; where its cage did not move, such as when only other regions were
-  added to the cage, it stays exactly where it was, so every other version is
+- A body that changed in its own file is taken in again, and so are the cage
+  versions when the cage's content changed. The first version is bound to the
+  old cage and placed on the new one, so it follows; where its cage did not
+  move, such as when only other regions were added to the cage, it stays exactly where it was, so every other version is
   fitted as before.
 - A new template, or one synced with `-Rebuild` after its recipe changed, gets
   its first version built from the first body's cage: the cage's faces of its
@@ -2944,10 +2953,11 @@ review file `artifacts/art-previews/<Name>_poses.blend` places the bodies side b
 side with an action that steps through the test poses. Last, the sync checks
 every rule and reports what the template covers.
 
-The `model` stage checks that the bodies and the cage are the current ones of
-their files and the cage the approved one, that every body has a version with
-the first version's topology and one material, within the triangle budget and
-with every vertex and every face centre in its band from the cage, a hair
+The `model` stage checks that the bodies are the current ones of their files,
+the cage versions those of the cage's current content, and the cage the approved
+one, that every body has a version with the first version's topology and one
+material, within the triangle budget and with every vertex and every face
+centre in its band from the cage, a hair
 template's also in its shape key `UnderHeadwear`, and that the fitting, the
 weights, and the turned edges of every version, their positions and their
 weights, are as a sync leaves them. Where the recipe says the template lies over
@@ -3196,11 +3206,12 @@ shows a template only with a texture.
 
 A template is exported after its cage is approved and after its bodies and the
 animation libraries of its skeleton are exported from their current content, and
-it records the cage's file and their exports, so `Verify-ArtAssets.ps1`
-fails when the cage's file changed or a body or a library has a newer export
+it records the cage's content and their exports, so `Verify-ArtAssets.ps1`
+fails when the cage's content changed or a body or a library has a newer export
 than the one the template was fitted to and checked in: sync, review, and export
-the template again. It also records the exports of the templates it was checked
-over in the pair check, whose faces its data names, so templates that are
+the template again. While the cage's content record is not current, it asks to
+run `tools/art/Update-ArtContent.ps1` for the cage first. It also records the
+exports of the templates it was checked over in the pair check, whose faces its data names, so templates that are
 exported together, such as after a change of the cage, are exported in the order
 of their layers, the trousers before the boots before the shirts before the
 gloves; `Export-ArtAsset.ps1` puts them in that order when it is given them

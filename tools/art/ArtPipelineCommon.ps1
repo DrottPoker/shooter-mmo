@@ -454,7 +454,8 @@ function Read-ArtApprovals($Json, [string[]]$Stages, [string]$Kind, [string]$Rel
 function Get-ArtOldExportProblem($Export, [string]$RelativeDirectory) {
     # Returns $null unless an export record names the sourceSha256 of .blend files, as records did
     # before they named the content of the exported stages, otherwise the reason it is stale.
-    $old = @("sourceSha256", "rigSourceSha256", "garmentSourceSha256" | Where-Object { $null -ne $Export.PSObject.Properties[$_] })
+    $old = @("sourceSha256", "rigSourceSha256", "garmentSourceSha256", "cageSourceSha256" |
+            Where-Object { $null -ne $Export.PSObject.Properties[$_] })
     $old += @(@($Export.clipSources) + @($Export.pairSources) | Where-Object { $null -ne $_ -and $null -ne $_.PSObject.Properties["sourceSha256"] } |
             Select-Object -First 1 | ForEach-Object { "sourceSha256" })
     if ($old.Count -gt 0) {
@@ -699,7 +700,7 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         $expected = (@($bodies | ForEach-Object { "T_Paint_${name}_$($_.Root)" }) | Sort-Object) -join ","
         $smoothness = $Json.export.smoothness
         $metallic = $Json.export.metallic
-        $cageSha = $Json.export.cageSourceSha256
+        $cageContent = $Json.export.cageContentSha256
         $throughCage = @($textures | Where-Object { $_.move -ceq "cage" }).Count -gt 0
         if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs the contentSha256 of the exported stage")
@@ -711,13 +712,13 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
             -not (Test-ArtNumber $metallic) -or $metallic -lt 0 -or $metallic -gt 1) {
             $problems.Add("export needs the smoothness and metallic of the paint, from 0 to 1")
         }
-        elseif (($throughCage -and [string]$cageSha -cnotmatch $script:ArtShaPattern) -or (-not $throughCage -and $null -ne $cageSha)) {
-            $problems.Add("export has the cageSourceSha256 of the cage file exactly when a body was moved through the cage")
+        elseif (($throughCage -and [string]$cageContent -cnotmatch $script:ArtShaPattern) -or (-not $throughCage -and $null -ne $cageContent)) {
+            $problems.Add("export has the cageContentSha256 of the garment cage's content exactly when a body was moved through the cage")
         }
         else {
             $export = [ordered]@{
                 contentSha256 = [string]$Json.export.contentSha256
-                cageSourceSha256 = if ($throughCage) { [string]$cageSha } else { $null }
+                cageContentSha256 = if ($throughCage) { [string]$cageContent } else { $null }
                 textures = $textures
                 smoothness = [double]$smoothness
                 metallic = [double]$metallic
@@ -900,8 +901,8 @@ function Write-ArtPaintManifest($Manifest) {
     else {
         $lines.Add('    "export": {')
         $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
-        if (-not [string]::IsNullOrEmpty($Manifest.Export.cageSourceSha256)) {
-            $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
+        if (-not [string]::IsNullOrEmpty($Manifest.Export.cageContentSha256)) {
+            $lines.Add("        `"cageContentSha256`": `"$($Manifest.Export.cageContentSha256)`",")
         }
         # A stale export from before the crops keeps its plain records until the next export.
         if (@($Manifest.Export.textures | Where-Object { -not $_.Contains("rect") }).Count -gt 0) {
@@ -967,7 +968,7 @@ function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
 
 function Get-ArtPaintDependencyProblems($Manifest) {
     # The reasons the export of a paint layer no longer matches what it was moved to: the exports of
-    # its bodies, and the file of the cage when a body was moved through it. None when it matches.
+    # its bodies, and the content of the cage when a body was moved through it. None when it matches.
     $problems = New-Object System.Collections.Generic.List[string]
     foreach ($body in @($Manifest.Bodies)) {
         $texture = @($Manifest.Export.textures | Where-Object { $_.name -ceq "T_Paint_$($Manifest.Name)_$($body.Root)" }) | Select-Object -First 1
@@ -985,10 +986,21 @@ function Get-ArtPaintDependencyProblems($Manifest) {
         }
     }
 
-    if (-not [string]::IsNullOrEmpty($Manifest.Export.cageSourceSha256)) {
-        $cage = @(Get-ArtPaintCage $Manifest) | Select-Object -First 1
-        if ($null -eq $cage -or (Get-ArtFileSha256 $cage.SourcePath) -ne $Manifest.Export.cageSourceSha256) {
-            $problems.Add("was moved through another file of the garment cage of its bodies; run tools/art/Sync-PaintAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1")
+    if (-not [string]::IsNullOrEmpty($Manifest.Export.cageContentSha256)) {
+        $cage = $null
+        try {
+            $cage = @(Get-ArtPaintCage $Manifest) | Select-Object -First 1
+        }
+        catch {
+            # The cage's own problems are reported with the cage.
+        }
+
+        $cageProblem = if ($null -ne $cage) { Get-ArtContentProblem $cage } else { $null }
+        if ($null -ne $cageProblem) {
+            $problems.Add("its garment cage $($cage.RelativeDirectory) cannot be compared: $cageProblem")
+        }
+        elseif ($null -eq $cage -or (Get-ArtCageContent $cage) -cne $Manifest.Export.cageContentSha256) {
+            $problems.Add("was moved through other content of the garment cage; run tools/art/Sync-PaintAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1")
         }
     }
 
@@ -996,7 +1008,7 @@ function Get-ArtPaintDependencyProblems($Manifest) {
 }
 
 function Get-ArtPaintCage($Manifest) {
-    # The garment cages whose bodies hold every body of a paint layer.
+    # The manifests of the garment cages whose bodies hold every body of a paint layer.
     $assets = @($Manifest.Bodies | ForEach-Object { $_.Asset })
     foreach ($directory in @(Get-ArtAssetDirectories)) {
         $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
@@ -1006,21 +1018,33 @@ function Get-ArtPaintCage($Manifest) {
 
         $bodies = @($json.bodies | ForEach-Object { [string]$_ })
         if (@($assets | Where-Object { $bodies -cnotcontains $_ }).Count -eq 0) {
-            [pscustomobject]@{
-                RelativeDirectory = Get-ArtRelativePath $directory
-                SourcePath = Join-Path $directory "$(Split-Path -Leaf $directory).blend"
-            }
+            Read-ArtAssetManifest $directory
         }
     }
 }
 
+function Get-ArtCageContent($Cage) {
+    # The content fingerprint of the garment cage, its one stage, which garment templates are fitted
+    # to and paint layers moved through. Throws when the cage's content record is not current.
+    $problem = Get-ArtContentProblem $Cage
+    if ($null -ne $problem) {
+        throw "The content of the garment cage $($Cage.RelativeDirectory) is not recorded for its file: $problem."
+    }
+
+    return [string]$Cage.Content.stages["model"]
+}
+
 function Get-ArtGarmentDependencyProblems($Manifest) {
     # The reasons the export of a garment template no longer matches what it was made from: the
-    # approved file of its cage, the bodies of the cage and their exports, and the exports of the
+    # content of its cage, the bodies of the cage and their exports, and the exports of the
     # animation libraries it was checked in. None when it matches.
     $problems = New-Object System.Collections.Generic.List[string]
-    if ((Get-ArtFileSha256 $Manifest.Cage.SourcePath) -ne $Manifest.Export.cageSourceSha256) {
-        $problems.Add("was fitted to another file of its cage $($Manifest.Cage.RelativeDirectory); run tools/art/Sync-GarmentAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1")
+    $cageProblem = Get-ArtContentProblem $Manifest.Cage
+    if ($null -ne $cageProblem) {
+        $problems.Add("its cage $($Manifest.Cage.RelativeDirectory) cannot be compared: $cageProblem")
+    }
+    elseif ((Get-ArtCageContent $Manifest.Cage) -cne $Manifest.Export.cageContentSha256) {
+        $problems.Add("was fitted to other content of its cage $($Manifest.Cage.RelativeDirectory); run tools/art/Sync-GarmentAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1")
     }
 
     $exported = @($Manifest.Export.models | ForEach-Object { [string]$_.body } | Sort-Object)
@@ -1474,7 +1498,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
         $records = @($Json.export.models | Where-Object { $null -ne $_ })
-        $cageSourceSha256 = [string]$Json.export.cageSourceSha256
+        $cageContentSha256 = [string]$Json.export.cageContentSha256
         # The export may name other bodies than the cage has now, after a body joined or left the
         # cage: it is then stale, which Verify-ArtAssets.ps1 reports, and a new export replaces it.
         $modelsMatch = $records.Count -gt 0 -and
@@ -1502,8 +1526,8 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
             @($pairSources | ForEach-Object { [string]$_.garment } | Sort-Object -Unique).Count -eq $pairSources.Count
 
         $baseMaps = (@($materials | Where-Object { $null -ne $_ -and $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) | Sort-Object) -join ","
-        if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or $cageSourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs the contentSha256 of the exported stage and the cageSourceSha256 of the approved cage file it was fitted to")
+        if ([string]$Json.export.contentSha256 -cnotmatch $script:ArtShaPattern -or $cageContentSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs the contentSha256 of the exported stage and the cageContentSha256 of the cage content it was fitted to")
         }
         elseif (-not $modelsMatch) {
             $problems.Add("export.models must list the model of each body once with its body, the bodyFitSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
@@ -1523,7 +1547,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         else {
             $export = [ordered]@{
                 contentSha256 = [string]$Json.export.contentSha256
-                cageSourceSha256 = $cageSourceSha256
+                cageContentSha256 = $cageContentSha256
                 models = @($records | ForEach-Object {
                         # A record from before the fingerprint names the body's export sourceSha256
                         # instead; it is stale, which Get-ArtGarmentDependencyProblems reports.
@@ -1679,7 +1703,7 @@ function Write-ArtGarmentManifest($Manifest) {
     else {
         $lines.Add('    "export": {')
         $lines.Add("        `"contentSha256`": `"$($Manifest.Export.contentSha256)`",")
-        $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
+        $lines.Add("        `"cageContentSha256`": `"$($Manifest.Export.cageContentSha256)`",")
         $lines.Add('        "models": [')
         $models = @($Manifest.Export.models)
         for ($i = 0; $i -lt $models.Count; $i++) {
@@ -1729,7 +1753,7 @@ function Write-ArtGarmentManifest($Manifest) {
 function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
     # The garment cage of a skeleton: a net of fixed topology fitted to every body of the skeleton,
     # on which garments are made and fitted. It has one review stage and no export; garments record
-    # its approved file. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    # its approved content. See docs/EQUIPMENT_VISUALS_DESIGN.md.
     $name = Split-Path -Leaf $AssetDirectory
     $problems = New-Object System.Collections.Generic.List[string]
     if ($Json.schemaVersion -ne 1) {
@@ -2940,6 +2964,11 @@ function Update-ArtContentRecord([string]$Blender, $Manifest, [string[]]$Results
 
     $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
     if ($null -eq $read) {
+        # A garment's run takes the content of its cage, so the cage's record is made current first.
+        if ($Manifest.Kind -eq "garment") {
+            $null = Update-ArtContentRecord $Blender $Manifest.Cage
+        }
+
         $read = Read-ArtContentLine (Invoke-ArtBlender $Blender $Manifest (@("content") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1])))
         Assert-ArtFileUnchanged $Manifest $sourceSha256 "was saved while it was read"
     }
@@ -3158,12 +3187,13 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
             "--stage", $Stage, "--paint", $Manifest.Name, "--part", $Manifest.Part)
     }
 
-    # A garment is checked against the current files of its bodies.
+    # A garment is checked against the current files of its bodies and the content of its cage.
     if ($Manifest.Kind -eq "garment") {
         $arguments = @("--kind", "garment", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
             "--triangle-budget", [string]$Manifest.TriangleBudget, "--skeleton", $Manifest.SkeletonPath,
             "--garment", $Manifest.Name, "--manifest", $Manifest.ManifestPath,
-            "--cage-manifest", $Manifest.Cage.ManifestPath) + (Get-ArtGarmentCoverArguments $Manifest)
+            "--cage-manifest", $Manifest.Cage.ManifestPath, "--cage-content", (Get-ArtCageContent $Manifest.Cage)) +
+            (Get-ArtGarmentCoverArguments $Manifest)
         foreach ($body in @($Manifest.Bodies)) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
         }

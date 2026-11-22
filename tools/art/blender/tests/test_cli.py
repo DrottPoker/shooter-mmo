@@ -129,8 +129,9 @@ class ParserTests(unittest.TestCase):
         self.assertEqual((args.output, args.cell_size, args.kind, args.layer), ("sheet.png", 420, "static", 210))
 
     def test_the_commands_that_run_without_an_open_file_name_their_file(self):
-        for command, required in (("new-static", ["--file", "--roots"]), ("garment-create", ["--file", "--garment", "--manifest", "--cage-manifest"]),
-                                  ("garment-sync", ["--file", "--garment", "--manifest", "--cage-manifest"]),
+        for command, required in (("new-static", ["--file", "--roots"]),
+                                  ("garment-create", ["--file", "--garment", "--manifest", "--cage-manifest", "--cage-content"]),
+                                  ("garment-sync", ["--file", "--garment", "--manifest", "--cage-manifest", "--cage-content"]),
                                   ("garment-review-file", ["--file", "--garment", "--output"]),
                                   ("texture-create", ["--file", "--texture", "--garment-file", "--garment", "--label"]),
                                   ("texture-sync", ["--file", "--texture", "--garment-file", "--garment", "--label", "--manifest"]),
@@ -148,8 +149,8 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse("texture-dyes", "--file", "f", "--texture", "t").level, texture.DYE_LEVEL)
 
     def test_a_garment_sync_may_transfer_weights_and_rebuild_and_a_review_file_may_not(self):
-        args = parse("garment-sync", "--file", "f", "--garment", "G", "--manifest", "m", "--cage-manifest", "c", "--weights",
-                     "--rebuild")
+        args = parse("garment-sync", "--file", "f", "--garment", "G", "--manifest", "m", "--cage-manifest", "c",
+                     "--cage-content", "0" * 64, "--weights", "--rebuild")
         self.assertTrue(args.weights and args.rebuild)
         with self.assertRaises(SystemExit):
             parse("garment-review-file", "--file", "f", "--garment", "G", "--output", "o", "--weights")
@@ -157,12 +158,12 @@ class ParserTests(unittest.TestCase):
     def test_a_garment_is_made_and_synced_over_the_templates_of_lower_layers_it_is_worn_over(self):
         for command in ("garment-create", "garment-sync"):
             args = parse(command, "--file", "f", "--garment", "G", "--manifest", "m", "--cage-manifest", "c",
-                         "--pair", "t.blend=Trousers:tight", "--pair", "b.blend=Boots:mid")
+                         "--cage-content", "0" * 64, "--pair", "t.blend=Trousers:tight", "--pair", "b.blend=Boots:mid")
             with self.subTest(command=command):
                 self.assertEqual(cli._pairs(args), [(os.path.abspath("t.blend"), "Trousers", "tight"),
                                                     (os.path.abspath("b.blend"), "Boots", "mid")])
                 self.assertEqual(cli._pairs(parse(command, "--file", "f", "--garment", "G", "--manifest", "m",
-                                                  "--cage-manifest", "c")), [])
+                                                  "--cage-manifest", "c", "--cage-content", "0" * 64)), [])
 
     def test_a_library_sync_keeps_its_clips_unless_forced(self):
         args = parse("library-sync", "--library", "l", "--armature", "a", "--rig-source", "s", "--rig-root", "r")
@@ -301,6 +302,55 @@ class ContentRecordRaceTests(unittest.TestCase):
                 update = text.index("Update-ArtContentRecord $" + ("Blender" if name == "Export-ArtAsset.ps1" else "blender")
                                     + " $" + ("Manifest" if name == "Export-ArtAsset.ps1" else "manifest") + ".Cage")
                 self.assertLess(update, text.index("Get-ArtCageGateProblem"))
+
+
+class CageContentTests(unittest.TestCase):
+    """Garment templates and paint layers record the content fingerprint of the garment cage, which the
+    PowerShell scripts pass from the cage's record made current, so a cage file saved again with the
+    same content leaves them current. Python never hashes the cage's file."""
+
+    def test_every_command_given_the_cage_of_a_template_gets_its_content_from_the_cage_s_record(self):
+        text = all_powershell()
+        manifests = re.findall(r'"--cage-manifest", \$\w+\.Cage\.ManifestPath(, "--cage-content", \(Get-ArtCageContent \$\w+\.Cage\))?',
+                               text)
+        self.assertEqual(len(manifests), 3)
+        self.assertTrue(all(manifests), "every --cage-manifest comes with --cage-content")
+        self.assertIn('"--cage", $cage.SourcePath, "--cage-content", (Get-ArtCageContent $cage)', powershell("Sync-PaintAsset.ps1"))
+
+    def test_the_cage_s_record_is_made_current_before_its_content_is_passed(self):
+        for name, update in (("Sync-GarmentAsset.ps1", "Update-ArtContentRecord $blender $manifest.Cage"),
+                             ("New-ArtAsset.ps1", "Update-ArtContentRecord $blender $manifest.Cage"),
+                             ("Sync-PaintAsset.ps1", "Update-ArtContentRecord $blender $cage")):
+            text = powershell(name)
+            with self.subTest(script=name):
+                self.assertLess(text.index(update), text.index('"--cage-content"'))
+        self.assertIn("Update-ArtContentRecord $Blender $Manifest.Cage", PairSourceTests.function("Update-ArtContentRecord"))
+        body = PairSourceTests.function("Get-ArtCageContent")
+        self.assertIn("Get-ArtContentProblem $Cage", body)
+        self.assertIn('$Cage.Content.stages["model"]', body)
+
+    def test_the_records_name_the_cage_s_content_and_an_old_record_of_its_file_is_rejected(self):
+        text = all_powershell()
+        self.assertIn('"cageSourceSha256"', PairSourceTests.function("Get-ArtOldExportProblem"))
+        self.assertEqual(text.count("cageSourceSha256"), 1)
+        self.assertIn("cageContentSha256 = Get-ArtCageContent $Manifest.Cage", powershell("Export-ArtAsset.ps1"))
+        self.assertIn("was fitted to other content of its cage", PairSourceTests.function("Get-ArtGarmentDependencyProblems"))
+        self.assertIn("was moved through other content of the garment cage", PairSourceTests.function("Get-ArtPaintDependencyProblems"))
+
+    def test_the_files_keep_the_cage_s_content_and_never_its_file_s_hash(self):
+        for path in ("art_pipeline/garment.py", "art_pipeline/paint.py"):
+            source = source_text(path)
+            with self.subTest(path=path):
+                self.assertIn('CAGE_CONTENT = "cage_content"', source)
+                self.assertNotIn("cage_sha256", source)
+        self.assertIn("cageContentSha256=paint.cage_record()", source_text("art_pipeline_cli.py"))
+
+    def test_a_paint_sync_takes_the_cage_with_its_content(self):
+        args = parse("paint-sync", "--file", "f", "--paint", "Tattoo", "--part", "Body", "--cage", "c.blend",
+                     "--cage-content", "0" * 64)
+        self.assertEqual((args.cage, args.cage_content), ("c.blend", "0" * 64))
+        args = parse("validate", "--kind", "garment", "--roots", "Male", "--cage-content", "0" * 64)
+        self.assertEqual(args.cage_content, "0" * 64)
 
 
 class ResultLineTests(unittest.TestCase):

@@ -5,8 +5,8 @@ docs/EQUIPMENT_VISUALS_DESIGN.md.
 The file holds, per body, the collection Export_<Label> with the body's armature <Label> and the
 template's version <Name>_<Label> bound to it; in the Reference collection the body's source body,
 eyes, teeth, and tongue, which show it and which the weights read; and in the Cage collection the
-cage's version Cage_<Label> on every body, taken from the cage's file, whose SHA-256 the scene
-keeps. The first body's version is the template a person shapes.
+cage's version Cage_<Label> on every body, taken from the cage's file, whose content fingerprint
+the scene keeps. The first body's version is the template a person shapes.
 
 A recipe builds the first version from the first body's cage: the faces of its regions, cut at its
 standard lines, its UVs unfolded along seams where clothes have them, edge loops at its splits,
@@ -70,7 +70,8 @@ FITTED = "fitted"
 BUILT = "built"
 TRANSFERRED = "transferred_weights"
 CAGE_COLLECTION = "Cage"
-CAGE_SHA = "cage_sha256"
+# The content fingerprint of the cage the versions were taken from, which the PowerShell scripts pass.
+CAGE_CONTENT = "cage_content"
 RECIPE = "recipe"
 MODELED = "modeled"
 # The shape key of a hairstyle that presses it flat under headwear, and the shape a fitting gave it.
@@ -204,14 +205,6 @@ def cage_object(label: str) -> bpy.types.Object:
     if obj is None or obj.type != "MESH":
         raise ArtPipelineError(f'The garment has no cage "{cage.version_name(label)}"; run tools/art/Sync-GarmentAsset.ps1.')
     return obj
-
-
-def file_sha256(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def recipe_text(recipe) -> str:
@@ -960,9 +953,9 @@ def _set_shape(obj: bpy.types.Object, positions: np.ndarray, under: np.ndarray |
     obj.data.update()
 
 
-def append_cages(cage_file: str, labels: list[str]) -> None:
+def append_cages(cage_file: str, labels: list[str], cage_content: str) -> None:
     """The cage's version on every body, taken from the cage's file into the Cage collection,
-    replacing earlier ones, and the file's SHA-256 kept on the scene."""
+    replacing earlier ones, and the cage's content fingerprint kept on the scene."""
     wanted = [cage.version_name(label) for label in labels]
     for name in wanted:
         old = bpy.data.objects.get(name)
@@ -984,7 +977,7 @@ def append_cages(cage_file: str, labels: list[str]) -> None:
         obj.hide_select = True
         obj.hide_render = True
         obj.hide_set(True)
-    bpy.context.scene[CAGE_SHA] = file_sha256(cage_file)
+    bpy.context.scene[CAGE_CONTENT] = cage_content
 
 
 PAIR_COLLECTION = "Pairs"
@@ -1982,7 +1975,7 @@ def _show_first(arms: list[bpy.types.Object]) -> None:
 def _state(name: str, labels: list[str]) -> str:
     """SHA-256 of everything a sync writes, so a sync that changes nothing leaves the file as it is."""
     digest = hashlib.sha256()
-    digest.update(str(bpy.context.scene.get(CAGE_SHA)).encode("utf-8"))
+    digest.update(str(bpy.context.scene.get(CAGE_CONTENT)).encode("utf-8"))
     for label in labels:
         arm = bpy.data.objects.get(label)
         body = bodies.source_body(label)
@@ -2027,14 +2020,14 @@ def _new_first_version(name: str, band: str, recipe, lines: list[dict], first: b
 
 
 def create(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]],
-           cage_file: str, pairs: list[tuple[str, str, str]] = ()) -> None:
+           cage_file: str, cage_content: str, pairs: list[tuple[str, str, str]] = ()) -> None:
     """Writes the first file of a template: the bodies, their cages, and the first version as the
     recipe builds it, fitted to every body, clear of the templates of lower layers in pairs where it
     lies over them; a modeled template gets no first version, which a person models on the first
     body."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     arms = [body_files.append_body(path, root, collection_name(root)) for path, root in body_list]
-    append_cages(cage_file, [a.name for a in arms])
+    append_cages(cage_file, [a.name for a in arms], cage_content)
     append_lain_over(list(pairs), [a.name for a in arms])
     if recipe != MODELED:
         _new_first_version(name, band, recipe, lines, arms[0])
@@ -2081,16 +2074,16 @@ def _carry_over(old: bpy.types.Object, new: bpy.types.Object, recipe) -> int:
 
 
 def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str,
-         transfer_all: bool = False, rebuild: bool = False,
+         cage_content: str, transfer_all: bool = False, rebuild: bool = False,
          pairs: list[tuple[str, str, str]] = ()) -> tuple[bool, int, list[str]]:
-    """Appends the bodies and the cages again that changed in their own files, moving the first
-    version with its cage, builds the first version again from a changed recipe when asked, keeping
-    its handmade shape, fits every other version again from the first, and gives every version its
-    weights, keeping the corrections and the weights painted by hand, unless every weight is
-    transferred again. Where the recipe says it lies over an inner garment, its cloth clears the real
-    surface of the templates of lower layers in pairs, which the file never keeps. Returns whether
-    the file changed, the number of vertices with weights painted by hand, and notes for the report.
-    An unchanged file is not saved, so its approvals stay valid."""
+    """Appends the bodies that changed in their own files again, and the cages when the cage's content
+    changed, moving the first version with its cage, builds the first version again from a changed
+    recipe when asked, keeping its handmade shape, fits every other version again from the first,
+    and gives every version its weights, keeping the corrections and the weights painted by hand,
+    unless every weight is transferred again. Where the recipe says it lies over an inner garment,
+    its cloth clears the real surface of the templates of lower layers in pairs, which the file never
+    keeps. Returns whether the file changed, the number of vertices with weights painted by hand, and
+    notes for the report. An unchanged file is not saved, so its approvals stay valid."""
     bpy.ops.wm.open_mainfile(filepath=file)
     labels = [root for _path, root in body_list]
     notes = []
@@ -2112,7 +2105,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     append_lain_over(list(pairs), labels)
 
     first = bpy.data.objects.get(version_name(name, labels[0]))
-    if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file) or any(
+    if bpy.context.scene.get(CAGE_CONTENT) != cage_content or any(
             bpy.data.objects.get(cage.version_name(label)) is None for label in labels):
         binding = built_binding = under_binding = old_shape = None
         if first is not None and bpy.data.objects.get(cage.version_name(labels[0])) is not None:
@@ -2127,7 +2120,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
             built = _attribute(first.data, BUILT)
             if built is not None:
                 built_binding = [old.bind(Vector(p)) for p in built]
-        append_cages(cage_file, labels)
+        append_cages(cage_file, labels, cage_content)
         if binding is not None:
             own = Surface(cage_object(labels[0]), [], recipe_regions(recipe))
 
@@ -2192,18 +2185,19 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     return True, plan["hand"], notes
 
 
-def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str) -> list[str]:
-    """A template is checked as a sync would leave it: its bodies and its cages are the current ones
-    of their files, its first version was built from the recipe of its asset.json, every fitted
-    version is fitted to the current first version, every version has the weights a sync gives it,
-    and on every version the turned edges are laid from its cloth and have its weights, so a hand
-    edit of a hem fails until a sync lays it again."""
+def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]],
+                 cage_content: str) -> list[str]:
+    """A template is checked as a sync would leave it: its bodies are the current ones of their files
+    and its cages of the cage's current content, its first version was built from the recipe of its
+    asset.json, every fitted version is fitted to the current first version, every version has the
+    weights a sync gives it, and on every version the turned edges are laid from its cloth and have
+    its weights, so a hand edit of a hem fails until a sync lays it again."""
     labels = [root for _path, root in body_list]
     stale = body_files.stale_bodies(body_list)
     if stale:
         return [f"The bodies {stale} of the garment changed in their own files; run tools/art/Sync-GarmentAsset.ps1."]
-    if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file):
-        return ["The garment's cage changed in its own file; run tools/art/Sync-GarmentAsset.ps1."]
+    if bpy.context.scene.get(CAGE_CONTENT) != cage_content:
+        return ["The garment was fitted to other content of its cage; run tools/art/Sync-GarmentAsset.ps1."]
     first = bpy.data.objects.get(version_name(name, labels[0]))
     if first is not None and recipe != MODELED and first.get(RECIPE) != recipe_text(recipe):
         return [f'"{first.name}" was built from another recipe than its asset.json names; run '

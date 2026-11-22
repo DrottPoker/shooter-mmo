@@ -30,7 +30,7 @@ $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-O
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
 $cages = @($read | Where-Object { $_.Kind -eq "cage" })
 if (-not $All -and $cages.Count -gt 0) {
-    throw "$($cages[0].Name) is a garment cage, which has no export; garments record its approved file."
+    throw "$($cages[0].Name) is a garment cage, which has no export; garments record its approved content."
 }
 
 $read = @($read | Where-Object { $_.Kind -ne "cage" })
@@ -57,7 +57,7 @@ function Get-ArtCurrentManifest([string]$Blender, [string]$Directory) {
 function Export-ArtPaint([string]$Blender, $Manifest) {
     # A paint layer exports one image per body, cropped to its paint, with its place in the body's
     # full paint layout, the fingerprint of the body it was moved to, and how it was moved, and the
-    # smoothness and metallic of its paint, and the cage's file when a body was moved through it.
+    # smoothness and metallic of its paint, and the cage's content when a body was moved through it.
     $folder = $script:ArtPaintTextureFolder
     $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
     $results = Invoke-ArtBlender $Blender $Manifest (
@@ -85,7 +85,7 @@ function Export-ArtPaint([string]$Blender, $Manifest) {
 
     $Manifest.Export = [ordered]@{
         contentSha256 = Get-ArtExportedContent $Manifest
-        cageSourceSha256 = if ($null -ne $surface.cageSourceSha256) { [string]$surface.cageSourceSha256 } else { $null }
+        cageContentSha256 = if ($null -ne $surface.cageContentSha256) { [string]$surface.cageContentSha256 } else { $null }
         textures = $textures
         smoothness = [double]$surface.smoothness
         metallic = [double]$surface.metallic
@@ -247,7 +247,7 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
 
 function Export-ArtGarment([string]$Blender, $Manifest) {
     # A garment template exports one model per body, each with that body's armature and its data.
-    # It records the approved file of its cage and the exports of the bodies and the animation
+    # It records the approved content of its cage and the exports of the bodies and the animation
     # libraries it was checked against, so a change of any of them needs a new export of the
     # template.
     $null = Update-ArtContentRecord $Blender $Manifest.Cage
@@ -325,7 +325,7 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
 
     $Manifest.Export = [ordered]@{
         contentSha256 = Get-ArtExportedContent $Manifest
-        cageSourceSha256 = Get-ArtFileSha256 $Manifest.Cage.SourcePath
+        cageContentSha256 = Get-ArtCageContent $Manifest.Cage
         models = $models
         clipSources = $clipSources
         pairSources = $pairSources

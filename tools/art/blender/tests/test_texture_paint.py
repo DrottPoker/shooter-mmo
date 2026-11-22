@@ -2,7 +2,6 @@
 colors, the names of images, which faces may serve a point, the tables of the zones, and the records
 that the committed exports show. See blender_source.py."""
 
-import hashlib
 import json
 import pathlib
 import sys
@@ -16,10 +15,10 @@ from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
 bodies = load("art_pipeline/bodies.py", "ZONES")
 cage = load("art_pipeline/cage.py", "REGIONS", "REGION_ZONES")
-garment = load("art_pipeline/garment.py", "image_name", "material_name", "file_sha256")
+garment = load("art_pipeline/garment.py", "image_name", "material_name")
 texture = load("art_pipeline/texture.py", "MAX_DYES", "DYE_SUFFIX", "DYE_LEVEL", "DYE_UNUSED", "SIZES", "image_name",
                "dye_image_name", "material_name", "parse_dye_colors", "export", "mask_record", garment=garment)
-paint = load("art_pipeline/paint.py", "image_name", "_matches", "_file_sha256", "ZONE_REGIONS", "CROP_BLOCK",
+paint = load("art_pipeline/paint.py", "image_name", "_matches", "ZONE_REGIONS", "CROP_BLOCK",
              "MOVE_TOLERANCE", bodies=bodies, cage=cage)
 ART = REPOSITORY_ROOT / "art"
 
@@ -145,14 +144,6 @@ class PaintTests(unittest.TestCase):
             bodies.ZONES.index("Pelvis"): "trunk", bodies.ZONES.index("UpperArms"): "arms",
             bodies.ZONES.index("Forearms"): "arms", bodies.ZONES.index("Hands"): "hands",
             bodies.ZONES.index("Thighs"): "legs", bodies.ZONES.index("Shins"): "legs", bodies.ZONES.index("Feet"): "feet"})
-
-    def test_the_sha256_of_a_file_is_the_same_in_the_garment_and_the_paint_code(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = pathlib.Path(folder) / "file.bin"
-            path.write_bytes(bytes(range(256)) * 9000)
-            expected = hashlib.sha256(path.read_bytes()).hexdigest()
-            self.assertEqual(paint._file_sha256(str(path)), expected)
-            self.assertEqual(garment.file_sha256(str(path)), expected)
 
     def test_the_recorded_crops_start_at_whole_blocks_and_lie_inside_their_image(self):
         block = paint.CROP_BLOCK

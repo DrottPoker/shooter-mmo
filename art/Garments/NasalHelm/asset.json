@@ -15,7 +15,7 @@
     "triangleBudget": 2500,
     "content": {
         "version": 1,
-        "sourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6",
+        "sourceSha256": "53d770e2c1789c755dde42fc7f85ca5a9033e8189246b6fd713d09c499135b41",
         "stages": {
             "model": "9451f083170a83907cc52aa19a86a89ddcac4562519ef304d2f90caacebb4eef",
             "rig": "3bf760553b865756d4bae0e7a8713e7dd2f447530e59600c4802fd5fa4c83ff7"
@@ -39,7 +39,7 @@
     },
     "export": {
         "contentSha256": "3bf760553b865756d4bae0e7a8713e7dd2f447530e59600c4802fd5fa4c83ff7",
-        "cageSourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
+        "cageContentSha256": "356fee83bf0aa6be4bb2c8558d0fcf302bdb76b8fa658bc6a2c491236d33459d",
         "models": [
             {
                 "body": "Male",

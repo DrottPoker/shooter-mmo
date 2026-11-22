@@ -1,10 +1,11 @@
-# Fits a garment template to every body of its cage and checks it: bodies and cages that changed in
-# their own files are taken in again, the first version moving with its cage, every other body's
-# version is fitted again from the first body's version through the cage, keeping the corrections
-# made on it by hand, and every version gets the weights of the body under it, keeping weights
-# painted by hand on the first version. A file that this leaves as it was is not saved. Then it writes
-# the review sheet and the review file with the test poses, checks every rule of the template,
-# records the content of the file, and says which approvals hold. See docs/ART_PIPELINE.md.
+# Fits a garment template to every body of its cage and checks it: bodies that changed in their own
+# files are taken in again, and the cages when the cage's content changed, the first version moving
+# with its cage, every other body's version is fitted again from the first body's version through
+# the cage, keeping the corrections made on it by hand, and every version gets the weights of the
+# body under it, keeping weights painted by hand on the first version. A file that this leaves as
+# it was is not saved. Then it writes the review sheet and the review file with the test poses,
+# checks every rule of the template, records the content of the file, and says which approvals
+# hold. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -32,11 +33,14 @@ foreach ($body in @($manifest.Bodies)) {
 
 $bodyArguments = @($manifest.Bodies | ForEach-Object { @("--body", "$($_.SourcePath)=$($_.Root)") })
 $blender = Resolve-ArtBlender $BlenderPath
+# The cage's own record, whose content the garment is fitted to and whose gate is read below.
+$null = Update-ArtContentRecord $blender $manifest.Cage
 $arguments = @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "garment-sync",
     "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
-    "--cage-manifest", $manifest.Cage.ManifestPath) + $bodyArguments + (Get-ArtGarmentPairArguments $manifest)
+    "--cage-manifest", $manifest.Cage.ManifestPath, "--cage-content", (Get-ArtCageContent $manifest.Cage)) +
+    $bodyArguments + (Get-ArtGarmentPairArguments $manifest)
 if ($Weights) {
     $arguments += "--weights"
 }
@@ -98,8 +102,6 @@ foreach ($line in @(Get-ArtStageReport $manifest)) {
     Write-Host $line
 }
 
-# The cage's own record, which its gate reads.
-$null = Update-ArtContentRecord $blender $manifest.Cage
 $cageProblem = Get-ArtCageGateProblem $manifest.Cage
 if ($null -ne $cageProblem) {
     Write-Host "Its cage $($manifest.Cage.RelativeDirectory) waits for its approval: $cageProblem."

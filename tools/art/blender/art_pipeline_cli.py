@@ -62,6 +62,8 @@ def _parser() -> argparse.ArgumentParser:
                              help="<file.blend>=<Clip>+<Clip> of an animation library whose clips a garment is checked in.")
         command.add_argument("--manifest", help="The asset.json of a cage or a garment template.")
         command.add_argument("--cage-manifest", help="The asset.json of a garment template's cage.")
+        command.add_argument("--cage-content", help="The content fingerprint of a garment template's cage, which a "
+                                                    "validation and an export of the template need.")
         command.add_argument("--texture", help="The name of a garment texture.")
         command.add_argument("--garment-file", help="The .blend file of a texture's template.")
         command.add_argument("--dyes", type=int, default=0, help="The dye channels a texture's template allows.")
@@ -128,6 +130,8 @@ def _parser() -> argparse.ArgumentParser:
         if name in ("garment-create", "garment-sync"):
             command.add_argument("--manifest", required=True, help="The template's asset.json, with its band and recipe.")
             command.add_argument("--cage-manifest", required=True, help="The asset.json of the template's cage.")
+            command.add_argument("--cage-content", required=True,
+                                 help="The content fingerprint of the template's cage, the 'model' stage of its asset.json.")
             command.add_argument("--pair", action="append", default=[],
                                  help="<file.blend>=<Template>:<band> of a template of a lower layer that it is worn over, "
                                       "whose real surface its cloth clears where it lies over one.")
@@ -169,6 +173,8 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--part", required=True)
     command.add_argument("--body", action="append", default=[], help="<file.blend>=<armature>, the first body first.")
     command.add_argument("--cage", help="The .blend file of the garment cage of the bodies.")
+    command.add_argument("--cage-content", help="The content fingerprint of the cage, the 'model' stage of its asset.json, "
+                                                "which comes with --cage.")
     command.add_argument("--canvas", help="The armature of the body the canvas moves to, with its paint.")
     command.add_argument("--force", action="store_true")
     command = commands.add_parser("paint-projection")
@@ -192,7 +198,7 @@ def _paint(args) -> int:
     if args.command == "export":
         for record in paint.export_images(args.paint, labels, args.textures):
             print(f"ART_TEXTURE {json.dumps(record, separators=(',', ':'))}")
-        record = dict(paint.paint_record(args.paint), cageSourceSha256=paint.cage_record())
+        record = dict(paint.paint_record(args.paint), cageContentSha256=paint.cage_record())
         print(f"ART_PAINT {json.dumps(record, separators=(',', ':'))}")
     return 0
 
@@ -353,7 +359,9 @@ def _garment(args) -> int:
     labels = args.roots.split(",")
     if [root for _path, root in body_list] != labels:
         raise ArtPipelineError("A garment is checked against its bodies; pass one --body per root, in order.")
-    band, recipe, lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
+    band, recipe, lines, _cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
+    if not args.cage_content:
+        raise ArtPipelineError("A garment is checked against the content of its cage; pass --cage-content.")
     slot, hair = garment.read_wearing(args.manifest)
     if band != args.band:
         raise ArtPipelineError(f'The band "{args.band}" is not the band of {args.manifest}.')
@@ -362,7 +370,7 @@ def _garment(args) -> int:
     # hairstyle under headwear that compresses it is worn in its form UnderHeadwear.
     inners = [(inner, inner_band, _recipe_next_to(path), garment.append_inner(path, inner, labels, compressed=hair == "compress"))
               for path, inner, inner_band in _pairs(args)]
-    errors = garment.stale_errors(args.garment, args.band, recipe, lines, body_list, cage_file)
+    errors = garment.stale_errors(args.garment, args.band, recipe, lines, body_list, args.cage_content)
     errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget, recipe, lines, slot)
     versions = [v for v in (bpy.data.objects.get(garment.version_name(args.garment, label)) for label in labels)
                 if v is not None]
@@ -457,7 +465,7 @@ def _cage(args) -> int:
     if args.stage != "model":
         raise ArtPipelineError(f'A cage has the review stage model, not "{args.stage}".')
     if args.command == "export":
-        raise ArtPipelineError("A cage has no export; garments record its approved file.")
+        raise ArtPipelineError("A cage has no export; garments record its approved content.")
     figure, lines = cage.read_manifest(args.manifest)
     errors = cage.stale_errors(body_list, figure, lines)
     if not errors:
@@ -541,8 +549,10 @@ def main() -> int:
             print(f"ART_MOTION {json.dumps(result, separators=(',', ':'))}")
         return 0
     if args.command == "paint-sync":
+        if bool(args.cage) != bool(args.cage_content):
+            raise ArtPipelineError("A paint layer takes the garment cage with its content: pass --cage and --cage-content.")
         changed = paint.sync(os.path.abspath(args.file), args.paint, args.part, _bodies(args),
-                             os.path.abspath(args.cage) if args.cage else None, args.canvas, args.force)
+                             os.path.abspath(args.cage) if args.cage else None, args.cage_content, args.canvas, args.force)
         print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
         return 0
     if args.command == "paint-projection":
@@ -566,10 +576,11 @@ def main() -> int:
         band, recipe, lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
         state = "created"
         if args.command == "garment-create":
-            garment.create(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list, cage_file, _pairs(args))
+            garment.create(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list, cage_file,
+                           args.cage_content, _pairs(args))
         else:
             changed, hand, notes = garment.sync(os.path.abspath(args.file), args.garment, band, recipe, lines, body_list,
-                                                cage_file, args.weights, args.rebuild, _pairs(args))
+                                                cage_file, args.cage_content, args.weights, args.rebuild, _pairs(args))
             state = "synced" if changed else "up-to-date"
             for note in notes:
                 print(f"ART_REPORT {note}")

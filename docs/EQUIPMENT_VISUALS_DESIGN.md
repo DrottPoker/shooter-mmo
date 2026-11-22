@@ -281,9 +281,9 @@ pipeline builds, fits, and checks it is in
   fit keeps them.
 
 The cage is an art asset of its own, reviewed and approved like every other. It
-has no export, since Unity never needs it, so garments record the approved cage
-file they were fitted to, and a change of the cage needs new exports of its
-garments.
+has no export, since Unity never needs it, so garments record the content of
+the approved cage they were fitted to, and a change of the cage's content needs
+new exports of its garments.
 
 ### Standard Lines
 
