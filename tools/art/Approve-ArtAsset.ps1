@@ -2,8 +2,9 @@
 # reviewer has looked at the model in Blender or on the Render-ArtPreview.ps1 sheet. The
 # approval stores the content fingerprint of its stage, which the validation reads from the .blend
 # file, so a change of that content, or of an earlier stage's, needs a new approval before
-# Export-ArtAsset.ps1 accepts it, while a file saved again with the same content keeps it. See
-# docs/ART_PIPELINE.md.
+# Export-ArtAsset.ps1 accepts it, while a file saved again with the same content keeps it. The
+# checks of a garment template or a masked texture go through their cache below artifacts/art-cache,
+# so the export takes them from there. The last line says how long it took. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -11,11 +12,14 @@ param(
     # has clips of its own. Of an animation library: animation. Of a paint layer: paint. Of a
     # garment template: model and rig. Of the garment cage: model. Of a garment texture: texture.
     [string]$Stage = "model",
+    # Computes every check of a garment template or a masked texture, without the cache of the checks.
+    [switch]$NoCache,
     [string]$BlenderPath
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
 
 $manifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Asset)
 $stageIndex = [array]::IndexOf($manifest.Stages, $Stage)
@@ -52,8 +56,9 @@ if ($manifest.Kind -eq "garment") {
 
 # Only an asset that meets the export rules can be approved. The validation also reads the content of
 # the file, which the record takes, and the approval binds to the content this run reported.
+$cacheArguments = Get-ArtCacheArguments $blender $manifest -NoCache:$NoCache
 $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage))
+$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage) + $cacheArguments)
 $null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
 $reported = Read-ArtContentLine $validation
 if (-not (Test-ArtSameStages $manifest $reported)) {
@@ -87,3 +92,5 @@ Write-Host "Approved the '$Stage' stage of $($manifest.Name) ($what)."
 foreach ($line in @(Get-ArtStageReport $manifest | Select-Object -Skip ($stageIndex + 1))) {
     Write-Host $line
 }
+
+Write-Host (Format-ArtElapsed $manifest.Name $watch $validation)

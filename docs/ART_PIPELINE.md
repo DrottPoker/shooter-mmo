@@ -171,6 +171,7 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`, and `WaterCommon.hlsl`, the water's clock and the sea's waves that both share; see [Water](#water). |
 | `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
+| `artifacts/art-cache`, `tools/art/blender/art_pipeline/check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): their results by the content of what they read, so a sync, an approval, and an export compute each once. Safe to delete at any time. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`. |
 | `tools/art/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
@@ -521,11 +522,13 @@ Render the review sheet:
 ```
 
 Expected result: `Review sheet for Resource_IronVein:` followed by the path of
-`artifacts\art-previews\Resource_IronVein.png`. The sheet of a static model has
-one row per root object, here `Available` and then `Depleted`, each seen from
-four sides at the game camera pitch and once next to a 1.8 m mannequin, on a
-dark green ground. Every other kind has a sheet of its own, described with the
-kind.
+`artifacts\art-previews\Resource_IronVein.png`, and `Resource_IronVein took
+<n> s.` The sheet of a static model has one row per root object, here
+`Available` and then `Depleted`, each seen from four sides at the game camera
+pitch and once next to a 1.8 m mannequin, on a dark green ground. Every other
+kind has a sheet of its own, described with the kind. The sheet of a garment
+template or a masked texture takes what it covers through the
+[cache of the checks](#cache-of-the-garment-checks), and `-NoCache` computes it.
 
 To look around freely, open the source in Blender:
 
@@ -552,10 +555,12 @@ When the reviewer approves the model, record the approval, export, and verify:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified <n> art asset(s).` Unity imports the model the
-next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
-its `.meta` file together, with the materials and catalogs Unity creates for
-them.
+(triangles=878).`, and `Verified <n> art asset(s).` Each asset of an approval
+or an export ends with the seconds it took, such as `Resource_IronVein took
+3.9 s.`; see [Cache Of The Garment Checks](#cache-of-the-garment-checks). Unity
+imports the model the next time it gets focus. Commit the `.blend` file,
+`asset.json`, the FBX, and its `.meta` file together, with the materials and
+catalogs Unity creates for them.
 
 `-Stage` is `model` unless it names another stage. `Export-ArtAsset.ps1` takes
 several assets at once, or `-All` for every asset but the cage, and exports them
@@ -3071,6 +3076,27 @@ armature, the motion check, and the pair check:
   Hair is checked under headwear in the form the headwear gives it: in its shape
   key `UnderHeadwear` under `"hair": "compress"`, as it is under `"show"`, and
   not at all under `"hide"`.
+- Two templates that cannot meet cost no frame. They cannot meet when the rest
+  rule hides no face of the inner template and on no body, at rest with the
+  chains of both laid as the pair check lays them, any triangle of the inner
+  template, split from its first corner as the game splits it, has the outer
+  template's cloth within its radius and the band's reach of its centre: the
+  test the pair check makes before it follows a triangle, here over every
+  triangle, also those it leaves out. Then the pair check follows no place and
+  no hidden face, so it computes no cover of the inner template, steps through
+  no pose or frame, and reports what stepping reports, such as `Boots under
+  HoodUp_Male: none of its drawn triangles lies under HoodUp_Male in 518 poses
+  and clip frames`, with the same data. Such pairs are, for example, the boots,
+  the gloves, and the trousers under the hoods, the helmet, and the hair. The
+  boots under the cloak do meet by this test: the cloak's hem at the back hangs
+  about 1 cm above the boots' shafts at rest, whose triangles are about 40 mm
+  wide, so it lies within their radius and the 30 mm reach of its `tight` band,
+  although none of their triangles lies under it. The motion check and the pair
+  check of any pair step through no frame either when they find nothing to
+  follow at rest, and count the poses and frames instead. They still lay the
+  cloth chains of the last frame: laying a chain leaves the float rounding of
+  its turn in its bones' scale, which `poses.rest` keeps and the export writes
+  into the FBX, so the bones end as stepping through every frame leaves them.
 - Both checks follow loose parts with their cloth chains laid in every pose and
   frame in the target pose that the game shows (`cloth.py`), so they report a leg
   that comes through a skirt or a cloak; the swing of the springs is reviewed in
@@ -3220,6 +3246,94 @@ exported before a template of a lower layer stops with `was checked over other
 templates of a lower layer than the current exports of its cage's templates`
 until its template is exported again.
 
+### Cache Of The Garment Checks
+
+The checks of what a template covers take most of a sync, an approval, and an
+export, so their results are cached below `artifacts/art-cache/checks`, which
+Git ignores and which may be deleted at any time; `check_cache.py` keeps it. A
+result computed once, by a sync or an approval, is taken by every later run
+until something it depends on changes, so the export of unchanged content
+computes nothing. Two kinds of unit are cached:
+
+- A template's own check on one body: what it covers, the underlay, and the
+  pull-in, and at the `rig` stage the motion check. Every review sheet of a
+  template or of a masked texture, a sync's and one that `Render-ArtPreview.ps1`
+  renders, takes its masks through the same unit, so a sync computes them once
+  for its sheet and its checks.
+- A pair, the template over one template of a lower layer, on every body: the
+  hide margins, the faces it hides, one list for every body, with the faces
+  left drawn where a look past it shows a hole, and at the `rig` stage the pair
+  check on every body.
+
+A masked texture's units are those of its template with the texture on it, so
+its masks, motion check, and pair checks are cached the same way. An entry is
+`<key>.json`, which names everything the unit read and holds its plain data,
+and `<key>.npz`, its arrays, which are read without pickle. The key is the
+SHA-256 of what the unit reads:
+
+- the content of the template, its `rig` stage, which Blender reads from the
+  file it checks as the content record does, and of a texture its `image` part;
+- the `rig` stage of every template of a lower layer, from its content record;
+- the fit of every body, the `fitSha256` of its export while that export is
+  current;
+- the content of the cage, from its record, and the content of every
+  animation library with its clips, from its record, at the `rig` stage;
+- the fields of the templates' `asset.json` that the checks read, `band`,
+  `recipe`, `covers`, `hair`, `slot`, `hides`, and `layer`;
+- the review stage and the kind of unit;
+- one fingerprint of the pipeline's code, every file of
+  `tools/art/blender/art_pipeline` and `art_pipeline_cli.py`, the skeleton
+  definition, and Blender's version, so any change of the code misses every
+  entry.
+
+The PowerShell scripts make the content records of these assets current first
+and pass the fingerprints; Blender checks that the bodies in the template's
+file have the fit given and that the template was fitted to the cage content
+given. A unit whose fingerprint is missing or does not hold is computed and not
+cached. The cache never stops a command: when the record of an asset cannot be
+read or made current, or a body's export is not current, its fingerprint is left
+out with a line such as `The checks that read art/Characters/Human_Female are
+not cached: <reason>.`, and the asset's own commands report its problems.
+
+Blender reads the clip libraries, the templates of lower layers, and for a
+texture's sheet the texture from their files on disk while the checks run, so
+before it writes any entry it hashes each such file again: its SHA-256 must be
+the `sourceSha256` of its content record and that record's fingerprint the one
+given. A texture's checks also read its own file again, which must still have
+the bytes it had when the run began. A file saved with other content during the
+run stops every further entry of that run, whose line then says so, such as
+`Not cached, since Human_Actions changed during the run.`; the run still uses
+what it computed for its own report and export, which its own records guard.
+
+A cached result is the computation's own: the report lines are made from it as
+from a computed one, and the export writes the same data. The checks leave the
+bones of the cloth chains with the float rounding of their last laying in their
+scale, which the FBX export writes, so every unit keeps that scale too, and the
+export puts it back before it writes the models.
+
+`Export-ArtAsset.ps1`, `Approve-ArtAsset.ps1`, `Sync-GarmentAsset.ps1`,
+`Sync-TextureAsset.ps1`, and `Render-ArtPreview.ps1` take `-NoCache`, which
+computes every unit and neither reads nor writes the cache. Each ends an asset
+with a line of the seconds it took and how many units came from the cache, such
+as `Shirt took 21.4 s; 6 of 6 check units came from the cache.`, with each
+reason once when a unit could not be cached, such as `Not cached, since the body
+Female in the file of Shirt has another fit than its export.` An asset without
+such checks gets only its seconds.
+
+To see the cache work, export a template twice:
+
+```powershell
+.\tools\art\Export-ArtAsset.ps1 -Asset art/Garments/Robe
+.\tools\art\Export-ArtAsset.ps1 -Asset art/Garments/Robe
+git status --porcelain -- art src
+```
+
+Expected result: both runs print the same report lines and `Exported Robe to
+...`; the second ends with `Robe took <n> s; 3 of 3 check units came from the
+cache.` in a fraction of the first one's time, and `git status` lists nothing,
+since both wrote the same files. With `-NoCache` the run takes as long as the
+first and writes the same files again.
+
 ### Cloth Parity
 
 The review sheets, review files, and checks lay a garment's cloth chains in the
@@ -3294,7 +3408,8 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns, the version of the content fingerprints and the parts of every stage, and that every content record and approval of an `asset.json` has the parts, stages, and fields of its kind. |
 | `test_content_core.py` | The content fingerprints that approvals bind to: rounding, with negative zero, noise below the rounding, and a change above it; named things in any order; the chain of the stages, a shape that changes every stage, weights that keep the model, and a clip that changes only the animation. It needs numpy. |
-| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the exports of the templates under its template and that name a wrong split's entry and key. |
+| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the exports of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds. |
+| `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
@@ -3302,7 +3417,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
 | `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth; the one hidden list for every body; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the body's drawn faces split as the game splits them, which the pull-in and the motion check follow inside; the phases of its report; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the nine files that need it are skipped and the run says `skipped=9`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the ten files that need it are skipped and the run says `skipped=10`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -3417,9 +3532,11 @@ slot, so a shirt and a jerkin replace each other.
    the pair check over them, such as `Trousers under Tunic_Male: <t> drawn
    triangles of it lie under Tunic_Male; the deepest they come through it in
    <k> poses and clip frames: the rest pose 0.00 mm, the test poses ...`, a line
-   per stage, such as `Tunic: the 'model' stage is not approved yet.`, and
-   `Tunic meets every rule. Review it, ...`. A second run prints
-   `Tunic is up to date: ...` and leaves the file as it is. A broken rule stops
+   per stage, such as `Tunic: the 'model' stage is not approved yet.`,
+   `Tunic meets every rule. Review it, ...`, and `Tunic took <n> s; <c> of <u>
+   check units came from the cache.` A second run prints `Tunic is up to date:
+   ...`, leaves the file as it is, and takes every unit from the
+   [cache](#cache-of-the-garment-checks). A broken rule stops
    it with the list of rules, such as a version that leaves its band, with the
    body parts where it does. After a change of the recipe in `asset.json`, run
    it with `-Rebuild`, which builds the first version again and keeps its
@@ -3448,12 +3565,14 @@ slot, so a shirt and a jerkin replace each other.
    same for `rig`, `Exported Tunic to
    src/Client/Assets/Art/Models/Garments/Tunic_Male.fbx,
    src/Client/Assets/Art/Models/Garments/Tunic_Female.fbx with their data
-   (...)`, and `Verified <n> art asset(s).` When Unity gets focus, it creates
-   `Assets/Art/Materials/Garments/M_Garment_Tunic.mat`. Commit the `.blend`
-   file, `asset.json`, the FBX and JSON files, the material, and their `.meta`
-   files together. A template is exported again whenever its cage, a body, or an
-   animation library changes, with the templates of higher layers after it, as
-   [Export Of A Template](#export-of-a-template) describes.
+   (...)`, and `Verified <n> art asset(s).` The `rig` approval and the export
+   take what the sync checked from the cache, so the export ends with `Tunic
+   took <n> s; <u> of <u> check units came from the cache.` When Unity gets
+   focus, it creates `Assets/Art/Materials/Garments/M_Garment_Tunic.mat`.
+   Commit the `.blend` file, `asset.json`, the FBX and JSON files, the material,
+   and their `.meta` files together. A template is exported again whenever its
+   cage, a body, or an animation library changes, with the templates of higher
+   layers after it, as [Export Of A Template](#export-of-a-template) describes.
 5. Give it a texture, as [Make A Garment Texture](#make-a-garment-texture)
    describes, and once both are exported, try it on in
    [the Wardrobe](#the-wardrobe) and play its clips; a template with loose parts
@@ -3630,9 +3749,11 @@ at the front where the skin shows between the laces.
    ```
 
    Expected result: the path of the review sheet, `WoolTunic: the 'texture'
-   stage is not approved yet.`, and `WoolTunic meets every rule. Review it, then
+   stage is not approved yet.`, `WoolTunic meets every rule. Review it, then
    record the approval with tools/art/Approve-ArtAsset.ps1 -Asset
-   art/GarmentTextures/WoolTunic -Stage texture.` After the template's UVs
+   art/GarmentTextures/WoolTunic -Stage texture.`, and `WoolTunic took <n> s.`,
+   for a texture with transparent parts with how many units of its masks came
+   from the [cache](#cache-of-the-garment-checks). After the template's UVs
    changed, such as after a rebuild, it first prints `Moved WoolTunic to the new
    UVs of Tunic: ...` and the notes of the move. A move that keeps the image as it
    is, because only the template's shape changed, leaves the approval holding.
@@ -3668,7 +3789,8 @@ at the front where the skin shows between the laces.
    material M_Garment_WoolTunic.`, for a texture with transparent parts with
    `and its masks src/Client/Assets/Art/Models/Garments/WoolTunic_Male.json,
    ...` and the report of what it covers and how much skin comes through it in
-   motion, and `Verified <n> art asset(s).` When Unity gets focus, it creates
+   motion, which the export takes from the cache that the sync and the approval
+   filled, and `Verified <n> art asset(s).` When Unity gets focus, it creates
    `Assets/Art/Materials/Garments/M_Garment_WoolTunic.mat` and updates the
    appearance catalogs: the Console lists `Garment WoolTunic` in both. Commit the
    `.blend` file, `asset.json`, the PNG and JSON files, the material, the

@@ -7,11 +7,15 @@
 # and clips only, and records the export of the rig it was authored on, so it is exported after that
 # rig. A paint layer exports its images only, and a garment one model per body below
 # src/Client/Assets/Art/Models/Garments. The garment cage has no export, so -All leaves it out. Unity
-# imports the FBX with the rules in ArtModelImportRules. See docs/ART_PIPELINE.md.
+# imports the FBX with the rules in ArtModelImportRules. The checks of a garment template or a masked
+# texture come from their cache below artifacts/art-cache where an approval or a sync computed them.
+# Each asset ends with a line of the seconds it took. See docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
     [switch]$All,
+    # Computes every check of a garment template or a masked texture, without the cache of the checks.
+    [switch]$NoCache,
     [string]$BlenderPath
 )
 
@@ -92,6 +96,7 @@ function Export-ArtPaint([string]$Blender, $Manifest) {
     }
     Write-ArtAssetManifest $Manifest
     Write-Host "Exported $($Manifest.Name) to $folder ($(@($textures | ForEach-Object { $_.name }) -join ', '))."
+    return $results
 }
 
 function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
@@ -178,7 +183,8 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
     $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Blender $Manifest } else { @() }
     $pairProblem = $null
     $pairSources = @()
-    foreach ($pair in @(Get-ArtGarmentPairs $template)) {
+    $pairs = @(Get-ArtGarmentPairs $template)
+    foreach ($pair in $pairs) {
         $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)
         if ($null -eq $pairProblem -and $null -ne $problem) {
             $pairProblem = "the template of a lower layer $problem"
@@ -194,7 +200,8 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "texture") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder),
-            "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)) + $opaqueOnly)
+            "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)) + $opaqueOnly +
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs))
     Assert-ArtExportedContent $Manifest $results $sourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_TEXTURE_MASK *" } |
             ForEach-Object { $_.Substring("ART_TEXTURE_MASK ".Length) | ConvertFrom-Json })
@@ -243,6 +250,7 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
 
     $maskNote = if ($masks.Count -gt 0) { " and its masks $(@($masks | ForEach-Object { $_.data }) -join ', ')" } else { "" }
     Write-Host "Exported $($Manifest.Name) to $(@($textures | ForEach-Object { $_.target }) -join ', ') with its material $($materials[0].name)$maskNote."
+    return $results
 }
 
 function Export-ArtGarment([string]$Blender, $Manifest) {
@@ -269,7 +277,8 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
     $clipSources = Get-ArtClipSourceRecords $Blender $Manifest
     # The templates of a lower layer it is checked over, each exported from its current content,
     # since Blender reads their current files.
-    $pairSources = @(Get-ArtGarmentPairs $Manifest | ForEach-Object {
+    $pairs = @(Get-ArtGarmentPairs $Manifest)
+    $pairSources = @($pairs | ForEach-Object {
             $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $_.Directory)
             if ($null -ne $problem) {
                 throw "$($Manifest.Name) cannot be exported while the template of a lower layer $problem."
@@ -282,7 +291,8 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
             "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder),
-            "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+            "--textures", (Join-Path $script:ArtRepositoryRoot $folder)) +
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs))
     Assert-ArtExportedContent $Manifest $results $sourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_GARMENT_FBX *" } |
             ForEach-Object { $_.Substring("ART_GARMENT_FBX ".Length) | ConvertFrom-Json })
@@ -339,9 +349,11 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
     }
 
     Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') with their data ($triangles)."
+    return $results
 }
 
 foreach ($manifest in $manifests) {
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
     $rigContentSha256 = $null
     if ($manifest.Kind -eq "animations") {
         $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
@@ -353,17 +365,20 @@ foreach ($manifest in $manifests) {
     }
 
     if ($manifest.Kind -eq "paint") {
-        Export-ArtPaint $blender $manifest
+        $results = @(Export-ArtPaint $blender $manifest)
+        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
         continue
     }
 
     if ($manifest.Kind -eq "garment") {
-        Export-ArtGarment $blender $manifest
+        $results = @(Export-ArtGarment $blender $manifest)
+        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
         continue
     }
 
     if ($manifest.Kind -eq "texture") {
-        Export-ArtTexture $blender $manifest
+        $results = @(Export-ArtTexture $blender $manifest)
+        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
         continue
     }
 
@@ -453,4 +468,5 @@ foreach ($manifest in $manifests) {
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
     $what = if ($manifest.Kind -eq "animations") { "clips=$($manifest.Clips -join ',')" } else { $triangles }
     Write-Host "Exported $($manifest.Name) to $($manifest.Target) ($what)."
+    Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
 }

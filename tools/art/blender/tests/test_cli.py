@@ -353,6 +353,73 @@ class CageContentTests(unittest.TestCase):
         self.assertEqual(args.cage_content, "0" * 64)
 
 
+class CheckCacheTests(unittest.TestCase):
+    """The checks of a garment template or a masked texture go through the cache of the checks, keyed by
+    the fingerprints the PowerShell scripts pass, which -NoCache turns off, and every script that runs
+    them says how long it took and how many units came from the cache."""
+
+    SCRIPTS = ("Export-ArtAsset.ps1", "Approve-ArtAsset.ps1", "Sync-GarmentAsset.ps1", "Sync-TextureAsset.ps1")
+
+    def test_validate_export_and_preview_take_the_fingerprints_and_the_switch(self):
+        cache = ["--no-cache", "--body-fit", "Male=" + "1" * 64, "--clip-content", "h.blend=" + "2" * 64, "--pair-content",
+                 "Trousers=" + "3" * 64, "--texture-content", "4" * 64]
+        for command in ("validate", "export", "preview"):
+            required = ["--output", "o"] if command == "preview" else ["--kind", "garment", "--roots", "Male"]
+            args = parse(command, *required, *cache, "--cage-content", "5" * 64)
+            with self.subTest(command=command):
+                self.assertTrue(args.no_cache)
+                self.assertEqual((args.body_fit, args.clip_content, args.pair_content), ([cache[2]], [cache[4]], [cache[6]]))
+                self.assertEqual((args.texture_content, args.cage_content), ("4" * 64, "5" * 64))
+        args = parse("validate", "--kind", "garment", "--roots", "Male")
+        self.assertEqual((args.no_cache, args.body_fit, args.clip_content, args.pair_content), (False, [], [], []))
+
+    def test_every_script_that_runs_the_checks_passes_the_cache_arguments_and_has_the_switch(self):
+        for name in self.SCRIPTS + ("Render-ArtPreview.ps1",):
+            text = powershell(name)
+            with self.subTest(script=name):
+                self.assertIn("[switch]$NoCache", text)
+                self.assertIn("-NoCache:$NoCache", text)
+                self.assertIn("Write-Host (Format-ArtElapsed $", text)
+                if name != "Render-ArtPreview.ps1":
+                    self.assertIn("Get-ArtCacheArguments $", text)
+
+    def test_every_review_sheet_of_a_template_or_a_texture_is_rendered_by_one_function_with_the_cache(self):
+        for function in ("Invoke-ArtGarmentSheet", "Invoke-ArtTextureSheet"):
+            self.assertIn("(Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))", PairSourceTests.function(function))
+        for name, functions in (("Render-ArtPreview.ps1", ("Invoke-ArtGarmentSheet", "Invoke-ArtTextureSheet")),
+                                ("Sync-GarmentAsset.ps1", ("Invoke-ArtGarmentSheet",)),
+                                ("Sync-TextureAsset.ps1", ("Invoke-ArtTextureSheet",))):
+            for function in functions:
+                with self.subTest(script=name, function=function):
+                    self.assertIn(f"@({function} $blender $manifest ", powershell(name))
+        self.assertEqual(all_powershell().count('"--texture-file"'), 1)
+        self.assertEqual(all_powershell().count('"--kind", "garment", "--garment"'), 1)
+
+    def test_the_fingerprints_come_from_content_records_made_current_first(self):
+        body = PairSourceTests.function("Get-ArtCacheArguments")
+        for update in ("Update-ArtContentRecord $Blender $bodyManifest", "Update-ArtContentRecord $Blender $current",
+                       "Update-ArtContentRecord $Blender $template.Cage", "Update-ArtContentRecord $Blender $Manifest"):
+            self.assertIn(update, body)
+        self.assertIn("Get-ArtExportChangeProblem $bodyManifest", body)
+        self.assertIn('"--no-cache"', body)
+
+    def test_the_cache_never_stops_a_command_and_says_what_it_leaves_out(self):
+        body = PairSourceTests.function("Get-ArtCacheArguments")
+        tries, catches = len(re.findall(r"\btry \{", body)), re.findall(r"catch \{\s*(?:\$Pairs = @\(\)\s*)?(\S+)", body)
+        self.assertGreaterEqual(tries, 6)
+        self.assertEqual((len(catches), set(catches)), (tries, {"Write-ArtUncached"}))
+        for line in body.splitlines():
+            if "Update-ArtContentRecord" in line or "Read-ArtAssetManifest" in line or "Get-ArtCageContent" in line:
+                with self.subTest(line=line.strip()):
+                    self.assertTrue(line.startswith(" " * 12), "each asset's part runs inside its own try")
+
+    def test_the_timing_line_counts_the_units_of_every_run_and_says_each_note_once(self):
+        body = PairSourceTests.function("Format-ArtElapsed")
+        self.assertIn('"ART_CACHE *"', body)
+        self.assertIn('ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)', body)
+        self.assertIn("if (-not $notes.Contains([string]$note))", body)
+
+
 class ResultLineTests(unittest.TestCase):
     PRINTED = re.compile(r'print\(f?"((?:ART|HUMAN_BASE)_[A-Z_]+)[ "]')
 

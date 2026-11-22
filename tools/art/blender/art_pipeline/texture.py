@@ -1047,58 +1047,45 @@ def dress(template: str, texture_file: str, name: str, labels: list[str]) -> boo
 
 def masks(texture_file: str, name: str, template_file: str, template: str, labels: list[str], band: str,
           libraries: list[tuple[str, list[str]]], covers: bool = True, inners: list[tuple[str, str, object, str]] = (),
-          recipe=None, compressed: bool = False) -> tuple[dict[str, list], dict, list[str]]:
+          recipe=None, compressed: bool = False, *, units) -> tuple[dict[str, list], dict, list[str]]:
     """The texture's own masks on every body, with the faces it hides of every template of a lower
     layer worn under it, given as its file, its name, its recipe, and its band, one list for every
     body, the skin that comes through the garment in the test poses and the clips of the libraries,
     and the pair check of every such template, computed in the template's file with the texture on
-    every version, so its holes hide nothing and the pair check follows what it hides. Returns the
-    hide margins of its open edges over each template on every body, as coverage.body_margins gives
-    them, per body the masks, the motion check, and the pair checks by template, and notes on the
-    faces left drawn where a look past it shows a hole. The template's file is opened in place of the
-    texture's and not saved."""
+    every version, so its holes hide nothing and the pair check follows what it hides. units, called
+    once the template's file is open and before the texture goes on, gives the cached units of the
+    checks, as coverage.checks takes them. Returns the hide margins of its open edges that reach each
+    template on every body, per body the masks, the motion check, and the pair checks by template, and
+    notes on the faces left drawn where a look past it shows a hole. The template's file is opened in
+    place of the texture's and not saved."""
     bpy.ops.wm.open_mainfile(filepath=template_file)
+    cached = units()
     dress(template, texture_file, name, labels)
-    worn = [(inner, inner_recipe, inner_band, garment.append_inner(path, inner, labels, compressed))
-            for path, inner, inner_recipe, inner_band in inners]
-    actions = coverage.load_actions(libraries)
-    margins = {inner: coverage.body_margins(template, labels, objects, recipe)
-               for inner, _inner_recipe, _inner_band, objects in worn} if covers else {}
-    # The faces the rest rule hides on the first body beyond the margins on every body, one list for
-    # every body, without those at which a look past the texture's cloth shows a hole on any body at
-    # rest or in any frame of any clip.
-    candidates = {inner: coverage.hidden(template, labels[0], band, objects[0], recipe, inner_recipe, covers,
-                                         margins.get(inner))
-                  for inner, inner_recipe, _inner_band, objects in worn}
-    found = {label: coverage.compute(template, label, band, covers) for label in labels}
-    # Each inner template's own cover on every body, whose faces the game removes under the pair too.
-    inner_covers = {inner: {label: coverage.compute(inner, label, inner_band) for label in labels}
-                    for inner, _inner_recipe, inner_band, _objects in worn}
-    notes = []
-    for inner, inner_recipe, _inner_band, objects in worn:
-        failures = []
-        for label, obj in zip(labels, objects):
-            failed, where = coverage.follow_failures(template, found[label], obj, candidates[inner], actions, recipe,
-                                                     inner_recipe, inner_covers[inner][label].covered
-                                                     ) if covers else (np.zeros(len(candidates[inner]), bool), {})
-            failures.append(failed)
-            notes += [f"{garment.version_name(template, label)} with {name} would show a hole at face {face} of {inner} in "
-                      f"{frame} at ({', '.join(f'{x:.3f}' for x in place)}) m, so it leaves that face drawn"
-                      for face, (frame, place) in sorted(where.items())]
-        chosen = coverage.chosen_hidden(candidates[inner], failures, [tuple(p.vertices) for p in objects[0].data.polygons],
-                                        coverage._turned_of(objects[0], inner_recipe))
-        for label in labels:
-            found[label].hidden[inner] = chosen.copy()
-    results = {}
-    for index, label in enumerate(labels):
-        result = found[label]
-        # A template that covers nothing hides nothing, and its own pair check, with all of its
-        # cloth opaque, holds for its textures too.
-        pairs = {inner: coverage.check_pair(template, result, objects[index], inner_covers[inner][label].underlay,
-                                            result.hidden[inner], actions, recipe, inner_recipe,
-                                            inner_covers[inner][label].covered)
-                 for inner, inner_recipe, _inner_band, objects in worn} if covers else {}
-        results[label] = (result, coverage.check_motion(template, result, actions), pairs)
+    worn: dict[str, list] = {}
+
+    def versions(inner: str):
+        # The templates of lower layers go on the bodies, all in their order, when a check first needs one.
+        def get() -> list:
+            if not worn:
+                for path, other, _recipe, _band in inners:
+                    worn[other] = garment.append_inner(path, other, labels, compressed)
+            return worn[inner]
+        return get
+
+    clips = coverage.Clips(libraries)
+    # A template that covers nothing hides nothing, and its own pair check, with all of its cloth
+    # opaque, holds for its textures too.
+    own, under = coverage.checks(template, labels, band, covers, recipe,
+                                 [(inner, inner_band, inner_recipe, versions(inner)) for _path, inner, inner_recipe, inner_band in inners],
+                                 clips, True, cached, pair_checks=covers, motion_first=False)
+    notes = [f"{garment.version_name(template, label)} with {name} would show a hole at face {face} of {inner} in "
+             f"{frame} at ({', '.join(f'{x:.3f}' for x in place)}) m, so it leaves that face drawn"
+             for _path, inner, _recipe, _band in inners
+             for label, where in zip(labels, under[inner].where) for face, (frame, place) in sorted(where.items())]
+    margins = {inner: list(zip(labels, check.over)) for inner, check in under.items() if check.over is not None}
+    results = {label: (own[label].coverage, own[label].motion,
+                       {inner: under[inner].pairs[index] for _path, inner, _recipe, _band in inners} if covers else {})
+               for index, label in enumerate(labels)}
     return margins, results, notes
 
 

@@ -3,15 +3,21 @@
 # it was painted in, follows the template, and every texel takes the paint of the nearest point of
 # the moved preview. A file that this leaves as it was is not saved. Then it writes the review sheet,
 # the texture on every body of its template, checks every rule of the texture, records the content of
-# the file, and says whether its approval holds. See docs/ART_PIPELINE.md.
+# the file, and says whether its approval holds. The sheet and the checks of a texture with
+# transparent parts take its masks through the cache of the checks, so the sync computes them once and
+# the approval and the export take them from there. The last line says how long it took. See
+# docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
+    # Computes every check of the texture's masks, without the cache of the checks.
+    [switch]$NoCache,
     [string]$BlenderPath
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
 
 $manifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Asset)
 if ($manifest.Kind -ne "texture") {
@@ -44,15 +50,17 @@ else {
         ForEach-Object { Write-Host $_.Substring("ART_TEXTURE_NOTE ".Length) }
 }
 
-# The review sheet, which Git ignores.
+# The review sheet, which Git ignores, with the masks of a texture with transparent parts through the
+# cache of the checks.
 $sheet = Join-Path $script:ArtRepositoryRoot "artifacts/art-previews/$($manifest.Name).png"
-& (Join-Path $PSScriptRoot "Render-ArtPreview.ps1") -Asset $manifest.Directory -Output $sheet -BlenderPath $blender | Out-Null
+$sheetResults = @(Invoke-ArtTextureSheet $blender $manifest $sheet -NoCache:$NoCache)
 Write-Host "Review sheet: $sheet"
 
 # Every rule of the texture, so a broken one shows before the review, and the content of the file,
 # and of its template's, whose UVs it is compared with.
+$cacheArguments = Get-ArtCacheArguments $blender $manifest -NoCache:$NoCache
 $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "texture"))
+$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "texture") + $cacheArguments)
 $null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
 $null = Update-ArtContentRecord $blender $manifest.Garment
 foreach ($line in @(Get-ArtStageReport $manifest)) {
@@ -65,3 +73,5 @@ if ($null -eq (Get-ArtExportGateProblem $manifest) -and $null -eq (Get-ArtTextur
 else {
     Write-Host "$($manifest.Name) meets every rule. Review it, then record the approval with tools/art/Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage texture."
 }
+
+Write-Host (Format-ArtElapsed $manifest.Name $watch (@($sheetResults) + @($validation)))

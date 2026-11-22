@@ -60,7 +60,7 @@ from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
 
 from . import bodies, garment, hang, poses
-from .cloth import capsules, follow, worn
+from .cloth import _chains, capsules, follow, worn
 from .scene import ArtPipelineError
 
 # How far rays look for the garment from the skin, per band, in meters.
@@ -631,6 +631,7 @@ class Motion:
     faces: int = 0  # drawn body faces under the garment at rest, at a corner or inside
     rest: int = 0  # drawn body faces that lie through it already at rest
     worst: dict = field(default_factory=dict)  # per phase, the rest pose, the test poses, and each clip: the deepest and where
+    end: dict = field(default_factory=dict)  # per bone of the chains it laid, its scale as the check left it
 
     def rest_error(self, version: str, what: str) -> str | None:
         """The rule broken when something lies through the garment at rest, where it shows in every
@@ -641,11 +642,17 @@ class Motion:
                 "or the cage.")
 
 
+def _clip_frames(action) -> range:
+    """The frames of a clip that the checks take. The last frame of a looping clip repeats its first,
+    so it is left out."""
+    last = int(action.frame_range[1])
+    return range(last if action.get("loop") else last + 1)
+
+
 def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action], kinds: list[str] | None = None,
             found: list | None = None, reach: dict | None = None, test_poses: bool = True):
     """Sets the armature to every test pose, unless left out, and to every frame of every clip,
-    naming each, with the cloth chains of the kinds laid as the runtime solver lays them. The last
-    frame of a looping clip repeats its first, so it is left out."""
+    naming each, with the cloth chains of the kinds laid as the runtime solver lays them."""
     scene = bpy.context.scene
     for pose_name, _description, pose in poses.POSES if test_poses else ():
         poses.apply(arm, pose)
@@ -656,11 +663,62 @@ def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action], kinds: list[
     for action in actions:
         arm.animation_data.action = action
         arm.animation_data.action_slot = action.slots[0]
-        last = int(action.frame_range[1])
-        for frame in range(last if action.get("loop") else last + 1):
+        for frame in _clip_frames(action):
             scene.frame_set(frame)
             follow(arm, kinds or [], found or [], reach)
             yield f"{action.name} frame {frame}"
+
+
+def frame_names(actions, test_poses: bool = True) -> list[str]:
+    """The names _frames gives the test poses and the clip frames, in its order, without posing."""
+    names = [pose_name for pose_name, _description, _pose in poses.POSES] if test_poses else []
+    return names + [f"{action.name} frame {frame}" for action in actions for frame in _clip_frames(action)]
+
+
+def skipped_frames(worst: dict, actions, test_poses: bool = True) -> int:
+    """A check with nothing to follow steps through no pose and no frame: every phase still joins its
+    report at nothing, as stepping through its frames adds it, and the count of poses and frames is
+    that of the names _frames gives."""
+    names = frame_names(actions, test_poses)
+    for name_of_frame in names:
+        worst.setdefault(phase_of(name_of_frame), (0.0, ""))
+    return len(names)
+
+
+def _last_frame(arm: bpy.types.Object, actions: list[bpy.types.Action], kinds: list[str], found: list, reach: dict | None,
+                test_poses: bool = True) -> None:
+    """Leaves the armature as stepping through _frames leaves it, without stepping: the chains laid in
+    its last frame, with the clips' channels as the last frame of each clip sets them, or else in the
+    last test pose. Laying a chain leaves its bones with the float rounding of their turn in their
+    scale, which poses.rest keeps and the FBX export writes, so a check that follows nothing leaves the
+    bones as one that steps through every frame."""
+    if not kinds:
+        return
+    scene = bpy.context.scene
+    clips = [action for action in actions if len(_clip_frames(action))]
+    if clips:
+        poses.rest(arm)
+        arm.animation_data_create()
+        for action in clips:
+            arm.animation_data.action = action
+            arm.animation_data.action_slot = action.slots[0]
+            scene.frame_set(_clip_frames(action)[-1])
+        follow(arm, kinds, found, reach)
+    elif test_poses and poses.POSES:
+        poses.apply(arm, poses.POSES[-1][2])
+        follow(arm, kinds, found, reach)
+
+
+def end_scales(arm: bpy.types.Object, kinds: list[str]) -> dict[str, tuple[float, float, float]]:
+    """The scale of every bone of the chains of the kinds, as their last laying left it."""
+    return {name: tuple(float(s) for s in arm.pose.bones[name].scale)
+            for kind in kinds for names in _chains(arm, kind) for name in names}
+
+
+def set_end_scales(arm: bpy.types.Object, scales: dict) -> None:
+    """Puts back the scales end_scales read, so the export finds the bones as the checks left them."""
+    for name, scale in scales.items():
+        arm.pose.bones[name].scale = scale
 
 
 def _chains_of(garments: list[bpy.types.Object], arm: bpy.types.Object,
@@ -767,7 +825,13 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     body.data.vertices.foreach_set("co", pulled.reshape(-1))
     body.data.update()
     try:
-        for name_of_frame in _frames(arm, actions, kinds, found, chains):
+        frames = _frames(arm, actions, kinds, found, chains)
+        if not len(deepest):
+            # Nothing to follow: no pose or frame can change the result.
+            checked += skipped_frames(worst, actions)
+            _last_frame(arm, actions, kinds, found, chains)
+            frames = ()
+        for name_of_frame in frames:
             phase = phase_of(name_of_frame)
             best = worst.setdefault(phase, (0.0, ""))
             co = (_posed(body)[0][corners] * shares[:, :, None]).sum(axis=1)
@@ -816,7 +880,7 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     coverage.through = faces_of(through)
     result = Motion(label, vertices, int(coverage.through.sum()), 0.0, "", "", checked,
                     faces=int(faces_of(np.ones(len(deepest), bool)).sum()), rest=int(faces_of(at_rest).sum()),
-                    worst=worst)
+                    worst=worst, end=end_scales(arm, kinds))
     if through.any():
         k = int(np.argmax(deepest))
         result.depth, result.where = float(deepest[k]), where[k]
@@ -1314,6 +1378,7 @@ class Pair:
     # Per phase, the most hidden triangles that show a hole in one pose or clip
     # frame of it, the frame, and where the first of them lies on the inner garment at rest.
     shown: dict = field(default_factory=dict)
+    end: dict = field(default_factory=dict)  # per bone of the chains it laid, its scale as the check left it
 
     def rest_error(self, version: str, inner: str) -> str | None:
         """The rule broken when a drawn triangle of the inner garment lies through this one at rest,
@@ -1349,18 +1414,13 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     and so do its triangles. For them this one's cloth is all of it as the game draws it, its turned
     edges too; the body faces the game removes are those this one covers and those the inner garment
     covers when its cover on the body is given. The choice of the hidden faces leaves out every face
-    that shows a hole at rest or in a clip, so only the test poses can report one."""
+    that shows a hole at rest or in a clip, so only the test poses can report one.
+    With no place and no hidden face to follow, no pose or frame can change the result: it steps
+    through none and counts them."""
     label = coverage.label
-    arm = bpy.data.objects[label]
-    version = bpy.data.objects[garment.version_name(name, label)]
-    body = bodies.source_body(label)
     polygons = [tuple(p.vertices) for p in inner.data.polygons]
     inside = garment.turned_mask(len(inner.data.vertices), _turned_of(inner, inner_recipe))
-    kinds, found, chains = _chains_of([inner, version], arm, body)
-    poses.rest(arm)
-    follow(arm, kinds, found, chains)
-    rest = _posed(inner)[0]
-    cloth = _Cloth(version, _posed(version)[0], _alpha(version), turned=_turned_of(version, recipe))
+    arm, version, body, (kinds, found, chains), rest, cloth = _pair_rest(name, label, inner, recipe)
     shell = garment.Surface(garment.cage_object(label), []).tree
     skin = garment.Surface(body, []).tree
     reach_out = REACH[coverage.band]
@@ -1379,13 +1439,12 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
                 continue
             normal = normal / np.linalg.norm(normal)
             _location, outward, _index, _distance = shell.find_nearest(Vector(centre))
-            nearest = cloth.tree.find_nearest(Vector(centre))[3]
-            radius = max(float(np.linalg.norm(p - centre)) for p in points)
-            if outward is None or float(np.dot(normal, outward)) <= 0.0 or nearest is None or nearest > radius + reach_out:
+            within = _within(cloth, points, reach_out)
+            if outward is None or float(np.dot(normal, outward)) <= 0.0 or within is None:
                 continue
             # The cloth's triangles near it, whose corners and edges, where its surface folds, may lie
             # over it.
-            near = sorted({index for _co, _normal, index, _d in cloth.tree.find_nearest_range(Vector(centre), radius + reach_out)})
+            near = sorted({index for _co, _normal, index, _d in cloth.tree.find_nearest_range(Vector(centre), within)})
             around = sorted({v for t in near for v in cloth.triangles[t][1]})
             segments = sorted({(min(a, b), max(a, b)) for t in near
                                for a, b in zip(cloth.triangles[t][1], cloth.triangles[t][1][1:] + cloth.triangles[t][1][:1])})
@@ -1432,7 +1491,13 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     had_animation = arm.animation_data is not None
     previous = arm.animation_data.action if had_animation else None
     try:
-        for name_of_frame in _frames(arm, actions, kinds, found, chains):
+        frames = _frames(arm, actions, kinds, found, chains)
+        if not len(deepest) and not followed.faces:
+            # Nothing to follow: no pose or frame can change the result.
+            result.checked += skipped_frames(worst, actions)
+            _last_frame(arm, actions, kinds, found, chains)
+            frames = ()
+        for name_of_frame in frames:
             phase = phase_of(name_of_frame)
             best = worst.setdefault(phase, (0.0, ""))
             posed = _posed(inner)[0]
@@ -1480,6 +1545,79 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
         # The body part under the deepest place, so a person knows where to look.
         nearest = garment.Surface(body, []).signed_distance(Vector(inner_weights[k] @ rest[inner_corners[k]]))[1]
         result.zone = bodies.ZONES[bodies.zones_of(body)[nearest]] if nearest >= 0 else ""
+    result.end = end_scales(arm, kinds)
+    return result
+
+
+def _pair_rest(name: str, label: str, inner: bpy.types.Object, recipe=None):
+    """A pair on a body at rest as check_pair takes it: the chains of both laid together, so a cloak
+    lies over a robe's skirt, the inner garment's vertices, and this one's cloth without its own
+    turned edges, where its hem shows. Returns the armature, this one's version, the body, the laid
+    chains (kinds, capsules, and reaches), the inner garment's vertices, and the cloth."""
+    arm = bpy.data.objects[label]
+    version = bpy.data.objects[garment.version_name(name, label)]
+    body = bodies.source_body(label)
+    kinds, found, chains = _chains_of([inner, version], arm, body)
+    poses.rest(arm)
+    follow(arm, kinds, found, chains)
+    rest = _posed(inner)[0]
+    cloth = _Cloth(version, _posed(version)[0], _alpha(version), turned=_turned_of(version, recipe))
+    return arm, version, body, (kinds, found, chains), rest, cloth
+
+
+def _within(cloth: _Cloth, points: np.ndarray, reach: float) -> float | None:
+    """How far around a triangle of an inner garment, by its corners, the pair check looks for the
+    cloth's triangles that can lie over it: its radius and the band's reach from its centre, or None
+    when the cloth lies farther off, so the triangle has no place to follow."""
+    centre = points.mean(axis=0)
+    nearest = cloth.tree.find_nearest(Vector(centre))[3]
+    radius = max(float(np.linalg.norm(p - centre)) for p in points)
+    if nearest is None or nearest > radius + reach:
+        return None
+    return radius + reach
+
+
+def meets(name: str, label: str, band: str, inner: bpy.types.Object, recipe=None) -> bool:
+    """Whether a template of a lower layer can lie under this one on a body, by the test check_pair
+    makes before it follows a drawn triangle: at rest, with the chains of both laid as check_pair lays
+    them, some triangle of it, split from its first corner as the game splits it, has this one's cloth
+    within its radius and the band's reach of its centre. Every triangle counts, also those check_pair
+    leaves out as covered, hidden, turned, or facing the cage, so where this is false check_pair
+    follows no place."""
+    _arm, _version, _body, _laid, rest, cloth = _pair_rest(name, label, inner, recipe)
+    reach = REACH[band]
+    for polygon in inner.data.polygons:
+        corners = list(polygon.vertices)
+        for i in range(1, len(corners) - 1):
+            if _within(cloth, rest[[corners[0], corners[i], corners[i + 1]]], reach) is not None:
+                return True
+    return False
+
+
+def apart_pair(name: str, label: str, inner: bpy.types.Object, actions: list[bpy.types.Action]) -> Pair:
+    """The pair check of a template of a lower layer that cannot meet this one: meets() is false on
+    every body and the rest rule hides none of its faces, so check_pair would follow no place and no
+    hidden face. It computes nothing of the inner template, steps through no frame, and gives what
+    check_pair gives: no triangle under this one in the same count of poses and clip frames, and the
+    bones as check_pair leaves them."""
+    arm = bpy.data.objects[label]
+    version = bpy.data.objects[garment.version_name(name, label)]
+    kinds, found, chains = _chains_of([inner, version], arm, bodies.source_body(label))
+    result = Pair(label, 0, 1, {REST: (0.0, REST)})
+    had_animation = arm.animation_data is not None
+    previous = arm.animation_data.action if had_animation else None
+    try:
+        result.checked += skipped_frames(result.worst, actions)
+        _last_frame(arm, actions, kinds, found, chains)
+    finally:
+        if had_animation:
+            arm.animation_data.action = previous
+        else:
+            arm.animation_data_clear()
+        poses.rest(arm)
+        bpy.context.scene.frame_set(0)
+    result.faces = np.zeros(len(inner.data.polygons), bool)
+    result.end = end_scales(arm, kinds)
     return result
 
 
@@ -1529,3 +1667,257 @@ def motion_summary(name: str, result: Motion) -> str:
         text += (f"; {result.through} faces come through by more than {CLIP_TOLERANCE * 1000:.0f} mm, by at most "
                  f"{result.depth * 1000:.1f} mm ({result.zone} in {result.where}), red on the review sheet")
     return text
+
+
+# The units the checks cache, as check_cache.py keys and stores them: a garment's own check on one body,
+# and a template of a lower layer worn under it on every body.
+
+
+@dataclass
+class OwnCheck:
+    """A garment version's own check on one body: what it covers and, at the rig stage, what motion
+    does to the skin under it."""
+
+    coverage: Coverage
+    motion: Motion | None = None
+
+
+@dataclass
+class UnderCheck:
+    """A template of a lower layer worn under the garment, on every body in order: the hide margins of
+    the garment's open edges that reach it, which a garment that covers nothing has none of, the
+    faces the rest rule hides of it on the first body, and at the rig stage, per body, the faces at
+    which a look past the garment shows a hole and where they first do, the faces the garment hides
+    of it, one list for every body, and the pair check, and whether the two cannot meet."""
+
+    over: list | None
+    candidates: np.ndarray
+    chosen: np.ndarray
+    failed: list = field(default_factory=list)
+    where: list = field(default_factory=list)
+    pairs: list = field(default_factory=list)
+    apart: bool = False
+
+
+def _phases_data(phases: dict) -> list:
+    return [[phase, float(depth), where] for phase, (depth, where) in phases.items()]
+
+
+def _phases_from(items: list) -> dict:
+    return {phase: (depth, where) for phase, depth, where in items}
+
+
+def _scales_data(scales: dict) -> list:
+    return [[bone, [float(s) for s in scale]] for bone, scale in scales.items()]
+
+
+def _scales_from(items: list) -> dict:
+    return {bone: tuple(scale) for bone, scale in items}
+
+
+def _motion_data(motion: Motion) -> dict:
+    return {"label": motion.label, "vertices": int(motion.vertices), "through": int(motion.through),
+            "depth": float(motion.depth), "where": motion.where, "zone": motion.zone, "checked": int(motion.checked),
+            "faces": int(motion.faces), "rest": int(motion.rest), "worst": _phases_data(motion.worst),
+            "end": _scales_data(motion.end)}
+
+
+def _motion_from(data: dict) -> Motion:
+    return Motion(data["label"], data["vertices"], data["through"], data["depth"], data["where"], data["zone"],
+                  data["checked"], faces=data["faces"], rest=data["rest"], worst=_phases_from(data["worst"]),
+                  end=_scales_from(data["end"]))
+
+
+def _pair_data(pair: Pair) -> dict:
+    return {"label": pair.label, "triangles": int(pair.triangles), "checked": int(pair.checked),
+            "worst": _phases_data(pair.worst), "through": int(pair.through), "depth": float(pair.depth),
+            "where": pair.where, "zone": pair.zone, "rest": int(pair.rest), "restDepth": float(pair.rest_depth),
+            "restPlace": [float(x) for x in pair.rest_place],
+            "places": [[phase, [float(x) for x in place]] for phase, place in pair.places.items()],
+            "hidden": int(pair.hidden),
+            "shown": [[phase, int(count), frame, [float(x) for x in place]] for phase, (count, frame, place) in pair.shown.items()],
+            "end": _scales_data(pair.end)}
+
+
+def _pair_from(data: dict, faces: np.ndarray) -> Pair:
+    return Pair(data["label"], data["triangles"], data["checked"], _phases_from(data["worst"]), through=data["through"],
+                depth=data["depth"], where=data["where"], zone=data["zone"], rest=data["rest"], rest_depth=data["restDepth"],
+                rest_place=tuple(data["restPlace"]), faces=faces,
+                places={phase: tuple(place) for phase, place in data["places"]}, hidden=data["hidden"],
+                shown={phase: (count, frame, tuple(place)) for phase, count, frame, place in data["shown"]},
+                end=_scales_from(data["end"]))
+
+
+def own_entry(check: OwnCheck) -> tuple[dict, dict]:
+    """A garment's own check as a cache entry: its plain data and its arrays."""
+    cover = check.coverage
+    data = {"label": cover.label, "band": cover.band, "bodyFaces": cover.body_faces, "bodyVertices": cover.body_vertices,
+            "garmentFaces": cover.garment_faces, "motion": _motion_data(check.motion) if check.motion is not None else None}
+    arrays = {"covered": cover.covered, "underlay": cover.underlay, "pullVertices": cover.pull_vertices,
+              "pullDistances": cover.pull_distances}
+    for name, array in (("edge", cover.edge), ("through", cover.through)):
+        if array is not None:
+            arrays[name] = array
+    return data, arrays
+
+
+def own_from(data: dict, arrays: dict) -> OwnCheck:
+    cover = Coverage(data["label"], data["band"], arrays["covered"], arrays["underlay"], arrays["pullVertices"],
+                     arrays["pullDistances"], data["bodyFaces"], data["bodyVertices"], data["garmentFaces"],
+                     arrays.get("edge"), arrays.get("through"))
+    return OwnCheck(cover, _motion_from(data["motion"]) if data["motion"] is not None else None)
+
+
+def under_entry(check: UnderCheck) -> tuple[dict, dict]:
+    """A template of a lower layer under the garment as a cache entry: its plain data and its arrays."""
+    data = {"apart": bool(check.apart), "over": len(check.over) if check.over is not None else None,
+            "failed": len(check.failed),
+            "where": [[[int(face), frame, [float(x) for x in place]] for face, (frame, place) in where.items()]
+                      for where in check.where],
+            "pairs": [_pair_data(pair) for pair in check.pairs]}
+    arrays = {"candidates": check.candidates, "chosen": check.chosen}
+    for index, over in enumerate(check.over or []):
+        arrays[f"over{index}"] = over
+    for index, failed in enumerate(check.failed):
+        arrays[f"failed{index}"] = failed
+    for index, pair in enumerate(check.pairs):
+        arrays[f"faces{index}"] = pair.faces
+    return data, arrays
+
+
+def under_from(data: dict, arrays: dict) -> UnderCheck:
+    over = [arrays[f"over{index}"] for index in range(data["over"])] if data["over"] is not None else None
+    return UnderCheck(over, arrays["candidates"], arrays["chosen"],
+                      [arrays[f"failed{index}"] for index in range(data["failed"])],
+                      [{face: (frame, tuple(place)) for face, frame, place in where} for where in data["where"]],
+                      [_pair_from(pair, arrays[f"faces{index}"]) for index, pair in enumerate(data["pairs"])],
+                      data["apart"])
+
+
+class Clips:
+    """The clips of animation libraries, linked into this session when a check first needs them, so a
+    run whose units all come from the cache links none."""
+
+    def __init__(self, libraries: list[tuple[str, list[str]]]):
+        self.libraries = libraries
+        self.loaded: list[bpy.types.Action] | None = None
+
+    def actions(self) -> list[bpy.types.Action]:
+        if self.loaded is None:
+            self.loaded = load_actions(self.libraries)
+        return self.loaded
+
+    def remove(self) -> None:
+        for library in {a.library for a in self.loaded or [] if a.library is not None}:
+            bpy.data.libraries.remove(library)
+
+
+def own_cover(name: str, label: str, band: str, covers: bool, clips: Clips, units) -> Coverage:
+    """What a garment version covers on its body with the skin that comes through it in motion, its own
+    check at the rig stage, from the cache or computed and cached, as the review sheet shows it."""
+    inputs = units.own(label, "rig")
+    found = units.load(inputs)
+    if found is not None:
+        return own_from(*found).coverage
+    result = compute(name, label, band, covers)
+    motion = check_motion(name, result, clips.actions())
+    units.save(inputs, *own_entry(OwnCheck(result, motion)))
+    return result
+
+
+def checks(name: str, labels: list[str], band: str, covers: bool, recipe, inners: list, clips: Clips, rig: bool, units,
+           pair_checks: bool = True, motion_first: bool = True) -> tuple[dict[str, OwnCheck], dict[str, UnderCheck]]:
+    """The checks of a garment over its bodies: per body its own check, and per template of a lower layer
+    worn under it, given as its name, its band, its recipe, and a function that gives its version on
+    every body, put on the bodies when first called, what the garment hides of it and the pair check,
+    with the faces it hides one list for every body. A unit the cache holds is taken from it; the others
+    are computed in the order the checks have always run in, the margins, the rest rule, the covers,
+    the hidden faces, then the motion check before the pair checks, or with motion_first false per body
+    after them, and cached. A pair that cannot meet, by meets() on every body with no face the rest
+    rule hides, computes no cover of the inner template and steps through no frame. pair_checks false
+    leaves the pair check out, as a texture of a template that covers nothing does. At the model stage
+    only the margins, the rest rule, and the covers run. Every own check's Coverage holds the faces it
+    hides of each inner template."""
+    stage = "rig" if rig else "model"
+    own_inputs = {label: units.own(label, stage) for label in labels}
+    under_inputs = {inner: units.pair(inner, labels, stage) for inner, _band, _recipe, _objects in inners}
+    own, under = {}, {}
+    for label in labels:
+        found = units.load(own_inputs[label])
+        if found is not None:
+            own[label] = own_from(*found)
+    for inner, _band, _recipe, _objects in inners:
+        found = units.load(under_inputs[inner])
+        if found is not None:
+            under[inner] = under_from(*found)
+    computed_own = [label for label in labels if label not in own]
+    missing = [entry for entry in inners if entry[0] not in under]
+    # The hide margins of the open edges over each template on every body, which the recipes split just
+    # beyond on the first body, and the faces the rest rule hides of each there beyond the margins on
+    # every body.
+    margins = {inner: body_margins(name, labels, objects(), recipe) for inner, _band, _recipe, objects in missing} \
+        if covers else {}
+    candidates = {inner: hidden(name, labels[0], band, objects()[0], recipe, inner_recipe, covers, margins.get(inner))
+                  for inner, _band, inner_recipe, objects in missing}
+    coverages = {label: own[label].coverage if label in own else compute(name, label, band, covers) for label in labels}
+    apart, inner_covers = {}, {}
+    if rig:
+        # A pair that cannot meet on any body follows nothing.
+        for inner, _band, _recipe, objects in missing:
+            apart[inner] = pair_checks and not candidates[inner].any() and \
+                not any(meets(name, label, band, obj, recipe) for label, obj in zip(labels, objects()))
+        # Each template's own cover on every body, whose faces the game removes under the pair too, where a
+        # hidden face or a drawn triangle of it is followed.
+        inner_covers = {inner: {label: compute(inner, label, inner_band) for label in labels}
+                        for inner, inner_band, _recipe, _objects in missing
+                        if (covers and candidates[inner].any()) or (pair_checks and not apart[inner])}
+    for inner, _band, inner_recipe, objects in missing:
+        over = [found.over() for _label, _version, found in margins[inner]] if covers else None
+        chosen, failed, where = candidates[inner].copy(), [], []
+        if rig and covers:
+            # Without the faces at which a look past it shows a hole on any body, at rest or in any frame
+            # of any clip, which stay drawn and are followed like every other drawn face.
+            polygons = [tuple(p.vertices) for p in objects()[0].data.polygons]
+            for label, obj in zip(labels, objects()):
+                inner_covered = inner_covers[inner][label].covered if inner in inner_covers else None
+                found_failed, found_where = follow_failures(name, coverages[label], obj, candidates[inner], clips.actions(),
+                                                            recipe, inner_recipe, inner_covered)
+                failed.append(found_failed)
+                where.append(found_where)
+            chosen = chosen_hidden(candidates[inner], failed, polygons, _turned_of(objects()[0], inner_recipe))
+        under[inner] = UnderCheck(over, candidates[inner], chosen, failed, where, [], apart.get(inner, False))
+
+    def motion(label: str) -> None:
+        if label in computed_own:
+            own[label] = OwnCheck(coverages[label], check_motion(name, coverages[label], clips.actions()) if rig else None)
+
+    def pair(entry: tuple, index: int, label: str) -> None:
+        inner, _band, inner_recipe, objects = entry
+        check = under[inner]
+        if check.apart:
+            check.pairs.append(apart_pair(name, label, objects()[index], clips.actions()))
+            return
+        cover = inner_covers[inner][label]
+        check.pairs.append(check_pair(name, coverages[label], objects()[index], cover.underlay, check.chosen,
+                                      clips.actions(), recipe, inner_recipe, cover.covered))
+
+    checked = missing if rig and pair_checks else []
+    if motion_first:
+        for label in labels:
+            motion(label)
+        for entry in checked:
+            for index, label in enumerate(labels):
+                pair(entry, index, label)
+    else:
+        for index, label in enumerate(labels):
+            for entry in checked:
+                pair(entry, index, label)
+            motion(label)
+    for label in computed_own:
+        units.save(own_inputs[label], *own_entry(own[label]))
+    for inner, _band, _recipe, _objects in missing:
+        units.save(under_inputs[inner], *under_entry(under[inner]))
+    for label in labels:
+        for inner, _band, _recipe, _objects in inners:
+            own[label].coverage.hidden[inner] = under[inner].chosen.copy()
+    return own, under
