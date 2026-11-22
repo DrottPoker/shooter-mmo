@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/NasalHelm",
+    "content": {
+        "version": 1,
+        "sourceSha256": "a15d8ceb227aa4c74a171f87d2ae2494c6b4786002b634b910a200996c71c9d0",
+        "stages": {
+            "texture": "9631ab439d809d27b68471426796da22d56223973310dcac8f9a319ca98fde89"
+        },
+        "parts": {
+            "image": "49fd480a7bed221687fbb88e53aa18056acf7fd64423e7d4ad2ae9eb0c9f7a95",
+            "material": "d865dc10cfed9b0d9b965ab036709a4523365940806e91fb4b681c20eec82f4a",
+            "templateUv": "fb6a253893f87ed98e1d9302429df43e937954f8266d01e4509219f0ec6561c3"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "a15d8ceb227aa4c74a171f87d2ae2494c6b4786002b634b910a200996c71c9d0",
-            "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6"
+            "contentSha256": "9631ab439d809d27b68471426796da22d56223973310dcac8f9a319ca98fde89"
         }
     },
     "export": {
-        "sourceSha256": "a15d8ceb227aa4c74a171f87d2ae2494c6b4786002b634b910a200996c71c9d0",
-        "garmentSourceSha256": "7f780585ec27451d6f0792ec04c4153f585cf796e851f6db1b1d2657e0f86ca6",
+        "contentSha256": "9631ab439d809d27b68471426796da22d56223973310dcac8f9a319ca98fde89",
+        "garmentContentSha256": "3bf760553b865756d4bae0e7a8713e7dd2f447530e59600c4802fd5fa4c83ff7",
         "materials": [
             {
                 "name": "M_Garment_IronNasalHelm",

@@ -9,14 +9,26 @@
     "socket": "main_hand",
     "attackClip": "SwordSlash",
     "attackRelease": 0.35,
+    "content": {
+        "version": 1,
+        "sourceSha256": "8d7e6068e9415ec0a1840dd68e920ac90b3398c047c5fa009dabeeea81a0a676",
+        "stages": {
+            "model": "479806da86524bc0654773a709d2a581211a97757632bf95a8d735ff07d2fcee"
+        },
+        "parts": {
+            "materials": "8767dbe87b6a233b4fff07820e3be2fe5d781d463f7039649ca49172dd97cdb2",
+            "shape": "45957c8cfca509a4983bf7aa45f6627c6016884b0de01f9a71dec23a7acec184",
+            "uv": "dd026eb71ba8ace722795a6ac889dfa2b1c01067b88d29520ba07248df6424ac"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-25",
-            "sourceSha256": "8d7e6068e9415ec0a1840dd68e920ac90b3398c047c5fa009dabeeea81a0a676"
+            "contentSha256": "479806da86524bc0654773a709d2a581211a97757632bf95a8d735ff07d2fcee"
         }
     },
     "export": {
-        "sourceSha256": "8d7e6068e9415ec0a1840dd68e920ac90b3398c047c5fa009dabeeea81a0a676",
+        "contentSha256": "479806da86524bc0654773a709d2a581211a97757632bf95a8d735ff07d2fcee",
         "targetSha256": "468245c58cacc33da776726bac8c8b573bd8e4f928aaf81905f95ca26a53a8f5",
         "materials": [
             {

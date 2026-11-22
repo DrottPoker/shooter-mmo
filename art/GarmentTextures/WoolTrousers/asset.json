@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/Trousers",
+    "content": {
+        "version": 1,
+        "sourceSha256": "a1fe7e410e4844ccb30fe88b3c0ab91282a2b8f89821de80a5ac32c54b4f0f21",
+        "stages": {
+            "texture": "4edce6dc6d0669dcd01ef156c7da47a587c1fad52db147770864cfe488d9381c"
+        },
+        "parts": {
+            "image": "a7cac6b6d6be9007ea38c6a93561cf8eef1f0e1187a88daf61677306beeb9b8d",
+            "material": "fc8992823a6e2b99e1b0a1544a6ee65bb9e484e2c2783b9ed46156df60916c5a",
+            "templateUv": "53439746ddbbb154c76c224d963d08557065ff958c3ef581e4c983f9008d223f"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "a1fe7e410e4844ccb30fe88b3c0ab91282a2b8f89821de80a5ac32c54b4f0f21",
-            "garmentSourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c"
+            "contentSha256": "4edce6dc6d0669dcd01ef156c7da47a587c1fad52db147770864cfe488d9381c"
         }
     },
     "export": {
-        "sourceSha256": "a1fe7e410e4844ccb30fe88b3c0ab91282a2b8f89821de80a5ac32c54b4f0f21",
-        "garmentSourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c",
+        "contentSha256": "4edce6dc6d0669dcd01ef156c7da47a587c1fad52db147770864cfe488d9381c",
+        "garmentContentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5",
         "materials": [
             {
                 "name": "M_Garment_WoolTrousers",

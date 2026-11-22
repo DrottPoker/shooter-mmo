@@ -2,9 +2,9 @@
 # their own files are taken in again, the first version moving with its cage, every other body's
 # version is fitted again from the first body's version through the cage, keeping the corrections
 # made on it by hand, and every version gets the weights of the body under it, keeping weights
-# painted by hand on the first version. A file that this leaves as it was is not saved, so its
-# approvals stay valid. Then it writes the review sheet and the review file with the test poses, and
-# checks every rule of the template. See docs/ART_PIPELINE.md.
+# painted by hand on the first version. A file that this leaves as it was is not saved. Then it writes
+# the review sheet and the review file with the test poses, checks every rule of the template,
+# records the content of the file, and says which approvals hold. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -87,18 +87,26 @@ Write-Host "Review file with the test poses (play the timeline): $reviewFile"
 
 # Every rule of both stages, so a broken one shows before the review, and what the garment covers
 # at rest and in motion.
+$sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]))
 foreach ($line in @($validation | Where-Object { $_ -like "ART_REPORT *" })) {
     Write-Host $line.Substring("ART_REPORT ".Length)
 }
 
+$null = Update-ArtContentRecord $blender $manifest $validation $sourceSha256
+foreach ($line in @(Get-ArtStageReport $manifest)) {
+    Write-Host $line
+}
+
+# The cage's own record, which its gate reads.
+$null = Update-ArtContentRecord $blender $manifest.Cage
 $cageProblem = Get-ArtCageGateProblem $manifest.Cage
 if ($null -ne $cageProblem) {
     Write-Host "Its cage $($manifest.Cage.RelativeDirectory) waits for its approval: $cageProblem."
 }
 
-if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath))) {
-    Write-Host "$($manifest.Name) meets every rule, and both stages are approved for this file."
+if ($null -eq (Get-ArtExportGateProblem $manifest)) {
+    Write-Host "$($manifest.Name) meets every rule, and both stages are approved for this content."
 }
 else {
     Write-Host "$($manifest.Name) meets every rule. Review it, then record the approvals with tools/art/Approve-ArtAsset.ps1 -Stage model and -Stage rig."

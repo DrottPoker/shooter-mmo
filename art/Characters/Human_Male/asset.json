@@ -11,18 +11,33 @@
         { "material": "M_Eye_Male", "images": ["T_Eye_Male_Brown"] },
         { "material": "M_Face_Male", "images": ["T_Face_Male_Clean"] }
     ],
+    "content": {
+        "version": 1,
+        "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a",
+        "stages": {
+            "model": "078d4a69c06f43a62307311a27832333a3284d8ca1df4809e04f564355bc85b8",
+            "rig": "9c3833a85407ac8e5e687c8059c596039a29964f5f3dcf44e848e84679fb571b"
+        },
+        "parts": {
+            "materials": "ff61af5120adf8ec8215e8d24f7b2745d6e0268710f81d0cdf4403d51e73077b",
+            "shape": "e1688780bef4f69b6ad58c9d6e157ad09dbea67b1e1603a5688d387826ef3877",
+            "skeleton": "0b59a0ca49f0b130855743e420c6219dfb518235a81897bc9a212489e7a47367",
+            "uv": "586b5e949334c6be09ecb88e4962ec8077adbe25b60df95d63a13379ce432d66",
+            "weights": "2b8bb07dcdb8b9a70fac1f0160a1af39c6ccca0f0f9f00c65d3da4ac4f028bb1"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-20",
-            "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a"
+            "contentSha256": "078d4a69c06f43a62307311a27832333a3284d8ca1df4809e04f564355bc85b8"
         },
         "rig": {
             "date": "2026-11-20",
-            "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a"
+            "contentSha256": "9c3833a85407ac8e5e687c8059c596039a29964f5f3dcf44e848e84679fb571b"
         }
     },
     "export": {
-        "sourceSha256": "4cf7a49a1a4553531734ecc4178b5414bcd707247aab605acc7fba83315f271a",
+        "contentSha256": "9c3833a85407ac8e5e687c8059c596039a29964f5f3dcf44e848e84679fb571b",
         "targetSha256": "8ad941757b06718fae8fbc9ecc35275ac04ea3b08ec800abfc1ceb144ec60d39",
         "dataSha256": "f780c2fe6fdc7891ed7c018c2435948d2cc7295b73473cfd07443488fc1fdcdf",
         "fitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",

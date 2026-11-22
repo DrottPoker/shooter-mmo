@@ -20,11 +20,13 @@ from blender_source import BLENDER_ROOT, REPOSITORY_ROOT, load, source_text  # n
 ART_SCRIPTS = REPOSITORY_ROOT / "tools" / "art"
 # What Blender itself takes before the "--" that hands the rest to the script.
 BLENDER_OPTIONS = {"--background", "--factory-startup", "--python-use-system-env", "--python-exit-code", "--python",
-                   "--disable-autoexec", "--version"}
+                   "--python-expr", "--disable-autoexec", "--version"}
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError", "parse_args")
 texture = load("art_pipeline/texture.py", "DYE_LEVEL")
-cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture)
+content = load("art_pipeline/content.py", "PROOF_EDITS")
+cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture,
+           content=content)
 
 
 def subcommands() -> dict[str, argparse.ArgumentParser]:
@@ -78,7 +80,7 @@ class ParserTests(unittest.TestCase):
     def test_every_command_the_scripts_start_exists_and_every_command_is_started_by_a_script(self):
         text = all_powershell()
         started = set(re.findall(r'"--",\s*"([a-z][a-z-]+)"', text))
-        started |= set(re.findall(r'@\("(validate|export|preview|reference|clips)"', text))
+        started |= set(re.findall(r'@\("(validate|export|content|content-proof|preview|reference|clips)"', text))
         self.assertEqual(started, set(subcommands()))
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
@@ -239,7 +241,8 @@ class PairSourceTests(unittest.TestCase):
         body = self.function("Export-ArtTexture")
         self.assertIn("Get-ArtGarmentPairs $template", body)
         self.assertIn("pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })", body)
-        self.assertIn("has changed since its export", body)
+        self.assertIn("Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)", body)
+        self.assertIn("has changed since its export", self.function("Get-ArtExportChangeProblem"))
         self.assertIn('"--opaque-only", $opaqueReason', body)
         self.assertIn("templates of lower layers worn under its template: {args.opaque_only}.", source_text("art_pipeline_cli.py"))
 
@@ -258,6 +261,46 @@ class PairSourceTests(unittest.TestCase):
         self.assertIn("recipe.splits entry $($i + 1) (line $([string]$split.line))", body)
         self.assertIn('""toward"" and ""offset"" come together', body)
         self.assertIn("Get-ArtGarmentSplitProblem $Json.recipe $cage", powershell("ArtPipelineCommon.ps1"))
+
+
+class ContentRecordRaceTests(unittest.TestCase):
+    """A content record pairs the content Blender read with the hash of the file it read, so every
+    script takes the hash before the run whose content it records, and an export checks the content
+    it exported before it writes its record."""
+
+    def test_every_record_taken_from_a_run_comes_with_the_hash_before_that_run(self):
+        calls = re.findall(r"Update-ArtContentRecord (\$\S+) (\$\S+)(?: (\$\S+))?(?: (\$\S+))?", all_powershell())
+        with_results = [call for call in calls if call[2]]
+        self.assertTrue(with_results)
+        for call in with_results:
+            with self.subTest(call=" ".join(call)):
+                self.assertTrue(call[3], "a run's output needs the file's hash before the run")
+
+    def test_the_record_refuses_a_file_saved_while_it_was_read(self):
+        body = PairSourceTests.function("Update-ArtContentRecord")
+        self.assertIn('Assert-ArtFileUnchanged $Manifest $SourceSha256Before "was saved while it was read"', body)
+        self.assertIn('Assert-ArtFileUnchanged $Manifest $sourceSha256 "was saved while it was read"', body)
+
+    def test_every_export_run_checks_the_content_it_exported_before_its_record(self):
+        text = powershell("Export-ArtAsset.ps1")
+        runs = re.findall(r'Invoke-ArtBlender \$\w+ \$(\w+) \(\s*@\("export"\)', text)
+        checks = re.findall(r"Assert-ArtExportedContent \$(\w+) \$results \$sourceSha256", text)
+        self.assertEqual(len(runs), 4)
+        self.assertEqual(runs, checks)
+        self.assertIn("changed while it was exported", PairSourceTests.function("Assert-ArtExportedContent"))
+
+    def test_an_approval_binds_to_the_content_its_own_validation_reported(self):
+        text = powershell("Approve-ArtAsset.ps1")
+        self.assertIn("contentSha256 = [string]$reported.stages.$Stage", text)
+        self.assertIn("changed while it was approved", text)
+
+    def test_the_cage_record_is_made_current_before_its_gate(self):
+        for name in ("Approve-ArtAsset.ps1", "Export-ArtAsset.ps1", "Sync-GarmentAsset.ps1"):
+            text = powershell(name)
+            with self.subTest(script=name):
+                update = text.index("Update-ArtContentRecord $" + ("Blender" if name == "Export-ArtAsset.ps1" else "blender")
+                                    + " $" + ("Manifest" if name == "Export-ArtAsset.ps1" else "manifest") + ".Cage")
+                self.assertLess(update, text.index("Get-ArtCageGateProblem"))
 
 
 class ResultLineTests(unittest.TestCase):

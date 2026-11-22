@@ -6,7 +6,8 @@
 # shared topology or through the garment cage for a body of another topology, and cropped to its
 # paint. A file whose bodies and cage are as their files hold them and whose moved paint is current
 # is left as it is. Run it again after painting the canvas, so the bodies show the new paint; then
-# the file needs a new review and approval. See docs/ART_PIPELINE.md.
+# the file needs a new review and approval. It records the content of the file and says whether its
+# approval holds. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -82,5 +83,13 @@ if ($result -like "ART_PAINT_SYNC up-to-date *") {
 }
 else {
     Write-Host "Synced $($manifest.Name): $($manifest.SourcePath)"
-    Write-Host "Review the paint on every body, then record the approval with tools/art/Approve-ArtAsset.ps1 -Stage paint."
+}
+
+$null = Update-ArtContentRecord $blender $manifest
+foreach ($line in @(Get-ArtStageReport $manifest)) {
+    Write-Host $line
+}
+
+if (-not (Test-ArtStageHolds $manifest "paint")) {
+    Write-Host "Review the paint on every body, then record the approval with tools/art/Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage paint."
 }

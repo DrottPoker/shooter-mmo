@@ -85,10 +85,12 @@ foreach ($line in @($output | Where-Object { $_ -like "HUMAN_BASE_REPORT *" })) 
     Write-Host $line.Substring("HUMAN_BASE_REPORT ".Length)
 }
 
-# The record of the last export no longer lists every clip; the next export writes it.
+# The record of the last export no longer lists every clip; the next export writes it. The content
+# record then holds the new clip.
 $manifest.Clips = [string[]](@($manifest.Clips) + $Name)
 $manifest.Export = $null
 Write-ArtAssetManifest $manifest
+$null = Update-ArtContentRecord $blender $manifest
 Write-Host "Added $Name to $($manifest.Name) and its asset.json; edit it in Blender as you like."
 Write-Host (Format-ArtMotion ($motion.Substring("HUMAN_BASE_MOTION ".Length) | ConvertFrom-Json))
 Write-Host "Review the clips, then record the approval with tools/art/Approve-ArtAsset.ps1 -Stage animation."

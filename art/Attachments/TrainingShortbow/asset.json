@@ -14,22 +14,39 @@
     "drawLength": 0.62,
     "skeleton": "Bow",
     "clips": ["Draw"],
+    "content": {
+        "version": 1,
+        "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0",
+        "stages": {
+            "model": "3f34c2e059fce656a9debbdea954c82c8490185480370f0a4b6c875f938fbb12",
+            "rig": "8fc86ba159e1448097735a9310414ac15076a443912c19f35cb1db1c7eacad53",
+            "animation": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443"
+        },
+        "parts": {
+            "clip:Draw": "70a12421c4cf1e8588d4dce10a2474c1c29127b78f84f7d2caea4ab8ae61a784",
+            "materials": "747dac0b82ff24446a714eadee7448972106649cde11dc48e7218adb0c686bef",
+            "shape": "8e6671f293080877ad0afcbc57627f4808c5567b8fce6018d2abcc0b663b2673",
+            "skeleton": "883a111668d0a90656352f25c45ca628a14879b77248c22466c5fb4bbd78f5e8",
+            "uv": "85c85860d7f903fee5b422b5ebdd31e97076f16f6194457dc086b7f57d22ceaf",
+            "weights": "2cb793e19d05266548e9b391498b0089ab943f35df0a834c7476d5584af0dd2b"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-31",
-            "sourceSha256": "46a173da7e657d50979be8ed21448e86d2a8413a818ad7dc0ca09027710134fb"
+            "contentSha256": "3f34c2e059fce656a9debbdea954c82c8490185480370f0a4b6c875f938fbb12"
         },
         "rig": {
             "date": "2026-10-31",
-            "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0"
+            "contentSha256": "8fc86ba159e1448097735a9310414ac15076a443912c19f35cb1db1c7eacad53"
         },
         "animation": {
             "date": "2026-10-31",
-            "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0"
+            "contentSha256": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443"
         }
     },
     "export": {
-        "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0",
+        "contentSha256": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443",
         "targetSha256": "e5c47734f1edaaf091ca232a9e190269c9f9cc2725fbb69b91a7f0fc5084aacc",
         "materials": [
             {

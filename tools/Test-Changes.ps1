@@ -88,6 +88,9 @@ $rules = @(
     # the Blender animation script.
     @{ Pattern = '^(art|tools/art/blender)/'
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
+    # The Python tests compare the tables and the content version that the shared helpers keep.
+    @{ Pattern = '^tools/art/ArtPipelineCommon\.ps1$'
+        Checks = @("art", "blender-python"); Reason = "the art pipeline's shared helpers, whose tables the Python tests compare" },
     @{ Pattern = '^tools/art/[^/]+\.ps1$'
         Checks = @("art"); Reason = "the art pipeline" },
     @{ Pattern = '^tools/art/retarget/[^/]+\.json$'

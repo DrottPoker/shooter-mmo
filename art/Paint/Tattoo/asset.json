@@ -5,14 +5,27 @@
     "part": "Body",
     "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
     "layer": 200,
+    "content": {
+        "version": 1,
+        "sourceSha256": "685787dfc5ee18382a4c07fa89a917b58caa372c90c7969c592272ada49ca613",
+        "stages": {
+            "paint": "454c2d2c580c36a697283bd2b7ebaaf557b551b59a1a79ef13c5af55675a464e"
+        },
+        "parts": {
+            "body:Female": "5ecf01e4bcc15b222b3d967f57672af89ba31e93da3f4f776dc3d1b7e9219eb1",
+            "body:Male": "7e4b77735aa8f04076703502c3bbd29e6f0d60bc400f287b3eca6cf2ecfcbe75",
+            "canvas": "ded6c23962bbc22fcda2d192abb382381a3dc7494feed88c2afa67e098cbbc34",
+            "paint": "7c28f4d10d350486fcedcdec991bad0b915a75fd223c028520ae565bd6efa8b5"
+        }
+    },
     "approvals": {
         "paint": {
             "date": "2026-11-21",
-            "sourceSha256": "685787dfc5ee18382a4c07fa89a917b58caa372c90c7969c592272ada49ca613"
+            "contentSha256": "454c2d2c580c36a697283bd2b7ebaaf557b551b59a1a79ef13c5af55675a464e"
         }
     },
     "export": {
-        "sourceSha256": "685787dfc5ee18382a4c07fa89a917b58caa372c90c7969c592272ada49ca613",
+        "contentSha256": "454c2d2c580c36a697283bd2b7ebaaf557b551b59a1a79ef13c5af55675a464e",
         "textures": [
             {
                 "name": "T_Paint_Tattoo_Male",

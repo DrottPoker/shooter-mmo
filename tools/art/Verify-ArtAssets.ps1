@@ -1,9 +1,10 @@
-# Checks every art asset without Blender, for CI: each asset.json is valid, every review stage
-# is approved for the current .blend file, the committed FBX and textures are the recorded
-# export of that approved file, and every model below src/Client/Assets/Art/Models and every
-# texture below src/Client/Assets/Art/Textures comes from exactly one asset. An asset in review, such as a skinned model before its rig, has its latest approval on
-# the current .blend file and no export yet. Git LFS pointers are read directly, so the .blend
-# files need not be downloaded.
+# Checks every art asset without Blender, for CI: each asset.json is valid, its content record was
+# read from the current .blend file, every review stage is approved and every approval holds for that
+# content, the committed FBX and textures are the recorded export of that content, and every model
+# below src/Client/Assets/Art/Models and every texture below src/Client/Assets/Art/Textures comes from
+# exactly one asset. An asset in review, such as a skinned model before its rig, has approvals that
+# hold for its content and no export yet. Git LFS pointers are read directly, so the .blend files need
+# not be downloaded.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
 
@@ -46,11 +47,10 @@ foreach ($directory in $directories) {
         $targets[$target] = $where
     }
 
-    $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-    # The garment cage has no export: it is complete when its stage is approved for its file and its
-    # bodies still have the exports it was approved on.
+    # The garment cage has no export: it is complete when its stage is approved for its content and
+    # its bodies still have the exports it was approved on.
     if ($manifest.Kind -eq "cage") {
-        $problem = if (Test-ArtAssetInReview $manifest) { Get-ArtReviewProblem $manifest $sourceSha256 } else { Get-ArtExportGateProblem $manifest $sourceSha256 }
+        $problem = if (Test-ArtAssetInReview $manifest) { Get-ArtReviewProblem $manifest } else { Get-ArtExportGateProblem $manifest }
         if ($null -eq $problem -and -not (Test-ArtAssetInReview $manifest)) {
             $problem = Get-ArtCageBodyProblem $manifest
         }
@@ -63,7 +63,7 @@ foreach ($directory in $directories) {
     }
 
     if (Test-ArtAssetInReview $manifest) {
-        $reviewProblem = Get-ArtReviewProblem $manifest $sourceSha256
+        $reviewProblem = Get-ArtReviewProblem $manifest
         if ($null -ne $reviewProblem) {
             $problems.Add("${where}: $reviewProblem.")
         }
@@ -81,7 +81,7 @@ foreach ($directory in $directories) {
         continue
     }
 
-    $gateProblem = Get-ArtExportGateProblem $manifest $sourceSha256
+    $gateProblem = Get-ArtExportGateProblem $manifest
     if ($null -ne $gateProblem) {
         $problems.Add("${where}: $gateProblem.")
     }
@@ -95,12 +95,14 @@ foreach ($directory in $directories) {
         $problems.Add("${where}/asset.json: $($manifest.ExportProblem).")
     }
 
-    if ($manifest.Export.sourceSha256 -ne $sourceSha256) {
+    # The gate reports a content record that is not current.
+    if ($null -eq (Get-ArtContentProblem $manifest) -and $manifest.Export.contentSha256 -cne (Get-ArtExportedContent $manifest)) {
         $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/art/Export-ArtAsset.ps1.")
     }
 
     if ($manifest.Kind -eq "texture") {
-        # The texture was exported against the current export of its template.
+        # The texture was exported against the current export of its template, and is painted in the
+        # template's current UVs.
         $templateExport = $null
         try {
             $templateExport = (Read-ArtAssetManifest $manifest.Garment.Directory).Export
@@ -109,11 +111,13 @@ foreach ($directory in $directories) {
             # The template's own problems are reported with the template.
         }
 
-        if ($null -eq $templateExport -or $templateExport.sourceSha256 -ne $manifest.Export.garmentSourceSha256) {
+        if ($null -eq $templateExport -or $templateExport.contentSha256 -cne $manifest.Export.garmentContentSha256) {
             $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/art/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/art/Export-ArtAsset.ps1.")
         }
-        elseif ($manifest.Approvals["texture"].garmentSourceSha256 -ne $manifest.Export.garmentSourceSha256) {
-            $problems.Add("${where}: was approved on another file of its template $($manifest.Garment.RelativeDirectory) than it was exported against; run tools/art/Sync-TextureAsset.ps1, review and approve it again, then run tools/art/Export-ArtAsset.ps1.")
+
+        $templateProblem = Get-ArtTextureTemplateProblem $manifest
+        if ($null -ne $templateProblem) {
+            $problems.Add("${where}: $templateProblem.")
         }
 
         # A texture with masks has them for exactly the bodies of its template.
@@ -205,7 +209,7 @@ foreach ($directory in $directories) {
             # The rig's own problems are reported with the rig.
         }
 
-        if ($null -eq $rigExport -or $rigExport.sourceSha256 -ne $manifest.Export.rigSourceSha256) {
+        if ($null -eq $rigExport -or $rigExport.contentSha256 -cne $manifest.Export.rigContentSha256) {
             $problems.Add("${where}: was exported against another export of its rig $($manifest.Rig.Asset); run tools/art/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/art/Export-ArtAsset.ps1.")
         }
     }

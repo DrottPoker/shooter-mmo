@@ -2,30 +2,41 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/Cloak",
+    "content": {
+        "version": 1,
+        "sourceSha256": "bcdeb27e81f137a3a244ca14c8f97712736da95d9f1f4fd63bf0e62908d512b6",
+        "stages": {
+            "texture": "3eda612c46e22af397b7739eefd2433e6840bc0330fb4fefa8a638d555e791ec"
+        },
+        "parts": {
+            "image": "7ab7eb60c7bb303837563738702fa7b353ddba0b00a40c2059905e32caea9a97",
+            "material": "7772be455f004659df71e10eb45295dd62f56ecf67e89468d1eb3ce8ce6f7063",
+            "templateUv": "e9921a9a0744bc0628fc1ae695798a7c50f6414ccda0ab3c76e12656140a9dc5"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "bcdeb27e81f137a3a244ca14c8f97712736da95d9f1f4fd63bf0e62908d512b6",
-            "garmentSourceSha256": "7a511d1b6911dcdb0387c223dde3f34b012936a768d07df7fdb5562f94e05758"
+            "contentSha256": "3eda612c46e22af397b7739eefd2433e6840bc0330fb4fefa8a638d555e791ec"
         }
     },
     "export": {
-        "sourceSha256": "bcdeb27e81f137a3a244ca14c8f97712736da95d9f1f4fd63bf0e62908d512b6",
-        "garmentSourceSha256": "7a511d1b6911dcdb0387c223dde3f34b012936a768d07df7fdb5562f94e05758",
+        "contentSha256": "3eda612c46e22af397b7739eefd2433e6840bc0330fb4fefa8a638d555e791ec",
+        "garmentContentSha256": "e4a655b83a44db5364ac7b3df8148ed5f267612efb94e7943b0f552d7dd8b95a",
         "masks": [
             { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Male.json", "dataSha256": "bc6290caa80e4750bf56b733ecd4241677eae47cdc4f252af8fbf16e345db96c" },
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "5d535f9832f7f0bde2ff6487e9f85ae9cedc34fe6a8aeb7f1f52229a0f3018a6" }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f" }
+            { "library": "art/Animations/Human_Actions", "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e" },
-            { "garment": "art/Garments/Gloves", "sourceSha256": "35f75a398c0ecb980fbb3ed5d7693dea6f1ba4584af5c638338ddd29eba78471" },
-            { "garment": "art/Garments/LongShirt", "sourceSha256": "7f8312b36deed037dbc60139cab146f0c914584496598a6a9455d1e642245f49" },
-            { "garment": "art/Garments/Robe", "sourceSha256": "b58f8f84312c1e441289a27c3e8182421a126ac9c7328fb44c4f2e8f03074a5c" },
-            { "garment": "art/Garments/Shirt", "sourceSha256": "0763d1624c6099379679ec00914595743ab79b55ff9400acb5ba83322d50cb62" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "9315336c3a39c1910f66e1f2bc643eaf1829d6839ec345ea9a9b9b33ea4eff2c" }
+            { "garment": "art/Garments/Boots", "contentSha256": "ccca32c1312c6f51eac7dc8d149c87e127ce6251166f1f88e1686f30a04042fa" },
+            { "garment": "art/Garments/Gloves", "contentSha256": "f8477366c1693f53ca70c67d2aa55dcbb562d376461dcec760d4d2ba5f315c38" },
+            { "garment": "art/Garments/LongShirt", "contentSha256": "5f314455b670e1a1b6313a4e9782e624c51a48f0b6ef3b15350d1e3eb418bd6a" },
+            { "garment": "art/Garments/Robe", "contentSha256": "97f91dd7320f3b06aab2679bf57f996d663dcfcfd1f66debf8f466035129e5fd" },
+            { "garment": "art/Garments/Shirt", "contentSha256": "429891ebba30a63df9a9b3d89f62cb878f0e357198c625b8281e55ad7cddce4f" },
+            { "garment": "art/Garments/Trousers", "contentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5" }
         ],
         "materials": [
             {

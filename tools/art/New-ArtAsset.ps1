@@ -354,6 +354,8 @@ switch ($Kind) {
         $lines.Add('    ],')
     }
 }
+# The content of the first file is recorded once it is written.
+$lines.Add('    "content": null,')
 if ($Kind -eq "cage") {
     $lines.Add('    "approvals": {}')
 }
@@ -441,6 +443,11 @@ try {
                 Write-Host $line.Substring("ART_REPORT ".Length)
             }
         }
+    }
+
+    # The syncs of a library and a paint layer record the content themselves.
+    if (@("static", "garment", "texture", "cage") -contains $Kind) {
+        $null = Update-ArtContentRecord (Resolve-ArtBlender $BlenderPath) (Read-ArtAssetManifest $directory)
     }
 }
 catch {

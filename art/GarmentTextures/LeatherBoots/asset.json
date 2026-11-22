@@ -2,16 +2,27 @@
     "schemaVersion": 1,
     "kind": "texture",
     "garment": "art/Garments/Boots",
+    "content": {
+        "version": 1,
+        "sourceSha256": "2901623e219c367b3b8f31bfaf21d4dbc52ec4483e36607013039a23c3ca8895",
+        "stages": {
+            "texture": "e0fb65a8c08976bef36f08914d0da6522d427cac337323a0701bf7c8deaac0a0"
+        },
+        "parts": {
+            "image": "0f6d29f1a07b96e89380bf38ffdac793f3759f69dc2b24f936a1a646e07c33b1",
+            "material": "ffc5f358c754bb02c45d54d53515ebaa6cfa185999a39a7b731502cb0d21037e",
+            "templateUv": "031dcc2dc7cbfd37536d1cfb3893a583a9350ea24c5fb3c533f09089ae305523"
+        }
+    },
     "approvals": {
         "texture": {
             "date": "2026-11-22",
-            "sourceSha256": "2901623e219c367b3b8f31bfaf21d4dbc52ec4483e36607013039a23c3ca8895",
-            "garmentSourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e"
+            "contentSha256": "e0fb65a8c08976bef36f08914d0da6522d427cac337323a0701bf7c8deaac0a0"
         }
     },
     "export": {
-        "sourceSha256": "2901623e219c367b3b8f31bfaf21d4dbc52ec4483e36607013039a23c3ca8895",
-        "garmentSourceSha256": "b2fd03eaed1c060f7b7b7f8ea8e38c4e3626c6635d2b0a5759386afbf0ab1b4e",
+        "contentSha256": "e0fb65a8c08976bef36f08914d0da6522d427cac337323a0701bf7c8deaac0a0",
+        "garmentContentSha256": "ccca32c1312c6f51eac7dc8d149c87e127ce6251166f1f88e1686f30a04042fa",
         "materials": [
             {
                 "name": "M_Garment_LeatherBoots",

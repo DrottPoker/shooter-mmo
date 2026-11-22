@@ -26,10 +26,22 @@
         { "body": "art/Characters/Human_Male", "fitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9" },
         { "body": "art/Characters/Human_Female", "fitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819" }
     ],
+    "content": {
+        "version": 1,
+        "sourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455",
+        "stages": {
+            "model": "356fee83bf0aa6be4bb2c8558d0fcf302bdb76b8fa658bc6a2c491236d33459d"
+        },
+        "parts": {
+            "fit:Female": "e7dad871a04d0d6d9c63376cd3fee8a6265cbce8a98565b675c78aeafff0c003",
+            "fit:Male": "b1b5ebb843c4f20e760e6ec091d13e216cd2a228860e0e44dae2057f4370d0e7",
+            "net": "11402877247b0b873f4415c00664c5f4f71158737ded60638983362da8c013e9"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-11-21",
-            "sourceSha256": "1ba9a5be08dd3d3b0f63a11ea242592d9cce982bc15e1b48c215343d5ed2f455"
+            "contentSha256": "356fee83bf0aa6be4bb2c8558d0fcf302bdb76b8fa658bc6a2c491236d33459d"
         }
     }
 }

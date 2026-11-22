@@ -9,14 +9,26 @@
     "socket": "main_hand",
     "useClip": "Mine",
     "offHandGrip": [0.0, -0.33, 0.0],
+    "content": {
+        "version": 1,
+        "sourceSha256": "4a74abec8b58b5c768536c9e0e9bf898911382ae8bd242db07eb8a698816311b",
+        "stages": {
+            "model": "63e93158591f8d97c797ad6018ee5ba574375bcd1f52fbe285aa8d340e0ee147"
+        },
+        "parts": {
+            "materials": "c8e8bb0d12ce2a7bcb74cae12d07fdf52cc14d1068b5091b5280d0e133f219c5",
+            "shape": "a7efae424bc697d81522cc05782b0d8a2a9f7d1ba4e3ff88b44292272c5a0f22",
+            "uv": "1a4f3f6285bc6b582d3ea7e1d607d79f0254227757afbafc7d7b2aa7586e1b90"
+        }
+    },
     "approvals": {
         "model": {
             "date": "2026-10-26",
-            "sourceSha256": "4a74abec8b58b5c768536c9e0e9bf898911382ae8bd242db07eb8a698816311b"
+            "contentSha256": "63e93158591f8d97c797ad6018ee5ba574375bcd1f52fbe285aa8d340e0ee147"
         }
     },
     "export": {
-        "sourceSha256": "4a74abec8b58b5c768536c9e0e9bf898911382ae8bd242db07eb8a698816311b",
+        "contentSha256": "63e93158591f8d97c797ad6018ee5ba574375bcd1f52fbe285aa8d340e0ee147",
         "targetSha256": "df027cb17185c1f3dcc377926bdb90ee6812a55b42ff167561245d3123bad496",
         "materials": [
             {

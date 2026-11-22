@@ -23,11 +23,17 @@ validate = load("art_pipeline/validate.py", "STAGES", "NAME_PATTERN", "OBJECT_TY
 export = load("art_pipeline/export.py", "ANIMATED_KINDS", "OBJECT_TYPES")
 paint = load("art_pipeline/paint.py", "CROP_BLOCK", bodies=bodies, cage=cage)
 texture = load("art_pipeline/texture.py", "SIZES", "MAX_DYES", garment=garment)
+content = load("art_pipeline/content_core.py", "VERSION", "STAGES", "PARTS", "PART_PATTERN")
+
+
+def powershell_table(name: str) -> dict[str, list[str]]:
+    """The lists of `$script:<name> = @{ kind = @("a", "b") }` in ArtPipelineCommon.ps1 by kind."""
+    block = re.search(r"\$script:" + name + r"\s*=\s*@\{(.*?)\n\}", repository_text("tools/art/" + COMMON), re.DOTALL)
+    return {kind: re.findall(r'"([^"]+)"', items) for kind, items in re.findall(r"(\w+)\s*=\s*@\(([^)]*)\)", block.group(1))}
 
 
 def review_stages() -> dict[str, list[str]]:
-    block = re.search(r"\$script:ArtReviewStages\s*=\s*@\{(.*?)\n\}", repository_text("tools/art/" + COMMON), re.DOTALL)
-    return {kind: re.findall(r'"([^"]+)"', stages) for kind, stages in re.findall(r"(\w+)\s*=\s*@\(([^)]*)\)", block.group(1))}
+    return powershell_table("ArtReviewStages")
 
 
 class PowerShellTablesAgreeTests(unittest.TestCase):
@@ -82,6 +88,35 @@ class PowerShellTablesAgreeTests(unittest.TestCase):
             with self.subTest(asset=manifest.parent.name):
                 self.assertIn(data["kind"], stages)
                 self.assertTrue(set(data["approvals"]) <= set(stages[data["kind"]]))
+
+    def test_the_version_of_the_content_fingerprints(self):
+        self.assertEqual(int(powershell_value(COMMON, "ArtContentVersion")), content.VERSION)
+
+    def test_the_review_stages_of_every_kind_that_has_content(self):
+        self.assertEqual(review_stages(), {kind: list(stages) for kind, stages in content.STAGES.items()})
+
+    def test_the_parts_of_every_stage(self):
+        expected = {kind: sorted(f"{stage}/{part}" for stage, parts in stages.items() for part in parts)
+                    for kind, stages in content.PARTS.items()}
+        self.assertEqual({kind: sorted(parts) for kind, parts in powershell_table("ArtContentParts").items()}, expected)
+
+    def test_the_name_of_a_part(self):
+        self.assertEqual(powershell_value(COMMON, "ArtPartPattern"), content.PART_PATTERN.pattern)
+
+    def test_every_content_record_has_the_parts_and_stages_of_its_kind(self):
+        for manifest in sorted((REPOSITORY_ROOT / "art").glob("*/*/asset.json")):
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            record = data.get("content")
+            if record is None:
+                continue
+            with self.subTest(asset=manifest.parent.name):
+                stages = list(record["stages"])
+                self.assertEqual(stages, list(content.STAGES[data["kind"]][:len(stages)]))
+                for part in record["parts"]:
+                    names = [name for listed in content.PARTS[data["kind"]].values() for name in listed]
+                    self.assertTrue(part in names or any(n.endswith(":") and part.startswith(n) for n in names), part)
+                for approval in data["approvals"].values():
+                    self.assertEqual(set(approval), {"date", "contentSha256"})
 
 
 if __name__ == "__main__":
