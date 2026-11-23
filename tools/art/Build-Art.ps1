@@ -168,6 +168,10 @@ function Get-ArtSyncReasons($Manifest, $Manifests) {
         "garment" {
             if ($null -ne $Manifest.Export) {
                 foreach ($problem in @(Get-ArtGarmentFitProblems $Manifest)) { $reasons.Add("it $problem") }
+                # The sync keeps its cloth clear of the templates of lower layers it lies over, so
+                # other content of one of them can move it; the export only checks that.
+                $pairProblem = Get-ArtPairSourcesProblem $Manifest
+                if ($null -ne $pairProblem) { $reasons.Add("it $pairProblem") }
             }
         }
         "texture" {

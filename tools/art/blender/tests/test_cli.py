@@ -496,6 +496,14 @@ class BlenderJobTests(unittest.TestCase):
         self.assertIn("Save-ArtSyncRecords $records", build)
         self.assertIn("Synced by this run", build)
 
+    def test_the_build_syncs_a_template_whose_template_of_a_lower_layer_has_other_content(self):
+        """A template's sync keeps its cloth clear of the templates of lower layers, which the sync
+        script passes it, so other content of one of them is a reason to sync, not only to export."""
+        build = powershell("Build-Art.ps1")
+        reasons = build[build.index("function Get-ArtSyncReasons"):build.index("function Get-ArtExportReasons")]
+        self.assertIn("$pairProblem = Get-ArtPairSourcesProblem $Manifest", reasons)
+        self.assertIn("(Get-ArtGarmentPairArguments $manifest)", powershell("Sync-GarmentAsset.ps1"))
+
     def test_the_unity_follow_up_runs_one_method_in_the_editor_or_headless(self):
         text = powershell("Update-UnityArt.ps1")
         self.assertIn('$method = "Mmorpg.Client.Editor.ArtExportFollowUp.ApplyFromCommandLine"', text)

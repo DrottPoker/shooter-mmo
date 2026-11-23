@@ -683,8 +683,9 @@ confirm a clean state:
    lowest layer up, the textures, the paint layers, and the rest. An asset
    needs:
    - `sync`, with its kind's sync script, when something it follows changed: a
-     body's fit for the cage, the cage or a body for a garment template, its
-     template's `uv` for a texture, its rig for a library, a body's paint layout
+     body's fit for the cage, the cage, a body, or a template of a lower layer
+     it lies over for a garment template, whose sync keeps it clear of that
+     template, its template's `uv` for a texture, its rig for a library, a body's paint layout
      or the cage for a paint layer, or when its own content differs from its
      approval, which the sync fits again and shows on a new review sheet. The
      human bodies have no sync here; `Sync-HumanBase.ps1` stays a step of its
