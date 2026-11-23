@@ -88,11 +88,10 @@ $rules = @(
     # the Blender animation script.
     @{ Pattern = '^(art|tools/art/blender)/'
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
-    # The Python tests compare the tables and the content version that the shared helpers keep.
-    @{ Pattern = '^tools/art/ArtPipelineCommon\.ps1$'
-        Checks = @("art", "blender-python"); Reason = "the art pipeline's shared helpers, whose tables the Python tests compare" },
+    # The Python tests compare the tables and the content version that the shared helpers keep, and
+    # read every script for how it calls Blender and what it records.
     @{ Pattern = '^tools/art/[^/]+\.ps1$'
-        Checks = @("art"); Reason = "the art pipeline" },
+        Checks = @("art", "blender-python"); Reason = "the art pipeline scripts, whose tables, Blender calls, and records the Python tests compare" },
     @{ Pattern = '^tools/art/retarget/[^/]+\.json$'
         Checks = @("blender-python"); Reason = "a retarget map, which the art pipeline's Python tests read" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'

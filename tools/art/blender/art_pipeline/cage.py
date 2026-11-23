@@ -96,7 +96,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
 
-from . import bodies, body_files
+from . import bodies, body_files, manifest_io
 from .scene import ArtPipelineError, relative_image_paths
 
 REFERENCE = "Cage"
@@ -1758,8 +1758,7 @@ def distances(label: str) -> np.ndarray:
 
 def read_manifest(path: str) -> tuple[float, list[dict]]:
     """The figure scale and the standard lines of a cage's asset.json."""
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = manifest_io.read_json(path)
     figure = float(data["figure"])
     lines = [{"name": str(line["name"]), "region": str(line["region"]), "bone": str(line["bone"]),
               "share": float(line["share"]), **({"rise": float(line["rise"])} if "rise" in line else {})}

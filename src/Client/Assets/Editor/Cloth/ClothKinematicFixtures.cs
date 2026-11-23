@@ -53,6 +53,12 @@ namespace Mmorpg.Client.Editor
             ("Female", "cloak", new[] { "Cloak" }, false, new[] { "jog_0.5" }),
         };
 
+        // How far each number captured again may lie from the written one while the fixtures still are
+        // the bodies of today: the same arithmetic on the same data, compiled by Burst or not.
+        // ClothPoseTests holds a point to 1e-5 of distance, and three coordinates each 5e-6 away lie
+        // 5e-6 * sqrt(3) = 8.7e-6 away, so every point this keeps also passes the tests.
+        public const double Tolerance = 5e-6;
+
         public static string FilePath => Path.Combine(RepositoryLayout.FindRoot(), RepositoryPath);
 
         [MenuItem(MenuPath)]
@@ -61,6 +67,104 @@ namespace Mmorpg.Client.Editor
             var fixture = Capture();
             File.WriteAllText(FilePath, ToJson(fixture), new UTF8Encoding(false));
             Debug.Log("Wrote " + fixture.cases.Count + " cloth kinematic cases to " + RepositoryPath + ".");
+        }
+
+        // Writes the fixtures only when the cases captured now differ from the file: another case or
+        // text, or a number more than Tolerance away, so capturing unchanged bodies and garments again,
+        // also in another kind of Unity run, writes nothing. Returns whether it wrote.
+        public static bool WriteIfChanged()
+        {
+            var text = ToJson(Capture());
+            if (File.Exists(FilePath) && SameWithin(File.ReadAllText(FilePath), text, Tolerance))
+            {
+                return false;
+            }
+
+            File.WriteAllText(FilePath, text, new UTF8Encoding(false));
+            return true;
+        }
+
+        // Whether two JSON texts hold the same tokens in the same order, numbers at most tolerance
+        // apart and everything else alike.
+        public static bool SameWithin(string written, string captured, double tolerance)
+        {
+            var left = 0;
+            var right = 0;
+            while (true)
+            {
+                var a = NextToken(written, ref left);
+                var b = NextToken(captured, ref right);
+                if (a == null || b == null)
+                {
+                    return a == null && b == null;
+                }
+
+                var aNumber = IsNumber(a);
+                if (aNumber != IsNumber(b))
+                {
+                    return false;
+                }
+
+                if (aNumber)
+                {
+                    var style = System.Globalization.NumberStyles.Float;
+                    var culture = System.Globalization.CultureInfo.InvariantCulture;
+                    if (!double.TryParse(a, style, culture, out var x) || !double.TryParse(b, style, culture, out var y)
+                        || !(Math.Abs(x - y) <= tolerance))
+                    {
+                        return false;
+                    }
+                }
+                else if (a != b)
+                {
+                    return false;
+                }
+            }
+        }
+
+        private static bool IsNumber(string token)
+        {
+            return token.Length > 0 && (char.IsDigit(token[0]) || token[0] == '-');
+        }
+
+        // The next token from the index on: a string with its quotes, one of {}[],:, or a literal such
+        // as a number or true; null at the end.
+        private static string NextToken(string text, ref int index)
+        {
+            while (index < text.Length && char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            if (index >= text.Length)
+            {
+                return null;
+            }
+
+            var start = index;
+            if (text[index] == '"')
+            {
+                index++;
+                while (index < text.Length && text[index] != '"')
+                {
+                    index += text[index] == '\\' ? 2 : 1;
+                }
+
+                index = Math.Min(index + 1, text.Length);
+            }
+            else if ("{}[],:".IndexOf(text[index]) >= 0)
+            {
+                index++;
+            }
+            else
+            {
+                while (index < text.Length && !char.IsWhiteSpace(text[index]) && "{}[],:\"".IndexOf(text[index]) < 0)
+                {
+                    index++;
+                }
+            }
+
+            return text.Substring(start, index - start);
         }
 
         public static ClothKinematicFixture Read()

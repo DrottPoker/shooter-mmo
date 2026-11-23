@@ -43,8 +43,8 @@ def powershell(*names: str) -> str:
     return "\n".join((ART_SCRIPTS / name).read_text(encoding="utf-8") for name in names)
 
 
-def all_powershell() -> str:
-    return "\n".join(path.read_text(encoding="utf-8") for path in sorted(ART_SCRIPTS.glob("*.ps1")))
+def all_powershell(*leave_out: str) -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in sorted(ART_SCRIPTS.glob("*.ps1")) if path.name not in leave_out)
 
 
 class ScriptArgumentTests(unittest.TestCase):
@@ -85,7 +85,8 @@ class ParserTests(unittest.TestCase):
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
         known = {option for parser in subcommands().values() for action in parser._actions for option in action.option_strings}
-        used = set(re.findall(r'"(--[a-z][a-z-]*)"', all_powershell())) - BLENDER_OPTIONS
+        # Update-UnityArt.ps1 starts Unity and its CLI, not Blender.
+        used = set(re.findall(r'"(--[a-z][a-z-]*)"', all_powershell("Update-UnityArt.ps1"))) - BLENDER_OPTIONS
         self.assertEqual(sorted(used - known), [])
 
     def test_validate_and_export_need_a_kind_and_the_root_objects(self):
@@ -229,7 +230,7 @@ class ListArgumentTests(unittest.TestCase):
 
 class PairSourceTests(unittest.TestCase):
     """A texture's masks name faces of the templates of lower layers worn under its template, so its
-    export records their exports, as a template's does, and the checks hold it to them."""
+    export records their content, as a template's does, and the checks hold it to them."""
 
     @staticmethod
     def function(name: str) -> str:
@@ -238,14 +239,30 @@ class PairSourceTests(unittest.TestCase):
         assert match is not None, name
         return match.group(0)
 
-    def test_a_texture_with_masks_records_the_exports_of_the_templates_under_its_template_and_stops_when_one_changed(self):
-        body = self.function("Export-ArtTexture")
-        self.assertIn("Get-ArtGarmentPairs $template", body)
-        self.assertIn("pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })", body)
-        self.assertIn("Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)", body)
-        self.assertIn("has changed since its export", self.function("Get-ArtExportChangeProblem"))
-        self.assertIn('"--opaque-only", $opaqueReason', body)
+    def test_a_texture_with_masks_records_the_content_of_the_templates_under_its_template_and_stops_when_one_is_not_approved(self):
+        plan, record = self.function("New-ArtTextureJob"), self.function("Complete-ArtTextureJob")
+        self.assertIn("Get-ArtGarmentPairs $template", plan)
+        self.assertIn("pairSources = $(if ($masks.Count -gt 0) { $Job.Context.PairSources } else { @() })", record)
+        self.assertIn("$problem = Get-ArtExportGateProblem $current", plan)
+        self.assertIn("contentSha256 = Get-ArtExportedContent $current", plan)
+        self.assertIn('"--opaque-only", $opaqueReason', plan)
         self.assertIn("templates of lower layers worn under its template: {args.opaque_only}.", source_text("art_pipeline_cli.py"))
+
+    def test_the_records_name_the_content_of_the_other_assets_never_their_exports(self):
+        """An export needs the other assets' approvals for their content, not their exports, so the
+        assets of one wave may export in any order and write the same records."""
+        text = powershell("Export-ArtAsset.ps1")
+        self.assertNotIn("Get-ArtExportChangeProblem", text)
+        self.assertNotIn(".Export.contentSha256 }", text)
+        self.assertIn("garmentContentSha256 = Get-ArtExportedContent $template", self.function("New-ArtTextureJob"))
+        self.assertIn("$rigContentSha256 = Get-ArtExportedContent $rig", self.function("New-ArtModelJob"))
+        self.assertIn("contentSha256 = [string]$_.ContentSha256", self.function("Get-ArtClipSourceRecords"))
+        self.assertIn("Get-ArtExportedContent $_", self.function("Get-ArtPairSourcesProblem"))
+        self.assertIn("[string]$_.ContentSha256", self.function("Get-ArtClipSourcesProblem"))
+        self.assertIn("(Get-ArtExportedContent $rig) -cne $manifest.Export.rigContentSha256", powershell("Verify-ArtAssets.ps1"))
+        self.assertIn("(Get-ArtExportedContent $manifest.Garment) -cne $manifest.Export.garmentContentSha256",
+                      powershell("Verify-ArtAssets.ps1"))
+        self.assertIn("@($script:ArtExportingTemplates) -ccontains $other.RelativeDirectory", self.function("Get-ArtGarmentPairs"))
 
     def test_the_manifest_reads_a_texture_s_pair_sources_only_with_masks_and_writes_them(self):
         self.assertIn("export.pairSources must list, for a texture with masks", self.function("Read-ArtTextureManifest"))
@@ -284,10 +301,11 @@ class ContentRecordRaceTests(unittest.TestCase):
 
     def test_every_export_run_checks_the_content_it_exported_before_its_record(self):
         text = powershell("Export-ArtAsset.ps1")
-        runs = re.findall(r'Invoke-ArtBlender \$\w+ \$(\w+) \(\s*@\("export"\)', text)
-        checks = re.findall(r"Assert-ArtExportedContent \$(\w+) \$results \$sourceSha256", text)
+        runs = re.findall(r'New-ArtExportJob \$(\w+) \(\s*@\("export"\)', text)
+        checks = re.findall(r"Assert-ArtExportedContent \$(\w+) \$results \$Job\.SourceSha256", text)
         self.assertEqual(len(runs), 4)
         self.assertEqual(runs, checks)
+        self.assertIn("SourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath", PairSourceTests.function("New-ArtExportJob"))
         self.assertIn("changed while it was exported", PairSourceTests.function("Assert-ArtExportedContent"))
 
     def test_an_approval_binds_to_the_content_its_own_validation_reported(self):
@@ -334,7 +352,8 @@ class CageContentTests(unittest.TestCase):
         self.assertIn('"cageSourceSha256"', PairSourceTests.function("Get-ArtOldExportProblem"))
         self.assertEqual(text.count("cageSourceSha256"), 1)
         self.assertIn("cageContentSha256 = Get-ArtCageContent $Manifest.Cage", powershell("Export-ArtAsset.ps1"))
-        self.assertIn("was fitted to other content of its cage", PairSourceTests.function("Get-ArtGarmentDependencyProblems"))
+        self.assertIn("Get-ArtGarmentFitProblems $Manifest", PairSourceTests.function("Get-ArtGarmentDependencyProblems"))
+        self.assertIn("was fitted to other content of its cage", PairSourceTests.function("Get-ArtGarmentFitProblems"))
         self.assertIn("was moved through other content of the garment cage", PairSourceTests.function("Get-ArtPaintDependencyProblems"))
 
     def test_the_files_keep_the_cage_s_content_and_never_its_file_s_hash(self):
@@ -414,10 +433,101 @@ class CheckCacheTests(unittest.TestCase):
                     self.assertTrue(line.startswith(" " * 12), "each asset's part runs inside its own try")
 
     def test_the_timing_line_counts_the_units_of_every_run_and_says_each_note_once(self):
-        body = PairSourceTests.function("Format-ArtElapsed")
-        self.assertIn('"ART_CACHE *"', body)
+        body, counts = PairSourceTests.function("Format-ArtElapsed"), PairSourceTests.function("Get-ArtCacheCounts")
+        self.assertIn("Get-ArtCacheCounts $Results", body)
+        self.assertIn('"ART_CACHE *"', counts)
         self.assertIn('ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)', body)
-        self.assertIn("if (-not $notes.Contains([string]$note))", body)
+        self.assertIn("if (-not $notes.Contains([string]$note))", counts)
+
+
+class BlenderJobTests(unittest.TestCase):
+    """Several art_pipeline_cli.py runs at once: each Blender gets the environment of Invoke-ArtBlender
+    and the same handling of its result lines, its output never blocks it, the export plans a wave
+    before it starts, writes each asset.json itself, and prints each asset's lines together."""
+
+    def test_every_run_gets_the_environment_and_the_result_handling_of_invoke_art_blender(self):
+        start, done = PairSourceTests.function("Start-ArtBlenderJob"), PairSourceTests.function("Complete-ArtBlenderJob")
+        self.assertIn("$script:ArtBlenderEnvironment", start)
+        self.assertIn("$script:ArtBlenderEnvironment", PairSourceTests.function("Invoke-ArtBlender"))
+        self.assertIn("Get-ArtBlenderArguments $Job.Manifest $Job.Arguments", start)
+        self.assertIn("ReadToEndAsync()", start)
+        self.assertIn("Get-ArtBlenderResults $Job.Manifest", done)
+        self.assertIn("Get-ArtBlenderResults $Manifest $output", PairSourceTests.function("Invoke-ArtBlender"))
+        self.assertIn('PYTHONHASHSEED = "0"', powershell("ArtPipelineCommon.ps1"))
+
+    def test_the_export_plans_a_wave_before_it_runs_and_writes_each_record_when_its_run_ended(self):
+        text = powershell("Export-ArtAsset.ps1")
+        self.assertIn("$script:ArtExportingTemplates = @($manifests", text)
+        self.assertLess(text.index("New-ArtKindJob $blender $manifest"), text.index("Invoke-ArtBlenderJobs $blender $ordered $Jobs $onDone"))
+        self.assertIn("Complete-ArtKindJob $Job", text)
+        self.assertIn("$script:ArtLineSink = $Job.Lines", text)
+        self.assertIn('Write-ArtLine "The checks that read', PairSourceTests.function("Write-ArtUncached"))
+        self.assertIn("[System.IO.File]::Replace($temporary, $Path, [NullString]::Value)", PairSourceTests.function("Write-ArtManifestText"))
+        self.assertEqual(powershell("ArtPipelineCommon.ps1").count("WriteAllText($Manifest.ManifestPath"), 0)
+
+    def test_the_build_never_records_an_approval_and_runs_only_the_pipeline_s_own_scripts(self):
+        text = powershell("Build-Art.ps1")
+        self.assertNotIn('"Approve-ArtAsset.ps1")', text)
+        self.assertNotIn(".Approvals[", text)
+        self.assertIn(".\\tools\\art\\Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage $stage", text)
+        started = set(re.findall(r'"([A-Za-z-]+\.ps1)"', text))
+        self.assertTrue({"Sync-CageAsset.ps1", "Sync-GarmentAsset.ps1", "Sync-TextureAsset.ps1", "Sync-AnimationLibrary.ps1",
+                         "Sync-PaintAsset.ps1", "Export-ArtAsset.ps1", "Update-UnityArt.ps1", "Verify-ArtAssets.ps1"} <= started)
+        for name in started:
+            with self.subTest(script=name):
+                self.assertTrue((ART_SCRIPTS / name).is_file())
+
+    def test_the_build_verifies_with_the_waiting_assets_lists_the_approvals_last_and_follows_the_unity_marker(self):
+        build, verify = powershell("Build-Art.ps1"), powershell("Verify-ArtAssets.ps1")
+        self.assertIn('"Verify-ArtAssets.ps1") -Waiting @($entries | Where-Object { $_.Need -ne "nothing" }', build)
+        self.assertLess(build.index("-Waiting @($entries"), build.index("$approvals = if ($entries.Count -gt 0) { Write-ArtApprovals $entries }"))
+        self.assertEqual(build.count("Write-ArtApprovals $entries"), 2)
+        self.assertIn("[string[]]$Waiting = @()", verify)
+        for duplicate in ("is also the target of", "is also a material of", "is also a texture of", "every model comes from", "every texture comes from"):
+            line = next(line for line in verify.splitlines() if duplicate in line)
+            with self.subTest(problem=duplicate):
+                self.assertIn("$problems.Add(", line)
+        marker = 'artifacts/art-build/unity/pending'
+        self.assertIn(marker, build)
+        self.assertIn("Test-Path -LiteralPath $unityPendingPath", build)
+        self.assertIn('Join-Path (Get-ArtBuildFolder "unity") "pending"', powershell("Export-ArtAsset.ps1"))
+        self.assertIn("Remove-Item -LiteralPath $pending", powershell("Update-UnityArt.ps1"))
+        self.assertIn("Test-ArtSyncRecordHolds $manifest $manifests $syncRecords", build)
+        self.assertIn("Save-ArtSyncRecords $records", build)
+        self.assertIn("Synced by this run", build)
+
+    def test_the_build_syncs_a_template_whose_template_of_a_lower_layer_has_other_content(self):
+        """A template's sync keeps its cloth clear of the templates of lower layers, which the sync
+        script passes it, so other content of one of them is a reason to sync, not only to export."""
+        build = powershell("Build-Art.ps1")
+        reasons = build[build.index("function Get-ArtSyncReasons"):build.index("function Get-ArtExportReasons")]
+        self.assertIn("$pairProblem = Get-ArtPairSourcesProblem $Manifest", reasons)
+        self.assertIn("(Get-ArtGarmentPairArguments $manifest)", powershell("Sync-GarmentAsset.ps1"))
+
+    def test_the_build_exports_a_new_template_of_a_lower_layer_before_it_syncs_the_templates_over_it(self):
+        """The sync script is given only the exported templates of lower layers, so the build exports
+        one that has no export yet first, and a sync that ran without it is not taken as having
+        followed it."""
+        build = powershell("Build-Art.ps1")
+        self.assertIn("foreach ($pair in @(Get-ArtGarmentPairs $Manifest)) { Add-Followed $pair.RelativeDirectory $false $true }", build)
+        self.assertIn('($_.SeenWhenExported -and $needs[$_.Asset] -eq "export" -and $null -eq $manifests[$_.Asset].Export)', build)
+        fingerprints = build[build.index("function Get-ArtFollowedFingerprints"):build.index("function Test-ArtSyncRecordHolds")]
+        self.assertIn("elseif ($followed.SeenWhenExported -and $null -eq $other.Export) {", fingerprints)
+        self.assertIn("$null -ne $other.Export -or @($script:ArtExportingTemplates) -ccontains $other.RelativeDirectory",
+                      PairSourceTests.function("Get-ArtGarmentPairs"))
+
+    def test_the_unity_follow_up_runs_one_method_in_the_editor_or_headless(self):
+        text = powershell("Update-UnityArt.ps1")
+        self.assertIn('$method = "Mmorpg.Client.Editor.ArtExportFollowUp.ApplyFromCommandLine"', text)
+        self.assertIn("Mmorpg.Client.Editor.ArtExportFollowUp.Apply().Lines()", text)
+        self.assertIn('"-executeMethod", $method', text)
+        self.assertNotIn("unity status", text.replace("'unity status' would", ""))
+
+    def test_a_process_argument_is_quoted_as_the_c_runtime_reads_it_back(self):
+        body = PairSourceTests.function("ConvertTo-ArtProcessArgument")
+        self.assertIn("2 * $slashes + 1", body)
+        self.assertIn("2 * $slashes)", body)
+        self.assertIn("ConvertTo-ArtProcessArgument $_", PairSourceTests.function("Start-ArtBlenderJob"))
 
 
 class ResultLineTests(unittest.TestCase):

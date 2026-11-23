@@ -931,9 +931,10 @@ ends with a summary:
   `tools/art/Verify-ArtAssets.ps1`, the art pipeline's Python tests in
   `tools/art/blender/tests`, and both Unity suites, because the Editor reads the
   art manifests and a test reads the clip speeds in the animation script.
-  Exported art runs the art verification and both Unity suites, and the art
-  pipeline scripts in `tools/art` run the art verification, and a retarget map
-  in `tools/art/retarget` the art pipeline's Python tests. The client crowd
+  Exported art runs the art verification and both Unity suites, the art
+  pipeline scripts in `tools/art` run the art verification and the art
+  pipeline's Python tests, which read how every script calls Blender and what
+  it records, and a retarget map in `tools/art/retarget` the Python tests. The client crowd
   measurement, its helpers, and its Mob variant run
   `tools/ci/Test-ClientCrowdCommon.ps1`, the Mob variant also the tool tests.
   Monitoring configuration runs `tools/Verify-Observability.ps1` and every test

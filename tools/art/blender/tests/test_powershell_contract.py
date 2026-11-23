@@ -16,7 +16,9 @@ from blender_source import REPOSITORY_ROOT, load, powershell_list, powershell_va
 COMMON = "ArtPipelineCommon.ps1"
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
 bodies = load("art_pipeline/bodies.py", "ZONES")
-cage = load("art_pipeline/cage.py", "REGIONS", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError)
+manifest_io = load("art_pipeline/manifest_io.py", "read_json")
+cage = load("art_pipeline/cage.py", "REGIONS", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError,
+            manifest_io=manifest_io)
 hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES")
 garment = load("art_pipeline/garment.py", "BANDS", "SLOTS", "image_name", "material_name", cage=cage)
 validate = load("art_pipeline/validate.py", "STAGES", "NAME_PATTERN", "OBJECT_TYPES")

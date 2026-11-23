@@ -14,7 +14,7 @@ library, a template of a lower layer, or a texture, is no longer what the finger
 says. An entry is a JSON file and an .npz file of arrays, which is loaded without pickle; a missing,
 broken, or older entry reads as none, so the folder may be deleted at any time.
 
-Standard library and numpy only, so the tests run it without Blender. See docs/ART_PIPELINE.md, Cache Of
+Standard library, numpy, and manifest_io only, so the tests run it without Blender. See docs/ART_PIPELINE.md, Cache Of
 The Garment Checks."""
 
 import hashlib
@@ -27,6 +27,8 @@ import tempfile
 import zipfile
 
 import numpy as np
+
+from . import manifest_io
 
 # The version of the keys and entries; a change misses every older entry.
 SCHEMA = 1
@@ -75,8 +77,7 @@ def code_fingerprint(files: list[tuple[str, bytes]], blender: str) -> str:
 
 def manifest_fields(path: str) -> dict:
     """The fields of a template's asset.json that the checks read, a missing one as None."""
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = manifest_io.read_json(path)
     return {name: data.get(name) for name in FIELDS}
 
 
@@ -203,7 +204,7 @@ def source_problem(source: dict) -> str | None:
     if "sha256" in source:
         return None if digest == source["sha256"] else f"{name} changed during the run"
     try:
-        record = json.loads((path.parent / "asset.json").read_text(encoding="utf-8"))
+        record = manifest_io.read_json(path.parent / "asset.json")
     except (OSError, ValueError):
         return f"{name} has no asset.json to compare"
     content = record.get("content") if isinstance(record, dict) else None

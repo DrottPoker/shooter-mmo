@@ -4,11 +4,31 @@
 # below src/Client/Assets/Art/Models and every texture below src/Client/Assets/Art/Textures comes from
 # exactly one asset. An asset in review, such as a skinned model before its rig, has approvals that
 # hold for its content and no export yet. Git LFS pointers are read directly, so the .blend files need
-# not be downloaded.
+# not be downloaded. -Waiting names assets that wait for an approval, such as art/Garments/Trousers, as
+# tools/art/Build-Art.ps1 passes them: their problems are listed and do not fail the verification;
+# every other problem does, also one that belongs to no asset, such as a stray file or a target or
+# material of two assets.
+param(
+    [string[]]$Waiting = @()
+)
+
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
 
 $problems = New-Object System.Collections.Generic.List[string]
+$waitingAssets = @($Waiting | ForEach-Object { "$_".Split(",") } | ForEach-Object { $_.Trim().Replace([char]92, [char]47).TrimEnd([char]47) } | Where-Object { $_ })
+$waitingProblems = New-Object System.Collections.Generic.List[string]
+
+function Add-ArtAssetProblem([string]$Asset, [string]$Problem) {
+    # A problem of one asset, which does not fail the verification while the asset waits for an approval.
+    if ($waitingAssets -ccontains $Asset) {
+        $waitingProblems.Add($Problem)
+    }
+    else {
+        $problems.Add($Problem)
+    }
+}
+
 $targets = @{}
 $textures = @{}
 $materials = @{}
@@ -56,7 +76,7 @@ foreach ($directory in $directories) {
         }
 
         if ($null -ne $problem) {
-            $problems.Add("${where}: $problem.")
+            Add-ArtAssetProblem $where "${where}: $problem."
         }
 
         continue
@@ -65,16 +85,16 @@ foreach ($directory in $directories) {
     if (Test-ArtAssetInReview $manifest) {
         $reviewProblem = Get-ArtReviewProblem $manifest
         if ($null -ne $reviewProblem) {
-            $problems.Add("${where}: $reviewProblem.")
+            Add-ArtAssetProblem $where "${where}: $reviewProblem."
         }
 
         if ($null -ne $manifest.Export) {
-            $problems.Add("${where}: an asset in review has no export; export it after its last review stage.")
+            Add-ArtAssetProblem $where "${where}: an asset in review has no export; export it after its last review stage."
         }
 
         foreach ($target in $modelTargets) {
             if (Test-Path -LiteralPath (Join-Path $script:ArtRepositoryRoot $target)) {
-                $problems.Add("${where}: $target exists although the asset is still in review.")
+                Add-ArtAssetProblem $where "${where}: $target exists although the asset is still in review."
             }
         }
 
@@ -83,58 +103,40 @@ foreach ($directory in $directories) {
 
     $gateProblem = Get-ArtExportGateProblem $manifest
     if ($null -ne $gateProblem) {
-        $problems.Add("${where}: $gateProblem.")
+        Add-ArtAssetProblem $where "${where}: $gateProblem."
     }
 
     if ($null -eq $manifest.Export) {
-        $problems.Add("${where}: the asset was never exported; run tools/art/Export-ArtAsset.ps1.")
+        Add-ArtAssetProblem $where "${where}: the asset was never exported; run tools/art/Export-ArtAsset.ps1."
         continue
     }
 
     if ($null -ne $manifest.ExportProblem) {
-        $problems.Add("${where}/asset.json: $($manifest.ExportProblem).")
+        Add-ArtAssetProblem $where "${where}/asset.json: $($manifest.ExportProblem)."
     }
 
     # The gate reports a content record that is not current.
     if ($null -eq (Get-ArtContentProblem $manifest) -and $manifest.Export.contentSha256 -cne (Get-ArtExportedContent $manifest)) {
-        $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/art/Export-ArtAsset.ps1.")
+        Add-ArtAssetProblem $where "${where}: the export comes from another version of $($manifest.Name).blend; run tools/art/Export-ArtAsset.ps1."
     }
 
     if ($manifest.Kind -eq "texture") {
-        # The texture was exported against the current export of its template, and is painted in the
-        # template's current UVs.
-        $templateExport = $null
-        try {
-            $templateExport = (Read-ArtAssetManifest $manifest.Garment.Directory).Export
-        }
-        catch {
-            # The template's own problems are reported with the template.
-        }
-
-        if ($null -eq $templateExport -or $templateExport.contentSha256 -cne $manifest.Export.garmentContentSha256) {
-            $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/art/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/art/Export-ArtAsset.ps1.")
+        # The texture was exported against the current content of its template, and is painted in the
+        # template's current UVs. A template whose content record is not current is reported with it.
+        if ((Get-ArtExportedContent $manifest.Garment) -cne $manifest.Export.garmentContentSha256) {
+            Add-ArtAssetProblem $where "${where}: was exported against other content of its template $($manifest.Garment.RelativeDirectory); run tools/art/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/art/Export-ArtAsset.ps1."
         }
 
         $templateProblem = Get-ArtTextureTemplateProblem $manifest
         if ($null -ne $templateProblem) {
-            $problems.Add("${where}: $templateProblem.")
+            Add-ArtAssetProblem $where "${where}: $templateProblem."
         }
 
         # A texture with masks has them for exactly the bodies of its template.
         $masked = @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_.body } | Sort-Object)
         $roots = @($manifest.Masks | ForEach-Object { $_.Body } | Sort-Object)
         if ($masked.Count -gt 0 -and ($masked -join ",") -cne ($roots -join ",")) {
-            $problems.Add("${where}: has masks for other bodies ($($masked -join ', ')) than its template has ($($roots -join ', ')); run tools/art/Sync-TextureAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1.")
-        }
-
-        foreach ($mask in @($manifest.Export.masks | Where-Object { $null -ne $_ })) {
-            $maskPath = Join-Path $script:ArtRepositoryRoot $mask.data
-            if (-not (Test-Path -LiteralPath $maskPath -PathType Leaf)) {
-                $problems.Add("${where}: $($mask.data) is missing; run tools/art/Export-ArtAsset.ps1.")
-            }
-            elseif ((Get-ArtFileSha256 $maskPath) -ne $mask.dataSha256) {
-                $problems.Add("${where}: $($mask.data) differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand.")
-            }
+            Add-ArtAssetProblem $where "${where}: has masks for other bodies ($($masked -join ', ')) than its template has ($($roots -join ', ')); run tools/art/Sync-TextureAsset.ps1, review and approve it, then run tools/art/Export-ArtAsset.ps1."
         }
     }
 
@@ -143,74 +145,48 @@ foreach ($directory in $directories) {
     if ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
         $clipProblem = Get-ArtClipSourcesProblem $manifest "tools/art/Sync-TextureAsset.ps1"
         if ($null -ne $clipProblem) {
-            $problems.Add("${where}: $clipProblem.")
+            Add-ArtAssetProblem $where "${where}: $clipProblem."
         }
 
         $pairProblem = Get-ArtPairSourcesProblem $manifest $manifest.Garment "tools/art/Sync-TextureAsset.ps1"
         if ($null -ne $pairProblem) {
-            $problems.Add("${where}: $pairProblem.")
+            Add-ArtAssetProblem $where "${where}: $pairProblem."
         }
     }
 
     if ($manifest.Kind -eq "paint") {
         # The paint was moved to the current exports of its bodies, and through the current cage.
         foreach ($dependencyProblem in @(Get-ArtPaintDependencyProblems $manifest)) {
-            $problems.Add("${where}: $dependencyProblem.")
+            Add-ArtAssetProblem $where "${where}: $dependencyProblem."
         }
     }
 
     if ($manifest.Kind -eq "garment") {
-        # The template still matches its cage, the bodies of the cage, and the clips it was checked in.
+        # The template still matches its cage, the bodies of the cage, and the content of the clips and
+        # the templates of lower layers it was checked in and over.
         foreach ($dependencyProblem in @(Get-ArtGarmentDependencyProblems $manifest)) {
-            $problems.Add("${where}: $dependencyProblem.")
-        }
-
-        foreach ($model in @($manifest.Export.models)) {
-            foreach ($file in @(@($model.target, $model.sha256), @($model.data, $model.dataSha256))) {
-                $filePath = Join-Path $script:ArtRepositoryRoot $file[0]
-                if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
-                    $problems.Add("${where}: $($file[0]) is missing; run tools/art/Export-ArtAsset.ps1.")
-                }
-                elseif ((Get-ArtFileSha256 $filePath) -ne $file[1]) {
-                    $problems.Add("${where}: $($file[0]) differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand.")
-                }
-            }
-        }
-    }
-    elseif ($null -eq $manifest.Target) {
-        # Only the images below.
-    }
-    elseif (-not (Test-Path -LiteralPath $manifest.TargetPath -PathType Leaf)) {
-        $problems.Add("${where}: $($manifest.Target) is missing; run tools/art/Export-ArtAsset.ps1.")
-    }
-    elseif ((Get-ArtFileSha256 $manifest.TargetPath) -ne $manifest.Export.targetSha256) {
-        $problems.Add("${where}: $($manifest.Target) differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand.")
-    }
-
-    if ($null -ne $manifest.Target -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
-        $dataTarget = Get-ArtDataTarget $manifest.Target
-        $dataPath = Join-Path $script:ArtRepositoryRoot $dataTarget
-        if (-not (Test-Path -LiteralPath $dataPath -PathType Leaf)) {
-            $problems.Add("${where}: $dataTarget is missing; run tools/art/Export-ArtAsset.ps1.")
-        }
-        elseif ((Get-ArtFileSha256 $dataPath) -ne $manifest.Export.dataSha256) {
-            $problems.Add("${where}: $dataTarget differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand.")
+            Add-ArtAssetProblem $where "${where}: $dependencyProblem."
         }
     }
 
-    # An animation library was exported against the current export of its rig; the export itself
+    # The written files are the recorded export.
+    foreach ($fileProblem in @(Get-ArtExportFileProblems $manifest)) {
+        Add-ArtAssetProblem $where "${where}: $fileProblem."
+    }
+
+    # An animation library was exported against the current content of its rig; the export itself
     # checked in Blender that the library's armature is that rig.
     if ($manifest.Kind -eq "animations") {
-        $rigExport = $null
+        $rig = $null
         try {
-            $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
+            $rig = Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)
         }
         catch {
             # The rig's own problems are reported with the rig.
         }
 
-        if ($null -eq $rigExport -or $rigExport.contentSha256 -cne $manifest.Export.rigContentSha256) {
-            $problems.Add("${where}: was exported against another export of its rig $($manifest.Rig.Asset); run tools/art/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/art/Export-ArtAsset.ps1.")
+        if ($null -eq $rig -or (Get-ArtExportedContent $rig) -cne $manifest.Export.rigContentSha256) {
+            Add-ArtAssetProblem $where "${where}: was exported against other content of its rig $($manifest.Rig.Asset); run tools/art/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/art/Export-ArtAsset.ps1."
         }
     }
 
@@ -229,13 +205,6 @@ foreach ($directory in $directories) {
         }
 
         $textures[$texture.target] = $where
-        $texturePath = Join-Path $script:ArtRepositoryRoot $texture.target
-        if (-not (Test-Path -LiteralPath $texturePath -PathType Leaf)) {
-            $problems.Add("${where}: $($texture.target) is missing; run tools/art/Export-ArtAsset.ps1.")
-        }
-        elseif ((Get-ArtFileSha256 $texturePath) -ne $texture.sha256) {
-            $problems.Add("${where}: $($texture.target) differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand.")
-        }
     }
 }
 
@@ -263,8 +232,13 @@ if (Test-Path -LiteralPath $textureRoot) {
     }
 }
 
+if ($waitingProblems.Count -gt 0) {
+    Write-Host "These problems belong to assets that wait for an approval, so they do not fail the verification:`n - $($waitingProblems -join "`n - ")"
+}
+
 if ($problems.Count -gt 0) {
     throw "Art asset verification failed:`n - $($problems -join "`n - ")"
 }
 
-Write-Host "Verified $($directories.Count) art asset(s)."
+$waitingNote = if ($waitingProblems.Count -gt 0) { " $($waitingProblems.Count) problem(s) above wait for an approval." } else { "" }
+Write-Host "Verified $($directories.Count) art asset(s).$waitingNote"

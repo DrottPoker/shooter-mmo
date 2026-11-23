@@ -2,20 +2,34 @@
 # with the images of painted materials as PNG files below src/Client/Assets/Art/Textures, and
 # records the content fingerprint of the exported stage, the hashes of the written files, the
 # materials, and the animation clips in asset.json. It first makes the content records of the assets
-# and of those whose exports it records current, then refuses an asset whose review stages are not
-# all approved for the content of the current .blend file. An animation library exports its armature
-# and clips only, and records the export of the rig it was authored on, so it is exported after that
-# rig. A paint layer exports its images only, and a garment one model per body below
-# src/Client/Assets/Art/Models/Garments. The garment cage has no export, so -All leaves it out. Unity
-# imports the FBX with the rules in ArtModelImportRules. The checks of a garment template or a masked
-# texture come from their cache below artifacts/art-cache where an approval or a sync computed them.
-# Each asset ends with a line of the seconds it took. See docs/ART_PIPELINE.md.
+# and of those whose content its records name current, then refuses an asset whose review stages are
+# not all approved for the content of the current .blend file. An animation library exports its
+# armature and clips only, and records the content of the rig it was authored on. A paint layer exports
+# its images only, and a garment one model per body below src/Client/Assets/Art/Models/Garments. The
+# garment cage has no export, so -All leaves it out. Unity imports the FBX with the rules in
+# ArtModelImportRules. The checks of a garment template or a masked texture come from their cache below
+# artifacts/art-cache where an approval or a sync computed them.
+#
+# Several Blender processes export at once, -Jobs of them: first the bodies and the other skinned and
+# static assets, whose exports the cage, the garments, and the paint layers read the fit and the paint
+# layout from, then everything else, the longest first. A record names the content of the other assets
+# it was made with, never their exports, so the order within a wave changes no byte. This script alone
+# writes each asset.json, when the Blender run of that asset ended, and prints each asset's lines
+# together, ending with a line of the seconds it took; each run's output is kept below
+# artifacts/art-build/export. Once it wrote a record, it leaves the marker artifacts/art-build/unity/pending
+# until tools/art/Update-UnityArt.ps1 brings the Unity project up to date. See docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
     [switch]$All,
     # Computes every check of a garment template or a masked texture, without the cache of the checks.
     [switch]$NoCache,
+    # How many Blender processes export at once: by default half the logical processors, at most 8. 1
+    # exports one asset after the other in the order of the records.
+    [int]$Jobs = 0,
+    # A list that gets one record per asset whose export ran: its folder, name, kind, seconds, check
+    # units, units from the cache, and error, for tools/art/Build-Art.ps1.
+    [System.Collections.IList]$Report,
     [string]$BlenderPath
 )
 
@@ -26,17 +40,23 @@ if ($All -eq ($Asset.Count -gt 0)) {
     throw "Pass either -Asset <folder> or -All."
 }
 
+if ($Jobs -lt 0) {
+    throw "-Jobs is how many Blender processes export at once, 1 or more."
+}
+
+if ($Jobs -eq 0) {
+    $Jobs = Get-ArtDefaultJobs
+}
+
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
-# Animation libraries come after the rigs they record the export of, garments after them, because
-# they record the exports of their bodies and of the libraries they were checked in, from the lowest
-# layer up, because a template records the exports of the lower templates it was checked over, and
-# textures last, because they record the exports of their templates.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
 $cages = @($read | Where-Object { $_.Kind -eq "cage" })
 if (-not $All -and $cages.Count -gt 0) {
     throw "$($cages[0].Name) is a garment cage, which has no export; garments record its approved content."
 }
 
+# The order of the records: the models and paint layers, the animation libraries, the garments from the
+# lowest layer up, and the textures, which -Jobs 1 keeps.
 $read = @($read | Where-Object { $_.Kind -ne "cage" })
 $manifests = @($read | Where-Object { @("animations", "garment", "texture") -notcontains $_.Kind }) +
     @($read | Where-Object { $_.Kind -eq "animations" }) +
@@ -51,23 +71,41 @@ foreach ($manifest in $manifests) {
     }
 }
 
+# The templates of this run count as exported for the templates of higher layers checked over them, so
+# a template exported for the first time is among their templates of lower layers in any order.
+$script:ArtExportingTemplates = @($manifests | Where-Object { $_.Kind -eq "garment" } | ForEach-Object { $_.RelativeDirectory })
+
 function Get-ArtCurrentManifest([string]$Blender, [string]$Directory) {
-    # Another asset whose export an export records, with its content record made current.
+    # Another asset whose content an export records, with its content record made current.
     $other = Read-ArtAssetManifest $Directory
     $null = Update-ArtContentRecord $Blender $other
     return $other
 }
 
-function Export-ArtPaint([string]$Blender, $Manifest) {
+function New-ArtExportJob($Manifest, [string[]]$Arguments, [hashtable]$Context) {
+    # The Blender run of one asset's export, with the file's hash before it and what the record needs.
+    $log = Join-Path (Get-ArtBuildFolder "export") "$($Manifest.Name).log"
+    return New-ArtBlenderJob $Manifest $Arguments $log @{
+        SourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
+        Context = $Context
+        Lines = $null
+    }
+}
+
+function New-ArtPaintJob([string]$Blender, $Manifest) {
     # A paint layer exports one image per body, cropped to its paint, with its place in the body's
     # full paint layout, the fingerprint of the body it was moved to, and how it was moved, and the
     # smoothness and metallic of its paint, and the cage's content when a body was moved through it.
     $folder = $script:ArtPaintTextureFolder
-    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
-    $results = Invoke-ArtBlender $Blender $Manifest (
-        @("export") + (Get-ArtValidationArguments $Manifest "paint") + @(
-            "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
-    Assert-ArtExportedContent $Manifest $results $sourceSha256
+    return New-ArtExportJob $Manifest (@("export") + (Get-ArtValidationArguments $Manifest "paint") + @(
+            "--textures", (Join-Path $script:ArtRepositoryRoot $folder))) @{ Folder = $folder }
+}
+
+function Complete-ArtPaintJob($Job) {
+    $Manifest = $Job.Manifest
+    $results = $Job.Results
+    $folder = $Job.Context.Folder
+    Assert-ArtExportedContent $Manifest $results $Job.SourceSha256
     $textures = ConvertTo-ArtPaintTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
             ForEach-Object {
                 $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
@@ -95,8 +133,7 @@ function Export-ArtPaint([string]$Blender, $Manifest) {
         metallic = [double]$surface.metallic
     }
     Write-ArtAssetManifest $Manifest
-    Write-Host "Exported $($Manifest.Name) to $folder ($(@($textures | ForEach-Object { $_.name }) -join ', '))."
-    return $results
+    Write-ArtLine "Exported $($Manifest.Name) to $folder ($(@($textures | ForEach-Object { $_.name }) -join ', '))."
 }
 
 function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
@@ -113,14 +150,14 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
 }
 
 function Get-ArtClipSourceProblem([string]$Blender, $Manifest) {
-    # Returns $null when every animation library of the skeleton is exported from its current
-    # content, otherwise the reason it is not. Blender reads the libraries' current files for the
-    # motion check, so each must hold the content of its export.
+    # Returns $null when the approvals of every animation library of the skeleton hold for its current
+    # content, which Blender reads from the library's file for the motion check, otherwise the reason
+    # they do not.
     foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
         $current = Get-ArtCurrentManifest $Blender (Join-Path $script:ArtRepositoryRoot $library.Asset)
-        $problem = Get-ArtExportChangeProblem $current
+        $problem = Get-ArtExportGateProblem $current
         if ($null -ne $problem) {
-            return "the animation library $problem"
+            return "the animation library $($library.Asset) is not approved for its content: $problem"
         }
     }
 
@@ -128,44 +165,47 @@ function Get-ArtClipSourceProblem([string]$Blender, $Manifest) {
 }
 
 function Get-ArtClipSourceRecords([string]$Blender, $Manifest) {
-    # The exports of the animation libraries whose clips a garment or a texture's masks are checked in.
+    # The content of the animation libraries whose clips a garment or a texture's masks are checked in.
     $problem = Get-ArtClipSourceProblem $Blender $Manifest
     if ($null -ne $problem) {
         throw "$($Manifest.Name) cannot be exported while $problem."
     }
 
     return @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            [ordered]@{ library = $_.Asset; contentSha256 = [string]$_.Export.contentSha256 }
+            [ordered]@{ library = $_.Asset; contentSha256 = [string]$_.ContentSha256 }
         })
 }
 
-function Export-ArtTexture([string]$Blender, $Manifest) {
+function New-ArtTextureJob([string]$Blender, $Manifest) {
     # A garment texture exports its image and its material, and with transparent parts its masks
     # per body of its template, checked in the clips of the skeleton's libraries, with the faces they
-    # hide of the templates of lower layers worn under its template. It records its template's
-    # export and those of the libraries and the lower templates its masks were made with, so a new
-    # export of any of them needs a new export of the texture. The masks are computed in the
-    # template's file, so that file must hold the content its export came from.
+    # hide of the templates of lower layers worn under its template. It records the content of its
+    # template and of the libraries and the lower templates its masks were made with, so a change of
+    # any of them needs a new export of the texture. The masks are computed in the template's file,
+    # so its approvals must hold for that file's content.
     $template = Get-ArtCurrentManifest $Blender $Manifest.Garment.Directory
-    $templateExport = $template.Export
-    if ($null -eq $templateExport) {
-        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported."
-    }
-
     $templateProblem = Get-ArtExportGateProblem $template
-    if ($null -eq $templateProblem -and $templateExport.contentSha256 -cne (Get-ArtExportedContent $template)) {
-        $templateProblem = "$($template.Name).blend changed after its export"
-    }
-
     if ($null -ne $templateProblem) {
-        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is approved and exported again: $templateProblem."
+        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is approved for its content: $templateProblem."
     }
 
-    # The masks are computed with the template's bodies, cage, and clips, so its export must still
-    # match them.
-    $dependencyProblem = @(Get-ArtGarmentDependencyProblems $template) | Select-Object -First 1
-    if ($null -ne $dependencyProblem) {
-        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported again: it $dependencyProblem."
+    # The masks are computed with the bodies and the cage in the template's file, which a sync keeps
+    # current. A template of this run is held to them by its own export; any other template must be
+    # exported from its current content, fitted to its cage and its bodies as they are now.
+    if (@($script:ArtExportingTemplates) -cnotcontains $template.RelativeDirectory) {
+        $templateExportProblem = if ($null -eq $template.Export) {
+            "it was never exported"
+        }
+        elseif ($template.Export.contentSha256 -cne (Get-ArtExportedContent $template)) {
+            "its export comes from other content than its file holds"
+        }
+        else {
+            @(Get-ArtGarmentFitProblems $template | ForEach-Object { "it $_" }) | Select-Object -First 1
+        }
+
+        if ($null -ne $templateExportProblem) {
+            throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported again: $templateExportProblem. Export the template in the same run or first."
+        }
     }
 
     # The texture is painted in its template's current UVs, which their content records compare.
@@ -177,32 +217,43 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
 
     # Only the masks of a texture with transparent parts are checked in the clips and name the faces
     # they hide of the templates of lower layers worn under its template, so a library or such a
-    # template that is not exported from its current content, which Blender reads, stops only such a
-    # texture, in Blender, before anything is written; whether the texture has them shows only there.
+    # template whose approvals do not hold for the content Blender reads stops only such a texture, in
+    # Blender, before anything is written; whether the texture has them shows only there.
     $clipProblem = Get-ArtClipSourceProblem $Blender $Manifest
     $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Blender $Manifest } else { @() }
     $pairProblem = $null
     $pairSources = @()
     $pairs = @(Get-ArtGarmentPairs $template)
     foreach ($pair in $pairs) {
-        $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $pair.Directory)
+        $current = Get-ArtCurrentManifest $Blender $pair.Directory
+        $problem = Get-ArtExportGateProblem $current
         if ($null -eq $pairProblem -and $null -ne $problem) {
-            $pairProblem = "the template of a lower layer $problem"
+            $pairProblem = "the template of a lower layer $($pair.RelativeDirectory) is not approved for its content: $problem"
         }
 
-        $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; contentSha256 = [string]$pair.Export.contentSha256 }
+        $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; contentSha256 = Get-ArtExportedContent $current }
     }
 
     $opaqueReason = @($clipProblem, $pairProblem | Where-Object { $null -ne $_ }) -join "; "
     $opaqueOnly = if ($opaqueReason) { @("--opaque-only", $opaqueReason) } else { @() }
     $folder = $script:ArtGarmentTextureFolder
-    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
-    $results = Invoke-ArtBlender $Blender $Manifest (
+    return New-ArtExportJob $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "texture") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder),
             "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)) + $opaqueOnly +
-        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs))
-    Assert-ArtExportedContent $Manifest $results $sourceSha256
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs)) @{
+        Folder = $folder
+        garmentContentSha256 = Get-ArtExportedContent $template
+        ClipSources = $clipSources
+        PairSources = $pairSources
+    }
+}
+
+function Complete-ArtTextureJob($Job) {
+    $Manifest = $Job.Manifest
+    $results = $Job.Results
+    $folder = $Job.Context.Folder
+    Assert-ArtExportedContent $Manifest $results $Job.SourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_TEXTURE_MASK *" } |
             ForEach-Object { $_.Substring("ART_TEXTURE_MASK ".Length) | ConvertFrom-Json })
     $masks = @(if ($reported.Count -gt 0) {
@@ -236,28 +287,27 @@ function Export-ArtTexture([string]$Blender, $Manifest) {
 
     $Manifest.Export = [ordered]@{
         contentSha256 = Get-ArtExportedContent $Manifest
-        garmentContentSha256 = [string]$templateExport.contentSha256
+        garmentContentSha256 = [string]$Job.Context.garmentContentSha256
         masks = $masks
-        clipSources = $(if ($masks.Count -gt 0) { $clipSources } else { @() })
-        pairSources = $(if ($masks.Count -gt 0) { $pairSources } else { @() })
+        clipSources = $(if ($masks.Count -gt 0) { $Job.Context.ClipSources } else { @() })
+        pairSources = $(if ($masks.Count -gt 0) { $Job.Context.PairSources } else { @() })
         materials = $materials
         textures = $textures
     }
     Write-ArtAssetManifest $Manifest
     foreach ($line in @($results | Where-Object { $_ -like "ART_REPORT *" })) {
-        Write-Host $line.Substring("ART_REPORT ".Length)
+        Write-ArtLine $line.Substring("ART_REPORT ".Length)
     }
 
     $maskNote = if ($masks.Count -gt 0) { " and its masks $(@($masks | ForEach-Object { $_.data }) -join ', ')" } else { "" }
-    Write-Host "Exported $($Manifest.Name) to $(@($textures | ForEach-Object { $_.target }) -join ', ') with its material $($materials[0].name)$maskNote."
-    return $results
+    Write-ArtLine "Exported $($Manifest.Name) to $(@($textures | ForEach-Object { $_.target }) -join ', ') with its material $($materials[0].name)$maskNote."
 }
 
-function Export-ArtGarment([string]$Blender, $Manifest) {
+function New-ArtGarmentJob([string]$Blender, $Manifest) {
     # A garment template exports one model per body, each with that body's armature and its data.
-    # It records the approved content of its cage and the exports of the bodies and the animation
-    # libraries it was checked against, so a change of any of them needs a new export of the
-    # template.
+    # It records the approved content of its cage, the fit of the bodies' exports, and the content of
+    # the animation libraries it was checked in and of the templates of lower layers it was checked
+    # over, so a change of any of them needs a new export of the template.
     $null = Update-ArtContentRecord $Blender $Manifest.Cage
     $cageProblem = Get-ArtCageGateProblem $Manifest.Cage
     if ($null -ne $cageProblem) {
@@ -275,25 +325,37 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
     }
 
     $clipSources = Get-ArtClipSourceRecords $Blender $Manifest
-    # The templates of a lower layer it is checked over, each exported from its current content,
-    # since Blender reads their current files.
+    # The templates of a lower layer it is checked over, each approved for its current content, since
+    # Blender reads their current files.
     $pairs = @(Get-ArtGarmentPairs $Manifest)
     $pairSources = @($pairs | ForEach-Object {
-            $problem = Get-ArtExportChangeProblem (Get-ArtCurrentManifest $Blender $_.Directory)
+            $current = Get-ArtCurrentManifest $Blender $_.Directory
+            $problem = Get-ArtExportGateProblem $current
             if ($null -ne $problem) {
-                throw "$($Manifest.Name) cannot be exported while the template of a lower layer $problem."
+                throw "$($Manifest.Name) cannot be exported while the template of a lower layer $($_.RelativeDirectory) is not approved for its content: $problem."
             }
 
-            [ordered]@{ garment = $_.RelativeDirectory; contentSha256 = [string]$_.Export.contentSha256 }
+            [ordered]@{ garment = $_.RelativeDirectory; contentSha256 = Get-ArtExportedContent $current }
         })
     $folder = $script:ArtGarmentTextureFolder
-    $sourceSha256 = Get-ArtFileSha256 $Manifest.SourcePath
-    $results = Invoke-ArtBlender $Blender $Manifest (
+    return New-ArtExportJob $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
             "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder),
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder)) +
-        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs))
-    Assert-ArtExportedContent $Manifest $results $sourceSha256
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs)) @{
+        Folder = $folder
+        BodyFits = $bodyExports
+        cageContentSha256 = Get-ArtCageContent $Manifest.Cage
+        ClipSources = $clipSources
+        PairSources = $pairSources
+    }
+}
+
+function Complete-ArtGarmentJob($Job) {
+    $Manifest = $Job.Manifest
+    $results = $Job.Results
+    $folder = $Job.Context.Folder
+    Assert-ArtExportedContent $Manifest $results $Job.SourceSha256
     $reported = @($results | Where-Object { $_ -like "ART_GARMENT_FBX *" } |
             ForEach-Object { $_.Substring("ART_GARMENT_FBX ".Length) | ConvertFrom-Json })
     $models = @($Manifest.Models | ForEach-Object {
@@ -306,7 +368,7 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
 
             [ordered]@{
                 body = $model.Body
-                bodyFitSha256 = $bodyExports[$model.Body]
+                bodyFitSha256 = $Job.Context.BodyFits[$model.Body]
                 target = $model.Target
                 sha256 = Get-ArtFileSha256 $model.TargetPath
                 data = $model.Data
@@ -335,65 +397,56 @@ function Export-ArtGarment([string]$Blender, $Manifest) {
 
     $Manifest.Export = [ordered]@{
         contentSha256 = Get-ArtExportedContent $Manifest
-        cageContentSha256 = Get-ArtCageContent $Manifest.Cage
+        cageContentSha256 = [string]$Job.Context.cageContentSha256
         models = $models
-        clipSources = $clipSources
-        pairSources = $pairSources
+        clipSources = $Job.Context.ClipSources
+        pairSources = $Job.Context.PairSources
         materials = $materials
         textures = $textures
     }
     Write-ArtAssetManifest $Manifest
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
     foreach ($line in @($results | Where-Object { $_ -like "ART_REPORT *" })) {
-        Write-Host $line.Substring("ART_REPORT ".Length)
+        Write-ArtLine $line.Substring("ART_REPORT ".Length)
     }
 
-    Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') with their data ($triangles)."
-    return $results
+    Write-ArtLine "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') with their data ($triangles)."
 }
 
-foreach ($manifest in $manifests) {
-    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+function New-ArtModelJob([string]$Blender, $Manifest) {
+    # A static or skinned asset exports its FBX with its images, and an animation library its armature
+    # and clips with the content of the rig it was authored on, whose approvals must hold for it.
     $rigContentSha256 = $null
-    if ($manifest.Kind -eq "animations") {
-        $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
-        if ($null -eq $rigExport) {
-            throw "$($manifest.Name) cannot be exported before its rig $($manifest.Rig.Asset) is exported."
+    if ($Manifest.Kind -eq "animations") {
+        $rig = Get-ArtCurrentManifest $Blender (Split-Path -Parent $Manifest.Rig.ManifestPath)
+        $rigProblem = Get-ArtExportGateProblem $rig
+        if ($null -ne $rigProblem) {
+            throw "$($Manifest.Name) cannot be exported before its rig $($Manifest.Rig.Asset) is approved for its content: $rigProblem."
         }
 
-        $rigContentSha256 = $rigExport.contentSha256
+        $rigContentSha256 = Get-ArtExportedContent $rig
     }
 
-    if ($manifest.Kind -eq "paint") {
-        $results = @(Export-ArtPaint $blender $manifest)
-        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
-        continue
+    $textureFolder = Get-ArtTextureFolder $Manifest.Target
+    return New-ArtExportJob $Manifest (
+        @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
+            "--target", $Manifest.TargetPath, "--textures", (Join-Path $script:ArtRepositoryRoot $textureFolder))) @{
+        Folder = $textureFolder
+        RigContentSha256 = $rigContentSha256
     }
+}
 
-    if ($manifest.Kind -eq "garment") {
-        $results = @(Export-ArtGarment $blender $manifest)
-        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
-        continue
-    }
-
-    if ($manifest.Kind -eq "texture") {
-        $results = @(Export-ArtTexture $blender $manifest)
-        Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
-        continue
-    }
-
-    $textureFolder = Get-ArtTextureFolder $manifest.Target
-    $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-    $results = Invoke-ArtBlender $blender $manifest (
-        @("export") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + @(
-            "--target", $manifest.TargetPath, "--textures", (Join-Path $script:ArtRepositoryRoot $textureFolder)))
-    Assert-ArtExportedContent $manifest $results $sourceSha256
+function Complete-ArtModelJob($Job) {
+    $Manifest = $Job.Manifest
+    $results = $Job.Results
+    $textureFolder = $Job.Context.Folder
+    Assert-ArtExportedContent $Manifest $results $Job.SourceSha256
     $materials = @()
-    if ($manifest.Kind -ne "animations") {
+    if ($Manifest.Kind -ne "animations") {
         $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
                 ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
         if ($null -eq $materials) {
-            throw "Blender reported no valid material records for $($manifest.Name)."
+            throw "Blender reported no valid material records for $($Manifest.Name)."
         }
     }
 
@@ -407,25 +460,25 @@ foreach ($manifest in $manifests) {
                 }
             }) $textureFolder
     if ($null -eq $textures) {
-        throw "Blender reported invalid texture records for $($manifest.Name)."
+        throw "Blender reported invalid texture records for $($Manifest.Name)."
     }
 
     $clipRecords = $null
-    if ($script:ArtAnimatedKinds -contains $manifest.Kind) {
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
         # In the order of the manifest, so the record reads like it.
         $reported = @($results | Where-Object { $_ -like "ART_CLIP *" } |
                 ForEach-Object { $_.Substring("ART_CLIP ".Length) | ConvertFrom-Json })
-        $clipRecords = ConvertTo-ArtClipRecords @($manifest.Clips | ForEach-Object {
+        $clipRecords = ConvertTo-ArtClipRecords @($Manifest.Clips | ForEach-Object {
                 $clip = $_
                 $reported | Where-Object { $_.name -ceq $clip }
-            }) $manifest.Clips
+            }) $Manifest.Clips
         if ($null -eq $clipRecords) {
-            throw "Blender did not report every clip of $($manifest.Name) once."
+            throw "Blender did not report every clip of $($Manifest.Name) once."
         }
     }
 
-    if ($null -ne $manifest.Export) {
-        Remove-ArtStaleFiles @($manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
+    if ($null -ne $Manifest.Export) {
+        Remove-ArtStaleFiles @($Manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
     # A body with an editable mesh exports its topology next to the model, and records the
@@ -439,34 +492,205 @@ foreach ($manifest in $manifests) {
     if ($data.Count -gt 0) {
         $fits = @($results | Where-Object { $_ -like "ART_FIT *" } | ForEach-Object { $_.Substring("ART_FIT ".Length).Trim() })
         $layouts = @($results | Where-Object { $_ -like "ART_PAINT_LAYOUT *" } | ForEach-Object { $_.Substring("ART_PAINT_LAYOUT ".Length).Trim() })
-        if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $manifest.Target) -or
+        if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $Manifest.Target) -or
             $fits.Count -ne 1 -or $fits[0] -cnotmatch $script:ArtShaPattern -or
             $layouts.Count -ne 1 -or $layouts[0] -cnotmatch $script:ArtShaPattern) {
-            throw "Blender reported unexpected data for $($manifest.Name)."
+            throw "Blender reported unexpected data for $($Manifest.Name)."
         }
 
         $dataSha256 = Get-ArtFileSha256 $data[0].path
         $fitSha256 = $fits[0]
         $paintSha256 = $layouts[0]
     }
-    elseif ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
-        Remove-ArtStaleFiles @(Get-ArtDataTarget $manifest.Target) @()
+    elseif ($null -ne $Manifest.Export -and $Manifest.Export.Contains("dataSha256") -and $null -ne $Manifest.Export.dataSha256) {
+        Remove-ArtStaleFiles @(Get-ArtDataTarget $Manifest.Target) @()
     }
 
-    $manifest.Export = [ordered]@{
-        contentSha256 = Get-ArtExportedContent $manifest
-        targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
+    $Manifest.Export = [ordered]@{
+        contentSha256 = Get-ArtExportedContent $Manifest
+        targetSha256 = Get-ArtFileSha256 $Manifest.TargetPath
         dataSha256 = $dataSha256
         fitSha256 = $fitSha256
         paintSha256 = $paintSha256
-        rigContentSha256 = $rigContentSha256
+        rigContentSha256 = $Job.Context.RigContentSha256
         materials = $materials
         textures = $textures
         clips = $clipRecords
     }
-    Write-ArtAssetManifest $manifest
+    Write-ArtAssetManifest $Manifest
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
-    $what = if ($manifest.Kind -eq "animations") { "clips=$($manifest.Clips -join ',')" } else { $triangles }
-    Write-Host "Exported $($manifest.Name) to $($manifest.Target) ($what)."
-    Write-Host (Format-ArtElapsed $manifest.Name $watch $results)
+    $what = if ($Manifest.Kind -eq "animations") { "clips=$($Manifest.Clips -join ',')" } else { $triangles }
+    Write-ArtLine "Exported $($Manifest.Name) to $($Manifest.Target) ($what)."
+}
+
+function New-ArtKindJob([string]$Blender, $Manifest) {
+    switch ($Manifest.Kind) {
+        "paint" { return New-ArtPaintJob $Blender $Manifest }
+        "garment" { return New-ArtGarmentJob $Blender $Manifest }
+        "texture" { return New-ArtTextureJob $Blender $Manifest }
+        default { return New-ArtModelJob $Blender $Manifest }
+    }
+}
+
+function Complete-ArtKindJob($Job) {
+    switch ($Job.Manifest.Kind) {
+        "paint" { Complete-ArtPaintJob $Job }
+        "garment" { Complete-ArtGarmentJob $Job }
+        "texture" { Complete-ArtTextureJob $Job }
+        default { Complete-ArtModelJob $Job }
+    }
+}
+
+# The seconds each asset's last export took with nothing from the cache of the checks, which put the
+# longest first when several run at once, kept below artifacts/art-build beside the logs.
+$secondsPath = Join-Path (Get-ArtBuildFolder "export") "seconds.json"
+$seconds = @{}
+if (Test-Path -LiteralPath $secondsPath -PathType Leaf) {
+    try {
+        foreach ($property in (Get-Content -Raw -LiteralPath $secondsPath | ConvertFrom-Json).PSObject.Properties) {
+            $seconds[$property.Name] = [double]$property.Value
+        }
+    }
+    catch {
+        # A broken file only loses the order of one run.
+    }
+}
+
+function Get-ArtExpectedSeconds($Manifest) {
+    # The seconds an asset's export took with its checks computed, or a guess by its kind.
+    if ($seconds.ContainsKey($Manifest.RelativeDirectory)) {
+        return $seconds[$Manifest.RelativeDirectory]
+    }
+
+    switch ($Manifest.Kind) {
+        "garment" { return 300.0 }
+        "texture" { return 100.0 }
+        "paint" { return 20.0 }
+        default { return 10.0 }
+    }
+}
+
+function Save-ArtExpectedSeconds {
+    $names = [string[]]@($seconds.Keys)
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    $lines = @($names | ForEach-Object { "  `"$_`": $($seconds[$_].ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture))" })
+    $text = "{`n$($lines -join ",`n")`n}`n"
+    [System.IO.File]::WriteAllText($secondsPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# Whether this run left the marker that the Unity follow-up has not run since an export.
+$script:UnityMarked = $false
+
+$onDone = {
+    param($Job)
+    # Finishes one asset as soon as its Blender ended: checks what it reported, writes its asset.json,
+    # and prints its lines together.
+    $script:ArtLineSink = $Job.Lines
+    $Job.Watch.Start()
+    try {
+        if ($null -eq $Job.Error) {
+            Complete-ArtKindJob $Job
+        }
+    }
+    catch {
+        $Job.Error = $_.Exception.Message
+    }
+    finally {
+        $Job.Watch.Stop()
+        $script:ArtLineSink = $null
+    }
+
+    foreach ($line in $Job.Lines) {
+        Write-Host $line
+    }
+
+    if ($null -ne $Job.Error) {
+        Write-Host "$($Job.Name) was not exported: $($Job.Error)"
+    }
+    elseif (-not $script:UnityMarked) {
+        # The Unity project now lags behind the export until tools/art/Update-UnityArt.ps1 succeeds, which
+        # removes the marker; tools/art/Build-Art.ps1 runs it while the marker is there.
+        $marker = Join-Path (Get-ArtBuildFolder "unity") "pending"
+        $line = "$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)) Export-ArtAsset.ps1 wrote the record of $($Job.Manifest.RelativeDirectory)"
+        [System.IO.File]::AppendAllText($marker, "$line`n", (New-Object System.Text.UTF8Encoding($false)))
+        $script:UnityMarked = $true
+    }
+
+    Write-Host (Format-ArtElapsed $Job.Name $Job.Watch $Job.Results)
+    $counts = Get-ArtCacheCounts $Job.Results
+    if ($null -eq $Job.Error -and ($counts.Units -eq 0 -or $counts.Cached -lt $counts.Units)) {
+        $seconds[$Job.Manifest.RelativeDirectory] = $Job.Watch.Elapsed.TotalSeconds
+    }
+
+    if ($null -ne $Report) {
+        $null = $Report.Add([pscustomobject]@{
+                Asset = $Job.Manifest.RelativeDirectory
+                Name = $Job.Name
+                Kind = $Job.Manifest.Kind
+                Seconds = $Job.Watch.Elapsed.TotalSeconds
+                Units = $counts.Units
+                Cached = $counts.Cached
+                Error = $Job.Error
+            })
+    }
+}
+
+# The bodies and the other skinned and static assets first, since the cage, the garments, and the paint
+# layers read the fit and the paint layout of a body's export; then everything else.
+$waves = New-Object System.Collections.Generic.List[object]
+$waves.Add(@($manifests | Where-Object { @("static", "skinned") -contains $_.Kind }))
+$waves.Add(@($manifests | Where-Object { @("static", "skinned") -notcontains $_.Kind }))
+foreach ($wave in $waves) {
+    if ($wave.Count -eq 0) {
+        continue
+    }
+
+    # Each export is planned before the wave starts, so the content records of the other assets it
+    # names are made current, and their asset.json written, before any Blender of the wave runs.
+    $planned = New-Object System.Collections.Generic.List[object]
+    foreach ($manifest in $wave) {
+        $lines = New-Object System.Collections.Generic.List[string]
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $script:ArtLineSink = $lines
+        try {
+            $job = New-ArtKindJob $blender $manifest
+        }
+        catch {
+            $script:ArtLineSink = $null
+            foreach ($line in $lines) {
+                Write-Host $line
+            }
+
+            throw
+        }
+        finally {
+            $script:ArtLineSink = $null
+        }
+
+        $watch.Stop()
+        $job.Lines = $lines
+        $job.Watch = $watch
+        $planned.Add($job)
+    }
+
+    # One at a time in the order of the records, or the longest first, alike ones in that order.
+    $ordered = $planned.ToArray()
+    if ($Jobs -gt 1) {
+        $ordered = @(@(for ($index = 0; $index -lt $planned.Count; $index++) {
+                    [pscustomobject]@{ Job = $planned[$index]; Index = $index; Seconds = Get-ArtExpectedSeconds $planned[$index].Manifest }
+                }) | Sort-Object -Property @{ Expression = "Seconds"; Descending = $true }, @{ Expression = "Index"; Descending = $false } |
+                ForEach-Object { $_.Job })
+    }
+
+    try {
+        Invoke-ArtBlenderJobs $blender $ordered $Jobs $onDone
+    }
+    finally {
+        Save-ArtExpectedSeconds
+    }
+
+    $failed = @($planned | Where-Object { $null -ne $_.Error })
+    if ($failed.Count -gt 0) {
+        throw "The export of $(@($failed | ForEach-Object { $_.Name }) -join ', ') failed:`n - $(@($failed | ForEach-Object { $_.Error }) -join "`n - ")"
+    }
 }

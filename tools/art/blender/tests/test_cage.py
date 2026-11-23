@@ -15,13 +15,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
+manifest_io = load("art_pipeline/manifest_io.py", "read_json")
 bodies = load("art_pipeline/bodies.py", "ZONES", "body_name", "part_name", "TOPOLOGY_SCHEMA")
 cage = load("art_pipeline/cage.py", "REGIONS", "STAGES", "ATTACHED", "REGION_ZONES", "SKIN_ZONES", "SIDED", "DIGITS",
             "FOOT_RINGS", "HEAD_RINGS", "HEAD_TURN", "OWN_ATTRIBUTES", "version_name", "collection_name", "side_of",
             "digit_of", "read_manifest", "TENSION_STEPS", "LIFT_SHARE", "CLEARANCE", "NEAR", "REACH", "DRAW_ROUNDS",
             "SPREAD_STEPS", "END_EDGE_SHARES", "MIDDLE", "TWIN_REACH", "SKIN_TWIN_REACH", "POKE_REACH", "SKIN_DEPTH",
             "FOLD_SPAN", "FOLD_HELD",
-            ArtPipelineError=scene.ArtPipelineError)
+            ArtPipelineError=scene.ArtPipelineError, manifest_io=manifest_io)
 
 ART = REPOSITORY_ROOT / "art"
 CAGE_MANIFEST = ART / "Cages" / "Humanoid" / "asset.json"

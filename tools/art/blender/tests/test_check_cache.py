@@ -8,6 +8,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import threading
 import types
 import unittest
 
@@ -15,8 +16,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
+manifest_io = load("art_pipeline/manifest_io.py", "read_json")
 cache = load("art_pipeline/check_cache.py", "SCHEMA", "FIELDS", "Store", "Units", "key", "own_inputs", "pair_inputs",
-             "base_inputs", "code_files", "code_fingerprint", "manifest_fields", "is_sha", "source_problem", numpy=True)
+             "base_inputs", "code_files", "code_fingerprint", "manifest_fields", "is_sha", "source_problem", numpy=True,
+             manifest_io=manifest_io)
 np = __import__("numpy")
 garment = load("art_pipeline/garment.py", "version_name")
 poses = load("art_pipeline/poses.py", "POSES")
@@ -202,6 +205,39 @@ class StoreTests(unittest.TestCase):
         self.assertIsNone(off.load(self.key))
         self.assertFalse(off.save(cache.key(dict(self.inputs, stage="model")), self.inputs, {}, {}))
         self.assertFalse(off.paths(cache.key(dict(self.inputs, stage="model")))[0].exists())
+
+    def test_runs_that_write_and_read_one_entry_at_once_see_a_whole_entry_or_none(self):
+        """Several Blender runs share the folder: each file goes to a temporary name first and the
+        entry's hash ties its arrays to its data, so a reader never takes the data of one writer with
+        the arrays of another, and a write that another run holds open is left out, never half done.
+        Writers of one key may leave the data of one with the arrays of another, which reads as no
+        entry until the next write; an export never has two runs of one asset at once."""
+        stop, mixed = threading.Event(), []
+
+        def write(n: int) -> None:
+            for _round in range(40):
+                self.store.save(self.key, self.inputs, {"n": n}, {"a": np.full(n + 1, n, np.int64)})
+
+        def read() -> None:
+            while not stop.is_set():
+                entry = self.store.load(self.key)
+                if entry is not None and entry[1]["a"].tolist() != [entry[0]["n"]] * (entry[0]["n"] + 1):
+                    mixed.append(entry)
+
+        readers = [threading.Thread(target=read) for _ in range(2)]
+        writers = [threading.Thread(target=write, args=(n,)) for n in range(4)]
+        for thread in readers + writers:
+            thread.start()
+        for thread in writers:
+            thread.join()
+        stop.set()
+        for thread in readers:
+            thread.join()
+        self.assertEqual(mixed, [])
+        leftovers = [p.name for p in self.store.paths(self.key)[0].parent.iterdir() if p.suffix == ".tmp"]
+        self.assertEqual(leftovers, [])
+        self.assertTrue(self.store.save(self.key, self.inputs, {"n": 1}, {"a": np.full(2, 1, np.int64)}))
+        self.assertEqual(self.store.load(self.key)[0], {"n": 1})
 
     def test_the_units_count_what_came_from_the_store_and_what_was_written(self):
         units = cache.Units(self.store, base(), dict(FITS), {"Trousers": INNER})

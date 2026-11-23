@@ -165,6 +165,43 @@ function Get-ArtFileSha256([string]$Path) {
     return $hash
 }
 
+function Write-ArtManifestText([string]$Path, [string]$Text) {
+    # Writes an asset.json whole: to a file beside it first, which then takes its place, so a Blender
+    # run that reads it meanwhile, such as the export of another asset, finds the old or the new text
+    # and never a part. A reader holds the file only for a moment, so a refused replace is tried again.
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    $temporary = "$Path.$PID.tmp"
+    [System.IO.File]::WriteAllText($temporary, $Text, $encoding)
+    $deadline = (Get-Date).AddSeconds(30)
+    try {
+        while ($true) {
+            try {
+                if (Test-Path -LiteralPath $Path -PathType Leaf) {
+                    # No backup file: [NullString] passes null, where $null would pass "".
+                    [System.IO.File]::Replace($temporary, $Path, [NullString]::Value)
+                }
+                else {
+                    [System.IO.File]::Move($temporary, $Path)
+                }
+
+                return
+            }
+            catch [System.IO.IOException], [System.UnauthorizedAccessException] {
+                if ((Get-Date) -gt $deadline) {
+                    throw "$Path could not be written for 30 s: $($_.Exception.Message)"
+                }
+
+                Start-Sleep -Milliseconds 100
+            }
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Format-ArtNumber([double]$Value) {
     return $Value.ToString("0.0#", [System.Globalization.CultureInfo]::InvariantCulture)
 }
@@ -918,7 +955,7 @@ function Write-ArtPaintManifest($Manifest) {
 
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
-    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+    Write-ArtManifestText $Manifest.ManifestPath $text
 }
 
 function Get-ArtGarmentModelTarget([string]$Name, [string]$Label) {
@@ -937,7 +974,8 @@ function Get-ArtGarmentDataTarget([string]$Name, [string]$Label) {
 
 function Get-ArtClipLibraries([string]$Skeleton) {
     # The animation libraries of a skeleton, whose clips a garment is checked in: their repository
-    # path, their .blend file, and their clips.
+    # path, their .blend file, their clips, and the content of their one stage as their content record
+    # holds it, which an export records.
     return @(Get-ArtAssetDirectories | ForEach-Object {
             $json = Get-Content -Raw -LiteralPath (Join-Path $_ "asset.json") | ConvertFrom-Json
             if ([string]$json.kind -eq "animations" -and [string]$json.skeleton -ceq $Skeleton) {
@@ -946,6 +984,7 @@ function Get-ArtClipLibraries([string]$Skeleton) {
                     Asset = Get-ArtRelativePath $_
                     SourcePath = Join-Path $_ "$name.blend"
                     Clips = [string[]]@($json.clips | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+                    ContentSha256 = if ($null -ne $json.content -and $null -ne $json.content.stages) { [string]$json.content.stages.animation } else { "" }
                     Export = $json.export
                 }
             }
@@ -954,13 +993,11 @@ function Get-ArtClipLibraries([string]$Skeleton) {
 
 function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
     # Returns $null when the export of a garment template, or a texture's masks, was checked in the
-    # current exports of the animation libraries of its skeleton, otherwise the reason it was not.
-    $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.contentSha256 } else { "" })
-        } | Sort-Object)
+    # current content of the animation libraries of its skeleton, otherwise the reason it was not.
+    $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object { [string]$_.Asset + "=" + [string]$_.ContentSha256 } | Sort-Object)
     $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.contentSha256)" } | Sort-Object)
     if (($libraries -join ",") -cne ($recorded -join ",")) {
-        return "was checked in other clips than the current exports of the $($Manifest.Skeleton) animation libraries; run $Sync, review and approve it, then run tools/art/Export-ArtAsset.ps1"
+        return "was checked in other clips than the current content of the $($Manifest.Skeleton) animation libraries; run $Sync to see its checks in them, then run tools/art/Export-ArtAsset.ps1"
     }
 
     return $null
@@ -1036,8 +1073,31 @@ function Get-ArtCageContent($Cage) {
 
 function Get-ArtGarmentDependencyProblems($Manifest) {
     # The reasons the export of a garment template no longer matches what it was made from: the
-    # content of its cage, the bodies of the cage and their exports, and the exports of the
-    # animation libraries it was checked in. None when it matches.
+    # content of its cage, the bodies of the cage and their exports, and the content of the animation
+    # libraries it was checked in and of the templates of lower layers it was checked over. None when
+    # it matches.
+    $problems = New-Object System.Collections.Generic.List[string]
+    foreach ($problem in @(Get-ArtGarmentFitProblems $Manifest)) {
+        $problems.Add($problem)
+    }
+
+    $clipProblem = Get-ArtClipSourcesProblem $Manifest "tools/art/Sync-GarmentAsset.ps1"
+    if ($null -ne $clipProblem) {
+        $problems.Add($clipProblem)
+    }
+
+    $pairProblem = Get-ArtPairSourcesProblem $Manifest
+    if ($null -ne $pairProblem) {
+        $problems.Add($pairProblem)
+    }
+
+    return $problems.ToArray()
+}
+
+function Get-ArtGarmentFitProblems($Manifest) {
+    # The reasons the export of a garment template was fitted to something else than its file follows
+    # now, which a sync fits it to: the content of its cage, and the bodies of the cage with the fit of
+    # their exports. None when it was fitted to them.
     $problems = New-Object System.Collections.Generic.List[string]
     $cageProblem = Get-ArtContentProblem $Manifest.Cage
     if ($null -ne $cageProblem) {
@@ -1073,18 +1133,13 @@ function Get-ArtGarmentDependencyProblems($Manifest) {
         }
     }
 
-    $clipProblem = Get-ArtClipSourcesProblem $Manifest "tools/art/Sync-GarmentAsset.ps1"
-    if ($null -ne $clipProblem) {
-        $problems.Add($clipProblem)
-    }
-
-    $pairProblem = Get-ArtPairSourcesProblem $Manifest
-    if ($null -ne $pairProblem) {
-        $problems.Add($pairProblem)
-    }
-
     return $problems.ToArray()
 }
+
+# The garment templates that the script running now exports, by folder, such as art/Garments/Boots,
+# which count as exported templates for Get-ArtGarmentPairs, so a template exported for the first time
+# is a template of a lower layer for the others of the same run, whatever order they run in.
+$script:ArtExportingTemplates = @()
 
 function Get-ArtGarmentPairs($Manifest) {
     # The exported templates of the same cage, another visual slot, and a lower layer, which a
@@ -1092,7 +1147,8 @@ function Get-ArtGarmentPairs($Manifest) {
     # body wears one garment per visual slot, so templates of the same slot are never worn together,
     # and a template that hides a slot, such as a robe the legs, is worn over none of that slot.
     # Headwear that hides the hair is worn over no hairstyle; one that compresses it is checked over
-    # the hairstyle's form UnderHeadwear.
+    # the hairstyle's form UnderHeadwear. A template of $script:ArtExportingTemplates counts as
+    # exported.
     return @(Get-ArtAssetDirectories | Where-Object { (Split-Path -Leaf (Split-Path -Parent $_)) -ceq "Garments" } | ForEach-Object {
             $other = $null
             try {
@@ -1102,7 +1158,8 @@ function Get-ArtGarmentPairs($Manifest) {
                 # Its own problems are reported with it.
             }
 
-            if ($null -ne $other -and $other.Kind -eq "garment" -and $other.Name -cne $Manifest.Name -and $null -ne $other.Export -and
+            if ($null -ne $other -and $other.Kind -eq "garment" -and $other.Name -cne $Manifest.Name -and
+                ($null -ne $other.Export -or @($script:ArtExportingTemplates) -ccontains $other.RelativeDirectory) -and
                 $null -ne $other.Cage -and $other.Cage.RelativeDirectory -ceq $Manifest.Cage.RelativeDirectory -and
                 $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer -and @($Manifest.Hides) -cnotcontains $other.Slot -and
                 -not ($Manifest.Hair -ceq "hide" -and $other.Slot -ceq "hair")) {
@@ -1117,8 +1174,8 @@ function Get-ArtGarmentPairArguments($Manifest) {
 
 function Get-ArtPairSourcesProblem($Manifest, $Template, [string]$Sync) {
     # Returns $null when the export of a template, or of a texture's masks on its template, was
-    # checked over the current exports of every template of another visual slot and a lower layer of
-    # the template's cage, otherwise the reason it was not.
+    # checked over the current content of every exported template of another visual slot and a lower
+    # layer of the template's cage, otherwise the reason it was not.
     if ($null -eq $Template) {
         $Template = $Manifest
     }
@@ -1127,10 +1184,10 @@ function Get-ArtPairSourcesProblem($Manifest, $Template, [string]$Sync) {
         $Sync = "tools/art/Sync-GarmentAsset.ps1"
     }
 
-    $current = @(Get-ArtGarmentPairs $Template | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.contentSha256)" } | Sort-Object)
+    $current = @(Get-ArtGarmentPairs $Template | ForEach-Object { "$($_.RelativeDirectory)=$(Get-ArtExportedContent $_)" } | Sort-Object)
     $recorded = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.garment)=$($_.contentSha256)" } | Sort-Object)
     if (($current -join ",") -cne ($recorded -join ",")) {
-        return "was checked over other templates of a lower layer than the current exports of its cage's templates; run $Sync, review it, then run tools/art/Export-ArtAsset.ps1"
+        return "was checked over other templates of a lower layer than the current content of its cage's exported templates; run $Sync to see its checks over them, then run tools/art/Export-ArtAsset.ps1"
     }
 
     return $null
@@ -1747,7 +1804,7 @@ function Write-ArtGarmentManifest($Manifest) {
 
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
-    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+    Write-ArtManifestText $Manifest.ManifestPath $text
 }
 
 function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
@@ -1935,7 +1992,7 @@ function Write-ArtCageManifest($Manifest) {
     $lines[$lines.Count - 1] = $lines[$lines.Count - 1].TrimEnd(',')
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
-    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+    Write-ArtManifestText $Manifest.ManifestPath $text
 }
 
 function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
@@ -2153,7 +2210,7 @@ function Write-ArtTextureManifest($Manifest) {
 
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
-    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+    Write-ArtManifestText $Manifest.ManifestPath $text
 }
 
 function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSource) {
@@ -2755,7 +2812,7 @@ function Write-ArtAssetManifest($Manifest) {
 
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
-    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+    Write-ArtManifestText $Manifest.ManifestPath $text
 }
 
 function Get-ArtCageBodyProblem($Manifest) {
@@ -2882,7 +2939,12 @@ function Get-ArtStageReport($Manifest) {
 }
 
 function Get-ArtExportedContent($Manifest) {
-    # The content of the last review stage, which an export records.
+    # The content of the last review stage, which an export records, and which the export records of
+    # other assets name as this asset's content; empty while the file was never read.
+    if ($null -eq $Manifest.Content) {
+        return ""
+    }
+
     return [string]$Manifest.Content.stages[$Manifest.Stages[-1]]
 }
 
@@ -2903,6 +2965,52 @@ function Get-ArtExportChangeProblem($Manifest) {
     }
 
     return $null
+}
+
+function Get-ArtExportFileProblems($Manifest) {
+    # The files of an asset's export record that are missing or differ from it: its model and the data
+    # beside it, a garment template's models and data, a texture's masks, and every image. None when
+    # every file is the recorded export.
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($null -eq $Manifest.Export) {
+        return $problems.ToArray()
+    }
+
+    $files = New-Object System.Collections.Generic.List[object]
+    if ($Manifest.Kind -eq "texture") {
+        foreach ($mask in @($Manifest.Export.masks | Where-Object { $null -ne $_ })) {
+            $files.Add(@($mask.data, $mask.dataSha256))
+        }
+    }
+
+    if ($Manifest.Kind -eq "garment") {
+        foreach ($model in @($Manifest.Export.models)) {
+            $files.Add(@($model.target, $model.sha256))
+            $files.Add(@($model.data, $model.dataSha256))
+        }
+    }
+    elseif ($null -ne $Manifest.Target) {
+        $files.Add(@($Manifest.Target, $Manifest.Export.targetSha256))
+        if ($Manifest.Export.Contains("dataSha256") -and $null -ne $Manifest.Export.dataSha256) {
+            $files.Add(@((Get-ArtDataTarget $Manifest.Target), $Manifest.Export.dataSha256))
+        }
+    }
+
+    foreach ($texture in @($Manifest.Export.textures | Where-Object { $null -ne $_ })) {
+        $files.Add(@($texture.target, $texture.sha256))
+    }
+
+    foreach ($file in $files) {
+        $path = Join-Path $script:ArtRepositoryRoot $file[0]
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            $problems.Add("$($file[0]) is missing; run tools/art/Export-ArtAsset.ps1")
+        }
+        elseif ((Get-ArtFileSha256 $path) -ne $file[1]) {
+            $problems.Add("$($file[0]) differs from the recorded export; export it with tools/art/Export-ArtAsset.ps1 instead of changing it by hand")
+        }
+    }
+
+    return $problems.ToArray()
 }
 
 function Read-ArtContentLine([string[]]$Results) {
@@ -3135,49 +3243,236 @@ function Invoke-ArtNative([string]$Executable, [string[]]$Arguments) {
     }
 }
 
-function Invoke-ArtBlender([string]$Blender, $Manifest, [string[]]$Arguments) {
-    # Runs one art_pipeline_cli.py command and returns its ART_ result lines. Blender's Python
-    # sees one variable of this environment, PYTHONHASHSEED: fixed string hashes make the FBX
-    # export byte for byte reproducible. Every other Python variable is cleared, so no Python
-    # setup of the machine reaches the pipeline.
-    $environment = [ordered]@{
-        PYTHONHASHSEED = "0"
-        PYTHONNOUSERSITE = "1"
-        PYTHONPATH = $null
-        PYTHONHOME = $null
-        PYTHONSTARTUP = $null
-        PYTHONUSERBASE = $null
-    }
-    $saved = @{}
-    foreach ($name in $environment.Keys) {
-        $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-        [Environment]::SetEnvironmentVariable($name, $environment[$name], "Process")
-    }
+# The environment of every art_pipeline_cli.py run. Blender's Python sees one variable of it,
+# PYTHONHASHSEED: fixed string hashes make the FBX export byte for byte reproducible. Every other
+# Python variable is cleared, so no Python setup of the machine reaches the pipeline.
+$script:ArtBlenderEnvironment = [ordered]@{
+    PYTHONHASHSEED = "0"
+    PYTHONNOUSERSITE = "1"
+    PYTHONPATH = $null
+    PYTHONHOME = $null
+    PYTHONSTARTUP = $null
+    PYTHONUSERBASE = $null
+}
 
-    try {
-        $output = Invoke-ArtNative $Blender (@(
-                "--background", "--factory-startup", "--python-use-system-env", $Manifest.SourcePath,
-                "--python-exit-code", "1", "--python", $script:ArtBlenderCli, "--") + $Arguments)
-    }
-    finally {
-        foreach ($name in $environment.Keys) {
-            [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
-        }
-    }
+function Get-ArtBlenderArguments($Manifest, [string[]]$Arguments) {
+    # Blender's command line for one art_pipeline_cli.py command on the asset's file.
+    return @("--background", "--factory-startup", "--python-use-system-env", $Manifest.SourcePath,
+        "--python-exit-code", "1", "--python", $script:ArtBlenderCli, "--") + $Arguments
+}
 
-    $exitCode = $script:ArtNativeExitCode
-    $results = @($output | Where-Object { $_ -like "ART_*" })
+function Get-ArtBlenderResults($Manifest, [string[]]$Output, [int]$ExitCode) {
+    # The ART_ result lines of one art_pipeline_cli.py run, or the error that the asset breaks a rule
+    # of the pipeline or that Blender failed, with the last lines of its output.
+    $results = @($Output | Where-Object { $_ -like "ART_*" })
     $errors = @($results | Where-Object { $_ -like "ART_PIPELINE_ERROR *" } |
         ForEach-Object { $_.Substring("ART_PIPELINE_ERROR ".Length) })
     if ($errors.Count -gt 0) {
         throw "$($Manifest.Name) does not meet the art pipeline rules:`n - $($errors -join "`n - ")"
     }
 
-    if ($exitCode -ne 0) {
-        throw "Blender failed with exit code $exitCode for $($Manifest.Name):`n$(($output | Select-Object -Last 30) -join "`n")"
+    if ($ExitCode -ne 0) {
+        throw "Blender failed with exit code $ExitCode for $($Manifest.Name):`n$(($Output | Select-Object -Last 30) -join "`n")"
     }
 
     return $results
+}
+
+function Invoke-ArtBlender([string]$Blender, $Manifest, [string[]]$Arguments) {
+    # Runs one art_pipeline_cli.py command in the environment above and returns its ART_ result lines.
+    $saved = @{}
+    foreach ($name in $script:ArtBlenderEnvironment.Keys) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+        [Environment]::SetEnvironmentVariable($name, $script:ArtBlenderEnvironment[$name], "Process")
+    }
+
+    try {
+        $output = Invoke-ArtNative $Blender (Get-ArtBlenderArguments $Manifest $Arguments)
+    }
+    finally {
+        foreach ($name in $script:ArtBlenderEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
+        }
+    }
+
+    return Get-ArtBlenderResults $Manifest $output $script:ArtNativeExitCode
+}
+
+function ConvertTo-ArtProcessArgument([string]$Value) {
+    # One argument of a process command line, quoted as the C runtime and Blender read it back: inside
+    # quotes, a quote is escaped with a backslash and the backslashes before a quote are doubled.
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $text = New-Object System.Text.StringBuilder
+    $backslash = [char]92
+    $null = $text.Append('"')
+    $slashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq $backslash) {
+            $slashes++
+            continue
+        }
+
+        if ($character -eq '"') {
+            $null = $text.Append($backslash, 2 * $slashes + 1).Append('"')
+        }
+        else {
+            $null = $text.Append($backslash, $slashes).Append($character)
+        }
+
+        $slashes = 0
+    }
+
+    $null = $text.Append($backslash, 2 * $slashes).Append('"')
+    return $text.ToString()
+}
+
+function New-ArtBlenderJob($Manifest, [string[]]$Arguments, [string]$LogPath, [hashtable]$Fields) {
+    # One art_pipeline_cli.py command for Invoke-ArtBlenderJobs: the asset whose file Blender opens, its
+    # arguments, the file its output goes to, and the caller's own fields. The runner sets Results, the
+    # ART_ lines Invoke-ArtBlender returns, or Error, the message Invoke-ArtBlender throws, and Seconds,
+    # how long Blender ran.
+    $job = [ordered]@{
+        Name = $Manifest.Name
+        Manifest = $Manifest
+        Arguments = [string[]]$Arguments
+        LogPath = $LogPath
+        Watch = New-Object System.Diagnostics.Stopwatch
+        Process = $null
+        StandardOutput = $null
+        StandardError = $null
+        Results = $null
+        Error = $null
+        Seconds = 0.0
+    }
+    if ($null -ne $Fields) {
+        foreach ($key in $Fields.Keys) {
+            $job[$key] = $Fields[$key]
+        }
+    }
+
+    return [pscustomobject]$job
+}
+
+function Start-ArtBlenderJob([string]$Blender, $Job) {
+    # Starts Blender with the environment of Invoke-ArtBlender and reads its output asynchronously, so
+    # a full pipe never stops it.
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $Blender
+    $info.Arguments = (@(Get-ArtBlenderArguments $Job.Manifest $Job.Arguments) | ForEach-Object { ConvertTo-ArtProcessArgument $_ }) -join " "
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    foreach ($name in $script:ArtBlenderEnvironment.Keys) {
+        $info.EnvironmentVariables.Remove($name)
+        if ($null -ne $script:ArtBlenderEnvironment[$name]) {
+            $info.EnvironmentVariables[$name] = $script:ArtBlenderEnvironment[$name]
+        }
+    }
+
+    $Job.Watch.Start()
+    $Job.Process = [System.Diagnostics.Process]::Start($info)
+    $Job.StandardOutput = $Job.Process.StandardOutput.ReadToEndAsync()
+    $Job.StandardError = $Job.Process.StandardError.ReadToEndAsync()
+}
+
+function Complete-ArtBlenderJob($Job) {
+    # Collects the output of a job whose Blender has ended, keeps it in the job's log file, and sets its
+    # Results or its Error as Invoke-ArtBlender would return or throw them.
+    $Job.Process.WaitForExit()
+    $Job.Watch.Stop()
+    $Job.Seconds = $Job.Watch.Elapsed.TotalSeconds
+    $exitCode = $Job.Process.ExitCode
+    $Job.Process.Dispose()
+    $Job.Process = $null
+    $output = New-Object System.Collections.Generic.List[string]
+    foreach ($stream in @($Job.StandardOutput, $Job.StandardError)) {
+        $lines = @($stream.GetAwaiter().GetResult() -split "\r?\n")
+        if ($lines.Count -gt 0 -and $lines[-1] -eq "") {
+            $lines = @($lines | Select-Object -First ($lines.Count - 1))
+        }
+
+        foreach ($line in $lines) {
+            $output.Add([string]$line)
+        }
+    }
+
+    if (-not [string]::IsNullOrEmpty($Job.LogPath)) {
+        [System.IO.File]::WriteAllLines($Job.LogPath, [string[]]$output.ToArray(), (New-Object System.Text.UTF8Encoding($false)))
+    }
+
+    try {
+        $Job.Results = @(Get-ArtBlenderResults $Job.Manifest $output.ToArray() $exitCode)
+    }
+    catch {
+        $Job.Error = $_.Exception.Message
+    }
+}
+
+function Invoke-ArtBlenderJobs([string]$Blender, [object[]]$Jobs, [int]$Count, [scriptblock]$OnDone) {
+    # Runs the jobs of New-ArtBlenderJob, at most Count Blender processes at once, started in the order
+    # given, and calls OnDone with each job on this thread as soon as its Blender ended, so the caller
+    # finishes and prints one asset at a time while the others run. A job that fails, or whose OnDone
+    # throws, gets its Error and leaves the others running. An interrupted run ends the Blender
+    # processes it started.
+    $queue = New-Object System.Collections.Generic.Queue[object]
+    foreach ($job in @($Jobs)) {
+        $queue.Enqueue($job)
+    }
+
+    $running = New-Object System.Collections.Generic.List[object]
+    try {
+        while ($queue.Count -gt 0 -or $running.Count -gt 0) {
+            while ($queue.Count -gt 0 -and $running.Count -lt [Math]::Max(1, $Count)) {
+                $job = $queue.Dequeue()
+                try {
+                    Start-ArtBlenderJob $Blender $job
+                    $running.Add($job)
+                }
+                catch {
+                    $job.Error = "Blender could not start for $($job.Name): $($_.Exception.Message)"
+                    if ($null -ne $OnDone) {
+                        & $OnDone $job
+                    }
+                }
+            }
+
+            $ended = @($running | Where-Object { $_.Process.HasExited })
+            if ($ended.Count -eq 0) {
+                Start-Sleep -Milliseconds 200
+                continue
+            }
+
+            foreach ($job in $ended) {
+                $null = $running.Remove($job)
+                Complete-ArtBlenderJob $job
+                if ($null -ne $OnDone) {
+                    try {
+                        & $OnDone $job
+                    }
+                    catch {
+                        $job.Error = $_.Exception.Message
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        foreach ($job in $running) {
+            if ($null -ne $job.Process) {
+                if (-not $job.Process.HasExited) {
+                    & taskkill.exe /PID $job.Process.Id /T /F | Out-Null
+                    $null = $job.Process.WaitForExit(10000)
+                }
+
+                $job.Process.Dispose()
+                $job.Process = $null
+            }
+        }
+    }
 }
 
 function Get-ArtValidationArguments($Manifest, [string]$Stage) {
@@ -3404,16 +3699,28 @@ function Invoke-ArtTextureSheet([string]$Blender, $Manifest, [string]$Output, [s
         (Get-ArtGarmentClipArguments $Manifest) + (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
 }
 
+# Where Write-ArtLine puts its lines: $null prints them, a list collects them, so the lines of an asset
+# whose export runs beside others are printed together.
+$script:ArtLineSink = $null
+
+function Write-ArtLine([string]$Line) {
+    if ($null -ne $script:ArtLineSink) {
+        $script:ArtLineSink.Add($Line)
+    }
+    else {
+        Write-Host $Line
+    }
+}
+
 function Write-ArtUncached([string]$Asset, [string]$Reason) {
     # The line that says which checks the cache leaves out, and why: the checks that read the asset are
     # computed and not cached.
-    Write-Host "The checks that read $Asset are not cached: $($Reason.Trim().TrimEnd('.'))."
+    Write-ArtLine "The checks that read $Asset are not cached: $($Reason.Trim().TrimEnd('.'))."
 }
 
-function Format-ArtElapsed([string]$Name, [System.Diagnostics.Stopwatch]$Watch, [string[]]$Results) {
-    # The line that ends the work on an asset: the seconds it took and, when its Blender runs checked a
-    # garment template or a masked texture, how many of the units of those checks came from their cache.
-    $seconds = $Watch.Elapsed.TotalSeconds.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+function Get-ArtCacheCounts([string[]]$Results) {
+    # How many units of the checks of a garment template or a masked texture the Blender runs used and
+    # how many came from their cache, with each reason a unit was not cached once.
     $units = 0
     $cached = 0
     $notes = New-Object System.Collections.Generic.List[string]
@@ -3429,10 +3736,30 @@ function Format-ArtElapsed([string]$Name, [System.Diagnostics.Stopwatch]$Watch, 
         }
     }
 
-    if ($units -eq 0) {
+    return [pscustomobject]@{ Units = $units; Cached = $cached; Notes = $notes.ToArray() }
+}
+
+function Format-ArtElapsed([string]$Name, [System.Diagnostics.Stopwatch]$Watch, [string[]]$Results) {
+    # The line that ends the work on an asset: the seconds it took and, when its Blender runs checked a
+    # garment template or a masked texture, how many of the units of those checks came from their cache.
+    $seconds = $Watch.Elapsed.TotalSeconds.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+    $counts = Get-ArtCacheCounts $Results
+    if ($counts.Units -eq 0) {
         return "$Name took $seconds s."
     }
 
-    $why = if ($notes.Count -gt 0) { " Not cached, since $($notes -join '; ')." } else { "" }
-    return "$Name took $seconds s; $cached of $units check units came from the cache.$why"
+    $why = if ($counts.Notes.Count -gt 0) { " Not cached, since $($counts.Notes -join '; ')." } else { "" }
+    return "$Name took $seconds s; $($counts.Cached) of $($counts.Units) check units came from the cache.$why"
+}
+
+function Get-ArtDefaultJobs {
+    # How many Blender processes run at once by default: half the logical processors, at most 8.
+    return [Math]::Max(1, [Math]::Min(8, [int][Math]::Floor([Environment]::ProcessorCount / 2)))
+}
+
+function Get-ArtBuildFolder([string]$Name) {
+    # A folder below artifacts/art-build, which Git ignores, for the logs and timings of the art scripts.
+    $folder = Join-Path (Join-Path $script:ArtRepositoryRoot "artifacts/art-build") $Name
+    New-Item -ItemType Directory -Force -Path $folder | Out-Null
+    return $folder
 }
