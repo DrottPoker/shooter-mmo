@@ -820,6 +820,7 @@ repository root:
 & .\tools\Test-Changes.ps1 -VerifyRules
 & .\tools\ci\Test-UnityCommon.ps1
 & .\tools\ci\Test-ClientCrowdCommon.ps1
+& .\tools\ci\Test-ArtViews.ps1
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\art\Verify-ArtAssets.ps1
 python -m unittest discover -s tools/art/blender/tests
@@ -934,7 +935,10 @@ ends with a summary:
   Exported art runs the art verification and both Unity suites, the art
   pipeline scripts in `tools/art` run the art verification and the art
   pipeline's Python tests, which read how every script calls Blender and what
-  it records, and a retarget map in `tools/art/retarget` the Python tests. The client crowd
+  it records, and a retarget map in `tools/art/retarget` the Python tests. The
+  game views' helpers `tools/art/ArtViews.ps1`, the shared
+  `tools/art/ArtPipelineCommon.ps1`, and their check also run
+  `tools/ci/Test-ArtViews.ps1`. The client crowd
   measurement, its helpers, and its Mob variant run
   `tools/ci/Test-ClientCrowdCommon.ps1`, the Mob variant also the tool tests.
   Monitoring configuration runs `tools/Verify-Observability.ps1` and every test

@@ -1,0 +1,40 @@
+{
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "library": "art/Animations/Human_Actions",
+    "outfits": [
+        { "name": "Linen", "garments": ["LinenShirt", "WoolTrousers", "LeatherBoots", "WoolHoodUp", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "Jerkin", "garments": ["LeatherJerkin", "WoolTrousers", "LeatherBoots", "LeatherGloves", "IronNasalHelm", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "Net", "garments": ["NetShirt", "WoolTrousers", "LeatherBoots", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "LongShirt", "garments": ["LinenLongShirt", "WoolTrousers", "LeatherBoots", "LeatherGloves", "WoolHoodDown", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "Robe", "garments": ["WoolRobe", "WoolTrousers", "LeatherBoots", "LeatherGloves", "WoolHoodDown", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "CloakShirt", "garments": ["LinenShirt", "WoolTrousers", "LeatherBoots", "WoolCloak", "WoolHoodDown", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "CloakRobe", "garments": ["WoolRobe", "LeatherBoots", "WoolCloak", "WoolHoodUp", "DarkBrownHair"], "paints": ["Briefs", "Bra"] },
+        { "name": "CloakLongShirt", "garments": ["LinenLongShirt", "WoolTrousers", "LeatherBoots", "LeatherGloves", "WoolCloak", "WoolHoodUp", "DarkBrownHair"], "paints": ["Briefs", "Bra"] }
+    ],
+    "cameras": [
+        { "name": "Y215", "yaw": 215, "pitch": 20, "frame": "figure" },
+        { "name": "Y035", "yaw": 35, "pitch": 20, "frame": "figure" },
+        { "name": "Y125", "yaw": 125, "pitch": 20, "frame": "figure" },
+        { "name": "Y305", "yaw": 305, "pitch": 20, "frame": "figure" },
+        { "name": "Head", "yaw": 215, "pitch": 10, "frame": "head" },
+        { "name": "WaistFront", "yaw": 215, "pitch": 10, "frame": "waist" },
+        { "name": "WaistBack", "yaw": 35, "pitch": 10, "frame": "waist" },
+        { "name": "Feet", "yaw": 215, "pitch": 25, "frame": "feet" }
+    ],
+    "poses": [
+        { "name": "Rest", "phase": "clean", "cameras": ["Y215", "Y035", "Y125", "Y305", "Head", "WaistFront", "WaistBack", "Feet"] },
+        { "name": "Idle30", "clip": "Idle", "frame": 30, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Walk03", "clip": "Walk", "frame": 3, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Walk10", "clip": "Walk", "frame": 10, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Walk18", "clip": "Walk", "frame": 18, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Jog01", "clip": "Jog", "frame": 1, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Jog08", "clip": "Jog", "frame": 8, "phase": "clean", "cameras": ["Y215", "Y035", "WaistFront"] },
+        { "name": "Jog11", "clip": "Jog", "frame": 11, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "SwordSlash16", "clip": "SwordSlash", "frame": 16, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "OneHandStrike07", "clip": "OneHandStrike", "frame": 7, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "GreataxeSwing12", "clip": "GreataxeSwing", "frame": 12, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Cast06", "clip": "Cast", "frame": 6, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "BowShot21", "clip": "BowShot", "frame": 21, "phase": "clean", "cameras": ["Y215", "Y035"] },
+        { "name": "Death31", "clip": "Death", "frame": 31, "phase": "rare", "cameras": ["Y215", "Y035"] }
+    ]
+}

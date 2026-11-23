@@ -1,8 +1,9 @@
-"""The cache of the garment checks below artifacts/art-cache/: the results a sync, an approval, the review
-sheet, and the export would otherwise compute again. Two kinds of unit are cached: a garment's own check
-on one body, what it covers and, at the rig stage, what motion does to the skin under it; and a pair, a
-template of a lower layer worn under it, on every body: the hide margins, the hidden faces, and the pair
-check. A masked texture's units are those of its template with the texture on it.
+"""The cache of the garment checks below the folder checks of the shared art cache, artifacts/art-cache of
+the repository's main checkout, whose folder the scripts pass, or of this checkout without it: the results a
+sync, an approval, the review sheet, and the export would otherwise compute again. Two kinds of unit are
+cached: a garment's own check on one body, what it covers and, at the rig stage, what motion does to the
+skin under it; and a pair, a template of a lower layer worn under it, on every body: the hide margins, the
+hidden faces, and the pair check. A masked texture's units are those of its template with the texture on it.
 
 The key of a unit is the SHA-256 of everything it reads, which its entry names for debugging: the
 content fingerprints of the garments involved and of a texture's image, the fit of each body, the cage's
