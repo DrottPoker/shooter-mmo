@@ -438,8 +438,17 @@ checked, approved, exported, and worn with textures like every other template.
 A modeled template follows a smooth field of the cage's moves to the other
 bodies rather than its nearest face, because hair or a hood stands far off the
 cage, where the nearest face changes from one vertex to the next and would
-crumple it. A person may shape another body's version by hand, such as the
-helmet's nasal over a smaller nose, and the pipeline keeps that shape.
+crumple it. The same field moves its first version when the cage changes, and
+what of a version then leaves its band is settled back into it, as the fitted
+versions of every template are, so a changed cage or a new body needs no hand
+on the template. A thin part that stands off the cage and is stiff in the world,
+such as the helmet's nasal, would bend in the field; the template names it as a
+stiff part, an island of its mesh, and it follows as one piece instead, turned,
+scaled, and moved as a whole by what the field does to it, and back into its band
+as a whole. A person may shape another body's version by hand, such as the
+helmet's nasal over a smaller nose, and the pipeline keeps that shape, a stiff
+part's turned and scaled with the cage's later moves; that is the hand a new
+body may still want where the straight copy of a stiff part does not suit it.
 
 ### Loose Parts
 
@@ -673,7 +682,9 @@ pipeline fits it to every other body of the cage, also those of
   first version keeps its binding to the cage too, so when the first body or its
   cage changes, the first version follows. A vertex or a face centre of the cloth
   that leaves the garment's band moves back into it, and then the turned edges
-  are laid again from the fitted cloth. Garments stay out of the body's armpits
+  are laid again from the fitted cloth. A modeled template moves with a smooth
+  field of the cage's moves instead, its stiff parts as one piece; see
+  [Templates](#templates). Garments stay out of the body's armpits
   and crotch by the same rule as they do on the first body.
 - **Corrections**: where the fitted shape needs a hand, a person shapes it on the
   other body's version. The pipeline keeps the correction as a difference over
@@ -761,8 +772,11 @@ the new UVs by correspondence: a texture's preview follows the cage and then the
 template's edges, and every texel takes the paint of the nearest point of the
 moved preview; see
 [Garment Textures](ART_PIPELINE.md#garment-textures). A modeled template keeps its mesh, its UVs, and its
-painted weights: each vertex is bound to the new cage at its place on the first
-body, and its textures stay as they are.
+painted weights: when the cage is fitted to a new first body, its first version
+moves with the smooth field of the cage's moves there, which reads the same
+vertices of the cage before and after, what then leaves its band is settled back
+into it, and its stiff parts follow as one piece, so its textures stay as they
+are.
 
 The tooling for the first new race is planned: making a body type from a human
 body, the human base tools working for every body of the race, and adding the

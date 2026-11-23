@@ -21,11 +21,13 @@ cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manife
             manifest_io=manifest_io)
 hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", "_gap", "LEAVE", "EDGE_GAP", "MARGINS", "ROOT_BLEND",
             ArtPipelineError=scene.ArtPipelineError)
+stiff = load("art_pipeline/stiff.py", "FIELD", "entries", ArtPipelineError=scene.ArtPipelineError)
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
                "collection_name", "version_name", "material_name", "image_name", "recipe_text",
-               "recipe_regions", "export_paths", "read_wearing", "read_manifests", "turned_edges", "fold_error",
-               "border_vertices", "MIN_FOLD", "SETTLE_MARGIN", "HEM_ROOM", "ROUNDING", "_by_index", cage=cage, hang=hang,
-               manifest_io=manifest_io, ArtPipelineError=scene.ArtPipelineError)
+               "recipe_regions", "export_paths", "read_wearing", "read_manifests", "read_stiff", "turned_edges", "fold_error",
+               "border_vertices", "MIN_FOLD", "SETTLE_MARGIN", "HEM_ROOM", "ROUNDING", "STIFF_REACH", "FIELD_WIDTH",
+               "_by_index", cage=cage, hang=hang, manifest_io=manifest_io, stiff=stiff,
+               ArtPipelineError=scene.ArtPipelineError)
 coverage = load("art_pipeline/coverage.py", "REACH", "EDGE_REACH")
 texture = load("art_pipeline/texture.py", "MAX_DYES")
 
@@ -214,6 +216,14 @@ class ManifestReadingTests(unittest.TestCase):
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "HoodUp" / "asset.json")), ("head", "compress"))
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "HoodDown" / "asset.json")), ("head", "show"))
         self.assertEqual(garment.read_wearing(str(ART / "Garments" / "Robe" / "asset.json")), ("body", None))
+
+    def test_the_stiff_parts_of_a_real_template_are_read_and_a_template_without_them_has_none(self):
+        self.assertEqual(garment.read_stiff(str(ART / "Garments" / "NasalHelm" / "asset.json")), [("nasal", 1009)])
+        self.assertEqual(garment.read_stiff(str(ART / "Garments" / "ShoulderHair" / "asset.json")), [])
+
+    def test_a_stiff_part_comes_back_into_its_band_by_less_than_the_field_s_reach(self):
+        self.assertGreater(garment.STIFF_REACH, 0.0)
+        self.assertLess(garment.STIFF_REACH, garment.FIELD_WIDTH)
 
 
 class GarmentManifestAgreeWithTheCodeTests(unittest.TestCase):

@@ -31,6 +31,14 @@ person's corrections of a fitted version are kept as the difference to the attri
 shape the last fitting gave, and the attribute "built" holds the shape the recipe gave the first
 version, so a new build of a changed recipe carries the handmade shape over.
 
+A modeled template, which stands off the cage, moves with a smooth field of the cage's moves
+instead, to the other bodies and with a changed cage. Where its first version followed a changed
+cage, and where a corrected version of another body followed a changed cage or body, the points
+that then left the band are settled back into it. A stiff part that its asset.json names, an island
+of the mesh such as a helmet's nasal, follows as one piece, by a similarity (stiff.py), and moves as
+a whole back into its band; "fitted" stays where the field puts it, so a version's shaping of the
+part by hand is kept, turned and scaled with the field's move.
+
 Every vertex takes the weights of the nearest skin of the body part its cage face lies on, the
 region and side of the cage, interpolated from the corners of the skin's triangle and not smoothed,
 so it moves like the skin it covers: a sleeve's inside at the armpit moves with the arm. At the
@@ -63,7 +71,7 @@ from mathutils.kdtree import KDTree
 
 from human_base import rig
 
-from . import bodies, body_files, cage, cloth, hang, manifest_io, poses
+from . import bodies, body_files, cage, cloth, hang, manifest_io, poses, stiff
 from .scene import ArtPipelineError, relative_image_paths
 
 FITTED = "fitted"
@@ -147,6 +155,8 @@ ALPHA_CUT = 0.5
 # this share of the point's distance from it.
 FIELD_WIDTH = 0.015
 FIELD_GROWTH = 0.7
+# A stiff part that left its band after a move comes back into it as a whole, by at most this much.
+STIFF_REACH = 0.005
 # Cloth that spans the crotch, such as trousers between the legs, lies centimeters below the skin
 # there, and the skin nearest to it is the inner thighs', so a plain transfer gives it the thighs'
 # weights: a leg that swings takes the cloth under the crotch along and presses it up into the skin,
@@ -782,6 +792,125 @@ def _settle_band(co: np.ndarray, polygons: list[tuple[int, ...]], surface: Surfa
             break
         co = settled
     return co
+
+
+def read_stiff(manifest: str) -> list[tuple[str, int]]:
+    """The stiff parts a template's asset.json names in its field "stiff", by name and vertex, or none."""
+    return stiff.entries(manifest_io.read_json(manifest))
+
+
+def _stiff_mask(count: int, parts: list[tuple[str, np.ndarray]]) -> np.ndarray:
+    """Which vertices belong to a stiff part."""
+    mask = np.zeros(count, bool)
+    for _name, members in parts:
+        mask[members] = True
+    return mask
+
+
+def _carry_stiff(positions: np.ndarray, parts: list[tuple[str, np.ndarray]], before: np.ndarray, after: np.ndarray,
+                 shaped: np.ndarray) -> tuple[np.ndarray, list[tuple[str, np.ndarray, tuple]]]:
+    """The positions with every stiff part as one piece: the part as shaped, carried by the similarity
+    that best carries it from before to after, or as shaped to the last bit where that similarity moves
+    none of its vertices farther than FIT_TOLERANCE, as the field keeps an unmoved point. Returns the
+    positions and the parts it carried, with their vertices and similarity."""
+    positions = np.array(positions, float)
+    carried_parts = []
+    for name, members in parts:
+        transform = stiff.similarity(before[members], after[members])
+        carried = stiff.carry(transform, shaped[members])
+        if np.linalg.norm(carried - shaped[members], axis=1).max(initial=0.0) > FIT_TOLERANCE:
+            positions[members] = carried
+            carried_parts.append((name, members, transform))
+        else:
+            positions[members] = shaped[members]
+    return positions, carried_parts
+
+
+def _clear_stiff(co: np.ndarray, polygons: list[tuple[int, ...]], members: np.ndarray, surface: Surface, recipe,
+                 lines: list[dict], label: str, band: str, name: str, version: str) -> tuple[np.ndarray, float]:
+    """The positions with a stiff part moved as one piece back into its band where it left it, as the
+    checks measure the band: straight to the cage for its least distance and along the cage's normal for
+    its largest, at the part's vertices and the centres of its faces. It moves along the mean of the
+    cage's normals at its points out of the band, outward at those too close and inward at those too
+    far, by the smallest distance that clears every point of it. Returns the positions and that
+    distance; a part that STIFF_REACH does not clear stops the sync."""
+    inside = np.zeros(len(co), bool)
+    inside[members] = True
+    faces = [index for index, polygon in enumerate(polygons) if inside[list(polygon)].all()]
+    count = len(co) + len(polygons)
+    low, high = limits(recipe, lines, label, co, polygons, band, np.zeros(len(co), bool))
+    held = np.concatenate([members, len(co) + np.array(faces, np.int64)])
+    lows = np.broadcast_to(np.asarray(low, float), (count,))[held]
+    highs = None if high is None else np.broadcast_to(np.asarray(high, float), (count,))[held]
+
+    def outside(shift: np.ndarray) -> tuple[np.ndarray, np.ndarray, list[Vector]]:
+        moved = co.copy()
+        moved[members] += shift
+        points = [Vector(p) for p in moved[members]] + [Vector(moved[list(polygons[f])].mean(axis=0)) for f in faces]
+        close, far, normals = [], [], []
+        for index, point in enumerate(points):
+            distance, normal, _polygon = surface.nearest(point)
+            close.append(surface.straight_distance(point) < lows[index])
+            far.append(highs is not None and distance > highs[index])
+            normals.append(normal)
+        return np.array(close, bool), np.array(far, bool), normals
+
+    close, far, normals = outside(np.zeros(3))
+    if not close.any() and not far.any():
+        return co, 0.0
+    direction = sum((normals[i] for i in np.nonzero(close)[0]), Vector()) - \
+        sum((normals[i] for i in np.nonzero(far)[0]), Vector())
+    stuck = ArtPipelineError(f'The stiff part "{name}" of "{version}" leaves its {band} band after it followed its cage as '
+                             f"one piece, and moving it as a whole by up to {STIFF_REACH * 1000:.0f} mm does not bring "
+                             f'it back; shape the part on "{version}" by hand and sync again.')
+    if direction.length < 1e-9:
+        raise stuck
+    direction = np.array(direction.normalized())
+
+    def clear(distance: float) -> bool:
+        close_now, far_now, _normals = outside(direction * distance)
+        return not close_now.any() and not far_now.any()
+
+    if not clear(STIFF_REACH):
+        raise stuck
+    lowest, highest = 0.0, STIFF_REACH
+    for _ in range(30):
+        middle = (lowest + highest) / 2.0
+        if clear(middle):
+            highest = middle
+        else:
+            lowest = middle
+    moved = co.copy()
+    moved[members] += direction * highest
+    return moved, highest
+
+
+def _follow_modeled(version: str, label: str, positions: np.ndarray, polygons: list[tuple[int, ...]],
+                    parts: list[tuple[str, np.ndarray]], before: np.ndarray, after: np.ndarray, shaped: np.ndarray,
+                    settle: bool, surface: Surface, recipe, lines: list[dict], band: str,
+                    form: str = "") -> tuple[np.ndarray, list[str]]:
+    """A modeled version's positions after it followed a move of its cage or its body: its stiff parts
+    carried as one piece from before to after, as shaped (_carry_stiff); with settle, its other points
+    that left the band settled back into it by the pipeline's own settle; and every stiff part that
+    moved, moved as a whole back into its band. Returns the positions and the report's lines, which
+    name the form, such as a shape key, after the version."""
+    notes = []
+    positions, carried = _carry_stiff(positions, parts, before, after, shaped)
+    if settle:
+        settled = _settle_band(positions, polygons, surface, recipe, lines, label, band, _stiff_mask(len(positions), parts))
+        moves = np.linalg.norm(settled - positions, axis=1)
+        if moves.max(initial=0.0) > 0.0:
+            notes.append(f"{version}{form}: {int((moves > 0.0).sum())} vertices left the {band} band and were settled "
+                         f"back into it, by at most {moves.max() * 1000:.2f} mm.")
+        positions = settled
+    for part, members, transform in carried:
+        centre, farthest, turn, scale = stiff.measures(transform, shaped[members])
+        positions, lift = _clear_stiff(positions, polygons, members, surface, recipe, lines, label, band, part, version)
+        cleared = f"; then it moved {lift * 1000:.2f} mm as a whole back into its band" if lift > 0.0 else ""
+        notes.append(f"{version}{form}: its stiff part {part} followed as one piece: it moved {centre * 1000:.2f} mm at its "
+                     f"centre and at most {farthest * 1000:.2f} mm, turned {turn:.2f} degrees, and scaled by {scale:.4f}"
+                     f"{cleared}.")
+    return positions, notes
 
 
 def _limited(row: np.ndarray) -> np.ndarray:
@@ -1807,10 +1936,13 @@ def _scaffold(part: dict, lines: list[dict], arm: bpy.types.Object, top: np.ndar
         hang.remove(obj)
 
 
-def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: list[dict], transfer_all: bool = False) -> dict:
+def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: list[dict], transfer_all: bool = False,
+          parts: list[tuple[str, np.ndarray]] = ()) -> dict:
     """What a sync gives every version: its positions, its weights over the first body's bones,
     the binding of the first version to its cage, and the checksums of the transferred weights of
-    the first version, with the number of vertices painted by hand."""
+    the first version, with the number of vertices painted by hand. A modeled template's versions also
+    keep where the field alone places them, before the settle, from which a new version's stiff parts,
+    given as parts, are carried."""
     labels = [a.name for a in arms]
     first = _first_version(name, labels)
     # Every deforming bone, so weights painted by hand on cloth chain bones, which the body has
@@ -1869,14 +2001,15 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     if turned:
         first_weights = turned_weights(first_weights, turned, _lay(co, polygons, turned, recipe["hem"], first_cage)[1])
         checksums = np.where(folded, [_checksum(row, names) for row in first_weights], checksums)
-    plan = {"names": names, "hand": int(hand.sum()), "binding": binding, "turned": turned, "folded": folded,
-            "hem": recipe["hem"] if turned else 0.0, "regions": regions,
-            "versions": {first.name: {"positions": None, "under": None, "weights": first_weights,
-                                      "checksums": checksums}}}
-    hems = [cloth for cloth, _rim, _flap in turned]
     # A modeled form, such as hair or a helmet, stands off the cage and moves with its smooth field;
     # a recipe's cloth lies on the cage and follows each of its faces.
     modeled = not isinstance(recipe, dict)
+    plan = {"names": names, "hand": int(hand.sum()), "binding": binding, "turned": turned, "folded": folded,
+            "hem": recipe["hem"] if turned else 0.0, "regions": regions, "modeled": modeled, "stiff": list(parts),
+            "band": band, "recipe": recipe, "lines": lines,
+            "versions": {first.name: {"positions": None, "under": None, "weights": first_weights,
+                                      "checksums": checksums}}}
+    hems = [cloth for cloth, _rim, _flap in turned]
     first_shape = bodies.world_positions(cage_object(labels[0]))
     for arm in arms[1:]:
         own = Surface(cage_object(arm.name), [], regions)
@@ -1886,11 +2019,11 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
         else:
             placed = np.array([own.place(t, w, o) for t, w, o in binding])
         positions = _settle_band(placed, polygons, own, recipe, lines, arm.name, band, loose | folded, hems)
-        under = None
+        under = placed_under = None
         if under_binding is not None:
-            under = field_place(first_shape, own_shape, under_first) if modeled else \
+            placed_under = field_place(first_shape, own_shape, under_first) if modeled else \
                 np.array([own.place(t, w, o) for t, w, o in under_binding])
-            under = _settle_band(under, polygons, own, recipe, lines, arm.name, band, loose | folded)
+            under = _settle_band(placed_under, polygons, own, recipe, lines, arm.name, band, loose | folded)
         skin = RegionSkin(bodies.source_body(arm.name), names)
         weights = weights_on(skin, positions, arm)
         # Then the loose parts, on this body's scaffolds from where their edges now lie.
@@ -1907,15 +2040,23 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
             positions, flaps = _lay(positions, polygons, turned, recipe["hem"], own)
             weights = turned_weights(weights, turned, flaps)
         plan["versions"][version_name(name, arm.name)] = {
-            "positions": positions, "under": under, "weights": weights, "checksums": None}
+            "positions": positions, "under": under, "weights": weights, "checksums": None,
+            "placed": np.array(placed) if modeled else None,
+            "placed_under": np.array(placed_under) if modeled and placed_under is not None else None}
     return plan
 
 
-def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
+def _apply(plan: dict, name: str, arms: list[bpy.types.Object], followed: bool = False) -> list[str]:
     """Writes the plan: fits every other version, keeping its corrections, gives every version its
-    weights and binding, and keeps the first version's binding to its cage."""
+    weights and binding, and keeps the first version's binding to its cage. A modeled version's stiff
+    parts follow as one piece, and when followed says that the cage or a body changed, the points of a
+    corrected version that followed it and that its correction put out of the band are settled back.
+    Returns the report's lines about them."""
     first = _first_version(name, [a.name for a in arms])
     names = plan["names"]
+    polygons = [tuple(p.vertices) for p in first.data.polygons]
+    first_co, first_under = bodies.world_positions(first), under_positions(first)
+    notes = []
     for arm in arms:
         target = bpy.data.objects.get(version_name(name, arm.name))
         entry = plan["versions"][version_name(name, arm.name)]
@@ -1923,6 +2064,7 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
         if entry["positions"] is not None:
             fitted, under = entry["positions"], entry["under"]
             under_correction = np.zeros_like(fitted)
+            previous = previous_under = current = current_under = None
             if target is None:
                 mesh = first.data.copy()
                 mesh.name = version_name(name, arm.name)
@@ -1933,19 +2075,42 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
                 if len(target.data.vertices) != len(first.data.vertices):
                     raise ArtPipelineError(f'"{target.name}" no longer has the topology of "{first.name}"; delete it so '
                                            "the next sync fits it again.")
-                previous = _attribute(target.data, FITTED)
-                correction = bodies.world_positions(target) - previous if previous is not None else np.zeros_like(fitted)
+                previous, current = _attribute(target.data, FITTED), bodies.world_positions(target)
+                correction = current - previous if previous is not None else np.zeros_like(fitted)
                 previous_under, current_under = _attribute(target.data, FITTED_UNDER), under_positions(target)
                 if previous_under is not None and current_under is not None:
                     under_correction = current_under - previous_under
             _match_shape_keys(first, target)
             shape = fitted + correction
+            under_shape = under + under_correction if under is not None else None
+            if plan["modeled"]:
+                surface = Surface(cage_object(arm.name), [], plan["regions"])
+                # Each form follows from where its stored fitting had it to where the field puts it now,
+                # a new one from the first version to where the field alone places that.
+                forms = [("", fitted, previous, current, correction, entry["placed"], first_co)]
+                if under is not None:
+                    forms.append((f" in its shape key {UNDER_HEADWEAR}", under, previous_under, current_under,
+                                  under_correction, entry["placed_under"], first_under))
+                followed_shapes = []
+                for form, planned, stored, now, corrected, placed, source in forms:
+                    fresh = stored is None or now is None
+                    before, after, shaped = (source, placed, source) if fresh else (stored, planned, now)
+                    # The points a correction puts out of the band after a move of the cage or the body.
+                    settle = followed and not fresh and bool(np.any(corrected)) and \
+                        np.abs(planned - stored).max(initial=0.0) > FIT_TOLERANCE
+                    positions, found = _follow_modeled(target.name, arm.name, planned + corrected, polygons, plan["stiff"],
+                                                       before, after, shaped, settle, surface, plan["recipe"],
+                                                       plan["lines"], plan["band"], form)
+                    followed_shapes.append(positions)
+                    notes += found
+                shape = followed_shapes[0]
+                under_shape = followed_shapes[1] if under is not None else None
             # A turned edge follows its cloth's corrections and keeps none of its own.
             if plan["turned"] and np.any(correction):
-                shape, flaps = _lay(shape, [tuple(p.vertices) for p in first.data.polygons], plan["turned"], plan["hem"],
+                shape, flaps = _lay(shape, polygons, plan["turned"], plan["hem"],
                                     Surface(cage_object(arm.name), [], plan["regions"]))
                 weights = turned_weights(weights, plan["turned"], flaps)
-            _set_shape(target, shape, under + under_correction if under is not None else None)
+            _set_shape(target, shape, under_shape)
             _store(target.data, FITTED, fitted)
             if under is not None:
                 _store(target.data, FITTED_UNDER, under)
@@ -1959,6 +2124,7 @@ def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
         target.matrix_parent_inverse = Matrix.Identity(4)
         bodies.set_weights(target, weights, names)
         bodies.bind(target, arm)
+    return notes
 
 
 def _show_first(arms: list[bpy.types.Object]) -> None:
@@ -2082,8 +2248,14 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     and gives every version its weights, keeping the corrections and the weights painted by hand,
     unless every weight is transferred again. Where the recipe says it lies over an inner garment,
     its cloth clears the real surface of the templates of lower layers in pairs, which the file never
-    keeps. Returns whether the file changed, the number of vertices with weights painted by hand, and
-    notes for the report. An unchanged file is not saved, so its approvals stay valid."""
+    keeps. A modeled template's stiff parts, which the asset.json next to the file names, follow as one
+    piece, and what of a modeled version left its band after it followed is settled back. Returns
+    whether the file changed, the number of vertices with weights painted by hand, and notes for the
+    report. An unchanged file is not saved, so its approvals stay valid."""
+    named = read_stiff(os.path.join(os.path.dirname(file), "asset.json"))
+    if named and isinstance(recipe, dict):
+        raise ArtPipelineError(f'Only a modeled template names stiff parts in the field "{stiff.FIELD}" of its asset.json; '
+                               "a recipe's cloth lies on the cage and follows each of its faces.")
     bpy.ops.wm.open_mainfile(filepath=file)
     labels = [root for _path, root in body_list]
     notes = []
@@ -2105,8 +2277,11 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     append_lain_over(list(pairs), labels)
 
     first = bpy.data.objects.get(version_name(name, labels[0]))
-    if bpy.context.scene.get(CAGE_CONTENT) != cage_content or any(
-            bpy.data.objects.get(cage.version_name(label)) is None for label in labels):
+    parts = [] if first is None else \
+        stiff.parts(named, len(first.data.vertices), [tuple(p.vertices) for p in first.data.polygons], first.name)
+    cage_changed = bpy.context.scene.get(CAGE_CONTENT) != cage_content or any(
+        bpy.data.objects.get(cage.version_name(label)) is None for label in labels)
+    if cage_changed:
         binding = built_binding = under_binding = old_shape = None
         if first is not None and bpy.data.objects.get(cage.version_name(labels[0])) is not None:
             old_shape = bodies.world_positions(cage_object(labels[0]))
@@ -2138,16 +2313,30 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
                     placed = field_place(old_shape, new_shape, points)
                 return np.where((np.linalg.norm(placed - points, axis=1) > FIT_TOLERANCE)[:, None], placed, points)
 
-            current = bodies.world_positions(first)
+            current, current_under = bodies.world_positions(first), under_positions(first)
             moved = follow(current, binding)
-            _set_shape(first, moved, follow(under_positions(first), under_binding) if under_binding is not None else None)
-            if built_binding is not None:
-                _store(first.data, BUILT, follow(_attribute(first.data, BUILT), built_binding))
-            first.data.update()
-            if np.abs(moved - current).max(initial=0.0) > 0.0:
+            moved_under = follow(current_under, under_binding) if under_binding is not None else None
+            shifted = bool(np.abs(moved - current).max(initial=0.0) > 0.0)
+            if shifted:
                 notes.append(f"{first.name} moved with its changed cage.")
             else:
                 notes.append(f"{first.name} stays where it is: its regions of the changed cage did not move.")
+            if not isinstance(recipe, dict):
+                # A modeled form's stiff parts follow as one piece, and what left the band comes back.
+                polygons = [tuple(p.vertices) for p in first.data.polygons]
+                moved, found = _follow_modeled(first.name, labels[0], moved, polygons, parts, current, moved, current,
+                                               shifted, own, recipe, lines, band)
+                notes += found
+                if moved_under is not None:
+                    moved_under, found = _follow_modeled(
+                        first.name, labels[0], moved_under, polygons, parts, current_under, moved_under, current_under,
+                        bool(np.abs(moved_under - current_under).max(initial=0.0) > 0.0), own, recipe, lines, band,
+                        f" in its shape key {UNDER_HEADWEAR}")
+                    notes += found
+            _set_shape(first, moved, moved_under)
+            if built_binding is not None:
+                _store(first.data, BUILT, follow(_attribute(first.data, BUILT), built_binding))
+            first.data.update()
 
     built = recipe != MODELED and (first is None or rebuild)
     if built:
@@ -2174,8 +2363,8 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
         # over, so none splits along the valley that shape folds it into.
         _turn_corners(first.data, split_starts(bodies.world_positions(first), [tuple(p.vertices) for p in first.data.polygons]))
 
-    plan = _plan(name, arms, band, recipe, lines, transfer_all)
-    _apply(plan, name, arms)
+    plan = _plan(name, arms, band, recipe, lines, transfer_all, parts)
+    notes += _apply(plan, name, arms, cage_changed or bool(stale))
     remove_inner()
     if not removed and _state(name, labels) == before:
         return False, plan["hand"], notes
