@@ -663,12 +663,16 @@ class ScriptTests(unittest.TestCase):
         gate = views[views.index("function Get-ArtViewGate("):views.index("function Read-ArtViewNumbers")]
         for call in ("Get-ArtExportGateProblem $manifest", "Get-ArtExportChangeProblem $manifest", "Get-ArtExportFileProblems $manifest"):
             self.assertIn(call, gate)
-        self.assertIn("-WriteBaseline measures the exported data only; leave out -DataFolder.", script)
+        self.assertIn("-WriteBaseline measures the exported data only; leave out -DataFolder and -OpaqueTexture.", script)
         self.assertLess(script.index("$gate = Get-ArtViewGate $everyView"), script.index("Invoke-ArtViewRender $views $everyView $committed"))
         compare = views[views.index("function Compare-ArtViews"):views.index("function Read-ArtViewKeys")]
         self.assertLess(compare.index("return 2"), compare.index("return 1"))
         self.assertIn("exit 1", script)
-        self.assertIn("$script:ArtViewTolerance", compare)
+        # The check and the review page class a view by one rule.
+        self.assertIn("Get-ArtViewChangeClass $line $entry.Numbers", compare)
+        classes = views[views.index("function Get-ArtViewChangeClass"):views.index("function Format-ArtViewLine")]
+        self.assertIn("$script:ArtViewTolerance", classes)
+        self.assertIn("Get-ArtViewChangeClass $line $after.Numbers", self.text("ArtReviewPage.ps1"))
 
     def test_the_build_measures_the_baseline_after_its_exports_and_before_it_verifies(self):
         build = self.text("Build-Art.ps1")
@@ -677,6 +681,25 @@ class ScriptTests(unittest.TestCase):
         self.assertLess(views, build.index('"Verify-ArtAssets.ps1") -Waiting'))
         self.assertLess(build.index("if (@(Get-ArtViewBaselineProblems).Count -gt 0)"), views)
         self.assertIn('Add-ArtPhase "game views" $watch', build)
+
+    def test_the_build_draws_the_changed_views_with_staged_data_before_its_exports_and_writes_the_page_last(self):
+        """Once the syncs settle and before the exports, the build stages the data of what the changed views
+        read and draws them with it; -Plan stops before; the page comes after the verification, also when the
+        build failed; and only a view drawn from exactly the data its export records name becomes a picture
+        before."""
+        build, render = self.text("Build-Art.ps1"), self.text("Render-ArtViews.ps1")
+        review = build.index("Invoke-ArtBuildReview $entries $blender")
+        self.assertLess(build.index("exit 0", build.index("if ($Plan) {")), review)
+        self.assertLess(build.index('$syncs = @($entries | Where-Object { $_.Need -eq "sync" })'), review)
+        self.assertLess(review, build.index('"Export-ArtAsset.ps1") -Asset'))
+        self.assertIn("Invoke-ArtStaging $Blender", build)
+        self.assertIn("-View $draw.ToArray() -DataFolder $stagingFolder -OpaqueTexture $opaque", build)
+        self.assertLess(build.index('"Verify-ArtAssets.ps1") -Waiting'), build.index("Write-ArtReviewPage $script:ArtReviewFolder"))
+        self.assertLess(build.index("catch {\n    $failure = $_.Exception.Message"), build.index("Write-ArtReviewPage $script:ArtReviewFolder"))
+        index = render[render.index("# The index of the pictures by committed key"):render.index("Add-ArtViewBaselineKeep $cacheRoot")]
+        self.assertIn("if (Test-ArtViewIndexable $entry.View", index)
+        self.assertIn("Write-ArtViewIndex $cacheRoot $entry.Committed $entry.Key", index)
+        self.assertLess(render.index("Add-ArtViewBaselineKeep $cacheRoot"), render.index("Remove-ArtViewCacheEntries $cacheRoot $keep"))
 
 
 if __name__ == "__main__":

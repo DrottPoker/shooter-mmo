@@ -1,9 +1,9 @@
 # The game views of tools/art/Render-ArtViews.ps1: the standard set of views in
 # tools/art/views/standard-set.json, the committed key of a view, the baseline of their numbers in
 # art/Views/baseline.json, which tools/art/Verify-ArtAssets.ps1 holds to the committed content without
-# Blender, and the rules of the views' cache, their comparison, and their data. tools/ci/Test-ArtViews.ps1
-# checks the functions here without Blender. Dot-source it after ArtPipelineCommon.ps1. See
-# docs/ART_PIPELINE.md, Game Views.
+# Blender, and the rules of the views' cache with its index of the pictures by committed key, their
+# comparison, and their data. tools/ci/Test-ArtViews.ps1 checks the functions here without Blender.
+# Dot-source it after ArtPipelineCommon.ps1. See docs/ART_PIPELINE.md, Game Views.
 
 # The version of the format of the views' keys and numbers, which
 # tools/art/blender/art_pipeline/game_view.py keeps as VIEW_VERSION and a Python test holds equal: it is
@@ -75,12 +75,13 @@ function Get-ArtTextFileSha256([string]$Path) {
     }
 }
 
-function Get-ArtViewCodeFingerprint([string]$Root = $script:ArtRepositoryRoot) {
+function Get-ArtViewCodeFingerprint([string]$Root = $script:ArtRepositoryRoot, [string[]]$Paths = $script:ArtViewCodePaths, [string]$Tag = "art-view-code/1") {
     # The fingerprint of the code the renderer runs, without Blender: every file of ArtViewCodePaths by
-    # its repository path and the SHA-256 of its text with LF line ends, sorted by the path.
+    # its repository path and the SHA-256 of its text with LF line ends, sorted by the path. Other Paths
+    # and another Tag give the fingerprint of other code, such as the code that stages data.
     $base = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
     $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($path in $script:ArtViewCodePaths) {
+    foreach ($path in $Paths) {
         $full = Join-Path $base $path
         $files = if (Test-Path -LiteralPath $full -PathType Leaf) {
             @(Get-Item -LiteralPath $full)
@@ -100,7 +101,7 @@ function Get-ArtViewCodeFingerprint([string]$Root = $script:ArtRepositoryRoot) {
 
     $sorted = $lines.ToArray()
     [Array]::Sort($sorted, [StringComparer]::Ordinal)
-    return Get-ArtTextSha256 ("art-view-code/1`n" + ($sorted -join "`n") + "`n")
+    return Get-ArtTextSha256 ("$Tag`n" + ($sorted -join "`n") + "`n")
 }
 
 function Get-ArtViewCode {
@@ -305,14 +306,15 @@ function Split-ArtViewList([string[]]$Values) {
     return @($Values | ForEach-Object { "$_".Split(",") } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
-function Select-ArtViews($Views, [string[]]$Outfit = @(), [string[]]$Body = @(), [string[]]$Pose = @()) {
+function Select-ArtViews($Views, [string[]]$Outfit = @(), [string[]]$Body = @(), [string[]]$Pose = @(), [string[]]$ViewName = @()) {
     # The views the filters name, each a list or one text with commas; a name that no view has stops
-    # the run with the names there are.
+    # the run with the names there are, or for -View, whole view names, with the first unknown ones.
     $selected = @($Views)
     foreach ($filter in @(
             @{ Name = "Outfit"; Values = (Split-ArtViewList $Outfit); Of = { param($v) @($v.Outfit) } },
             @{ Name = "Body"; Values = (Split-ArtViewList $Body); Of = { param($v) @($v.Label, $v.Body.RelativeDirectory) } },
-            @{ Name = "Pose"; Values = (Split-ArtViewList $Pose); Of = { param($v) @($v.Pose.Name) } })) {
+            @{ Name = "Pose"; Values = (Split-ArtViewList $Pose); Of = { param($v) @($v.Pose.Name) } },
+            @{ Name = "View"; Values = (Split-ArtViewList $ViewName); Of = { param($v) @($v.Name) } })) {
         if ($filter.Values.Count -eq 0) {
             continue
         }
@@ -320,7 +322,8 @@ function Select-ArtViews($Views, [string[]]$Outfit = @(), [string[]]$Body = @(),
         $known = @($Views | ForEach-Object { & $filter.Of $_ } | Sort-Object -Unique)
         $unknown = @($filter.Values | Where-Object { $known -cnotcontains $_ })
         if ($unknown.Count -gt 0) {
-            throw "-$($filter.Name) $($unknown -join ', ') names no view of the standard set; it has $($known -join ', ')."
+            $there = if ($filter.Name -eq "View") { "names such as $(@($known | Select-Object -First 3) -join ', ')" } else { $known -join ', ' }
+            throw "-$($filter.Name) $(@($unknown | Select-Object -First 3) -join ', ') names no view of the standard set; it has $there."
         }
 
         $selected = @($selected | Where-Object { $view = $_; @(& $filter.Of $view | Where-Object { $filter.Values -ccontains $_ }).Count -gt 0 })
@@ -345,11 +348,13 @@ function Get-ArtViewDataRecord($Texture, $Template, [string]$Label) {
     return [pscustomobject]@{ Data = Get-ArtGarmentDataTarget $Template.Name $Label; DataSha256 = "none" }
 }
 
-function Find-ArtViewData($Garment, [string]$Label, [string[]]$Folders) {
+function Find-ArtViewData($Garment, [string]$Label, [string[]]$Folders, [string[]]$Opaque = @()) {
     # The data a garment reads on a body: a masked texture's own, <Texture>_<Label>.json, from the first
     # folder that has it, or else its template's, <Template>_<Label>.json, from the first folder that has
-    # it.
-    foreach ($name in @("$($Garment.Texture.Name)_$Label.json", "$($Garment.Template.Name)_$Label.json")) {
+    # it. A texture of Opaque, whose current content has no transparent parts, reads its template's,
+    # also when its last export left masks of its own.
+    $names = @(if (@($Opaque) -cnotcontains $Garment.Texture.Name) { "$($Garment.Texture.Name)_$Label.json" }) + @("$($Garment.Template.Name)_$Label.json")
+    foreach ($name in $names) {
         foreach ($folder in $Folders) {
             $path = Join-Path $folder $name
             if (Test-Path -LiteralPath $path -PathType Leaf) {
@@ -632,6 +637,116 @@ function Read-ArtViewNumbers([string]$Path, [string]$Key) {
     return $numbers
 }
 
+function Get-ArtViewIndexPath([string]$CacheRoot, [string]$Committed) {
+    return Join-Path (Join-Path (Join-Path $CacheRoot "views") "committed") $Committed
+}
+
+function Read-ArtViewIndex([string]$CacheRoot, [string]$Committed) {
+    # The key of the entry of the views cache that holds the pictures of a view's committed key, as a run
+    # on the exported data noted it, or $null when none did or the note is broken.
+    if ($Committed -cnotmatch '^[0-9a-f]{64}$') {
+        return $null
+    }
+
+    $path = Get-ArtViewIndexPath $CacheRoot $Committed
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $key = [System.IO.File]::ReadAllText($path).Trim()
+    }
+    catch {
+        return $null
+    }
+
+    if ($key -cnotmatch '^[0-9a-f]{64}$') {
+        return $null
+    }
+
+    return $key
+}
+
+function Write-ArtViewIndex([string]$CacheRoot, [string]$Committed, [string]$Key) {
+    # Notes, below views/committed of the cache, which entry holds the pictures of a committed key, one
+    # small file per committed key written by a rename; a note that cannot be written only loses a before
+    # picture.
+    if ($Committed -cnotmatch '^[0-9a-f]{64}$' -or (Read-ArtViewIndex $CacheRoot $Committed) -ceq $Key) {
+        return
+    }
+
+    try {
+        Write-ArtViewText (Get-ArtViewIndexPath $CacheRoot $Committed) "$Key`n"
+    }
+    catch {
+        # Another run wrote it at the same moment.
+    }
+}
+
+function Get-ArtViewPictures([string]$CacheRoot, [string]$Committed) {
+    # The pictures of a committed key from the entry the index notes for it, its look and its classes
+    # with the entry's key, or $null when the cache has none, such as after it was cleared.
+    $key = Read-ArtViewIndex $CacheRoot $Committed
+    if ($null -eq $key) {
+        return $null
+    }
+
+    $folder = Join-Path $CacheRoot "views"
+    $pictures = [pscustomobject]@{ Key = $key; Look = Join-Path $folder "$key.png"; Classes = Join-Path $folder "$key.classes.png" }
+    if (-not (Test-Path -LiteralPath $pictures.Look -PathType Leaf) -or -not (Test-Path -LiteralPath $pictures.Classes -PathType Leaf)) {
+        return $null
+    }
+
+    return $pictures
+}
+
+function Test-ArtViewIndexable($View, [string[]]$DataFiles, $FileHashes) {
+    # Whether a view's pictures may be noted in the index as those of its committed key: its body has an
+    # export record, and every garment data file it read has the SHA-256 that its asset's export record
+    # names for it, so the picture of a committed key is drawn from exactly the data the key names.
+    # DataFiles are the files read, garment by garment, and FileHashes their SHA-256 by path.
+    if ($null -eq $View.Body.Export -or @($DataFiles).Count -ne @($View.Garments).Count) {
+        return $false
+    }
+
+    for ($index = 0; $index -lt @($View.Garments).Count; $index++) {
+        $named = [string]@($View.Garments)[$index].DataSha256
+        $read = $FileHashes[@($DataFiles)[$index]]
+        if ($named -cnotmatch '^[0-9a-f]{64}$' -or [string]$read -cne $named) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Add-ArtViewBaselineKeep([string]$CacheRoot, $Baseline, $Keep) {
+    # The entries the keys of the baseline point to through the index, which the upkeep keeps, so a
+    # changed view has its before picture however long ago it was measured.
+    foreach ($name in @(if ($null -ne $Baseline) { $Baseline.Keys })) {
+        $key = Read-ArtViewIndex $CacheRoot $Baseline[$name].Key
+        if ($null -ne $key) {
+            $Keep[$key] = $true
+        }
+    }
+}
+
+function Get-ArtViewChangeClass($Line, $Numbers) {
+    # How a view's numbers compare with its baseline entry, as -Check takes them: worse with more skin or
+    # inner garment through pixels than the entry, beyond the tolerance; better with fewer of either and
+    # not more of the other; other when those are the same, whatever the contact and the figure do.
+    $skin, $inner = [int]$Numbers.skin, [int]$Numbers.inner
+    if ($skin -gt $Line.Skin + $script:ArtViewTolerance -or $inner -gt $Line.Inner + $script:ArtViewTolerance) {
+        return "worse"
+    }
+
+    if ($skin -lt $Line.Skin -or $inner -lt $Line.Inner) {
+        return "better"
+    }
+
+    return "other"
+}
+
 function Format-ArtViewLine([string]$Name, $Numbers, [string]$Note) {
     return "  ${Name}: skin $([int]$Numbers.skin), inner $([int]$Numbers.inner), contact $([int]$Numbers.contact), figure $([int]$Numbers.figure) px$Note"
 }
@@ -660,10 +775,11 @@ function Compare-ArtViews($Entries, $Baseline, [switch]$Writing) {
         $skin, $inner, $touch = [int]$entry.Numbers.skin, [int]$entry.Numbers.inner, [int]$entry.Numbers.contact
         $was = "skin $($line.Skin), inner $($line.Inner)"
         $now = "skin $skin, inner $inner"
-        if ($skin -gt $line.Skin + $script:ArtViewTolerance -or $inner -gt $line.Inner + $script:ArtViewTolerance) {
+        $class = Get-ArtViewChangeClass $line $entry.Numbers
+        if ($class -eq "worse") {
             $regressions.Add("${name}: $was -> $now px$other")
         }
-        elseif ($skin -lt $line.Skin -or $inner -lt $line.Inner) {
+        elseif ($class -eq "better") {
             $improvements.Add("${name}: $was -> $now px$other")
         }
         elseif ($skin -ne $line.Skin -or $inner -ne $line.Inner -or [int]$entry.Numbers.figure -ne $line.Figure) {
@@ -735,9 +851,9 @@ function Write-ArtViewKeys([string]$Path, $Keys) {
 function Remove-ArtViewCacheEntries([string]$CacheRoot, $Keep, [DateTime]$Now = (Get-Date)) {
     # The upkeep of the views cache, below views of the cache root and nowhere else: removes every entry,
     # its numbers <key>.json with its pictures, that no run took for ArtViewCacheDays, by the time of its
-    # numbers, which a run that takes it touches, and whose key is not one to keep; and, after a day, a
-    # picture without its numbers and a file an interrupted run left under its temporary name. Returns
-    # how many entries went.
+    # numbers, which a run that takes it touches, and whose key is not one to keep; a note of the index
+    # below committed whose entry is gone; and, after a day, a picture without its numbers and a file an
+    # interrupted run left under its temporary name. Returns how many entries went.
     $folder = Join-Path $CacheRoot "views"
     if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
         return 0
@@ -769,6 +885,24 @@ function Remove-ArtViewCacheEntries([string]$CacheRoot, $Keep, [DateTime]$Now = 
     # -Force: a name that starts with a dot is a hidden file outside Windows.
     foreach ($left in @(Get-ChildItem -LiteralPath $folder -File -Force | Where-Object { $_.Name.StartsWith(".") -and $_.Name -like "*.tmp*" -and $_.LastWriteTime -lt $day })) {
         Remove-Item -LiteralPath $left.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    $index = Join-Path $folder "committed"
+    if (Test-Path -LiteralPath $index -PathType Container) {
+        foreach ($note in @(Get-ChildItem -LiteralPath $index -File -Force)) {
+            if ($note.Name.StartsWith(".")) {
+                if ($note.Name -like "*.tmp*" -and $note.LastWriteTime -lt $day) {
+                    Remove-Item -LiteralPath $note.FullName -Force -ErrorAction SilentlyContinue
+                }
+
+                continue
+            }
+
+            $key = Read-ArtViewIndex $CacheRoot $note.Name
+            if ($null -eq $key -or -not (Test-Path -LiteralPath (Join-Path $folder "$key.json") -PathType Leaf)) {
+                Remove-Item -LiteralPath $note.FullName -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     return $removed

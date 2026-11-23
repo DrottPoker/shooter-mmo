@@ -3768,11 +3768,16 @@ function Test-ArtSamePath([string]$First, [string]$Second) {
     return [string]::Equals([System.IO.Path]::GetFullPath($First).TrimEnd('\', '/'), [System.IO.Path]::GetFullPath($Second).TrimEnd('\', '/'), $comparison)
 }
 
-function Resolve-ArtCacheRoot([string]$Repository, [string]$CommonDir) {
-    # The folder of the shared caches for a checkout and the common folder Git names for it:
-    # artifacts/art-cache of the parent of the common folder when that is a checkout of this
+function Resolve-ArtCacheRoot([string]$Repository, [string]$CommonDir, [string]$Override) {
+    # The folder of the shared caches for a checkout and the common folder Git names for it: the folder
+    # Override names, from MMORPG_ART_CACHE_ROOT, such as for a copy of the tree that must not share the
+    # cache; else artifacts/art-cache of the parent of the common folder when that is a checkout of this
     # repository, which has tools/art/ArtPipelineCommon.ps1 and is the top level Git names there, so
     # every worktree shares the main checkout's cache; else the checkout's own.
+    if (-not [string]::IsNullOrWhiteSpace($Override)) {
+        return [System.IO.Path]::GetFullPath($Override)
+    }
+
     $own = Join-Path $Repository "artifacts/art-cache"
     if ([string]::IsNullOrWhiteSpace($CommonDir)) {
         return $own
@@ -3801,11 +3806,15 @@ function Resolve-ArtCacheRoot([string]$Repository, [string]$CommonDir) {
 
 function Get-ArtCacheRoot {
     # The folder of the caches of the art scripts, the checks below checks and the game views below
-    # views: artifacts/art-cache of the repository's main checkout, the parent of Git's common folder,
-    # so every worktree of the repository shares one cache, or of this checkout when Git cannot say or
-    # that folder is no checkout of this repository (Resolve-ArtCacheRoot). The keys hold content and
-    # code fingerprints and never a path, and every entry is written by a rename, so the checkouts share
-    # it safely.
+    # views: the folder MMORPG_ART_CACHE_ROOT names when it is set; else artifacts/art-cache of the
+    # repository's main checkout, the parent of Git's common folder, so every worktree of the repository
+    # shares one cache, or of this checkout when Git cannot say or that folder is no checkout of this
+    # repository (Resolve-ArtCacheRoot). The keys hold content and code fingerprints and never a path,
+    # and every entry is written by a rename, so the checkouts share it safely.
+    if ($null -eq $script:ArtCacheRootPath -and -not [string]::IsNullOrWhiteSpace($env:MMORPG_ART_CACHE_ROOT)) {
+        $script:ArtCacheRootPath = Resolve-ArtCacheRoot $script:ArtRepositoryRoot $null $env:MMORPG_ART_CACHE_ROOT
+    }
+
     if ($null -eq $script:ArtCacheRootPath) {
         $common = $null
         try {
@@ -3831,4 +3840,339 @@ function Get-ArtBuildFolder([string]$Name) {
     $folder = Join-Path (Join-Path $script:ArtRepositoryRoot "artifacts/art-build") $Name
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
     return $folder
+}
+
+# The data of content that is not exported yet, which tools/art/Build-Art.ps1 stages for the game views
+# of a change, by default below artifacts/art-build/staging: per garment template or masked texture the
+# data files its export would write for its current content, named as the exported ones, which the stage
+# command of art_pipeline_cli.py writes by a rename, and index.json, what each was computed from, so only
+# a missing or stale one is staged again. A staged file is never an export and names no approval. See
+# docs/ART_PIPELINE.md, Build The Art.
+$script:ArtStagingVersion = 1
+
+function Get-ArtStagingHash([string]$Text) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text)) | ForEach-Object { $_.ToString("x2") }) -join "")
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
+function Get-ArtManifestFieldsText($Manifest) {
+    # The fields of an asset.json that a person writes, such as a template's band and recipe, without its
+    # content record, approvals, and export.
+    $json = Get-Content -Raw -LiteralPath $Manifest.ManifestPath | ConvertFrom-Json
+    foreach ($name in @("content", "approvals", "export")) {
+        $json.PSObject.Properties.Remove($name)
+    }
+
+    return ($json | ConvertTo-Json -Depth 32 -Compress)
+}
+
+function Get-ArtStagingKey($Manifest, [string]$Code) {
+    # The fingerprint of what the staged data of a garment template or a garment texture is computed from:
+    # the pipeline's code, Code; the asset's file, content, and fields, and of a texture its template's
+    # too; the content of the template's cage; the fit of every body's export; the content of every clip
+    # library of its skeleton with its clips; and every template of a lower layer it is checked over, with
+    # its file, content, band, and fields. $null when one of them is not current, such as a content record
+    # read from another version of a file, so the data is staged again.
+    try {
+        $template = if ($Manifest.Kind -eq "texture") { $Manifest.Garment } else { $Manifest }
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.Add("art-staging/$script:ArtStagingVersion")
+        $lines.Add("code $Code")
+        $lines.Add("blender $script:ArtBlenderVersion")
+        foreach ($item in @(@($Manifest) + @(if ($Manifest.Kind -eq "texture") { $template }))) {
+            if ($null -ne (Get-ArtContentProblem $item)) {
+                return $null
+            }
+
+            $stages = @($item.Stages | ForEach-Object { "$_=$($item.Content.stages[$_])" }) -join " "
+            $lines.Add("asset $($item.RelativeDirectory) source=$($item.Content.sourceSha256) $stages")
+            $lines.Add("fields $($item.RelativeDirectory) $(Get-ArtStagingHash (Get-ArtManifestFieldsText $item))")
+        }
+
+        $lines.Add("cage $($template.Cage.RelativeDirectory) $(Get-ArtCageContent $template.Cage)")
+        foreach ($body in @($template.Bodies)) {
+            $export = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
+            if ($null -eq $export -or [string]::IsNullOrEmpty($export.fitSha256)) {
+                return $null
+            }
+
+            $lines.Add("body $($body.Asset) $($body.Root) fit=$($export.fitSha256)")
+        }
+
+        foreach ($library in @(Get-ArtClipLibraries $template.Skeleton)) {
+            $lines.Add("library $($library.Asset) content=$($library.ContentSha256) clips=$($library.Clips -join '+')")
+        }
+
+        foreach ($pair in @(Get-ArtGarmentPairs $template)) {
+            if ($null -ne (Get-ArtContentProblem $pair)) {
+                return $null
+            }
+
+            $lines.Add("pair $($pair.RelativeDirectory) band=$($pair.Band) source=$($pair.Content.sourceSha256) rig=$($pair.Content.stages['rig']) " +
+                "fields=$(Get-ArtStagingHash (Get-ArtManifestFieldsText $pair))")
+        }
+
+        return Get-ArtStagingHash (($lines -join "`n") + "`n")
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-ArtStagedNames($Manifest) {
+    # The data files the export of a garment template or a masked texture writes, one per body, by name.
+    return [string[]]@($Manifest.RootObjects | ForEach-Object { "$($Manifest.Name)_$_.json" })
+}
+
+function Read-ArtStagingIndex([string]$Folder) {
+    # The staged assets of a staging folder by asset folder, each with the key it was staged for, its
+    # state, staged, opaque, or refused, its files with their SHA-256, the reason of a refusal, and the
+    # seconds it took. A missing or broken index, or one of another version, reads as none.
+    $index = @{}
+    $path = Join-Path $Folder "index.json"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $index
+    }
+
+    try {
+        $json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+        if ([int]$json.version -ne $script:ArtStagingVersion) {
+            return @{}
+        }
+
+        foreach ($property in @($json.assets.PSObject.Properties)) {
+            $files = [ordered]@{}
+            foreach ($file in @($property.Value.files.PSObject.Properties)) {
+                $files[$file.Name] = [string]$file.Value
+            }
+
+            $index[$property.Name] = [pscustomobject]@{
+                Key = [string]$property.Value.key
+                State = [string]$property.Value.state
+                Files = $files
+                Problem = [string]$property.Value.problem
+                Seconds = [double]$property.Value.seconds
+            }
+        }
+    }
+    catch {
+        return @{}
+    }
+
+    return $index
+}
+
+function Write-ArtStagingIndex([string]$Folder, $Index) {
+    # Writes the index whole, sorted by asset, under a temporary name first, which then takes its place.
+    $assets = [ordered]@{}
+    $names = [string[]]@($Index.Keys)
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    foreach ($asset in $names) {
+        $entry = $Index[$asset]
+        $assets[$asset] = [ordered]@{ key = $entry.Key; state = $entry.State; files = $entry.Files; problem = $entry.Problem
+            seconds = [Math]::Round([double]$entry.Seconds, 1) }
+    }
+
+    New-Item -ItemType Directory -Force -Path $Folder | Out-Null
+    $path = Join-Path $Folder "index.json"
+    $temporary = Join-Path $Folder ".index.json.$PID.tmp"
+    $text = ([ordered]@{ version = $script:ArtStagingVersion; assets = $assets } | ConvertTo-Json -Depth 6) + "`n"
+    [System.IO.File]::WriteAllText($temporary, $text, (New-Object System.Text.UTF8Encoding($false)))
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        [System.IO.File]::Replace($temporary, $path, [NullString]::Value)
+    }
+    else {
+        [System.IO.File]::Move($temporary, $path)
+    }
+}
+
+function Test-ArtStagedEntry($Entry, [string]$Key, [string]$Folder) {
+    # Whether an entry of the index holds: it was staged for this key, and every file it names is there
+    # with the bytes it was written with.
+    if ($null -eq $Entry -or [string]::IsNullOrEmpty($Key) -or $Entry.Key -cne $Key -or @("staged", "opaque", "refused") -cnotcontains $Entry.State) {
+        return $false
+    }
+
+    foreach ($name in @($Entry.Files.Keys)) {
+        $path = Join-Path $Folder $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-ArtFileSha256 $path) -cne $Entry.Files[$name]) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function New-ArtStagingResult($Manifest, [string]$State, [string]$Problem, $Files, [double]$Seconds, [bool]$FromIndex, $Counts) {
+    return [pscustomobject]@{
+        Asset = $Manifest.RelativeDirectory
+        Name = $Manifest.Name
+        Kind = $Manifest.Kind
+        State = $State
+        Problem = $Problem
+        Files = [string[]]@($Files)
+        Seconds = $Seconds
+        FromIndex = $FromIndex
+        Units = if ($null -ne $Counts) { [int]$Counts.Units } else { 0 }
+        Cached = if ($null -ne $Counts) { [int]$Counts.Cached } else { 0 }
+    }
+}
+
+function Complete-ArtStagingJob($Job, [string]$Folder) {
+    # The result of one stage run: refused with the rules it breaks, which is a result of its content;
+    # failed when Blender failed, the file changed while it ran, or it did not report every file once; or
+    # staged with its files, or opaque for a texture without transparent parts, which has no data of its
+    # own.
+    $manifest = $Job.Manifest
+    $counts = Get-ArtCacheCounts $Job.Results
+    $refusal = "$($manifest.Name) does not meet the art pipeline rules:"
+    if ($null -ne $Job.Error) {
+        if ($Job.Error.StartsWith($refusal)) {
+            $rules = @($Job.Error.Substring($refusal.Length) -split "\r?\n" | ForEach-Object { $_.Trim() -replace '^- ', '' } | Where-Object { $_ })
+            return New-ArtStagingResult $manifest "refused" ($rules -join "`n") @() $Job.Seconds $false $counts
+        }
+
+        return New-ArtStagingResult $manifest "failed" $Job.Error @() $Job.Seconds $false $counts
+    }
+
+    $read = Read-ArtContentLine $Job.Results
+    if ($Job.SourceSha256 -cne $manifest.Content.sourceSha256 -or (Get-ArtFileSha256 $manifest.SourcePath) -cne $Job.SourceSha256 -or
+        -not (Test-ArtSameStages $manifest $read)) {
+        return New-ArtStagingResult $manifest "failed" "$($manifest.Name).blend changed while its data was staged; run the build again." @() $Job.Seconds $false $counts
+    }
+
+    $staged = @($Job.Results | Where-Object { $_ -like "ART_STAGED *" } | ForEach-Object { $_.Substring("ART_STAGED ".Length) | ConvertFrom-Json })
+    $opaque = @($Job.Results | Where-Object { $_ -like "ART_STAGE_OPAQUE *" }).Count -gt 0
+    if ($opaque -and $manifest.Kind -eq "texture" -and $staged.Count -eq 0) {
+        return New-ArtStagingResult $manifest "opaque" $null @() $Job.Seconds $false $counts
+    }
+
+    $names = [string[]]@($staged | ForEach-Object { [System.IO.Path]::GetFileName([string]$_.data) } | Sort-Object)
+    $expected = [string[]]@(Get-ArtStagedNames $manifest | Sort-Object)
+    $inFolder = @($staged | Where-Object { -not (Test-ArtSamePath (Split-Path -Parent ([string]$_.data)) $Folder) }).Count -eq 0
+    if ($opaque -or -not $inFolder -or ($names -join ",") -cne ($expected -join ",")) {
+        return New-ArtStagingResult $manifest "failed" "Blender did not report the data of every body of $($manifest.Name) once in $Folder." @() $Job.Seconds $false $counts
+    }
+
+    return New-ArtStagingResult $manifest "staged" $null $expected $Job.Seconds $false $counts
+}
+
+function Invoke-ArtStaging([string]$Blender, $Manifests, [string]$Folder, [string]$Code, [int]$Count, [switch]$NoCache) {
+    # Stages the data of the given garment templates and garment textures into Folder, Count Blender
+    # processes at once: an asset whose entry of the index holds for its key keeps its files, unless
+    # -NoCache; every other one runs the stage command. The files and entries of other assets go, so the
+    # folder holds the data of exactly what is staged now. Returns per asset, in the order given, its
+    # result: staged, opaque, refused with the rules it breaks, which stays in the index, since it is the
+    # result of its content, or failed with the error, which does not.
+    New-Item -ItemType Directory -Force -Path $Folder | Out-Null
+    $index = Read-ArtStagingIndex $Folder
+    $results = @{}
+    $jobs = New-Object System.Collections.Generic.List[object]
+    $logs = Get-ArtBuildFolder "stage"
+    $keep = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $null = $keep.Add("index.json")
+    $wanted = @{}
+    foreach ($manifest in @($Manifests)) {
+        $asset = $manifest.RelativeDirectory
+        $wanted[$asset] = $true
+        $key = Get-ArtStagingKey $manifest $Code
+        $entry = $index[$asset]
+        if (-not $NoCache -and (Test-ArtStagedEntry $entry $key $Folder)) {
+            $results[$asset] = New-ArtStagingResult $manifest $entry.State $entry.Problem @($entry.Files.Keys) $entry.Seconds $true $null
+            foreach ($name in @($entry.Files.Keys)) {
+                $null = $keep.Add($name)
+            }
+
+            continue
+        }
+
+        $index.Remove($asset)
+        try {
+            $template = if ($manifest.Kind -eq "texture") { $manifest.Garment } else { $manifest }
+            $stage = if ($manifest.Kind -eq "texture") { "texture" } else { $manifest.Stages[-1] }
+            $arguments = @("stage") + (Get-ArtValidationArguments $manifest $stage) + @("--target", $Folder) +
+                (Get-ArtCacheArguments $Blender $manifest -NoCache:$NoCache -Pairs @(Get-ArtGarmentPairs $template))
+            $jobs.Add((New-ArtBlenderJob $manifest $arguments (Join-Path $logs "$($manifest.Name).log") @{
+                        SourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+                        Key = $key
+                        Folder = $Folder
+                    }))
+        }
+        catch {
+            $results[$asset] = New-ArtStagingResult $manifest "failed" $_.Exception.Message @() 0.0 $false $null
+        }
+    }
+
+    # What another asset staged before, a stale file of an asset staged again, and what an interrupted
+    # run left go first, so a failed run leaves no file of the asset it stages.
+    foreach ($asset in @($index.Keys | Where-Object { -not $wanted.ContainsKey($_) })) {
+        $index.Remove($asset)
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $Folder -File -Force | Where-Object { -not $keep.Contains($_.Name) })) {
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+
+    if ($jobs.Count -gt 0) {
+        # The longest first, by the seconds of each asset's last export with its checks computed.
+        $expected = @{}
+        try {
+            $secondsPath = Join-Path (Get-ArtBuildFolder "export") "seconds.json"
+            if (Test-Path -LiteralPath $secondsPath -PathType Leaf) {
+                foreach ($property in (Get-Content -Raw -LiteralPath $secondsPath | ConvertFrom-Json).PSObject.Properties) {
+                    $expected[$property.Name] = [double]$property.Value
+                }
+            }
+        }
+        catch {
+            # A broken file only loses the order.
+        }
+
+        $ordered = @($jobs | Sort-Object -Property @{ Expression = { [double]$expected[$_.Manifest.RelativeDirectory] }; Descending = $true },
+            @{ Expression = { $_.Manifest.RelativeDirectory }; Descending = $false })
+        Write-Host "Staging the data of $($jobs.Count) garment template(s) and texture(s) for the game views, $Count at once."
+        Invoke-ArtBlenderJobs $Blender $ordered $Count {
+            param($Job)
+            $result = Complete-ArtStagingJob $Job $Job.Folder
+            $results[$result.Asset] = $result
+            if ($result.State -ne "failed" -and -not [string]::IsNullOrEmpty($Job.Key)) {
+                $files = [ordered]@{}
+                foreach ($name in $result.Files) {
+                    $files[$name] = Get-ArtFileSha256 (Join-Path $Job.Folder $name)
+                }
+
+                $index[$result.Asset] = [pscustomobject]@{ Key = $Job.Key; State = $result.State; Files = $files; Problem = $result.Problem; Seconds = $result.Seconds }
+            }
+            elseif ($result.State -eq "failed") {
+                # A run that failed leaves no file of its asset.
+                foreach ($name in @(Get-ArtStagedNames $Job.Manifest)) {
+                    Remove-Item -LiteralPath (Join-Path $Job.Folder $name) -Force -ErrorAction SilentlyContinue
+                }
+            }
+
+            $what = switch ($result.State) {
+                "staged" { "staged its data" }
+                "opaque" { "is opaque and uses the data of its template" }
+                "refused" { "breaks a rule, so it has no data: $(@($result.Problem -split "`n")[0])" }
+                default { "could not be staged: $($result.Problem)" }
+            }
+            Write-Host "$($result.Asset) $what."
+            Write-Host (Format-ArtElapsed $Job.Name $Job.Watch $Job.Results)
+        }
+    }
+
+    # A job whose result could not be read failed.
+    foreach ($job in $jobs) {
+        if (-not $results.ContainsKey($job.Manifest.RelativeDirectory)) {
+            $results[$job.Manifest.RelativeDirectory] = New-ArtStagingResult $job.Manifest "failed" "$($job.Error)" @() $job.Seconds $false $null
+        }
+    }
+
+    Write-ArtStagingIndex $Folder $index
+    return @($Manifests | ForEach-Object { $results[$_.RelativeDirectory] })
 }

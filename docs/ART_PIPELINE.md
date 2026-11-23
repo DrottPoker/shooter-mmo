@@ -22,7 +22,8 @@ reviewer approves each review stage
         v
         |  Export-ArtAsset.ps1          refuses unapproved or changed content; several at once
         |  Build-Art.ps1                all of it in one run: records, syncs, the approvals that
-        v                               wait, exports, the Unity follow-up, and the verification
+        |                               wait, exports, the Unity follow-up, the verification, and
+        v                               a review page of what changed, as the game draws it
 src/Client/Assets/Art/Models/<Category>/<Name>.fbx       with its clips, if skinned
 src/Client/Assets/Art/Textures/<Category>/<Image>.png    painted materials only
         |  ArtModelImportRules          fixed import settings, materials remapped by name,
@@ -50,7 +51,8 @@ attachments, and their Addressables entries by itself when it gets focus, and
 without a focused Editor, the cloth fixtures included, so no menu command
 stands between the export and the game. `tools/art/Build-Art.ps1` takes
 every asset from changed files to exports in Unity in one run and stops only
-where a person must approve; see [Build The Art](#build-the-art).
+where a person must approve, with one page that shows what to approve and how
+the change looks in the game; see [Build The Art](#build-the-art).
 
 ## What To Do
 
@@ -75,7 +77,7 @@ art has one how-to:
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
 | See dressed bodies as the game draws them, count the pixels of skin and of inner garments that come through and of contact, and compare them with the baseline | `Render-ArtViews.ps1` | [Game Views](#game-views) |
-| Bring every asset from its changed file to the game in one run: records, syncs, the approvals that wait, exports, Unity, and the verification | `Build-Art.ps1` | [Build The Art](#build-the-art) |
+| Bring every asset from its changed file to the game in one run: records, syncs, the approvals that wait, exports, Unity, and the verification, and see on one page what waits for your approval, how the change looks in the game before and after, and the commands that approve it | `Build-Art.ps1`, then `artifacts\art-build\review\index.html` | [Build The Art](#build-the-art) |
 | Update the materials, catalogs, Addressables entries, and cloth fixtures after an export without a focused Editor | `Update-UnityArt.ps1` | [Unity Import Rules](#unity-import-rules) |
 | Record the content of a file saved by hand and see which approvals still hold | `Update-ArtContent.ps1` | [Update The Content Record](#update-the-content-record) |
 | Confirm that every source, approval, and export is current, such as after an edit of the bodies | the sync scripts and their review sheets | [Check That The Art Sources Are Current](#check-that-the-art-sources-are-current) |
@@ -179,15 +181,16 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`, and `WaterCommon.hlsl`, the water's clock and the sea's waves that both share; see [Water](#water). |
 | `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
-| `artifacts/art-build` | The output of every Blender run of an export, `export/<Name>.log`, and of a content run, `content/<Name>.log`, the seconds of each asset's last export with its checks computed, `export/seconds.json`, which puts the longest export first, the Unity log of the follow-up, `unity/follow-up.log`, the marker `unity/pending`, which an export leaves until the Unity follow-up succeeds, and `synced.json`, per asset the SHA-256 of its file as the build's last sync of it left it and the fingerprints of what it followed then, so the build does not sync it again while nothing changed. |
-| `artifacts/art-cache` of the main checkout, `tools/art/blender/art_pipeline/check_cache.py` | The caches of the art scripts, which every worktree of the repository shares, `Get-ArtCacheRoot` in `ArtPipelineCommon.ps1` finds, and the scripts pass to Blender: below `checks` the [cache of the garment checks](#cache-of-the-garment-checks), their results by the content of what they read, so a sync, an approval, and an export compute each once, and below `views` the pictures and numbers of the [game views](#game-views). Safe to delete at any time. |
+| `artifacts/art-build` | The output of every Blender run of an export, `export/<Name>.log`, of a content run, `content/<Name>.log`, and of a stage run, `stage/<Name>.log`, the seconds of each asset's last export with its checks computed, `export/seconds.json`, which puts the longest export first, the Unity log of the follow-up, `unity/follow-up.log`, the marker `unity/pending`, which an export leaves until the Unity follow-up succeeds, `synced.json`, per asset the SHA-256 of its file as the build's last sync of it left it and the fingerprints of what it followed then, so the build does not sync it again while nothing changed, `staging`, the [staged data](#build-the-art) of garments that are not exported from their current content with `index.json`, what each was computed from, and `review`, the [review page](#build-the-art) `index.html` with the pictures it shows. |
+| `artifacts/art-cache` of the main checkout, `tools/art/blender/art_pipeline/check_cache.py` | The caches of the art scripts, which every worktree of the repository shares, `Get-ArtCacheRoot` in `ArtPipelineCommon.ps1` finds, or `MMORPG_ART_CACHE_ROOT` names, and the scripts pass to Blender: below `checks` the [cache of the garment checks](#cache-of-the-garment-checks), their results by the content of what they read, so a sync, an approval, and an export compute each once, and below `views` the pictures and numbers of the [game views](#game-views), with `views/committed`, which entry holds the pictures of each committed key. Safe to delete at any time. |
 | `artifacts/art-views` | The pictures of the [game views](#game-views) under readable names, a contact sheet per outfit and body, and `keys.json`, the key of every copy and sheet, so a run writes again only what changed. |
 | `art/Views/baseline.json` | The baseline of the game views: per view its committed key and its numbers, measured on approved, exported content. |
-| `tools/art/Render-ArtViews.ps1`, `ArtViews.ps1`, `tools/art/views/standard-set.json`, `tools/ci/Test-ArtViews.ps1` | The [game views](#game-views): the renderer's script, the standard set of views, the helpers with the committed key of a view, the check of the baseline, which `Verify-ArtAssets.ps1` runs, the comparison, and the cache's upkeep, and their check without Blender. |
+| `tools/art/Render-ArtViews.ps1`, `ArtViews.ps1`, `tools/art/views/standard-set.json`, `tools/ci/Test-ArtViews.ps1` | The [game views](#game-views): the renderer's script, the standard set of views, the helpers with the committed key of a view, the check of the baseline, which `Verify-ArtAssets.ps1` runs, the comparison, the cache's upkeep and its index of the pictures by committed key, and their check without Blender, which also checks the staged data's index and the review page. |
 | `tools/art/blender/art_pipeline/game_view.py`, `tools/art/blender/art_views_cli.py` | The renderer of the game views and its Blender entry point: an outfit on a body drawn by the client's rules for what a body draws, and the classes of its triangles. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`, which also runs several Blender processes at once. |
-| `tools/art/Build-Art.ps1` | The [build command](#build-the-art): every content record, sync, and export that changed files need, the approvals that wait, the Unity follow-up, and the verification, in one run. |
+| `tools/art/Build-Art.ps1` | The [build command](#build-the-art): every content record, sync, and export that changed files need, the approvals that wait, the data and the game views of a change that waits, the Unity follow-up, the verification, and the review page, in one run. |
+| `tools/art/ArtReviewPage.ps1` | The [review page](#build-the-art) of the build: what waits for an approval with the commands, what changed in each asset, the game views that changed before and after with their numbers, and what the build exported and measured, as one HTML file with its pictures beside it. |
 | `tools/art/Update-UnityArt.ps1` | Runs the Unity follow-up of an export in the Editor that has the project open, or headless; see [Unity Import Rules](#unity-import-rules). |
 | `tools/art/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/art/Update-ArtContent.ps1`, `tools/art/blender/art_pipeline/content.py`, `content_core.py` | Reads the [content of the review stages](#content-of-a-stage) from a `.blend` file into the content record of `asset.json`, for a file saved by hand: `content.py` reads the parts in Blender, `content_core.py` rounds, hashes, and chains them without Blender. |
@@ -721,56 +724,160 @@ confirm a clean state:
    after a change of the cage, whose export record names the old cage until its
    export; the asset goes on to `approval` or `export`. A missing or broken file
    costs one sync.
-4. It exports every asset that needs an export, with `Export-ArtAsset.ps1` and
+4. Once the syncs have settled, before any export, and again only after another
+   sync, it draws the [game views](#game-views) that the change touches and that
+   stay changed after this build: the views whose committed key differs from
+   their baseline entry's and that read an asset that waits for an approval. The
+   views of content that this build exports are measured after the exports
+   instead, in step 7. Such a view needs the data of its garments as their
+   export would write it for their current content, so the build first stages
+   it: for every garment template and texture the views read whose need is not
+   `nothing`, the `stage` command of `art_pipeline_cli.py` runs the template's or
+   the texture's export up to its data, with its checks through their
+   [cache](#cache-of-the-garment-checks), and writes only the data files, each
+   by a rename, under the exported names into `artifacts/art-build/staging`: no
+   model, no image, no record in `asset.json`, nothing below `src`, and nothing
+   that names an approval. A texture without transparent parts writes none and
+   reads its template's. `staging/index.json` keeps what each was staged from: the
+   pipeline's code, its file, content, and fields, a texture's template's too, the
+   cage's content, the fit of each body's export, the content of the clip
+   libraries, and the templates of lower layers it is checked over; while they
+   are the same and its files are as written, it is not staged again, and the
+   files of assets not staged now go. A garment that breaks a rule of its `rig`
+   or `texture` stage has no data, so the views that read it are not drawn and
+   the page shows its rules; that is a result, not an error. The views are drawn
+   by `Render-ArtViews.ps1 -View` with the staged data in front of the exported,
+   `-Jobs` Blender processes at once, and taken from the views cache where they
+   are there. The seconds go to the phases `staging` and `changed views`, and of
+   each staged asset to the phase `stage`.
+5. It exports every asset that needs an export, with `Export-ArtAsset.ps1` and
    `-Jobs` Blender processes at once, and plans again, since a body's new export
    may give the cage, the garments, and the paint layers a sync.
-5. It runs the Unity follow-up, `Update-UnityArt.ps1`, while the marker
+6. It runs the Unity follow-up, `Update-UnityArt.ps1`, while the marker
    `artifacts/art-build/unity/pending` is there, which `Export-ArtAsset.ps1`
    leaves once it wrote a record and `Update-UnityArt.ps1` removes when it
    succeeds, so a follow-up that failed, such as in Play Mode or after its time,
    runs again with the next build, also without an export.
-6. It measures the baseline of the [game views](#game-views) when an entry of
+7. It measures the baseline of the [game views](#game-views) when an entry of
    it is not current for the committed content, after an export or a change of
    the renderer's code: it runs `Render-ArtViews.ps1 -WriteBaseline` with `-Jobs`
    Blender processes, which measures the views whose assets are all approved and
    exported from their current content and keeps the entries of the others, and
    prints the seconds as the phase `game views`. A measurement that fails fails
    the build. While every entry is current, it starts no Blender for the views.
-7. It runs `Verify-ArtAssets.ps1 -Waiting` with every asset whose need is not
+8. It runs `Verify-ArtAssets.ps1 -Waiting` with every asset whose need is not
    `nothing`: their problems are listed apart and do not fail it, also the views
    of the game views' baseline that read them, while every other problem does,
    also one that belongs to no asset, such as a stray file or a material of two
-   assets. Without `-Waiting`, as CI runs it, every problem fails it.
-8. It lists, once and from its last plan, every review stage that waits for an
+   assets. Without `-Waiting`, as CI runs it, every problem fails it. A staging
+   or a drawing of step 4 that failed, other than a garment that breaks a rule,
+   fails the build here, after everything else ran.
+9. It lists, once and from its last plan, every review stage that waits for an
    approval, in the order to approve them: the asset, which parts of its
    content differ from the last committed `asset.json`, its review sheet, and
-   the exact `Approve-ArtAsset.ps1` command. Then it prints the seconds of each
-   phase and of each asset's content run, sync, and export, how many check
-   units of the exports came from the cache, the assets it synced, and what is
-   left for a person.
+   the exact `Approve-ArtAsset.ps1` command.
+10. It writes the review page, also when the build failed, and prints the
+    seconds of each phase and of each asset's content run, sync, stage, and
+    export, how many check units of the exports came from the cache, the assets
+    it synced, what is left for a person, the result, and as the last line the
+    page's path: `Review page, with what changed and the commands:
+    ...\artifacts\art-build\review\index.html`.
+
+**The review page** is the one place a person looks at after a build. It is
+one HTML file, `artifacts/art-build/review/index.html`, written whole by
+`tools/art/ArtReviewPage.ps1` on every build but `-Plan`, with the pictures it
+shows copied beside it, so the folder opens from the file system without a
+server or a script, in light or dark as the system is set. It approves nothing
+and says "waits for your approval". In this order it shows:
+
+1. What to do: how many review stages of how many assets wait for an approval,
+   and one block to copy with every `Approve-ArtAsset.ps1` command in the order
+   to run them and `.\tools\art\Build-Art.ps1` after them. Then the way back:
+   `If you do not accept the changes, this restores every art file that differs
+   from Git, yours and the ones the build fitted to them; then run the build
+   again:` with a block of `git checkout HEAD -- <folders>`, which restores the
+   folders come from `git status --porcelain -- art`, read without Git's
+   optional locks, each file grouped to the asset folder that holds its
+   `asset.json`, never `art/Views`, so the command holds also after a build
+   that synced nothing; asset folders that the last commit lacks are named
+   after it as not restored by the command. Or `Nothing to approve.`. A build
+   that failed says so instead, with its error, and asks to approve nothing
+   until it runs through, so its page shows what changed without the approve
+   commands, gives the same way back, `To give the changes up instead, ...`,
+   and says in one line how many changed views it stopped before drawing. Then
+   what the build did, in plain words. The page's only commands
+   are the approvals, the build, and the way back; a reason of the pipeline that
+   tells to run another script is shown without that clause.
+2. Per asset that waits, in the order to approve: its name and kind, what
+   changed in words, such as `Changed: the image. It follows the new UVs of
+   Trousers.`, from the parts that differ from the committed `asset.json` and
+   the assets it follows whose parts differ, its review sheet when one was
+   rendered after its file was last saved, as a sync renders it, and its
+   commands. A body that waits says that its game views show it as its file is
+   now, with every garment still fitted to its last export: the renderer
+   appends the body from its current file and each garment's version from its
+   template's file, as the template's last sync fitted it, so what comes through
+   there is no fault of the garments, which the build fits to the body once it
+   is approved and exported.
+3. The game views that changed: the totals, `<n> game view(s) changed: <n>
+   worse, <n> better, ...`; once, how many of the changed views in poses where
+   nothing may come through show skin or an inner garment after the change and
+   how many of those did before it, since the baseline has such pixels in many
+   of those poses; a table `By outfit and body` over the views drawn, with the
+   count of worse and better views and the skin and inner pixels before and
+   after, summed; and a table of the worse views with their skin and inner
+   differences, each name a link. The worse views follow, ordered by how much
+   more comes through, skin and inner together, the most first, alike ones in
+   the order of the set, the first 12 in full and the others folded in that
+   order, then the better ones by how much less, the same way, then the ones
+   with other pixels but the same skin and inner numbers, folded, and the ones
+   that look exactly as before, pixel for pixel, by name only. Each view shows
+   its numbers before, from the baseline, after, and the difference, the picture
+   before, from the views cache by the baseline's key, the picture after, and
+   the picture after with the class pixels over it, each 512 by 768 and smaller
+   in a narrow window; a view of the rare phase says so. When the cache no
+   longer has the picture before, the view says so and shows the baseline's
+   numbers. A view that could not be drawn is listed with the reason, such as
+   the rule its garment breaks.
+4. What the build exported; what it did not export, each in one clause of what
+   it waits for, such as `waits for the approval of art/Garments/Trousers, which
+   it follows`; what its measurement of the baseline did to the numbers, a line
+   over every measured view and one per outfit and body, such as `Linen on
+   Male: 35 view(s) measured; in the poses where nothing may come through, skin
+   <a> -> <b> px and inner <c> -> <d> px.`; the data it staged; and the problems
+   of staging and drawing.
+
+Only what changed is on it: a view whose committed key is its baseline entry's
+and an asset whose stages hold are not.
 
 Exit code 0 means every asset is exported and verified, 2 that review stages
 wait for an approval and everything else that could be exported was, and 1 an
 error, such as a sync or an export that breaks a rule, a failed Unity
-follow-up, a measurement of the game views that failed, or a problem of the
-verification that no approval explains.
+follow-up, a measurement of the game views that failed, a staging or a drawing
+of the changed views that failed, or a problem of the verification that no
+approval explains.
 `-Jobs <n>` sets how many Blender processes run at once, and `-NoCache`
-computes every check of a garment template or a masked texture.
+computes every check of a garment template or a masked texture and stages every
+garment again.
 
 When the reviewer rejects a change after the build synced what follows it, such
 as a texture moved to a template's new UVs or garments fitted to a changed
-cage, the syncs changed those files too. The build ends with `Synced by this
-run, so their files changed: ...`, which names every asset it synced; restore
-the changed asset and those from Git, such as
-`git checkout -- art/Garments/Trousers art/GarmentTextures/WoolTrousers`, and run
-the build again.
+cage, the syncs may have changed those files too. The build ends with `Synced
+by this run, so their files may have changed: ...`, which names every asset it
+synced, and the
+review page gives the `git checkout` of every asset folder whose files differ
+from Git; run it, such as
+`git checkout HEAD -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, and
+run the build again.
 
 Expected result on a clean checkout: the plan lists every asset with
 `nothing` and ends with `In all: 44 nothing.`, then `Verified 44 art
 asset(s).` and `The baseline of the game views holds for the committed content
-of their 560 view(s).`, the seconds per phase without a `game views` phase,
-`Left for a person: nothing.`, and `Result: every asset is exported and
-verified.`, exit code 0, in about a minute; `git status` lists nothing.
+of their 560 view(s).`, the seconds per phase without a `staging`, `changed
+views`, or `game views` phase, `Left for a person: nothing.`, `Result: every
+asset is exported and verified.`, and the page's path, exit code 0, in about a
+minute; `git status` lists nothing. The page says `Nothing to approve.` with
+what the build did, and shows no game view and no picture.
 
 To see the build stop at an approval, move one UV of a garment template's first
 version in Blender, such as `Trousers_Male` in
@@ -780,16 +887,27 @@ sync: its 'model' content differs from its approval`, every template and
 texture that follows it `later: it follows art/Garments/Trousers, which this
 build syncs or exports first`, and its `model` and `rig` stages under `Review
 stages that wait for an approval` with `the parts uv changed`. Without `-Plan`,
-the build syncs the template, then its texture `WoolTrousers` for the new UVs,
-lists both for an approval with their review sheets and commands, marks the
-templates of higher layers worn over it and the masked textures on them
-`waits`, exports nothing, keeps the baseline entries of the game views that
-read them, which the verification lists as problems that wait for an approval,
-names both under `Synced by this run`, and ends with
-exit code 2 after a few minutes. Run it again: it syncs nothing, since both
-files and what they follow are as its syncs left them, and ends with the same
-list and exit code 2. Restore the files and records with
-`git checkout -- art/Garments/Trousers art/GarmentTextures/WoolTrousers`.
+the build syncs the template, the templates of higher layers worn over it,
+which a UV leaves as they are, and its texture `WoolTrousers` for the new UVs,
+lists the template and the texture for an approval with their review sheets
+and commands, marks the templates over it and the masked textures on them
+`waits`, stages the data of the 14 templates and textures that the changed
+views read, draws the 490 views of the outfits that wear the trousers with it,
+exports nothing, keeps the baseline entries of those views, which the
+verification lists as problems that wait for an approval, names the synced
+assets under `Synced by this run`, and ends with exit code 2 and the page's
+path, after about 20 minutes with the cache of the checks of an earlier run.
+The page lists 3 review stages of 2 assets with their commands and the way back,
+`git checkout HEAD -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, since
+the syncs of the templates over it leave their files as they are; `Trousers`,
+`Changed: the UVs.`, and `WoolTrousers`, `Changed: the image. It follows the
+new UVs of Trousers.`, each with its review sheet; and `490 game view(s)
+changed: 0 worse, 0 better, 112 with other pixels but the same show-through,
+and 378 that look exactly as before`. Run it again: it syncs and stages
+nothing, since the files and what they follow are as its syncs and its staging
+left them, takes the views from the cache, and ends with the same list, page,
+and exit code 2 in a few minutes. Restore the files and records with the way
+back the page gives.
 
 ### Compare A Model With Its Reference Pictures
 
@@ -3467,7 +3585,11 @@ folder, so a new worktree starts with what any other one computed:
 folder, `git rev-parse --path-format=absolute --git-common-dir`, when that is a
 checkout of this repository, which has `tools/art/ArtPipelineCommon.ps1` and is
 the top level Git names there, or else this checkout, also when Git cannot say,
-and the scripts pass the folder to Blender with `--cache-root`. Sharing is safe: a key holds content and code fingerprints and
+and the scripts pass the folder to Blender with `--cache-root`. The environment
+variable `MMORPG_ART_CACHE_ROOT` names another folder instead, such as for a
+copy of the tree that a test changes and that must neither read nor fill the
+shared cache: `$env:MMORPG_ART_CACHE_ROOT = "<folder>"` before its commands.
+Sharing is safe: a key holds content and code fingerprints and
 never a path, no entry holds a path of a checkout, and every entry is written to
 a temporary name and moved into place. A worktree on other code of the pipeline
 has another code fingerprint, so it neither takes nor replaces the entries of
@@ -3566,10 +3688,12 @@ counted that must not show: skin that comes through a garment, an inner garment
 that comes through an outer one, and apart from them contact, where a limb
 presses into the cloth over another part of the body. The geometry, the images,
 the paint, and the clips come from the current `.blend` files; what the game
-leaves out of a garment comes from the data of the garment's last export. A
-garment whose content changed since its export is drawn with the data of that
-export, which may no longer fit it, until the pipeline writes data of content
-that is not exported yet, a later step; `Render-ArtViews.ps1` names every outfit
+leaves out of a garment comes from the data of the garment's last export, or
+from data staged for its current content. `Build-Art.ps1` stages that data for
+the views of a change that waits for an approval, see [Build The
+Art](#build-the-art), and draws them with it. Run by hand without staged data,
+a garment whose content changed since its export is drawn with the data of that
+export, which may no longer fit it; `Render-ArtViews.ps1` names every outfit
 and body that reads such a garment, such as `Linen on Male: art/Garments/Shirt
 changed since its last export; drawn with the data of its last export.`
 `tools/art/Render-ArtViews.ps1` renders the views of the standard set,
@@ -3588,7 +3712,9 @@ sheet lays them. What the game leaves out comes from the data the export wrote,
 own, or else its template's. `-DataFolder` names other folders to look in: a
 texture's own data from the first folder that has it comes before its
 template's, and each from the first folder that has it, so data that is not
-exported yet can be put in front. The selection mirrors the client's
+exported yet can be put in front, and `-OpaqueTexture` names textures whose
+current content has no transparent parts, which read their template's data
+also when their last export left masks of their own. The selection mirrors the client's
 `PlayerBodyMeshPlan` and `BodyAppearanceCatalog` rule for rule, over plain data,
 which `test_game_view.py` pins:
 
@@ -3718,11 +3844,18 @@ renders the view again. After a Blender process, its files are hashed again: a
 file that changed while it ran removes what it wrote, and the run fails for that
 outfit and body with `<file> changed during the run; run again.` A run that
 takes an entry touches its numbers, so the age of an entry is its last use. A
-run removes the entries that no run took for 30 days and that no view of the
-set would take now, with the files and the code as they are, of every view
-whose data is there; a picture without its numbers and a file that an
-interrupted run left under a temporary name go after a day. The upkeep touches
-nothing outside `views`. `artifacts/art-views` gets a copy of every picture
+view whose body has an export record and whose every garment data file has the
+SHA-256 that its asset's export record names, so its pictures show exactly what
+its committed key names, notes below `views/committed` which
+entry holds the pictures of its committed key, one small file per key written
+by a rename, so a later change finds the picture before a view's baseline entry
+by that entry's key. A run removes the entries that no run took for 30 days and
+that no view of the set would take now, with the files and the code as they
+are, of every view whose data is there, and keeps every entry that a key of the
+baseline points to through that index, however old; a note whose entry is gone
+goes with it, and a picture without its numbers and a file that an interrupted
+run left under a temporary name go after a day. The upkeep touches nothing
+outside `views`. `artifacts/art-views` gets a copy of every picture
 under the view's name, and one contact sheet per outfit and body,
 `<Outfit>_<Body>.png`, with each view's look beside its look with the class
 pixels over it; `keys.json` there, written by a rename and read as empty when
@@ -3757,8 +3890,10 @@ To render views and see their numbers:
 .\tools\art\Render-ArtViews.ps1 -All
 ```
 
-`-Outfit`, `-Body` (the body's label or folder), and `-Pose` choose views, and
-`-All` takes every view of the set. `-Jobs <n>` runs that many Blender processes
+`-Outfit`, `-Body` (the body's label or folder), `-Pose`, and `-View`, whole
+view names such as `Linen_Male_Walk03_Y215`, choose views, and `-All` takes
+every view of the set. `-Report`, for `Build-Art.ps1`, gets per chosen view its
+name, committed key, cache key, numbers, and pictures. `-Jobs <n>` runs that many Blender processes
 at once, half the logical processors and at most 8 by default, each one outfit
 on one body, so the files are opened once. `-NoCache` renders every chosen view
 again and replaces its entry. Expected result: per view a line such as
@@ -3783,10 +3918,11 @@ differ from the old entries, as `-Check` does, before it writes, drops the entry
 of a view the set no longer has, and ends with `The baseline
 art/Views/baseline.json is written: <n> view(s) measured now, <n> kept as they
 were, <n> without an entry.` It measures the exported data only, so it refuses
-`-DataFolder`, and the whole set, so it refuses `-Outfit`, `-Body`, and `-Pose`;
-it is never an approval. `-Check` compares the numbers with the baseline and
-lists per view what differs: more skin or garment pixels than the baseline is a
-regression, fewer an improvement, a change of contact is listed apart and never
+`-DataFolder` and `-OpaqueTexture`, and the whole set, so it refuses `-Outfit`,
+`-Body`, `-Pose`, and `-View`; it is never an approval. `-Check` compares the
+numbers with the baseline and lists per view what differs: more skin or garment
+pixels than the baseline is a regression, fewer an improvement, which the review
+page of `Build-Art.ps1` calls worse and better by the same rule, a change of contact is listed apart and never
 fails, and apart from that it lists the known show-through, the views of the
 clean phases whose baseline has skin or garment through pixels. Two runs of the
 whole set give the same numbers to the pixel, so the tolerance is 0. Exit code 2
@@ -3808,9 +3944,12 @@ asset(s).` and `The baseline of the game views holds for the committed content
 of their 560 view(s).` `tools/ci/Test-ArtViews.ps1` checks the helpers of
 `ArtViews.ps1` without Blender: the key and what changes it, the code's
 fingerprint, the paint layers, the baseline's round trip and partial write, the
-stale views and the asset that waits for them, the exit codes of `-Check`, the
-data lookup, the cache's upkeep, and the shared cache's root. Expected result:
-`Result: the game view helpers hold in every case`.
+stale views and the asset that waits for them, the exit codes of `-Check` and
+the class of a change, the data lookup, the choice of views, the cache's upkeep
+with the index of the pictures by committed key, the staged data's index and
+key, the review page of `ArtReviewPage.ps1`, which encodes every text, shows
+only what changed, and approves nothing, and the shared cache's root. Expected
+result: `Result: the game view helpers hold in every case`.
 
 To see the guard work, change one character of the key of the view
 `Linen_Male_Rest_Y215` in `art/Views/baseline.json` and run
@@ -3912,10 +4051,10 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns, the version of the content fingerprints and the parts of every stage, and that every content record and approval of an `asset.json` has the parts, stages, and fields of its kind. |
 | `test_content_core.py` | The content fingerprints that approvals bind to: rounding, with negative zero, noise below the rounding, and a change above it; named things in any order; the chain of the stages, a shape that changes every stage, weights that keep the model, and a clip that changes only the animation. It needs numpy. |
-| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the content of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds; that an export's records name the content of the other assets, not their exports; the Blender processes that `Invoke-ArtBlenderJobs` runs at once, with the environment and the result handling of `Invoke-ArtBlender` and their arguments quoted, and an export that plans a wave before it runs it and writes each `asset.json` whole; and that `Build-Art.ps1` records no approval and starts only the pipeline's own scripts, and `Update-UnityArt.ps1` the follow-up's method. |
+| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the content of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds; that an export's records name the content of the other assets, not their exports; the Blender processes that `Invoke-ArtBlenderJobs` runs at once, with the environment and the result handling of `Invoke-ArtBlender` and their arguments quoted, and an export that plans a wave before it runs it and writes each `asset.json` whole; the `stage` command, which takes an export's arguments with its staging folder, writes the bytes the export writes by a rename, and writes no model and no image; and that `Build-Art.ps1` records no approval and starts only the pipeline's own scripts, and `Update-UnityArt.ps1` the follow-up's method. |
 | `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken, also while several runs write and read one entry at once; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
 | `test_manifest_io.py` | `manifest_io.read_json`, which every reader of an `asset.json` in the pipeline uses: it reads the file again while Windows refuses it during a replace, for a few seconds, then raises, and raises any other error at once. |
-| `test_game_view.py` | The [game views](#game-views): what a body draws of the garments it wears, rule for rule as the client's `PlayerBodyMeshPlan`, the hidden slots, the hair under headwear and its shape key, the order, the cover layers, the pull-in, the faces left out, the paint layers a body shows with the underwear it always wears, the category without case, at most four on a material, and the split of a face from its first corner, and every committed garment data read as the catalog reads it; the rule of the classes against hand-made cloth and skin, a quad that pokes through, one a millimeter under, one beside the cloth's edge, one beyond the reach or behind the body's own surface, a transparent place, contact with cloth of another part of the body against through with its own, and a garment's turned edges, which can be marked and are no cloth; the camera that frames a figure, and the exact counts of a class picture; the standard set, which shows every template and texture in outfits a player wears, every pair of templates that can meet together, and frames of the clips with their phases, below 600 views; the baseline, one line per view of the set; the code of the key, which covers every module the renderer runs; and how the scripts run the renderer, its job file, the shared cache root, the committed key, the gate of the baseline, the hook in `Verify-ArtAssets.ps1`, and the measurement in `Build-Art.ps1`. It needs numpy. |
+| `test_game_view.py` | The [game views](#game-views): what a body draws of the garments it wears, rule for rule as the client's `PlayerBodyMeshPlan`, the hidden slots, the hair under headwear and its shape key, the order, the cover layers, the pull-in, the faces left out, the paint layers a body shows with the underwear it always wears, the category without case, at most four on a material, and the split of a face from its first corner, and every committed garment data read as the catalog reads it; the rule of the classes against hand-made cloth and skin, a quad that pokes through, one a millimeter under, one beside the cloth's edge, one beyond the reach or behind the body's own surface, a transparent place, contact with cloth of another part of the body against through with its own, and a garment's turned edges, which can be marked and are no cloth; the camera that frames a figure, and the exact counts of a class picture; the standard set, which shows every template and texture in outfits a player wears, every pair of templates that can meet together, and frames of the clips with their phases, below 600 views; the baseline, one line per view of the set; the code of the key, which covers every module the renderer runs; and how the scripts run the renderer, its job file, the shared cache root, the committed key, the gate of the baseline, one rule for the class of a change in `-Check` and on the review page, the hook in `Verify-ArtAssets.ps1`, the measurement in `Build-Art.ps1`, and its drawing of the changed views with staged data before its exports, with the index of pictures only from the exported data and the page after the verification. It needs numpy. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |

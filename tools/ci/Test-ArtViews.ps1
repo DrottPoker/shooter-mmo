@@ -3,13 +3,16 @@
 # what changes it, the fingerprint of the renderer's code, the paint layers a body shows, the baseline's
 # round trip and partial write, the grouping of stale views and the asset that waits for them, the exit
 # codes of the check, the order the data is looked up in, the views' choice, the upkeep of the views
-# cache, the keys of the readable copies, and the root of the shared cache.
+# cache with the index of the pictures by committed key, the class of a change, the data staged for the
+# views by tools/art/Build-Art.ps1 with its index and key, the review page of tools/art/ArtReviewPage.ps1,
+# the keys of the readable copies, and the root of the shared cache.
 #
 # Exit codes: 0 every case holds, 1 a case failed.
 $ErrorActionPreference = "Stop"
 $art = Join-Path (Split-Path -Parent $PSScriptRoot) "art"
 . (Join-Path $art "ArtPipelineCommon.ps1")
 . (Join-Path $art "ArtViews.ps1")
+. (Join-Path $art "ArtReviewPage.ps1")
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ("art-views-test-" + [Guid]::NewGuid().ToString("N"))
 $failures = @()
@@ -267,6 +270,245 @@ try {
     Assert-True "The upkeep leaves the cache of the checks alone" (Test-Path -LiteralPath (Join-Path $cache "checks/ab/old.json"))
     Assert-Equal "A cache without views" 0 (Remove-ArtViewCacheEntries (Join-Path $root "no-cache") $keep)
 
+    # The index of the pictures by committed key: one note per key, read back, the pictures only while the
+    # entry has both, the entries the baseline's keys point to kept, and a note whose entry went removed.
+    $index = Join-Path $root "index-cache"
+    $committedKey, $entryKey, $goneKey = ("a" * 64), ("b" * 64), ("c" * 64)
+    Assert-True "No note reads as none" ($null -eq (Read-ArtViewIndex $index $committedKey))
+    Write-ArtViewIndex $index $committedKey $entryKey
+    Assert-Equal "A note reads back" $entryKey (Read-ArtViewIndex $index $committedKey)
+    Assert-True "A note without both pictures gives none" ($null -eq (Get-ArtViewPictures $index $committedKey))
+    New-TestFile (Join-Path $index "views/$entryKey.png") "x" 40
+    New-TestFile (Join-Path $index "views/$entryKey.classes.png") "x" 40
+    New-TestFile (Join-Path $index "views/$entryKey.json") "{}" 40
+    Assert-True "The pictures of a committed key" ((Get-ArtViewPictures $index $committedKey).Look -like "*$entryKey.png")
+    Write-ArtViewIndex $index ("d" * 64) $goneKey
+    New-TestFile (Join-Path $index "views/committed/.$("e" * 64).123.tmp") "x" 2
+    Assert-True "Not a key reads as none" ($null -eq (Read-ArtViewIndex $index "../views"))
+    $pointed = New-ArtViewTable
+    $baselineLines = New-ArtViewTable
+    $baselineLines["A_Male_Rest_Y215"] = [pscustomobject]@{ Name = "A_Male_Rest_Y215"; Key = $committedKey }
+    Add-ArtViewBaselineKeep $index $baselineLines $pointed
+    Assert-Equal "The baseline's keys point to their entries" "True" "$($pointed.ContainsKey($entryKey))"
+    Assert-Equal "The pointed entry stays, however old" 0 (Remove-ArtViewCacheEntries $index $pointed)
+    Assert-True "Its note stays" ($null -ne (Read-ArtViewIndex $index $committedKey))
+    Assert-True "A note whose entry is gone goes" ($null -eq (Read-ArtViewIndex $index ("d" * 64)))
+    Assert-Equal "A note an interrupted run left goes after a day" 1 @(Get-ChildItem -LiteralPath (Join-Path $index "views/committed") -File -Force).Count
+    Assert-Equal "Without the baseline's keys the old entry goes" 1 (Remove-ArtViewCacheEntries $index (New-ArtViewTable))
+    Assert-True "And its note with it" ($null -eq (Read-ArtViewIndex $index $committedKey))
+
+    # A view's pictures go into the index only when it read exactly the data its export records name.
+    $indexView = New-TestView
+    $indexView.Body | Add-Member -NotePropertyName Export -NotePropertyValue ([ordered]@{ dataSha256 = "body" })
+    $indexView.Garments[0].DataSha256 = "e" * 64
+    $hashes = @{ "staged/Shirt_Male.json" = ("e" * 64); "other/Shirt_Male.json" = ("f" * 64) }
+    Assert-True "The data its export record names" (Test-ArtViewIndexable $indexView @("staged/Shirt_Male.json") $hashes)
+    Assert-True "Other data than the record names" (-not (Test-ArtViewIndexable $indexView @("other/Shirt_Male.json") $hashes))
+    $indexView.Garments[0].DataSha256 = "none"
+    Assert-True "A garment without an export record" (-not (Test-ArtViewIndexable $indexView @("staged/Shirt_Male.json") @{ "staged/Shirt_Male.json" = "none" }))
+    Assert-True "A body without an export record" (-not (Test-ArtViewIndexable (New-TestView) @("staged/Shirt_Male.json") $hashes))
+
+    # The class of a view's numbers against its entry, as -Check and the review page take it.
+    $line = New-TestLine "A" 3 4 5
+    Assert-Equal "More skin is worse" "worse" (Get-ArtViewChangeClass $line ([pscustomobject]@{ skin = 4; inner = 0; contact = 0 }))
+    Assert-Equal "Less skin and inner is better" "better" (Get-ArtViewChangeClass $line ([pscustomobject]@{ skin = 2; inner = 4; contact = 50 }))
+    Assert-Equal "Only contact and figure changed" "other" (Get-ArtViewChangeClass $line ([pscustomobject]@{ skin = 3; inner = 4; contact = 0 }))
+
+    # The views by whole names, and a texture whose current content is opaque reads its template's data.
+    Assert-Equal "A view by its name" "Net_Male_Walk03_Y215" ((Select-ArtViews $choice @() @() @() @("Net_Male_Walk03_Y215")) | ForEach-Object { $_.Name })
+    $refused = $null
+    try { $null = Select-ArtViews $choice @() @() @() @("Gone_Male_Rest_Y215") } catch { $refused = $_.Exception.Message }
+    Assert-True "An unknown view name" ("$refused" -match "-View Gone_Male_Rest_Y215 names no view")
+    Assert-True "An opaque texture reads its template's data" (Test-ArtSamePath (Join-Path $first "Shirt_Male.json") (Find-ArtViewData $garment "Male" @($first, $second) @("LinenShirt")))
+    Assert-True "Other code has another fingerprint" ((Get-ArtViewCodeFingerprint $code -Paths @("tools/art/blender/art_pipeline") -Tag "other/1") -cne (Get-ArtViewCodeFingerprint $code))
+
+    # The data staged for the views: the index's round trip, an entry that holds only for its key and its
+    # files' bytes, and a key that follows the content and the code.
+    $staging = Join-Path $root "staging"
+    New-TestFile (Join-Path $staging "Shirt_Male.json") "male"
+    $stagedIndex = @{}
+    $stagedIndex["art/Garments/Shirt"] = [pscustomobject]@{ Key = "k1"; State = "staged"; Problem = $null; Seconds = 12.34
+        Files = [ordered]@{ "Shirt_Male.json" = (Get-ArtFileSha256 (Join-Path $staging "Shirt_Male.json")) } }
+    $stagedIndex["art/GarmentTextures/NetShirt"] = [pscustomobject]@{ Key = "k2"; State = "refused"; Problem = "a rule"; Seconds = 1; Files = [ordered]@{} }
+    Write-ArtStagingIndex $staging $stagedIndex
+    $readIndex = Read-ArtStagingIndex $staging
+    Assert-Equal "The staging index reads back" "k1 staged 12.3 Shirt_Male.json" "$($readIndex['art/Garments/Shirt'].Key) $($readIndex['art/Garments/Shirt'].State) $($readIndex['art/Garments/Shirt'].Seconds) $(@($readIndex['art/Garments/Shirt'].Files.Keys) -join ',')"
+    Assert-True "An entry holds for its key" (Test-ArtStagedEntry $readIndex["art/Garments/Shirt"] "k1" $staging)
+    Assert-True "Not for another key" (-not (Test-ArtStagedEntry $readIndex["art/Garments/Shirt"] "k3" $staging))
+    Assert-True "A refusal holds without files" (Test-ArtStagedEntry $readIndex["art/GarmentTextures/NetShirt"] "k2" $staging)
+    New-TestFile (Join-Path $staging "Shirt_Male.json") "changed"
+    Assert-True "Not with a changed file" (-not (Test-ArtStagedEntry $readIndex["art/Garments/Shirt"] "k1" $staging))
+    New-TestFile (Join-Path $staging "index.json") "{ broken"
+    Assert-Equal "A broken index reads as none" 0 (Read-ArtStagingIndex $staging).Count
+    $shirt = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/Garments/Shirt")
+    Assert-Equal "A template's staged files" "Shirt_Male.json Shirt_Female.json" ((Get-ArtStagedNames $shirt) -join " ")
+    $stagingKey = Get-ArtStagingKey $shirt "code-1"
+    Assert-True "A key of a template" ("$stagingKey" -cmatch '^[0-9a-f]{64}$')
+    Assert-Equal "The same key again" $stagingKey (Get-ArtStagingKey $shirt "code-1")
+    Assert-True "The code changes the key" ((Get-ArtStagingKey $shirt "code-2") -cne $stagingKey)
+    $shirt.Content.stages["rig"] = "0" * 64
+    Assert-True "The content changes the key" ((Get-ArtStagingKey $shirt "code-1") -cne $stagingKey)
+    $net = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/GarmentTextures/NetShirt")
+    Assert-True "A texture's key is its own" ("$(Get-ArtStagingKey $net 'code-1')" -cmatch '^[0-9a-f]{64}$' -and (Get-ArtStagingKey $net "code-1") -cne $stagingKey)
+    $net.Garment.Content.stages["rig"] = "0" * 64
+    Assert-True "Its template's content changes a texture's key" ((Get-ArtStagingKey $net "code-1") -cne (Get-ArtStagingKey (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/GarmentTextures/NetShirt")) "code-1"))
+
+    # The review page: what changed in words, the views that changed with their class, and a page that
+    # encodes every text, shows only what changed, and approves nothing.
+    Assert-Equal "A texture that follows its template" "Changed: the image. It follows the new UVs of Trousers." (Format-ArtReviewChange @("image", "templateUv") @([pscustomobject]@{ Name = "Trousers"; Parts = @("uv") }, [pscustomobject]@{ Name = "Human_Actions"; Parts = @() }))
+    Assert-Equal "Parts in words" "Changed: the shape, the weights, and the clip Walk." (Format-ArtReviewChange @("shape", "weights", "clip:Walk") @())
+    Assert-Equal "A new asset" "A new asset." (Format-ArtReviewChange $null @() $true)
+    Assert-Equal "A kind in words" "garment texture" (Get-ArtReviewKindWords "texture")
+    Assert-Equal "What an asset waits for" "waits for the approval of art/Garments/Shirt, which it follows" (Format-ArtNotExported ([pscustomobject]@{ Need = "waits"; Stages = @(); Follows = @("art/Garments/Shirt") }))
+    Assert-Equal "Its own stages" "waits for your approval of its 'model' and 'rig' stage(s)" (Format-ArtNotExported ([pscustomobject]@{ Need = "approval"; Stages = @("model", "rig"); Follows = @() }))
+    Assert-Equal "A reason without its command" "was checked over other templates of a lower layer" (Remove-ArtReviewCommands "was checked over other templates of a lower layer; run tools/art/Sync-GarmentAsset.ps1 to see its checks over them, then run tools/art/Export-ArtAsset.ps1.")
+
+    # The way back: the asset folders with tracked files that differ from Git, never art/Views, and the new
+    # asset folders, which it does not restore.
+    $statusLines = @(" M art/Garments/Shirt/Shirt.blend", " M art/Garments/Shirt/asset.json", "M  art/GarmentTextures/LinenShirt/LinenShirt.blend",
+        " M art/Views/baseline.json", " D art/Skeletons/Humanoid.json", "?? art/Garments/Cape/asset.json", "?? art/Garments/Cape/Cape.blend",
+        "?? art/Garments/Shirt/Shirt.blend1", "R  art/Paint/Old/asset.json -> art/Paint/Tattoo/asset.json", "A  art/Garments/Hat/asset.json")
+    $reject = Get-ArtRejectPaths $statusLines @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Garments/Cape", "art/Garments/Hat", "art/Paint/Tattoo") @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Paint/Old")
+    Assert-Equal "The folders to restore" "art/GarmentTextures/LinenShirt art/Garments/Shirt art/Paint/Old art/Skeletons/Humanoid.json" ($reject.Restore -join " ")
+    # A folder that HEAD lacks is new also when its files are added to the index or renamed into it.
+    Assert-Equal "Nothing differs" 0 @((Get-ArtRejectPaths @() @("art/Garments/Shirt") @("art/Garments/Shirt")).Restore).Count
+
+    # What a measurement did to the numbers of the poses where nothing may come through.
+    $was = New-ArtViewTable
+    $was["Linen_Male_Walk03_Y215"] = New-TestLine "Linen_Male_Walk03_Y215" 1 11 0
+    $was["Linen_Male_Death31_Y215"] = New-TestLine "Linen_Male_Death31_Y215" 50 50 0
+    $now = New-ArtViewTable
+    $now["Linen_Male_Walk03_Y215"] = New-TestLine "Linen_Male_Walk03_Y215" 2 605 0
+    $now["Linen_Male_Death31_Y215"] = New-TestLine "Linen_Male_Death31_Y215" 70 70 0
+    $now["Net_Female_Rest_Y215"] = New-TestLine "Net_Female_Rest_Y215" 0 4 0
+    $phase = @{ "Linen_Male_Walk03_Y215" = "clean"; "Linen_Male_Death31_Y215" = "rare"; "Net_Female_Rest_Y215" = "clean" }
+    $measuredLines = @(Format-ArtBaselineChange @("Linen_Male_Death31_Y215", "Linen_Male_Walk03_Y215", "Net_Female_Rest_Y215") $was $now $phase)
+    Assert-Equal "The sum over every measured view first" "All 3 measured view(s): in the poses where nothing may come through, skin 1 -> 2 px and inner 11 -> 609 px." $measuredLines[0]
+    Assert-Equal "Then per outfit and body" "Linen on Male: 2 view(s) measured; in the poses where nothing may come through, skin 1 -> 2 px and inner 11 -> 605 px." $measuredLines[1]
+    Assert-Equal "A view new to the baseline counts 0 before" "Net on Female: 1 view(s) measured; in the poses where nothing may come through, skin 0 -> 0 px and inner 0 -> 4 px." $measuredLines[2]
+    $pageViews = @((New-TestView "Linen_Male_Walk03_Y215"), (New-TestView "Linen_Male_Walk10_Y215"), (New-TestView "Linen_Male_Rest_Y215"), (New-TestView "Linen_Male_Jog01_Y215"))
+    $pageKeys = New-ArtViewTable
+    $pageBaseline = New-ArtViewTable
+    foreach ($item in $pageViews) {
+        $pageKeys[$item.Name] = "new-$($item.Name)"
+        $pageBaseline[$item.Name] = [pscustomobject]@{ Name = $item.Name; Key = "old-$($item.Name)"; Skin = 2; Inner = 0; Contact = 1; Figure = 900 }
+    }
+
+    $pageKeys["Linen_Male_Jog01_Y215"] = "old-Linen_Male_Jog01_Y215"
+    $pageRendered = New-ArtViewTable
+    $pageRendered["Linen_Male_Walk03_Y215"] = [pscustomobject]@{ Numbers = [pscustomobject]@{ skin = 9; inner = 0; contact = 1; figure = 900 }; Look = "l"; Classes = "c" }
+    $pageRendered["Linen_Male_Walk10_Y215"] = [pscustomobject]@{ Numbers = [pscustomobject]@{ skin = 0; inner = 0; contact = 1; figure = 900 }; Look = "l"; Classes = "c" }
+    $pageReasons = New-ArtViewTable
+    $pageReasons["Linen_Male_Rest_Y215"] = "Not drawn, since <Shirt> has no data."
+    $changedViews = @(Get-ArtReviewViews $pageViews $pageBaseline $pageKeys $pageRendered $pageReasons "")
+    Assert-Equal "Only the changed views, each with its class" "Linen_Male_Walk03_Y215:worse:True Linen_Male_Walk10_Y215:better:False Linen_Male_Rest_Y215:missing:False" (($changedViews | ForEach-Object { "$($_.Name):$($_.Class):$($_.StillThrough)" }) -join " ")
+    $page = Join-Path $root "review"
+    New-TestFile (Join-Path $page "Old_Male_Rest_Y215.after.png") "old"
+    $review = [pscustomobject]@{ Failure = $null; Views = @($changedViews | Where-Object { $_.Class -eq "missing" }); ViewsNote = $null
+        Reject = [pscustomobject]@{ Restore = @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt"); New = @("art/Garments/Cape") }
+        Approvals = @([pscustomobject]@{ Asset = "art/Characters/Human_Male"; Name = "Human_Male"; Kind = "body"; Change = "Changed: <script>alert(1)</script>."; Sheet = $null
+                Note = "While this body waits for your approval, the game views show it as its file is now."
+                SheetNote = "No review sheet."; Commands = @(".\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage model") })
+        Exported = @(); NotExported = @([pscustomobject]@{ Asset = "art/Garments/Cloak"; Detail = "waits for the approval of art/Garments/Shirt, which it follows" })
+        Baseline = @(); Staging = @(); Problems = @(); Did = @("Synced & exported nothing.") }
+    $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+    Assert-True "The page encodes every text" ($html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;") -and -not $html.Contains("<script>") -and $html.Contains("Synced &amp; exported"))
+    Assert-True "The page gives the commands and the build after them" ($html.Contains(".\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage model`n.\tools\art\Build-Art.ps1"))
+    Assert-True "The way back is a real command, with the build after it" ($html.Contains("git checkout HEAD -- art/Garments/Shirt art/GarmentTextures/LinenShirt`n.\tools\art\Build-Art.ps1") -and -not $html.Contains("the asset you changed"))
+    Assert-True "New folders are named as not restored" ($html.Contains("not restore them: art/Garments/Cape."))
+    Assert-True "A body that waits says what its views show" ($html.Contains("While this body waits for your approval, the game views show it as its file is now."))
+    Assert-True "The page waits for an approval and claims none" ($html.Contains("wait for your approval") -and -not ($html -match "(?i)\bapproved\b"))
+    Assert-True "The page names why a view was not drawn" ($html.Contains("Not drawn, since &lt;Shirt&gt; has no data."))
+    Assert-Equal "The page left no old picture" "index.html" ((Get-ChildItem -LiteralPath $page -File -Force | ForEach-Object { $_.Name }) -join " ")
+    $review.Approvals = @()
+    $review.Views = @()
+    $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+    Assert-True "Nothing to approve and no picture" ($html.Contains("Nothing to approve") -and -not $html.Contains("<img"))
+    $review.Failure = "Blender <5.2> was not found."
+    $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+    Assert-True "A build that failed says so first" ($html.Contains("The build failed.") -and $html.Contains("Blender &lt;5.2&gt; was not found.") -and -not $html.Contains("Nothing to approve"))
+    $review.Approvals = @([pscustomobject]@{ Asset = "art/Garments/Shirt"; Name = "Shirt"; Kind = "garment template"; Change = "Changed: the shape."; Sheet = $null
+            SheetNote = $null; Commands = @(".\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage model") })
+    $review.ViewsNote = "280 game view(s) read what changed; the build stopped before it drew them."
+    $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+    Assert-True "A build that failed offers no approval" ($html.Contains("Approve nothing until the build runs through") -and -not $html.Contains("Approve-ArtAsset.ps1") -and $html.Contains("Changed: the shape."))
+    Assert-True "Views the build stopped before are said once" ($html.Contains("280 game view(s) read what changed; the build stopped before it drew them."))
+    $review.ViewsNote = $null
+
+    # The pictures of the page, where System.Drawing draws: copied beside it, the class picture's black
+    # made transparent, and a view that looks exactly as before listed without pictures.
+    $drawing = $true
+    try {
+        Add-Type -AssemblyName System.Drawing
+        (New-Object System.Drawing.Bitmap 1, 1).Dispose()
+    }
+    catch {
+        $drawing = $false
+    }
+
+    if ($drawing) {
+        function New-TestPicture([string]$Path, [System.Drawing.Color]$Color) {
+            $null = New-Item -ItemType Directory -Force (Split-Path -Parent $Path)
+            $bitmap = New-Object System.Drawing.Bitmap 4, 6
+            try {
+                for ($x = 0; $x -lt 4; $x++) { for ($y = 0; $y -lt 6; $y++) { $bitmap.SetPixel($x, $y, $Color) } }
+                $bitmap.SetPixel(1, 1, [System.Drawing.Color]::Red)
+                $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+            }
+            finally {
+                $bitmap.Dispose()
+            }
+        }
+
+        $pictures = Join-Path $root "pictures"
+        New-TestPicture (Join-Path $pictures "before.png") ([System.Drawing.Color]::Gray)
+        New-TestPicture (Join-Path $pictures "after.png") ([System.Drawing.Color]::White)
+        New-TestPicture (Join-Path $pictures "classes.png") ([System.Drawing.Color]::Black)
+        $worse = $changedViews[0]
+        $worse.BeforePictures = [pscustomobject]@{ Look = (Join-Path $pictures "before.png"); Classes = (Join-Path $pictures "classes.png") }
+        $worse.AfterPictures = [pscustomobject]@{ Look = (Join-Path $pictures "after.png"); Classes = (Join-Path $pictures "classes.png") }
+        $sameLine = [pscustomobject]@{ Name = "Linen_Male_Jog08_Y215"; Key = "old"; Skin = 2; Inner = 0; Contact = 1; Figure = 900 }
+        $same = [pscustomobject]@{ Name = "Linen_Male_Jog08_Y215"; Group = "Linen on Male"; Words = "Jog"; Phase = "clean"; Before = $sameLine
+            BeforePictures = $worse.AfterPictures; After = [pscustomobject]@{ skin = 2; inner = 0; contact = 1; figure = 900 }; AfterPictures = $worse.AfterPictures
+            Class = "other"; Reason = $null; StillThrough = $true; SamePicture = $false }
+        $review.Failure = $null
+        $review.Views = @($same, $worse)
+        $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+        $files = [string[]]@(Get-ChildItem -LiteralPath $page -File -Force | ForEach-Object { $_.Name })
+        [Array]::Sort($files, [StringComparer]::Ordinal)
+        Assert-Equal "The pictures beside the page, none of a view that looks the same" "Linen_Male_Walk03_Y215.after.png Linen_Male_Walk03_Y215.before.png Linen_Male_Walk03_Y215.classes.png index.html" ($files -join " ")
+        Assert-True "The worse view comes first, linked from the top" ($html.IndexOf("href=`"#v-Linen_Male_Walk03_Y215`"") -lt $html.IndexOf("id=`"v-Linen_Male_Walk03_Y215`"") -and $html.IndexOf("id=`"v-Linen_Male_Walk03_Y215`"") -lt $html.IndexOf("Linen_Male_Jog08_Y215"))
+        Assert-True "The view that looks the same is named" ($html.Contains("Look exactly as before (1)") -and -not $html.Contains("Linen_Male_Jog08_Y215.after.png"))
+        $classes = Read-ArtReviewBitmap (Join-Path $page "Linen_Male_Walk03_Y215.classes.png")
+        try {
+            Assert-Equal "The class picture's black is transparent and its colours stay" "0 255" "$($classes.GetPixel(0, 0).A) $($classes.GetPixel(1, 1).R)"
+        }
+        finally {
+            $classes.Dispose()
+        }
+
+        # Worse views by how much more comes through, the most first, 12 in full and the others folded in
+        # that order; better ones by how much less; the pose rule said once; the sums by outfit and body.
+        function New-TestItem([string]$Name, [int]$Place, [int]$SkinWas, [int]$InnerWas, [int]$Skin, [int]$Inner, [string]$Class) {
+            return [pscustomobject]@{ Name = $Name; Place = $Place; Group = "$($Name.Split('_')[0]) on $($Name.Split('_')[1])"; Words = "pose"; Phase = "clean"
+                Before = [pscustomobject]@{ Skin = $SkinWas; Inner = $InnerWas; Contact = 0; Figure = 900 }; BeforePictures = $worse.BeforePictures
+                After = [pscustomobject]@{ skin = $Skin; inner = $Inner; contact = 0; figure = 900 }; AfterPictures = $worse.AfterPictures
+                Class = $Class; Reason = $null; StillThrough = ($Skin + $Inner -gt 0); ThroughBefore = ($SkinWas + $InnerWas -gt 0); SamePicture = $false }
+        }
+
+        $ranked = @(for ($index = 1; $index -le 14; $index++) { New-TestItem "Linen_Male_P$($index)_Y215" $index 0 10 0 (10 + $index) "worse" }) +
+            @(New-TestItem "Net_Female_P1_Y215" 20 0 10 0 (10 + 14) "worse") + @(New-TestItem "Net_Female_P2_Y215" 21 5 0 0 0 "better")
+        $review.Views = $ranked
+        $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
+        $order = @([regex]::Matches($html, 'id="v-([A-Za-z0-9_]+)"') | ForEach-Object { $_.Groups[1].Value })
+        Assert-Equal "The worse views, the most first, alike ones in the order of the set" "Linen_Male_P14_Y215 Net_Female_P1_Y215 Linen_Male_P13_Y215" (@($order | Select-Object -First 3) -join " ")
+        Assert-True "The table of the worse views in that order" ($html.IndexOf("href=`"#v-Linen_Male_P14_Y215`"") -lt $html.IndexOf("href=`"#v-Net_Female_P1_Y215`"") -and $html.Contains("<td class=`"worse`">+14</td>"))
+        $folded = $html.IndexOf("The other 3 worse views, with smaller differences")
+        Assert-True "Twelve in full, the others folded" ($folded -gt $html.IndexOf("id=`"v-Linen_Male_P4_Y215`"") -and $folded -lt $html.IndexOf("id=`"v-Linen_Male_P3_Y215`"") -and $html.IndexOf("id=`"v-Linen_Male_P1_Y215`"") -lt $html.IndexOf("id=`"v-Net_Female_P2_Y215`""))
+        Assert-True "No sentence of the pose rule per view, once in all" (-not $html.Contains("it still shows skin") -and $html.Contains("Of the 16 changed view(s) in poses where nothing may come through, 15 show skin or an inner garment after the change; 15 of those did before it."))
+        Assert-True "The sums by outfit and body" ($html.Contains("By outfit and body") -and $html.Contains("<tr><td>Net on Female</td><td>1</td><td>1</td><td>5</td><td>0</td><td>10</td><td>24</td></tr>"))
+    }
+
     # The keys of the readable copies: a broken file reads as none, and they are written by a rename.
     $keysPath = Join-Path $root "readable/keys.json"
     New-TestFile $keysPath "{ broken"
@@ -298,6 +540,8 @@ try {
     $null = New-Item -ItemType Directory -Force (Join-Path $plain ".git")
     Assert-True "A folder that is no Git checkout" (Test-ArtSamePath $own (Resolve-ArtCacheRoot $checkout (Join-Path $plain ".git")))
     Assert-True "No common folder" (Test-ArtSamePath $own (Resolve-ArtCacheRoot $checkout ""))
+    $elsewhere = Join-Path $root "elsewhere-cache"
+    Assert-True "MMORPG_ART_CACHE_ROOT names the cache over the main checkout's" (Test-ArtSamePath $elsewhere (Resolve-ArtCacheRoot $checkout (Join-Path $main ".git") $elsewhere))
 }
 finally {
     $env:GIT_CEILING_DIRECTORIES = $ceiling

@@ -95,10 +95,10 @@ $rules = @(
     # the Blender animation script.
     @{ Pattern = '^(art|tools/art/blender)/'
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
-    # The helpers of the game views and the shared helpers they stand on, which their own check runs
-    # without Blender.
-    @{ Pattern = '^tools/(art/(ArtViews|ArtPipelineCommon)|ci/Test-ArtViews)\.ps1$'
-        Checks = @("art", "blender-python", "art-views"); Reason = "the helpers of the game views, the shared art helpers, and their check" },
+    # The helpers of the game views, the shared helpers they stand on, and the build's review page, which
+    # their own check runs without Blender.
+    @{ Pattern = '^tools/(art/(ArtViews|ArtPipelineCommon|ArtReviewPage)|ci/Test-ArtViews)\.ps1$'
+        Checks = @("art", "blender-python", "art-views"); Reason = "the helpers of the game views, the shared art helpers, the review page, and their check" },
     # The Python tests compare the tables and the content version that the shared helpers keep, and
     # read every script for how it calls Blender and what it records.
     @{ Pattern = '^tools/art/[^/]+\.ps1$'

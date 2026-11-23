@@ -2,23 +2,27 @@
 # person must look: it makes every content record current, with several Blender processes at once;
 # plans what each asset needs, a sync, an approval, an export, or nothing, in the order the assets
 # follow each other; runs the syncs and plans again; lists every review stage that waits for an
-# approval with what changed, its review sheet, and the command that approves it; exports every asset
-# whose approvals hold and that follows no asset waiting for one, with several Blender processes at
-# once; runs the Unity follow-up after an export (tools/art/Update-UnityArt.ps1); measures the
-# baseline of the game views when an entry of it is not current (tools/art/Render-ArtViews.ps1
-# -WriteBaseline), the views of approved and exported content, while the others keep their entries;
-# verifies the records (tools/art/Verify-ArtAssets.ps1); and prints the seconds of each phase and
-# asset, how many check units came from the cache, the assets it synced, and what is left for a
-# person. It never records an approval. A body's export gives the fit and the paint layout that the
-# cage, the garments, and the paint layers follow, so after an export of a body it plans again. A sync
-# is not run again while the asset's file and everything it follows are as the build's last sync of it
-# left them, which artifacts/art-build/synced.json keeps. The Unity follow-up runs while an export
-# left its marker artifacts/art-build/unity/pending, also one of an earlier run whose follow-up
-# failed. See docs/ART_PIPELINE.md, Build The Art.
+# approval with what changed, its review sheet, and the command that approves it; once the syncs
+# settle, before the exports, stages the data of the garments that the changed game views read and that
+# are not exported from their current content (artifacts/art-build/staging) and draws the changed views
+# that wait for an approval with it; exports every asset whose approvals hold and that follows no asset
+# waiting for one, with several Blender processes at once; runs the Unity follow-up after an export
+# (tools/art/Update-UnityArt.ps1); measures the baseline of the game views when an entry of it is not
+# current (tools/art/Render-ArtViews.ps1 -WriteBaseline), the views of approved and exported content,
+# while the others keep their entries; verifies the records (tools/art/Verify-ArtAssets.ps1); writes the
+# review page, artifacts/art-build/review/index.html, with what waits for an approval, the commands that
+# approve it, and the changed views before and after (tools/art/ArtReviewPage.ps1); and prints the
+# seconds of each phase and asset, how many check units came from the cache, the assets it synced, what
+# is left for a person, and the page's path. It never records an approval. A body's export gives the
+# fit and the paint layout that the cage, the garments, and the paint layers follow, so after an export
+# of a body it plans again. A sync is not run again while the asset's file and everything it follows
+# are as the build's last sync of it left them, which artifacts/art-build/synced.json keeps. The Unity
+# follow-up runs while an export left its marker artifacts/art-build/unity/pending, also one of an
+# earlier run whose follow-up failed. See docs/ART_PIPELINE.md, Build The Art.
 #
 # Exit codes: 0 everything is exported and verified, 2 review stages wait for an approval and
-# everything else that could be exported was, 1 an error, also a measurement of the game views that
-# failed.
+# everything else that could be exported was, 1 an error, also a measurement or a drawing of the game
+# views, or a staging of their data, that failed.
 param(
     # Prints what every asset needs and why, and stops.
     [switch]$Plan,
@@ -31,6 +35,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
+. (Join-Path $PSScriptRoot "ArtViews.ps1")
+. (Join-Path $PSScriptRoot "ArtReviewPage.ps1")
 
 if ($Jobs -lt 0) {
     throw "-Jobs is how many Blender processes run at once, 1 or more."
@@ -48,6 +54,16 @@ $synced = New-Object System.Collections.Generic.HashSet[string]
 $syncedOrder = New-Object System.Collections.Generic.List[string]
 $syncRecordsPath = Join-Path $script:ArtRepositoryRoot "artifacts/art-build/synced.json"
 $unityPendingPath = Join-Path $script:ArtRepositoryRoot "artifacts/art-build/unity/pending"
+$stagingFolder = Join-Path $script:ArtRepositoryRoot "artifacts/art-build/staging"
+# What the review page shows: the views drawn before the exports by name, why a changed view was not
+# drawn, what was staged, the problems of staging and drawing, and what the build did.
+$drawnViews = New-ArtViewTable
+$notDrawnViews = New-ArtViewTable
+$stagingResults = New-Object System.Collections.Generic.List[object]
+$reviewProblems = New-Object System.Collections.Generic.List[string]
+$contentRuns = New-Object System.Collections.Generic.List[string]
+$baselineLines = New-Object System.Collections.Generic.List[string]
+$unityRan = $false
 
 function Add-ArtPhase([string]$Name, [System.Diagnostics.Stopwatch]$Watch) {
     $phases.Add([pscustomobject]@{ Phase = $Name; Seconds = $Watch.Elapsed.TotalSeconds })
@@ -94,6 +110,7 @@ function Update-ArtContentRecords([string]$Blender) {
 
             $state = if ($null -eq $Job.Error) { "recorded its content" } else { "failed: $($Job.Error)" }
             Write-Host "$($Job.Manifest.RelativeDirectory): $state ($($Job.Seconds.ToString('0.0', $culture)) s)."
+            $contentRuns.Add($Job.Manifest.RelativeDirectory)
             $assetTimes.Add([pscustomobject]@{ Asset = $Job.Manifest.RelativeDirectory; Phase = "content"; Seconds = $Job.Seconds; Units = 0; Cached = 0 })
         }
 
@@ -461,43 +478,98 @@ function Get-ArtCommittedParts([string]$Asset) {
     return $parts
 }
 
-function Get-ArtChangedParts($Manifest) {
-    # The parts of the asset's content whose fingerprints differ from the committed asset.json.
+function Get-ArtRejectList {
+    # What restores every art file that differs from Git, for the review page: git status of art/, read
+    # without Git's optional locks so it writes nothing, grouped to the asset folders with
+    # Get-ArtRejectPaths against the asset folders there are now and those HEAD has; $null when Git
+    # cannot say.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $status = @(& git -C $script:ArtRepositoryRoot --no-optional-locks status --porcelain --untracked-files=all -- art 2>$null)
+        $statusExit = $LASTEXITCODE
+        $tracked = @(& git -C $script:ArtRepositoryRoot ls-tree -r --name-only HEAD -- art 2>$null)
+        $treeExit = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ($statusExit -ne 0 -or $treeExit -ne 0) {
+        return $null
+    }
+
+    $committed = [string[]]@($tracked | Where-Object { $_ -like "*/asset.json" } | ForEach-Object { $_.Substring(0, $_.Length - "/asset.json".Length) })
+    $folders = [string[]]@(Get-ArtAssetDirectories | ForEach-Object { Get-ArtRelativePath $_ })
+    return Get-ArtRejectPaths ([string[]]$status) $folders $committed
+}
+
+function Get-ArtChangedPartNames($Manifest) {
+    # The parts of the asset's content whose fingerprints differ from the committed asset.json, or $null
+    # for an asset that has none committed.
     $committed = Get-ArtCommittedParts $Manifest.RelativeDirectory
     if ($null -eq $committed) {
-        return "it is a new asset"
+        return $null
     }
 
     $current = if ($null -ne $Manifest.Content) { $Manifest.Content.parts } else { [ordered]@{} }
     $names = @(@($current.Keys) + @($committed.Keys) | Sort-Object -Unique)
-    $changed = @($names | Where-Object { -not $committed.ContainsKey($_) -or -not $current.Contains($_) -or $committed[$_] -cne $current[$_] })
-    if ($changed.Count -eq 0) {
+    # The comma keeps an empty list a list for the caller.
+    return , [string[]]@($names | Where-Object { -not $committed.ContainsKey($_) -or -not $current.Contains($_) -or $committed[$_] -cne $current[$_] })
+}
+
+function Get-ArtChangedParts($Manifest) {
+    # The parts of the asset's content whose fingerprints differ from the committed asset.json, in a line.
+    $changed = Get-ArtChangedPartNames $Manifest
+    if ($null -eq $changed) {
+        return "it is a new asset"
+    }
+
+    if (@($changed).Count -eq 0) {
         return "its content is the committed one"
     }
 
     return "the parts $($changed -join ', ') changed"
 }
 
-function Write-ArtApprovals($Entries) {
-    # Every review stage that waits for an approval, in the order the assets follow each other, so the
-    # cage comes before its garments and a template before its textures.
+function Get-ArtApprovalList($Entries) {
+    # Every asset with a review stage that waits for an approval, in the order the assets follow each
+    # other, so the cage comes before its garments and a template before its textures: its entry, its
+    # review sheet, and the exact commands that approve its stages.
     $waiting = @($Entries | Where-Object { $_.Need -eq "approval" -or ($_.Need -ne "later" -and @($_.Stages).Count -gt 0) })
+    return @($waiting | ForEach-Object {
+            $entry = $_
+            $manifest = $entry.Manifest
+            $bodyOfCage = $manifest.Kind -eq "skinned" -and @($Entries | Where-Object { $_.Manifest.Kind -eq "cage" -and @($_.Manifest.Bodies | ForEach-Object { $_.Asset }) -ccontains $manifest.RelativeDirectory }).Count -gt 0
+            $sheet = if ($bodyOfCage) { Join-Path $script:ArtRepositoryRoot "artifacts\human-base\review" } else { Join-Path $script:ArtRepositoryRoot "artifacts\art-previews\$($manifest.Name).png" }
+            [pscustomobject]@{
+                Entry = $entry
+                Manifest = $manifest
+                BodyOfCage = $bodyOfCage
+                Sheet = $sheet
+                Commands = [string[]]@(foreach ($stage in @($entry.Stages)) { ".\tools\art\Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage $stage" })
+            }
+        })
+}
+
+function Write-ArtApprovals($Entries) {
+    # Every review stage that waits for an approval, in the order to approve them, with what changed,
+    # the review sheet, and the command; returns how many stages wait.
+    $waiting = @(Get-ArtApprovalList $Entries)
     if ($waiting.Count -eq 0) {
         return 0
     }
 
     Write-Host "Review stages that wait for an approval, in the order to approve them:"
     $count = 0
-    foreach ($entry in $waiting) {
-        $manifest = $entry.Manifest
-        $bodyOfCage = $manifest.Kind -eq "skinned" -and @($Entries | Where-Object { $_.Manifest.Kind -eq "cage" -and @($_.Manifest.Bodies | ForEach-Object { $_.Asset }) -ccontains $manifest.RelativeDirectory }).Count -gt 0
-        $sheet = if ($bodyOfCage) { Join-Path $script:ArtRepositoryRoot "artifacts\human-base\review" } else { Join-Path $script:ArtRepositoryRoot "artifacts\art-previews\$($manifest.Name).png" }
-        $sheetNote = if (Test-Path -LiteralPath $sheet) { $sheet } else { "$sheet, not rendered yet: run .\tools\art\Render-ArtPreview.ps1 -Asset $($manifest.RelativeDirectory)" }
-        $other = @($entry.Reasons | Where-Object { $_ -notlike "its '*' stage waits for an approval" })
+    foreach ($item in $waiting) {
+        $manifest = $item.Manifest
+        $sheetNote = if (Test-Path -LiteralPath $item.Sheet) { $item.Sheet } else { "$($item.Sheet), not rendered yet: run .\tools\art\Render-ArtPreview.ps1 -Asset $($manifest.RelativeDirectory)" }
+        $other = @($item.Entry.Reasons | Where-Object { $_ -notlike "its '*' stage waits for an approval" })
         Write-Host "  $($manifest.RelativeDirectory): $(Get-ArtChangedParts $manifest)$(if ($other.Count -gt 0) { "; $($other -join '; ')" })."
         Write-Host "    Review sheet: $sheetNote"
-        foreach ($stage in @($entry.Stages)) {
-            Write-Host "    .\tools\art\Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage $stage"
+        foreach ($command in $item.Commands) {
+            Write-Host "    $command"
             $count++
         }
     }
@@ -562,7 +634,7 @@ function Write-ArtTimes([int]$Approvals, $Entries) {
     $cached = ($exportReport | Measure-Object -Property Cached -Sum).Sum
     Write-Host "Check units of the exports from the cache: $([int]$cached) of $([int]$units)."
     if ($syncedOrder.Count -gt 0) {
-        Write-Host "Synced by this run, so their files changed: $($syncedOrder -join ', '). To reject a change that they follow, restore the changed asset and them from Git: git checkout -- <the changed asset> $($syncedOrder -join ' ')."
+        Write-Host "Synced by this run, so their files may have changed: $($syncedOrder -join ', '). To reject a change that they follow, run the git checkout that the review page gives, which restores every art file that differs from Git."
     }
 
     $waits = @($Entries | Where-Object { $_.Need -eq "waits" })
@@ -571,6 +643,247 @@ function Write-ArtTimes([int]$Approvals, $Entries) {
     }
     else {
         Write-Host "Left for a person: nothing."
+    }
+}
+
+function Get-ArtViewsToDraw($Entries) {
+    # The changed game views, whose committed key differs from their baseline entry's, that read an asset
+    # that waits for an approval, so they stay changed after this build: the views of content that this
+    # build exports are measured after the exports instead.
+    $needs = @{}
+    foreach ($entry in $Entries) {
+        $needs[$entry.Asset] = $entry.Need
+    }
+
+    $script:ArtViewManifests = @{}
+    $baseline = Read-ArtViewBaseline
+    return @(Read-ArtViewSet | Where-Object {
+            $view = $_
+            $line = if ($null -ne $baseline) { $baseline[$view.Name] } else { $null }
+            ($null -eq $line -or $line.Key -cne (Get-ArtViewKey $view)) -and
+            @($view.Assets | Where-Object { @("approval", "waits") -contains $needs[$_] }).Count -gt 0
+        })
+}
+
+function Invoke-ArtBuildReview($Entries, [string]$Blender) {
+    # Once the syncs settle, before the exports: stages the data of every garment template and texture
+    # that the changed views read and that is not exported from its current content, and draws those
+    # views with it, staged data first, then exported. A garment that breaks a rule has no data, so the
+    # views that read it are not drawn; the page says why. A staging or a drawing that fails is a problem
+    # of the build, which it reports at its end.
+    $drawnViews.Clear()
+    $notDrawnViews.Clear()
+    $stagingResults.Clear()
+    $views = @(Get-ArtViewsToDraw $Entries)
+    if ($views.Count -eq 0) {
+        return
+    }
+
+    $needs = @{}
+    $byAsset = @{}
+    foreach ($entry in $Entries) {
+        $needs[$entry.Asset] = $entry.Need
+        $byAsset[$entry.Asset] = $entry.Manifest
+    }
+
+    $staged = New-Object System.Collections.Generic.List[object]
+    foreach ($view in $views) {
+        foreach ($garment in $view.Garments) {
+            foreach ($asset in @($garment.Template.RelativeDirectory, $garment.Texture.RelativeDirectory)) {
+                if ($needs[$asset] -ne "nothing" -and @($staged | Where-Object { $_.RelativeDirectory -ceq $asset }).Count -eq 0) {
+                    $staged.Add($byAsset[$asset])
+                }
+            }
+        }
+    }
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $code = Get-ArtViewCodeFingerprint -Paths @("tools/art/blender/art_pipeline", "tools/art/blender/art_pipeline_cli.py", "art/Skeletons") -Tag "art-staging-code/1"
+    $results = @(Invoke-ArtStaging $Blender @($staged | Sort-Object { if ($_.Kind -eq "garment") { 0 } else { 1 } }, RelativeDirectory) $stagingFolder $code $Jobs -NoCache:$NoCache)
+    Add-ArtPhase "staging" $watch
+    $blocked = @{}
+    foreach ($result in $results) {
+        $stagingResults.Add($result)
+        if (-not $result.FromIndex) {
+            $assetTimes.Add([pscustomobject]@{ Asset = $result.Asset; Phase = "stage"; Seconds = $result.Seconds; Units = $result.Units; Cached = $result.Cached })
+        }
+
+        if (@("refused", "failed") -contains $result.State) {
+            $blocked[$result.Asset] = $result
+        }
+
+        if ($result.State -eq "failed") {
+            $reviewProblems.Add("The data of $($result.Asset) could not be staged: $($result.Problem)")
+        }
+    }
+
+    $opaque = [string[]]@($results | Where-Object { $_.State -eq "opaque" } | ForEach-Object { $_.Name })
+    $draw = New-Object System.Collections.Generic.List[string]
+    foreach ($view in $views) {
+        $without = @($view.Garments | ForEach-Object { $_.Template.RelativeDirectory; $_.Texture.RelativeDirectory } | Where-Object { $blocked.ContainsKey($_) } | Select-Object -First 1)
+        if ($without.Count -gt 0) {
+            $result = $blocked[$without[0]]
+            $why = if ($result.State -eq "refused") { "breaks a rule of the pipeline: $(Remove-ArtReviewCommands @($result.Problem -split "`n")[0])" } else { "could not be staged: $($result.Problem)" }
+            $notDrawnViews[$view.Name] = "Not drawn, since $($result.Name) has no data: it $why"
+        }
+        else {
+            $draw.Add($view.Name)
+        }
+    }
+
+    if ($draw.Count -eq 0) {
+        return
+    }
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $report = New-Object System.Collections.ArrayList
+    & (Join-Path $PSScriptRoot "Render-ArtViews.ps1") -View $draw.ToArray() -DataFolder $stagingFolder -OpaqueTexture $opaque -Jobs $Jobs -BlenderPath $Blender -Report $report
+    $viewsExit = $LASTEXITCODE
+    Add-ArtPhase "changed views" $watch
+    foreach ($record in $report) {
+        $drawnViews[$record.Name] = $record
+    }
+
+    foreach ($name in $draw) {
+        if (-not $drawnViews.ContainsKey($name)) {
+            $notDrawnViews[$name] = "It could not be drawn; the lines of tools/art/Render-ArtViews.ps1 in the build's output say why."
+        }
+    }
+
+    if ($viewsExit -ne 0) {
+        $reviewProblems.Add("The changed game views could not all be drawn, exit code $viewsExit; see the lines of tools/art/Render-ArtViews.ps1 in the build's output.")
+    }
+}
+
+function Get-ArtBuildReview($Entries, [string]$Failure, $Did) {
+    # What the review page shows of this build, from its last plan, the views it drew, and what it
+    # exported, measured, and staged.
+    $manifests = @{}
+    foreach ($entry in $Entries) {
+        $manifests[$entry.Asset] = $entry.Manifest
+    }
+
+    $approvals = @(Get-ArtApprovalList $Entries | ForEach-Object {
+            $item = $_
+            $manifest = $item.Manifest
+            $changed = Get-ArtChangedPartNames $manifest
+            $followed = @(Get-ArtFollowed $manifest | ForEach-Object {
+                    $other = $manifests[$_.Asset]
+                    if ($null -ne $other) {
+                        $parts = Get-ArtChangedPartNames $other
+                        [pscustomobject]@{ Name = $other.Name; Parts = [string[]]@(if ($null -ne $parts) { $parts }) }
+                    }
+                })
+            $change = Format-ArtReviewChange $changed $followed ($null -eq $changed)
+            $other = @($item.Entry.Reasons | Where-Object { $item.Entry.Need -eq "approval" -and $_ -notlike "its '*' stage waits for an approval" } |
+                    ForEach-Object { Remove-ArtReviewCommands $_ })
+            if ($other.Count -gt 0) {
+                $change += " The build also says: $($other -join '; ')."
+            }
+
+            # A sheet is shown when it was rendered after the file was last saved, as a sync renders it.
+            $sheet = $null
+            $sheetNote = $null
+            if ($item.BodyOfCage) {
+                $sheetNote = "The review files of the bodies are in $($item.Sheet)."
+            }
+            elseif ((Test-Path -LiteralPath $item.Sheet -PathType Leaf) -and (Test-Path -LiteralPath $manifest.SourcePath -PathType Leaf) -and
+                (Get-Item -LiteralPath $item.Sheet).LastWriteTimeUtc -ge (Get-Item -LiteralPath $manifest.SourcePath).LastWriteTimeUtc) {
+                $sheet = $item.Sheet
+            }
+            else {
+                $sheetNote = "No review sheet shows this content yet."
+            }
+
+            # The game views draw a body that waits from its file with the garments still fitted to its last
+            # export (game_view.Outfit), so what comes through there is no fault of the garments.
+            $bodyNote = if ($item.BodyOfCage) {
+                "While this body waits for your approval, the game views show it as its file is now, with every garment still fitted to its last export, so skin or a garment that comes through there may come from that and not from a fault of the garments; the build fits the garments to the body once it is approved and exported."
+            }
+            else {
+                $null
+            }
+
+            [pscustomobject]@{
+                Asset = $manifest.RelativeDirectory
+                Name = $manifest.Name
+                Kind = Get-ArtReviewKindWords $manifest.Kind $item.BodyOfCage
+                Change = $change
+                Note = $bodyNote
+                Sheet = $sheet
+                SheetNote = $sheetNote
+                Commands = $item.Commands
+            }
+        })
+
+    # The views that are changed now, after the exports and the baseline, with what this build drew.
+    $script:ArtViewManifests = @{}
+    $views = @(Read-ArtViewSet)
+    $keys = New-ArtViewTable
+    foreach ($view in $views) {
+        $keys[$view.Name] = Get-ArtViewKey $view
+    }
+
+    $reasons = New-ArtViewTable
+    foreach ($name in $notDrawnViews.Keys) {
+        $reasons[$name] = $notDrawnViews[$name]
+    }
+
+    $changed = @(Get-ArtReviewViews $views (Read-ArtViewBaseline) $keys $drawnViews $reasons (Get-ArtCacheRoot))
+    $viewsNote = $null
+    if (-not [string]::IsNullOrEmpty($Failure) -and $drawnViews.Count -eq 0 -and $notDrawnViews.Count -eq 0 -and $changed.Count -gt 0) {
+        # A build that stopped before it drew the views says so once, not per view.
+        $viewsNote = "$($changed.Count) game view(s) read what changed; the build stopped before it drew them."
+        $changed = @()
+    }
+
+    $unexplained = New-ArtViewTable
+    foreach ($item in @($changed | Where-Object { $_.Class -eq "missing" -and -not $reasons.ContainsKey($_.Name) })) {
+        $unexplained[$item.Name] = $item
+    }
+
+    if ($unexplained.Count -gt 0) {
+        # A changed view this build neither drew nor measured, such as after a failed export.
+        $gate = Get-ArtViewGate @($views | Where-Object { $unexplained.ContainsKey($_.Name) })
+        foreach ($name in @($unexplained.Keys)) {
+            $why = @($gate[$name])
+            $unexplained[$name].Reason = if ($why.Count -gt 0) { "Not drawn and not measured, since $($why[0])." } else { "Not drawn in this build, and its baseline entry was not measured." }
+        }
+    }
+
+    $exported = @($exportReport | ForEach-Object {
+            $detail = if ($null -eq $_.Error) { "exported in $($_.Seconds.ToString('0.0', $culture)) s" } else { "failed: $($_.Error)" }
+            [pscustomobject]@{ Asset = $_.Asset; Detail = $detail }
+        })
+    # What an asset that was not exported waits for, in one plain clause.
+    $notExported = @($Entries | Where-Object { @("approval", "waits", "later", "export", "sync") -contains $_.Need } | ForEach-Object {
+            [pscustomobject]@{ Asset = $_.Asset; Detail = Format-ArtNotExported $_ }
+        })
+    $staging = @($stagingResults | ForEach-Object {
+            # Inside the switch, $_ is the state; the result is named.
+            $result = $_
+            $detail = switch ($result.State) {
+                "staged" { "staged its data" }
+                "opaque" { "has no transparent parts, so its views read its template's data" }
+                "refused" { "breaks a rule, so it has no data and its views are not drawn: $(@($result.Problem -split "`n" | ForEach-Object { Remove-ArtReviewCommands $_ }) -join '; ')" }
+                default { "could not be staged: $($result.Problem)" }
+            }
+            $when = if ($result.FromIndex) { ", unchanged since an earlier build" } else { " in $($result.Seconds.ToString('0.0', $culture)) s" }
+            [pscustomobject]@{ Asset = $result.Asset; Detail = "$detail$when" }
+        })
+
+    return [pscustomobject]@{
+        Failure = $Failure
+        Approvals = $approvals
+        Reject = if ($approvals.Count -gt 0) { Get-ArtRejectList } else { $null }
+        Views = $changed
+        ViewsNote = $viewsNote
+        Exported = $exported
+        NotExported = $notExported
+        Baseline = @($baselineLines)
+        Staging = $staging
+        Problems = @($reviewProblems)
+        Did = @($Did)
     }
 }
 
@@ -583,8 +896,10 @@ try {
     Update-ArtContentRecords $blender
     Add-ArtPhase "content records" $watch
 
-    # Rounds of syncs and exports until nothing is left to sync or export, at most 12.
+    # Rounds of syncs and exports until nothing is left to sync or export, at most 12. The changed views
+    # are drawn when the syncs have settled, before the exports, and again only after another sync.
     $settled = $false
+    $reviewDue = $true
     for ($round = 1; $round -le 12; $round++) {
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         $entries = @(Get-ArtBuildPlan)
@@ -604,7 +919,20 @@ try {
             }
 
             Add-ArtPhase "syncs $round" $watch
+            $reviewDue = $true
             continue
+        }
+
+        if ($reviewDue) {
+            # What cannot be drawn stops neither the exports nor the measurement; it fails the build at its end.
+            try {
+                Invoke-ArtBuildReview $entries $blender
+            }
+            catch {
+                $reviewProblems.Add("The changed game views could not be drawn: $($_.Exception.Message)")
+            }
+
+            $reviewDue = $false
         }
 
         $exports = @($entries | Where-Object { $_.Need -eq "export" })
@@ -631,13 +959,16 @@ try {
         if ($unityExit -ne 0) {
             throw "The Unity follow-up failed with exit code $unityExit; the next run of this command runs it again, or run tools/art/Update-UnityArt.ps1 after the cause is fixed."
         }
+
+        $unityRan = $true
     }
 
     # The baseline of the game views follows the exported content: when a view's entry is not current,
     # the views whose assets are all approved and exported are measured, and the others keep their
     # entries for the verification to list with the assets that wait.
-    . (Join-Path $PSScriptRoot "ArtViews.ps1")
+    $script:ArtViewManifests = @{}
     if (@(Get-ArtViewBaselineProblems).Count -gt 0) {
+        $before = Read-ArtViewBaseline
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         & (Join-Path $PSScriptRoot "Render-ArtViews.ps1") -WriteBaseline -Jobs $Jobs -BlenderPath $blender
         $viewsExit = $LASTEXITCODE
@@ -645,6 +976,17 @@ try {
         if ($viewsExit -ne 0) {
             throw "The baseline of the game views could not be measured, exit code $viewsExit; see the lines of tools/art/Render-ArtViews.ps1 above."
         }
+
+        # What the measurement did to the numbers, in all and by outfit and body, for the review page.
+        $after = Read-ArtViewBaseline
+        $measured = @($after.Keys | Where-Object { $null -eq $before -or $null -eq $before[$_] -or $before[$_].Key -cne $after[$_].Key } | Sort-Object)
+        $script:ArtViewManifests = @{}
+        $phase = New-ArtViewTable
+        foreach ($view in @(Read-ArtViewSet)) {
+            $phase[$view.Name] = $view.Pose.Phase
+        }
+
+        $baselineLines.AddRange([string[]]@(Format-ArtBaselineChange $measured $before $after $phase))
     }
 
     # The problems of the assets that wait for an approval, or follow one that does, are listed apart;
@@ -652,6 +994,11 @@ try {
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
     & (Join-Path $PSScriptRoot "Verify-ArtAssets.ps1") -Waiting @($entries | Where-Object { $_.Need -ne "nothing" } | ForEach-Object { $_.Asset })
     Add-ArtPhase "verify" $watch
+
+    # A staging or a drawing of the changed views that failed fails the build once everything else ran.
+    if ($reviewProblems.Count -gt 0) {
+        throw "The game views of the change could not all be drawn:`n - $($reviewProblems -join "`n - ")"
+    }
 }
 catch {
     $failure = $_.Exception.Message
@@ -659,17 +1006,62 @@ catch {
 
 # The approvals of the final plan, once, so a stage that an export round brought is listed too.
 $approvals = if ($entries.Count -gt 0) { Write-ArtApprovals $entries } else { 0 }
+
+# The review page, also of a build that failed, with what the build did.
+$page = $null
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
+try {
+    $did = New-Object System.Collections.Generic.List[string]
+    if ($contentRuns.Count -gt 0) {
+        $did.Add("Recorded the content of $($contentRuns.Count) file(s) saved since their last record: $($contentRuns -join ', ').")
+    }
+
+    $did.Add($(if ($syncedOrder.Count -gt 0) { "Synced $($syncedOrder.Count) asset(s), which fits each to what it follows, checks it, and renders its review sheet: $($syncedOrder -join ', ')." } else { "Synced nothing." }))
+    $done = @($exportReport | Where-Object { $null -eq $_.Error } | ForEach-Object { $_.Asset })
+    $did.Add($(if ($done.Count -gt 0) { "Exported $($done.Count) asset(s): $($done -join ', ')." } else { "Exported nothing." }))
+    if ($unityRan) {
+        $did.Add("Brought the Unity project up to date with the exports.")
+    }
+
+    if ($baselineLines.Count -gt 0) {
+        $did.Add("Measured the game views of the exported content and wrote their numbers to art/Views/baseline.json.")
+    }
+
+    if ($drawnViews.Count -gt 0) {
+        $did.Add("Drew $($drawnViews.Count) game view(s) that your change touches, with the data of the content that waits for your approval.")
+    }
+
+    if ($null -eq $failure) {
+        $did.Add("Verified every asset.")
+    }
+
+    $page = Write-ArtReviewPage $script:ArtReviewFolder (Get-ArtBuildReview $entries $failure $did)
+}
+catch {
+    if ($null -eq $failure) {
+        $failure = "The review page could not be written: $($_.Exception.Message)"
+    }
+    else {
+        Write-Host "The review page could not be written: $($_.Exception.Message)"
+    }
+}
+
+Add-ArtPhase "review page" $watch
 $phases.Add([pscustomobject]@{ Phase = "in all"; Seconds = $total.Elapsed.TotalSeconds })
 Write-ArtTimes $approvals $entries
+$pageLine = if ($null -ne $page) { "Review page, with what changed and the commands: $page" } else { $null }
 if ($null -ne $failure) {
     Write-Host "Result: the build failed: $failure"
+    if ($null -ne $pageLine) { Write-Host $pageLine }
     exit 1
 }
 
 if ($approvals -gt 0) {
     Write-Host "Result: $approvals review stage(s) wait for an approval; everything else that could be exported was."
+    Write-Host $pageLine
     exit 2
 }
 
 Write-Host "Result: every asset is exported and verified."
+Write-Host $pageLine
 exit 0
