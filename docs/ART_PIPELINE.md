@@ -20,8 +20,9 @@ art/<Category>/<Name>/<Name>.blend      source, edited in Blender (Git LFS)
 reviewer approves each review stage
         |  Approve-ArtAsset.ps1         records the date and the content fingerprint of the stage
         v
-        |  Export-ArtAsset.ps1          refuses unapproved or changed content
-        v
+        |  Export-ArtAsset.ps1          refuses unapproved or changed content; several at once
+        |  Build-Art.ps1                all of it in one run: records, syncs, the approvals that
+        v                               wait, exports, the Unity follow-up, and the verification
 src/Client/Assets/Art/Models/<Category>/<Name>.fbx       with its clips, if skinned
 src/Client/Assets/Art/Textures/<Category>/<Image>.png    painted materials only
         |  ArtModelImportRules          fixed import settings, materials remapped by name,
@@ -42,10 +43,14 @@ Scripts only write what follows from the source, such as the body parts of the
 [human base characters](#human-base-characters) from their editable bodies, and
 starting points that a person then edits, such as the gait model's clips in an
 [animation library](#animation-libraries). No script replaces handmade work.
-After an export, Unity creates the project materials an export lacks and updates
-the appearance catalogs, the content assets of garments and attachments, and
-their Addressables entries by itself when it gets focus, so no menu command
-stands between the export and the game.
+After an export, an open Editor creates the project materials the export lacks
+and updates the appearance catalogs, the content assets of garments and
+attachments, and their Addressables entries by itself when it gets focus, and
+`tools/art/Update-UnityArt.ps1` runs the whole [Unity follow-up](#unity-import-rules)
+without a focused Editor, the cloth fixtures included, so no menu command
+stands between the export and the game. `tools/art/Build-Art.ps1` takes
+every asset from changed files to exports in Unity in one run and stops only
+where a person must approve; see [Build The Art](#build-the-art).
 
 ## What To Do
 
@@ -69,6 +74,8 @@ art has one how-to:
 | Make a garment template, the form of clothes or armor, from a recipe on the cage | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](#make-a-garment) |
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
+| Bring every asset from its changed file to the game in one run: records, syncs, the approvals that wait, exports, Unity, and the verification | `Build-Art.ps1` | [Build The Art](#build-the-art) |
+| Update the materials, catalogs, Addressables entries, and cloth fixtures after an export without a focused Editor | `Update-UnityArt.ps1` | [Unity Import Rules](#unity-import-rules) |
 | Record the content of a file saved by hand and see which approvals still hold | `Update-ArtContent.ps1` | [Update The Content Record](#update-the-content-record) |
 | Confirm that every source, approval, and export is current, such as after an edit of the bodies | the sync scripts and their review sheets | [Check That The Art Sources Are Current](#check-that-the-art-sources-are-current) |
 | Measure how closely a model follows its reference pictures | `Compare-ArtReference.ps1` | [Compare A Model With Its Reference Pictures](#compare-a-model-with-its-reference-pictures) |
@@ -171,9 +178,12 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`, and `WaterCommon.hlsl`, the water's clock and the sea's waves that both share; see [Water](#water). |
 | `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
+| `artifacts/art-build` | The output of every Blender run of an export, `export/<Name>.log`, and of a content run, `content/<Name>.log`, the seconds of each asset's last export with its checks computed, `export/seconds.json`, which puts the longest export first, the Unity log of the follow-up, `unity/follow-up.log`, the marker `unity/pending`, which an export leaves until the Unity follow-up succeeds, and `synced.json`, per asset the SHA-256 of its file as the build's last sync of it left it and the fingerprints of what it followed then, so the build does not sync it again while nothing changed. |
 | `artifacts/art-cache`, `tools/art/blender/art_pipeline/check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): their results by the content of what they read, so a sync, an approval, and an export compute each once. Safe to delete at any time. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
-| `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`. |
+| `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`, which also runs several Blender processes at once. |
+| `tools/art/Build-Art.ps1` | The [build command](#build-the-art): every content record, sync, and export that changed files need, the approvals that wait, the Unity follow-up, and the verification, in one run. |
+| `tools/art/Update-UnityArt.ps1` | Runs the Unity follow-up of an export in the Editor that has the project open, or headless; see [Unity Import Rules](#unity-import-rules). |
 | `tools/art/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/art/Update-ArtContent.ps1`, `tools/art/blender/art_pipeline/content.py`, `content_core.py` | Reads the [content of the review stages](#content-of-a-stage) from a `.blend` file into the content record of `asset.json`, for a file saved by hand: `content.py` reads the parts in Blender, `content_core.py` rounds, hashes, and chains them without Blender. |
 | `tools/art/Test-ArtContent.ps1` | Proves the content fingerprints on copies of the files: a file saved again keeps every fingerprint, and scripted edits change exactly the parts they touch. It changes no file below `art/` and is not part of CI. |
@@ -200,11 +210,11 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Editor/Art/ArtAppearanceCatalogs.cs`, `ArtTopologyMaps.cs` | `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs`, with the content assets and their Addressables entries, and the maps from Unity's triangles to the faces of a body's editable mesh. |
 | `src/Client/Assets/Editor/Art/ArtBodyContentEntries.cs` | The entries of the `Body Content` and `Body Content Shared` Addressables groups, and the assets two bundles would share. |
 | `src/Client/Assets/Editor/Art/EditorBodyContent.cs` | Body content read from the asset database at once, for the Wardrobe and the tests. |
-| `src/Client/Assets/Editor/Art/ArtExportFollowUp.cs` | After an import of exported models, their data, or textures, creates the missing project materials and updates the appearance catalogs with their content and entries, once, outside batch mode. |
+| `src/Client/Assets/Editor/Art/ArtExportFollowUp.cs` | The Unity follow-up of an export, `Apply`: imports the exports, creates the missing project materials, gives the garment materials their dyes, updates the appearance catalogs with their content and entries, and writes the cloth fixtures when they changed; `ApplyFromCommandLine` is its batch-mode entry. After an import of exported models, their data, or textures, an open Editor runs the materials, the dyes, and the catalogs by itself, without the refresh and the cloth fixtures. |
 | `src/Client/Assets/Editor/Art/CreaturePresentationBuilder.cs` | `MMORPG > Tools > Art Pipeline > Build Creature Presentations`; see [Prefabs](#prefabs). |
 | `src/Client/Assets/Editor/Wardrobe/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`; see [The Wardrobe](#the-wardrobe). |
 | `src/Client/Assets/Editor/Cloth/ClothStressMotion.cs`, `ClothMotionMeter.cs`, `ClothMeasurement.cs` | The cloth stress motions, what is measured of the cloth in them, and `MMORPG > Tools > Art Pipeline > Measure Cloth`, which writes `artifacts/cloth-measurements.md`; see [Measuring The Cloth](EQUIPMENT_VISUALS_DESIGN.md#measuring-the-cloth). |
-| `src/Client/Assets/Editor/Cloth/ClothKinematicFixtures.cs` | `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures`: writes the fixtures of [Cloth Parity](#cloth-parity). |
+| `src/Client/Assets/Editor/Cloth/ClothKinematicFixtures.cs` | `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures`: writes the fixtures of [Cloth Parity](#cloth-parity); `Update-UnityArt.ps1` and `Build-Art.ps1` write them only when they changed. |
 | `src/Client/Assets/Editor/Water/WaterAssets.cs`, `TileableNoise.cs` | `MMORPG > Tools > Water > Create Water Textures And Materials`: the water's textures from tileable noise and its materials; see [Water](#water). |
 | `.mcp.json` | The Blender MCP server for live work in Blender from Claude Code. |
 
@@ -273,8 +283,8 @@ length in `frames`, and whether it should `loop`. Beyond that:
   it, its meshes joined with their faces, materials, zones, digits, and paint UV
   map, and its rig's landmarks.
 - An animation library has no materials or textures; it records its `clips` and
-  the `rigContentSha256`, the `export.contentSha256` of its rig when it was
-  exported.
+  the `rigContentSha256`, the content of its rig's last review stage when it was
+  exported, from the rig's content record.
 - A paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body
   below `src/Client/Assets/Art/Textures/Paint`, each with its `layout`, the width
   and height of its body's full paint layout, its `rect`, where the image lies in
@@ -290,13 +300,13 @@ length in `frames`, and whether it should `loop`. Beyond that:
   one per body of the cage in order with its `body` label, the `bodyFitSha256`
   of the body's export it was fitted to, the model's `target` and `sha256`, and
   its `data` file and `dataSha256`; its `clipSources`, every animation library
-  of its skeleton with the `contentSha256` of the export whose clips it was
-  checked in; its `pairSources`, every template
+  of its skeleton with the `contentSha256` of the content whose clips it was
+  checked in; its `pairSources`, every exported template
   of another visual slot and a lower layer of its cage with the `contentSha256` of
-  the export it was checked over, when there are any; its one material
-  `M_Garment_<Name>` without an image; and no textures.
-- A garment texture records the `garmentContentSha256` of its template's export,
-  its `masks` with their `body`, `data`, and `dataSha256` and their
+  the content it was checked over, its `rig` stage, when there are any; its one
+  material `M_Garment_<Name>` without an image; and no textures.
+- A garment texture records the `garmentContentSha256`, the content of its
+  template's last stage, its `masks` with their `body`, `data`, and `dataSha256` and their
   `clipSources` and `pairSources` when it has transparent parts, the
   `pairSources` as a template's, for the templates of lower layers worn under its
   template, whose faces its masks hide, its material `M_Garment_<Name>`,
@@ -304,6 +314,12 @@ length in `frames`, and whether it should `loop`. Beyond that:
   A dyeable texture's material also names its dye mask in `dyeMap`,
   `T_Garment_<Name>_Dye`, exported next to the image, and the natural color of
   each channel in `dyeColors` (sRGB `#RRGGBB`).
+- A record names the content of the other assets it was made with, from their
+  content records, never their exports, except the fit and the paint layout of a
+  body, which only the body's export computes. So an export needs the approvals
+  of those assets to hold for their content, not their exports, and assets
+  exported together may run in any order and at once. When every asset is
+  exported, the content a record names is that of the other asset's export.
 
 ## Review Stages
 
@@ -356,14 +372,16 @@ of the fingerprints, or for other stages, clips, or bodies than `asset.json`
 names, when an approval is missing or the content of any approved stage changed
 after its approval, when an `asset.json` still records file hashes from before
 content records, when an export comes from other content than the current one,
-when an animation library was exported against another export of its rig, when
+when an animation library was exported against other content of its rig, when
 an asset in review has an export or an FBX, when one of the garment cage's bodies
 has another export than the cage was approved on, when a paint layer was moved
 to another export of a body or through other content of the cage, when a
 garment template was fitted to other content of its cage or exported for other
-bodies than its cage has, when a garment texture was exported against another
-export of its template, is painted in other UVs than its template's current
-ones, or has masks for other bodies than its template, when two assets export a
+bodies than its cage has, or was checked in or over other content of the
+animation libraries or of the templates of lower layers than theirs now, when a
+garment texture was exported against other content of its template, is painted
+in other UVs than its template's current ones, or has masks for other bodies
+than its template, when two assets export a
 material of the same name, when the committed FBX, data, or a committed texture differs from
 the recorded export, or when a model below `src/Client/Assets/Art/Models` or a
 texture below `src/Client/Assets/Art/Textures` has no asset. Every problem names
@@ -484,8 +502,9 @@ image, with a `SKIP` line.
 Every script that saves a `.blend` file reads its content and writes the record
 itself, and `Approve-ArtAsset.ps1` and `Export-ArtAsset.ps1` do so before they
 check anything, for the asset, for the cage of a garment, and for the other
-assets whose exports an export records, so a file saved by hand in Blender
-needs no step before them.
+assets whose content an export records, so a file saved by hand in Blender
+needs no step before them. An export of several assets makes these records
+current, and writes them, before any Blender of a wave starts.
 
 A record pairs the content Blender read with the hash of the file it read, so a
 script takes the file's hash before the Blender run whose content it records and
@@ -558,14 +577,33 @@ src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
 (triangles=878).`, and `Verified <n> art asset(s).` Each asset of an approval
 or an export ends with the seconds it took, such as `Resource_IronVein took
 3.9 s.`; see [Cache Of The Garment Checks](#cache-of-the-garment-checks). Unity
-imports the model the next time it gets focus. Commit the `.blend` file,
-`asset.json`, the FBX, and its `.meta` file together, with the materials and
-catalogs Unity creates for them.
+imports the model the next time it gets focus, or at once with
+`.\tools\art\Update-UnityArt.ps1`; see [Unity Import Rules](#unity-import-rules).
+Commit the `.blend` file, `asset.json`, the FBX, and its `.meta` file together,
+with the materials and catalogs Unity creates for them.
 
 `-Stage` is `model` unless it names another stage. `Export-ArtAsset.ps1` takes
-several assets at once, or `-All` for every asset but the cage, and exports them
-in the order their records need: animation libraries after their rigs, garment
-templates from the lowest layer up, and textures last.
+several assets at once, or `-All` for every asset but the cage, and runs several
+Blender processes at once, `-Jobs <n>` of them, by default half the logical
+processors and at most 8. It plans every export of a wave before the wave
+starts, so the content records of the other assets an export names are made
+current and written first, and runs the bodies and the other skinned and static
+assets as the first wave, since the cage, the garments, and the paint layers
+read a body's fit and paint layout from its export, and everything else as the
+second, the longest export first, by the seconds each asset's last export took
+with its checks computed, which `artifacts/art-build/export/seconds.json` keeps.
+A record names the content of the other assets, not their exports, so the order
+within a wave changes no byte, and the script alone writes each `asset.json`,
+when that asset's Blender ended, whole, to a file beside it that then takes its
+place. Windows refuses to open the file for that moment, so the Blender runs
+read every `asset.json` through `art_pipeline/manifest_io.py`, which tries
+again for a few seconds. Each asset's lines are printed together, as its
+Blender ends, and its Blender's full output is kept in
+`artifacts/art-build/export/<Name>.log`. An export that fails leaves the others
+of its wave running, and the script then stops with every failure before the
+next wave. `-Jobs 1` exports one asset after the other in the order of the
+records: the models and paint layers, the animation libraries, the garment
+templates from the lowest layer up, and the textures.
 
 To see the guard work, open the `.blend` file, move one vertex of `Available` a
 little in Edit Mode, save, and export once more. Expected result: the export
@@ -582,7 +620,9 @@ Run these checks after a change that other assets follow, such as an edit of
 the human bodies or the garment cage, or to confirm a clean state. They need
 [Blender](#set-up-blender) and confirm that the committed art sources,
 approvals, and exports agree and that every review sheet shows what the
-reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
+reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender,
+and [Build The Art](#build-the-art) runs the syncs that the records show are
+needed, with the exports and the Unity follow-up, in one command.
 
 1. Run `.\tools\art\Sync-HumanBase.ps1`, `.\tools\art\Sync-CageAsset.ps1`, and
    `.\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/<Name>` and
@@ -622,6 +662,115 @@ reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
    result: both maps are the same: the chest is one island, the trunk's front,
    with both of its halves side by side, and no island lies over another.
    Close Blender without saving.
+
+### Build The Art
+
+`tools/art/Build-Art.ps1` takes the art from changed `.blend` files to exported
+assets in Unity in one run and stops only where a person must look. It never
+records an approval. Run it from the repository root after editing art, or to
+confirm a clean state:
+
+```powershell
+.\tools\art\Build-Art.ps1
+```
+
+1. It makes every content record current, one `content` run per file whose
+   hash differs from its record, several Blender processes at once: the cage
+   and every other asset first, then the garment templates, whose content run
+   takes the cage's content.
+2. It plans what each asset needs, in the order the assets follow each other:
+   the bodies, the cage, the animation libraries, the garment templates from the
+   lowest layer up, the textures, the paint layers, and the rest. An asset
+   needs:
+   - `sync`, with its kind's sync script, when something it follows changed: a
+     body's fit for the cage, the cage or a body for a garment template, its
+     template's `uv` for a texture, its rig for a library, a body's paint layout
+     or the cage for a paint layer, or when its own content differs from its
+     approval, which the sync fits again and shows on a new review sheet. The
+     human bodies have no sync here; `Sync-HumanBase.ps1` stays a step of its
+     own;
+   - `approval` when the content of a review stage differs from its approval,
+     or the cage's bodies have another fit than it was approved on;
+   - `export` when its approvals hold and its export record is missing, older
+     than its content or its files, or names other content of what it follows
+     than the current one;
+   - `waits` when it needs an export but follows an asset that waits for an
+     approval, also through other assets, so nothing that depends on an
+     unapproved change is exported;
+   - `later` when it follows an asset that this build syncs first, or a body
+     that it exports first, whose new fit or paint layout decides what it needs;
+   - `nothing` otherwise.
+
+   `-Plan` makes the content records current, prints the plan with the
+   approvals that wait, and stops.
+3. It runs the syncs, one asset at a time, each at most once, and plans again.
+   After a sync it records in `artifacts/art-build/synced.json` the SHA-256 of
+   the asset's file and what it followed: the content of every asset it follows
+   and the fit and paint layout of the export of every body it follows. A sync
+   reason does not make an asset `sync` while its file and everything it follows
+   are exactly what that record holds, so a run after a sync does not sync again
+   what an approval or an export still waits for, such as a garment approved
+   after a change of the cage, whose export record names the old cage until its
+   export; the asset goes on to `approval` or `export`. A missing or broken file
+   costs one sync.
+4. It exports every asset that needs an export, with `Export-ArtAsset.ps1` and
+   `-Jobs` Blender processes at once, and plans again, since a body's new export
+   may give the cage, the garments, and the paint layers a sync.
+5. It runs the Unity follow-up, `Update-UnityArt.ps1`, while the marker
+   `artifacts/art-build/unity/pending` is there, which `Export-ArtAsset.ps1`
+   leaves once it wrote a record and `Update-UnityArt.ps1` removes when it
+   succeeds, so a follow-up that failed, such as in Play Mode or after its time,
+   runs again with the next build, also without an export.
+6. It runs `Verify-ArtAssets.ps1 -Waiting` with every asset whose need is not
+   `nothing`: their problems are listed apart and do not fail it, while every
+   other problem does, also one that belongs to no asset, such as a stray file or
+   a material of two assets. Without `-Waiting`, as CI runs it, every problem
+   fails it.
+7. It lists, once and from its last plan, every review stage that waits for an
+   approval, in the order to approve them: the asset, which parts of its
+   content differ from the last committed `asset.json`, its review sheet, and
+   the exact `Approve-ArtAsset.ps1` command. Then it prints the seconds of each
+   phase and of each asset's content run, sync, and export, how many check
+   units of the exports came from the cache, the assets it synced, and what is
+   left for a person.
+
+Exit code 0 means every asset is exported and verified, 2 that review stages
+wait for an approval and everything else that could be exported was, and 1 an
+error, such as a sync or an export that breaks a rule, a failed Unity
+follow-up, or a problem of the verification that no approval explains.
+`-Jobs <n>` sets how many Blender processes run at once, and `-NoCache`
+computes every check of a garment template or a masked texture.
+
+When the reviewer rejects a change after the build synced what follows it, such
+as a texture moved to a template's new UVs or garments fitted to a changed
+cage, the syncs changed those files too. The build ends with `Synced by this
+run, so their files changed: ...`, which names every asset it synced; restore
+the changed asset and those from Git, such as
+`git checkout -- art/Garments/Trousers art/GarmentTextures/WoolTrousers`, and run
+the build again.
+
+Expected result on a clean checkout: the plan lists every asset with
+`nothing` and ends with `In all: 44 nothing.`, then `Verified 44 art
+asset(s).`, the seconds per phase, `Left for a person: nothing.`, and `Result:
+every asset is exported and verified.`, exit code 0, in about a minute;
+`git status` lists nothing.
+
+To see the build stop at an approval, move one UV of a garment template's first
+version in Blender, such as `Trousers_Male` in
+`art\Garments\Trousers\Trousers.blend`, save, and run
+`.\tools\art\Build-Art.ps1 -Plan`. Expected result: `art/Garments/Trousers
+sync: its 'model' content differs from its approval`, every template and
+texture that follows it `later: it follows art/Garments/Trousers, which this
+build syncs or exports first`, and its `model` and `rig` stages under `Review
+stages that wait for an approval` with `the parts uv changed`. Without `-Plan`,
+the build syncs the template, then its texture `WoolTrousers` for the new UVs,
+lists both for an approval with their review sheets and commands, marks the
+templates of higher layers worn over it and the masked textures on them
+`waits`, exports nothing, names both under `Synced by this run`, and ends with
+exit code 2 after a few minutes. Run it again: it syncs nothing, since both
+files and what they follow are as its syncs left them, and ends with the same
+list and exit code 2. Restore the files and records with
+`git checkout -- art/Garments/Trousers art/GarmentTextures/WoolTrousers`.
 
 ### Compare A Model With Its Reference Pictures
 
@@ -1077,11 +1226,51 @@ of [Paint Layers](#in-unity), it is a copy of URP's `Lit.shader` and
 forward pass's fragment differ; when URP is upgraded, it is made again from the
 new files with the same changes.
 
-`ArtExportFollowUp` runs both commands once after Unity imports exported models,
-their data, or textures, when the Editor next updates, so an export reaches the
-game without a menu command, also when only a garment's masks change. It does
-nothing in batch mode, so the CI tests check the committed materials and
-catalogs as they are.
+`ArtExportFollowUp.Apply` is the follow-up of an export: it refreshes the asset
+database, so the exported files are imported, creates the missing materials,
+gives the garment materials their dyes, updates the appearance catalogs with
+their content and Addressables entries, writes the
+[cloth fixtures](#cloth-parity) when they changed, and saves the assets. It
+writes only what differs, so a run with nothing to do changes no file. When a
+step throws, what the steps before it wrote is saved, and the exception
+reaches the caller. An open Editor runs the light part of it by itself once
+after Unity imports exported models, their data, or textures, when the Editor
+next updates, also in Play Mode: the materials, the dyes, and the catalogs,
+saved the same way, without a forced refresh and without capturing the cloth,
+so an export reaches the game without a menu command, also when only a
+garment's masks change. The cloth fixtures are written by `Update-UnityArt.ps1`,
+`Build-Art.ps1`, which runs it, or the menu. Any other batch-mode run, such as
+the CI tests, leaves the committed materials and catalogs as they are.
+
+Without a focused Editor, run it from the repository root:
+
+```powershell
+.\tools\art\Update-UnityArt.ps1
+```
+
+When an Editor has this checkout's project open, the script runs `Apply` there
+through the Unity CLI, after a refresh and a compile check; otherwise it starts
+Unity headless with `-executeMethod
+Mmorpg.Client.Editor.ArtExportFollowUp.ApplyFromCommandLine`, at most
+`-TimeoutMinutes` (30 by default), with its log in
+`artifacts/art-build/unity/follow-up.log`. Expected result: a line per thing it
+wrote, or `The materials, appearance catalogs, Addressables entries, and cloth
+fixtures are up to date.`, and `Result: the follow-up ran in a headless Unity in
+<n> s.`, exit code 0; a failure prints the lines of the log that say why, such as
+the exception of the step that failed or a compile error, with exit code 1, and
+exit code 2 means it could not run, such as while another Unity process has the
+project open. `git status` lists only what the follow-up wrote.
+
+The Addressables settings keep a hash of themselves in the serialized field
+`m_currentHash` of `AddressableAssetSettings.asset`. Their own `SetDirty`
+empties it, and the first read computes it again, as finding the entries of the
+body content does, and the asset is saved with whatever the field holds. The
+committed asset holds it empty, so settings marked dirty in another way, such as
+with `EditorUtility.SetDirty`, after the hash was read would be saved with the
+hash although no setting changed, the change a headless Unity run can leave in
+that file. When the settings are about to be saved and the saved asset holds the
+hash empty, `Apply` empties the field again, which is right whether a setting
+changed or not, and says so in a line of its own.
 
 `ArtModelImportTests` fails when a model has other import settings than its
 kind needs, embeds a material because Unity has no material of that name, uses a
@@ -1495,9 +1684,9 @@ beside the neck.
    the same for the female, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
    (clips=Death,Idle,Walk,...).`, and `Verified <n> art asset(s).` The library is
-   exported with the characters because it records the export of its rig;
-   `Verify-ArtAssets.ps1` otherwise stops with `was exported against another
-   export of its rig`. After `-Rig`, sync the library first and review its clips
+   exported with the characters because it records the content of its rig;
+   `Verify-ArtAssets.ps1` otherwise stops with `was exported against other
+   content of its rig`. After `-Rig`, sync the library first and review its clips
    on the new rig, as [Make A Clip](#make-a-clip) describes.
 
 The export also writes the textures below
@@ -2003,9 +2192,9 @@ reviewed and approved again. It names every clip's slot after the armature, so
 Blender binds a clip to it when a person picks the clip in the Action Editor. A
 library whose armature is already the current rig is left as it is, unless
 `-Force` rebuilds it. The approval and the export refuse a library whose
-armature is not the current rig, and CI refuses one that was exported against an
-older export of its rig; exporting it again is enough when the rig itself did not
-change. For a library on the `Humanoid` skeleton the sync then reports how far a
+armature is not the current rig, and CI refuses one that was exported against
+other content of its rig; exporting it again is enough when the rig's armature
+did not change. For a library on the `Humanoid` skeleton the sync then reports how far a
 foot on the ground slides in `Idle`, `Walk`, and `Jog` when the game moves the
 body at their speeds, and stops when one slides more than 15 mm.
 
@@ -2094,10 +2283,11 @@ clips.
 In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 `HumanLocomotion.controller` plays them on every player body; see
 [Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies). Adding a clip to the
-library changes its export, which every garment template and every garment
+library changes its content, which every garment template and every garment
 texture with masks records as a clip source it was checked in, so they are
-exported again after it: `Export-ArtAsset.ps1` checks them in the new clip, and
-their approvals stay, since their content does not change.
+exported again, in the same run as the library or after it:
+`Export-ArtAsset.ps1` checks them in the new clip, and their approvals stay,
+since their content does not change.
 
 ### Make A Clip
 
@@ -2183,9 +2373,9 @@ their approvals stay, since their content does not change.
    layer in the new clip stops its export with the check that failed; fix it in
    its `.blend` file and review it again.
 
-When the characters are exported again, for example after an edit, export the
+When the characters' content changes, for example after an edit, export the
 library again too; `Verify-ArtAssets.ps1` otherwise stops with `was exported
-against another export of its rig`. If the edit changed the rig, the sync
+against other content of its rig`. If the edit changed the rig, the sync
 changes the library, and it needs a new review and approval first. A clip that
 a weapon or a tool names needs a state in the controller as well; see
 [Make An Attachment](#make-an-attachment).
@@ -2758,9 +2948,8 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    cage. The cage has no export; commit the `.blend` file and `asset.json`
    together. Every template on the cage records the content of the cage's
    `model` stage in `cageContentSha256`, so after a change of that content sync,
-   review, approve, and export its templates again, in the order of their
-   layers, and their textures
-   after them, as [Make A Garment](#make-a-garment) and
+   review, approve, and export its templates again, and their textures, as
+   `Build-Art.ps1` does up to the approvals, as [Make A Garment](#make-a-garment) and
    [Make A Garment Texture](#make-a-garment-texture) describe; a template whose
    regions did not move keeps its shape, its weights, and its exported files.
    Expected result: `Verified <n> art asset(s).` once they are all exported. A
@@ -3067,7 +3256,7 @@ armature, the motion check, and the pair check:
   poses 0, Death 0, Idle 0, ...`. A list that went stale, chosen over another
   build of a template of a lower layer, is caught by the export's records, as
   [Export Of A Template](#export-of-a-template) describes: the template's `pairSources`, which
-  `Verify-ArtAssets.ps1` compares with the current exports of the templates of
+  `Verify-ArtAssets.ps1` compares with the current content of the templates of
   lower layers, and the data's `innerFaceCounts`, which the catalog compares
   with the inner template's model before it hides any face of it.
   A body wears one garment per visual slot, so templates of the same slot,
@@ -3230,21 +3419,23 @@ topology, which the body's export writes next to its model: its editable mesh's
 `faceZones`. Its `schemaVersion` is 3. Its material has no image, so the game
 shows a template only with a texture.
 
-A template is exported after its cage is approved and after its bodies and the
-animation libraries of its skeleton are exported from their current content, and
-it records the cage's content and their exports, so `Verify-ArtAssets.ps1`
-fails when the cage's content changed or a body or a library has a newer export
-than the one the template was fitted to and checked in: sync, review, and export
-the template again. While the cage's content record is not current, it asks to
-run `tools/art/Update-ArtContent.ps1` for the cage first. It also records the
-exports of the templates it was checked over in the pair check, whose faces its data names, so templates that are
-exported together, such as after a change of the cage, are exported in the order
-of their layers, the trousers before the boots before the shirts before the
-gloves; `Export-ArtAsset.ps1` puts them in that order when it is given them
-together. A texture of a template
-exported before a template of a lower layer stops with `was checked over other
-templates of a lower layer than the current exports of its cage's templates`
-until its template is exported again.
+A template is exported after its cage is approved and its bodies are exported,
+while the approvals of the animation libraries of its skeleton hold for their
+content, and it records the cage's content, the fit of the bodies' exports, and
+the content of the libraries, so `Verify-ArtAssets.ps1` fails when the cage's
+content changed, a body has a newer fit, or a library other content than the
+one the template was checked in: sync, review, and export the template again.
+While the cage's content record is not current, it asks to run
+`tools/art/Update-ArtContent.ps1` for the cage first. It also records the
+content of the templates it was checked over in the pair check, whose faces its
+data names, and needs their approvals to hold for that content, not their
+exports, so templates exported together, such as after a change of the cage,
+run in any order and at once and write the same files; a template that the
+same run exports for the first time counts as exported for the others. A
+template or a texture checked over another content of a template of a lower
+layer than it has now stops the verification with `was checked over other
+templates of a lower layer than the current content of its cage's exported
+templates` until it is exported again.
 
 ### Cache Of The Garment Checks
 
@@ -3305,8 +3496,12 @@ run stops every further entry of that run, whose line then says so, such as
 `Not cached, since Human_Actions changed during the run.`; the run still uses
 what it computed for its own report and export, which its own records guard.
 
-A cached result is the computation's own: the report lines are made from it as
-from a computed one, and the export writes the same data. The checks leave the
+Several exports run at once, so each file of an entry is written to a temporary
+name and moved into place, the arrays before the data, and the data names the
+hash of its arrays: a run reads a whole entry or none, and a write that another
+run holds open is left out. A cached result is the computation's own: the
+report lines are made from it as from a computed one, and the export writes the
+same data. The checks leave the
 bones of the cloth chains with the float rounding of their last laying in their
 scale, which the FBX export writes, so every unit keeps that scale too, and the
 export puts it back before it writes the models.
@@ -3367,9 +3562,15 @@ change below `art/` or `tools/art/blender/`:
 python -m unittest discover -s tools/art/blender/tests
 ```
 
-Expected result: `Ran <n> tests` and `OK`. After a change of the cloth in the
-client or of a body or garment that it hangs on, run the menu, commit the
-fixtures, and run the Python tests again.
+Expected result: `Ran <n> tests` and `OK`. `tools/art/Update-UnityArt.ps1`,
+which `tools/art/Build-Art.ps1` runs after an export, captures the cases again
+and writes the fixtures when a case or a name differs from the file or a number
+by more than `5e-6`, so every point it keeps lies within `5e-6 * sqrt(3) =
+8.7e-6` of the file, inside the `1e-5` of distance that `ClothPoseTests`
+allows; an export of a body or a garment that the cloth hangs on rewrites them,
+and an export of unchanged ones does not. The open Editor's own follow-up of an
+export does not capture them. After a change of the cloth in the client, run the
+menu. Commit the fixtures and run the Python tests again.
 
 ### Python Tests Of The Pipeline
 
@@ -3408,8 +3609,9 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns, the version of the content fingerprints and the parts of every stage, and that every content record and approval of an `asset.json` has the parts, stages, and fields of its kind. |
 | `test_content_core.py` | The content fingerprints that approvals bind to: rounding, with negative zero, noise below the rounding, and a change above it; named things in any order; the chain of the stages, a shape that changes every stage, weights that keep the model, and a clip that changes only the animation. It needs numpy. |
-| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the exports of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds. |
-| `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
+| `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the content of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds; that an export's records name the content of the other assets, not their exports; the Blender processes that `Invoke-ArtBlenderJobs` runs at once, with the environment and the result handling of `Invoke-ArtBlender` and their arguments quoted, and an export that plans a wave before it runs it and writes each `asset.json` whole; and that `Build-Art.ps1` records no approval and starts only the pipeline's own scripts, and `Update-UnityArt.ps1` the follow-up's method. |
+| `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken, also while several runs write and read one entry at once; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
+| `test_manifest_io.py` | `manifest_io.read_json`, which every reader of an `asset.json` in the pipeline uses: it reads the file again while Windows refuses it during a replace, for a few seconds, then raises, and raises any other error at once. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |
@@ -3572,7 +3774,9 @@ slot, so a shirt and a jerkin replace each other.
    Commit the `.blend` file, `asset.json`, the FBX and JSON files, the material,
    and their `.meta` files together. A template is exported again whenever its
    cage, a body, or an animation library changes, with the templates of higher
-   layers after it, as [Export Of A Template](#export-of-a-template) describes.
+   layers, as [Export Of A Template](#export-of-a-template) describes;
+   `Build-Art.ps1` finds every such export, as [Build The Art](#build-the-art)
+   describes.
 5. Give it a texture, as [Make A Garment Texture](#make-a-garment-texture)
    describes, and once both are exported, try it on in
    [the Wardrobe](#the-wardrobe) and play its clips; a template with loose parts
@@ -3663,15 +3867,19 @@ export a material of the same name.
   transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
   the format of the template's data. The masks are computed in the template's
   file with its bodies, cage, and clips, so the export runs only when the
-  template is approved and exported from its current content, its export still
-  matches its cage, its bodies, and the clips of its skeleton, and the texture is
-  painted in the template's current UVs: the `templateUv` part of its content is
-  the template's `uv` part. An animation library that is not exported from its
-  current content stops only a texture with transparent parts, before anything
-  is written. The export records the `export.contentSha256` of the template's
-  export it was checked against in `garmentContentSha256`, so
-  `Verify-ArtAssets.ps1` fails when the template has a newer export: sync,
-  review, and export the texture again. A change of the template's shape that
+  template's approvals hold for its current content, the texture is painted in
+  the template's current UVs, the `templateUv` part of its content being the
+  template's `uv` part, and, unless the same run exports the template, the
+  template's export comes from its current content and still matches its cage
+  and its bodies; otherwise it stops with `cannot be exported before its
+  template ... is exported again: ...` and asks to export the template in the
+  same run or first. An animation library whose approval
+  does not hold for its current content stops only a texture with transparent
+  parts, before anything is written. The export records the content of the
+  template's last stage in `garmentContentSha256`, so `Verify-ArtAssets.ps1`
+  fails when the template's content changed: sync, review, and export the
+  texture again. A texture and its template may be exported in the same run, at
+  once. A change of the template's shape that
   keeps its UVs leaves the texture's approval holding and needs only a new export
   of the texture, whose masks follow the shape; a change of its UVs needs
   `Sync-TextureAsset.ps1`, and a new review and approval when the sync changes
@@ -3798,8 +4006,8 @@ at the front where the skin shows between the laces.
    changed files of `Assets/AddressableAssetsData/AssetGroups`, and their
    `.meta` files together. A dyeable texture also exports
    `T_Garment_WoolTunic_Dye.png`, and Unity gives the material its dye mask and
-   natural colors. A texture is exported again after every export of its
-   template.
+   natural colors. A texture is exported again after every change of its
+   template's content.
 6. Try it on in [the Wardrobe](#the-wardrobe), and give it an item to wear it in
    the game: in `MMORPG > Tools > Item Catalog`, select an item of the
    template's equipment slot, enter `WoolTunic` in `Garments` under

@@ -63,7 +63,7 @@ from mathutils.kdtree import KDTree
 
 from human_base import rig
 
-from . import bodies, body_files, cage, cloth, hang, poses
+from . import bodies, body_files, cage, cloth, hang, manifest_io, poses
 from .scene import ArtPipelineError, relative_image_paths
 
 FITTED = "fitted"
@@ -2435,16 +2435,14 @@ def _key_pose(arm: bpy.types.Object, pose: dict, frame: int, kinds: list[str], f
 def read_wearing(manifest: str) -> tuple[str, str | None]:
     """The visual slot of a template's asset.json and, for headwear, what it does to the hair under
     it: hide, compress, or show."""
-    with open(manifest, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = manifest_io.read_json(manifest)
     return str(data["slot"]), data.get("hair")
 
 
 def read_manifests(manifest: str, cage_manifest: str) -> tuple[str, object, list[dict], str]:
     """The band and the recipe of a template's asset.json, and the standard lines and the file of
     its cage."""
-    with open(manifest, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = manifest_io.read_json(manifest)
     _figure, lines = cage.read_manifest(cage_manifest)
     folder = os.path.dirname(os.path.abspath(cage_manifest))
     return str(data["band"]), data["recipe"], lines, os.path.join(folder, f"{os.path.basename(folder)}.blend")

@@ -31,7 +31,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from art_pipeline import (bodies, body_files, cage, check_cache, clip_video, cloth_core, content, content_core,  # noqa: E402
-                          coverage, garment, library, paint, poses, preview, reference, skinned, texture)
+                          coverage, garment, library, manifest_io, paint, poses, preview, reference, skinned, texture)
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -240,8 +240,7 @@ def _pairs(args) -> list[tuple[str, str, str]]:
 
 def _recipe_next_to(path: str):
     """The recipe of the template whose .blend file this is, from the asset.json next to it."""
-    with open(os.path.join(os.path.dirname(path), "asset.json"), encoding="utf-8") as handle:
-        return json.load(handle)["recipe"]
+    return manifest_io.read_json(os.path.join(os.path.dirname(path), "asset.json"))["recipe"]
 
 
 def _hidden_reports(name: str, label: str, coverage_result: coverage.Coverage) -> list[str]:
@@ -743,8 +742,7 @@ def main() -> int:
                            args.label, args.size, os.path.abspath(args.source_file) if args.source_file else None,
                            args.source_object)
         else:
-            with open(args.manifest, encoding="utf-8") as handle:
-                recipe = json.load(handle)["recipe"]
+            recipe = manifest_io.read_json(args.manifest)["recipe"]
             moved, notes = texture.sync(os.path.abspath(args.file), args.texture, os.path.abspath(args.garment_file),
                                         args.garment, args.label, recipe)
             for note in notes:

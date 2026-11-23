@@ -16,14 +16,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from blender_source import REPOSITORY_ROOT, load, source_text  # noqa: E402
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
-cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError)
+manifest_io = load("art_pipeline/manifest_io.py", "read_json")
+cage = load("art_pipeline/cage.py", "REGIONS", "ATTACHED", "SIDED", "read_manifest", ArtPipelineError=scene.ArtPipelineError,
+            manifest_io=manifest_io)
 hang = load("art_pipeline/hang.py", "PREFIXES", "SIDES", "hem_height", "_gap", "LEAVE", "EDGE_GAP", "MARGINS", "ROOT_BLEND",
             ArtPipelineError=scene.ArtPipelineError)
 garment = load("art_pipeline/garment.py", "BANDS", "OFFSETS", "SLOTS", "SHAPE_KEYS", "UNDER_HEADWEAR", "MAX_INFLUENCES",
                "collection_name", "version_name", "material_name", "image_name", "recipe_text",
                "recipe_regions", "export_paths", "read_wearing", "read_manifests", "turned_edges", "fold_error",
                "border_vertices", "MIN_FOLD", "SETTLE_MARGIN", "HEM_ROOM", "ROUNDING", "_by_index", cage=cage, hang=hang,
-               ArtPipelineError=scene.ArtPipelineError)
+               manifest_io=manifest_io, ArtPipelineError=scene.ArtPipelineError)
 coverage = load("art_pipeline/coverage.py", "REACH", "EDGE_REACH")
 texture = load("art_pipeline/texture.py", "MAX_DYES")
 
