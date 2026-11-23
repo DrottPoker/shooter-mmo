@@ -605,9 +605,9 @@ a garment fits, the pipeline computes:
   animated. The cloak is such a garment. Its pull-in still keeps the skin under
   its edges from poking through.
 
-A mask is 545 bytes for the human bodies (4,358 faces). When the character is
-put together, every body face that a worn garment covers is removed, the
-pull-in vertices move, and every garment face whose underlay face a garment of a
+A mask is the list of the body's faces that the garment covers, by their index
+in the body's editable mesh. When the character is put together, every body
+face that a worn garment covers is removed, the pull-in vertices move, and every garment face whose underlay face a garment of a
 higher layer covers is removed, and so is every face that a worn garment of a
 higher layer hides. A shirt over trousers thereby hides the trousers' waist
 under its hem, from the hide margin inside it, but keeps their legs, and a floor-length
@@ -989,9 +989,9 @@ in Python, step by step, from the same constants, the `cloth` section of
 checks of garments show the cloth as every visible body in the game shows it.
 Cases captured from the client keep the two within 0.01 mm of each other in CI;
 see [Cloth Parity](ART_PIPELINE.md#cloth-parity). The Blender checks of `Robe`
-and `Cloak` in the target pose meet every rule: the legs come through the robe
-only at the hip crease in the fall of `Death`, by up to 58 mm, and through the
-cloak nowhere.
+and `Cloak` lay the target pose at rest and in the test poses, and both meet
+every rule; how the cloth looks in the frames of the clips is measured by the
+[game views](ART_PIPELINE.md#game-views).
 
 ### Measuring The Cloth
 
@@ -1025,7 +1025,10 @@ body's pose held, into `artifacts/cloth-measurements.md`, which Git ignores.
 Each run starts the clips and the chains again, so runs compare. The Wardrobe
 shows the same measures while it plays.
 
-The solver measures as follows, the worst of both bodies and the three outfits.
+A run of Measure Cloth gives today's numbers; they change with the bodies, the
+robe, the cloak, and the clips. On the rebuilt bodies, in the runs of
+2026-11-21 and 2026-11-22, the solver measured as follows, the worst of both
+bodies and the three outfits.
 `Legs` counts only the legs and feet, whereas `Through cloth` also counts an arm
 through a cloak's edge; `Other` gives how far a spin flares the tips out, how
 long the cloth's swing on its target takes to settle after a stop or a spin, and
@@ -1074,10 +1077,10 @@ everything the legs do not push. In about half of a jog's steady frames the legs
 degrees: the heel comes up behind nearly level in a jog and reaches a cloak to
 the middle of the calf however it hangs.
 
-How far the chains' tips in a zig-zag lie from where they lie stepped at 1/240 s,
-in centimeters at most and as RMS over the frames, the worst of both bodies and
-the three outfits, playing the clips and with the body's pose held so only its
-root moves:
+How far the chains' tips in a zig-zag lay from where they lay stepped at
+1/240 s, measured on 2026-11-21, in centimeters at most and as RMS over the
+frames, the worst of both bodies and the three outfits, playing the clips and
+with the body's pose held so only its root moves:
 
 | Pose | 1/30 s | 1/60 s | 1/144 s | Jittery |
 | --- | --- | --- | --- | --- |
@@ -1435,11 +1438,11 @@ character from showing. How the content loads is in
 | `hair` | 2,500 |
 
 A template's manifest may name another budget where its form needs it, such as
-the nasal helmet's 2,500. A character in a full outfit draws about 15,000 to
-18,000 triangles near the camera, because the covered body faces are gone.
-Gloves with five fingers, 1,840 triangles for both hands, hide the body's hands,
-2,232 triangles, and boots, 1,376 triangles, hide its feet, 2,408 triangles, so
-even their budgets leave the character lighter than without them. Levels of detail
+the nasal helmet's 2,500. A character in a full outfit draws fewer triangles
+near the camera than its body and its garments have together, because the
+covered body faces are gone: gloves with five fingers hide the body's hands, and
+boots hide its feet. The approval and the export of an asset print its
+triangles, `(triangles=<n>)`. Levels of detail
 at half and a quarter of the triangles come with the first crowd measurement
 that needs them.
 

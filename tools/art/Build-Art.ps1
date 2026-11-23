@@ -175,7 +175,8 @@ function Get-ArtFollowed($Manifest) {
 
 function Get-ArtSyncReasons($Manifest, $Manifests) {
     # Why the asset needs its sync: something it follows changed, or its own content differs from its
-    # approval, which a sync fits again and shows on a new review sheet. None for a kind without a sync.
+    # approval, which a sync fits again; the sync of a cage, a garment, and a texture also renders a new
+    # review sheet, that of a library and a paint layer does not. None for a kind without a sync.
     $reasons = New-Object System.Collections.Generic.List[string]
     if (@("cage", "garment", "texture", "animations", "paint") -notcontains $Manifest.Kind) {
         return $reasons.ToArray()
@@ -1016,7 +1017,7 @@ try {
         $did.Add("Recorded the content of $($contentRuns.Count) file(s) saved since their last record: $($contentRuns -join ', ').")
     }
 
-    $did.Add($(if ($syncedOrder.Count -gt 0) { "Synced $($syncedOrder.Count) asset(s), which fits each to what it follows, checks it, and renders its review sheet: $($syncedOrder -join ', ')." } else { "Synced nothing." }))
+    $did.Add($(if ($syncedOrder.Count -gt 0) { "Synced $($syncedOrder.Count) asset(s), which fits each to what it follows and checks it: $($syncedOrder -join ', ')." } else { "Synced nothing." }))
     $done = @($exportReport | Where-Object { $null -eq $_.Error } | ForEach-Object { $_.Asset })
     $did.Add($(if ($done.Count -gt 0) { "Exported $($done.Count) asset(s): $($done -join ', ')." } else { "Exported nothing." }))
     if ($unityRan) {

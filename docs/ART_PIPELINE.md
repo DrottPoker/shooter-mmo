@@ -86,7 +86,165 @@ art has one how-to:
 | Change the look of the windows: frames, slots, icons, silhouettes, fonts | the SVG files in `Assets/Art/Ui/Sprites`, then `MMORPG > Tools > UI > Build UI Theme` | [UI Art](#ui-art) |
 
 Weapons, shields, quivers, and backpacks are [attachments](#attachments):
-models held on a socket of the skeleton.
+models held on a socket of the skeleton. For a change from the first edit to
+the commit, follow the [checklist](#checklists) of its kind.
+
+## Checklists
+
+One list per kind of change. The build is `.\tools\art\Build-Art.ps1`. After
+every run it writes the review page `artifacts\art-build\review\index.html`
+with the approve commands, what changed, and the changed
+[game views](#game-views) before and after; see [Build The Art](#build-the-art).
+To accept what the page shows, run its approve commands in its order and run
+the build again. To give it up, run the `git checkout` the page gives and run
+the build again. Commit what `git status` lists once the build ends with
+`Result: every asset is exported and verified.`
+
+### A Changed Or New Clip
+
+1. Key the clip in `art\Animations\Human_Actions\Human_Actions.blend`, name a
+   new one in `clips` in its `asset.json`, and save.
+2. Run the build. It syncs the library, which reports how far a foot slides in
+   `Idle`, `Walk`, and `Jog`. Only the library's `animation` waits: no garment
+   template or texture follows a clip, and none is exported.
+3. Render the sheet and a video, which the sync does not:
+   `.\tools\art\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions` and
+   `.\tools\art\Render-ArtClips.ps1 -Asset art/Animations/Human_Actions -Clip <Name>`.
+4. On the page, look at the game views of the clip's frames: a garment that
+   comes through shows there. The views pose only the clips that
+   `tools/art/views/standard-set.json` names.
+5. Approve and run the build again. It exports the library alone and measures
+   the clip's views.
+6. Capture the views from the game: `.\tools\art\Render-ArtViews.ps1 -All`,
+   then `.\tools\art\Capture-GameViews.ps1 -All`. Look at the sheets in
+   `artifacts\art-views\game` and at the poses over the bone budget of 10 mm.
+
+More: [Make A Clip](#make-a-clip).
+
+### A New Look Of A Garment
+
+1. `.\tools\art\New-ArtAsset.ps1 -Kind texture -Asset art/GarmentTextures/<Name> -Garment art/Garments/<Template>`.
+2. Paint `T_Garment_<Name>` on `Preview` in Blender and save.
+3. Wear it in an outfit of `tools/art/views/standard-set.json`:
+   `test_game_view.py` requires every texture in one and holds the set's size.
+4. Run the build. It syncs the texture, which renders its review sheet, and the
+   texture's `texture` waits.
+5. On the page, look at the sheet and at the game views that wear it.
+6. Approve and run the build again. It exports the texture and measures its
+   views.
+7. Try it on in [the Wardrobe](#the-wardrobe) and give it an item.
+
+More: [Make A Garment Texture](#make-a-garment-texture).
+
+### A New Garment From A Recipe
+
+1. `.\tools\art\New-ArtAsset.ps1 -Kind garment -Asset art/Garments/<Name> -Slot <slot> -Band <band> -Regions <regions> -Cuts <cuts>`,
+   with the other options that [Make A Garment](#make-a-garment) lists.
+2. Shape its first version, `<Name>_Male`, in Blender where it needs more than
+   the recipe, and save.
+3. Give it a look, as steps 1 to 3 of
+   [A New Look Of A Garment](#a-new-look-of-a-garment) say. The set must also
+   wear every pair of templates that can meet together.
+4. Run the build. It syncs the template and the texture, which render their
+   review sheets, and the template's `model` and `rig` and the texture's
+   `texture` wait.
+5. On the page, look at the sheets and the game views that wear it, and play
+   `artifacts\art-previews\<Name>_poses.blend` in Blender for the test poses.
+6. Approve and run the build again. It exports both and measures their views.
+7. Try it on in [the Wardrobe](#the-wardrobe) and give it an item.
+
+More: [Make A Garment](#make-a-garment).
+
+### A New Modeled Garment
+
+Hair and headwear are modeled by hand, with a stiff part if they have one.
+
+1. `.\tools\art\New-ArtAsset.ps1 -Kind garment -Asset art/Garments/<Name> -Slot head -Band <band> -Hair <hide|compress|show> -Modeled`,
+   or `-Slot hair -Band hair -Modeled` for hair. It has no first version yet.
+2. Model the first version, `<Name>_Male` in `Export_Male`, over the male body
+   in Blender, hair also with its shape key `UnderHeadwear`, and save.
+3. Name a part that must stay stiff, such as a helmet's nasal, an island of its
+   own, in `stiff` in `asset.json`, such as
+   `[{ "name": "nasal", "vertex": <index> }]`.
+4. Give it a look, as steps 1 to 3 of
+   [A New Look Of A Garment](#a-new-look-of-a-garment) say.
+5. Run the build. It fits the template to the other bodies, each stiff part as
+   one straight copy, and the template's `model` and `rig` and the texture's
+   `texture` wait.
+6. On the page, look at the sheets and the game views. Where a stiff part's
+   copy does not suit a body, shape it on that body's version by hand, save,
+   and run the build again: the sync keeps that shape.
+7. Approve and run the build again, and try it on in
+   [the Wardrobe](#the-wardrobe).
+
+More: [Make A Garment](#make-a-garment) and
+[Building A Template](#building-a-template).
+
+### A Changed Body
+
+1. Edit the source body, `Male_Body` in
+   `art\Characters\Human_Male\Human_Male.blend` or `Female_Body` in the
+   female's file, a change of topology on both, and save.
+2. Run `.\tools\art\Sync-HumanBase.ps1`, which the build does not run. It
+   writes the body parts, checks both bodies, and renders their sheets in
+   `artifacts\human-base\review`.
+3. Run the build. The bodies' `model` and `rig` wait, after
+   `Sync-HumanBase.ps1 -Rig` also the library's `animation`, and the page
+   shows the bodies' game views with every garment on its last fit.
+4. Approve and run the build again. It exports the bodies and the animation
+   library, then fits the cage, the garment templates, and the paint layers to
+   the new bodies. The cage's `model` waits, with the `model` and `rig` of
+   every template whose shape changed and the `paint` of every layer whose
+   paint changed. Look at their sheets and game views on the page.
+5. Approve and run the build again. It exports them and the textures and
+   measures the game views.
+6. Capture the views from the game, as for a clip.
+
+A change of only a body's images ends at step 4. More:
+[Edit The Human Base Characters](#edit-the-human-base-characters).
+
+### A New Body
+
+The flow is built for a body of any topology: the cage is fitted to it, every
+garment template gets a version of it, and the paint layers move to it. It has
+not been run end to end with a third body.
+
+1. Make the body's asset by hand, like `art/Characters/Human_Female`: no
+   command creates a body, and `Sync-HumanBase.ps1` works on the two human
+   bodies only; see [Planned](#planned).
+2. Add it to `bodies` in `art/Cages/Humanoid/asset.json` and in the
+   `asset.json` of every paint layer it wears.
+3. Run the build and approve what its page lists, in turns, as for a changed
+   body: the body first, then the cage, the garment templates, and the paint
+   layers, until the build exports everything.
+4. Where a stiff part's straight copy does not suit the new body, shape it on
+   that body's version by hand, save, and run the build again.
+5. To see it in the game views, add it to `bodies` in
+   `tools/art/views/standard-set.json`, whose size `test_game_view.py` holds.
+   Its clip views are posed only once Unity imported its export, since they
+   read the avatar in its `.fbx.meta`; the build's Unity follow-up does that.
+6. Give the game the body as [Prefabs](#prefabs) describes: a Prefab Variant,
+   an entry in `PlayerBodyModels.asset`, and its options in
+   `content/characters/appearance.json`.
+
+More: [Fit The Garment Cage](#fit-the-garment-cage) and
+[Future Races And Base Models](EQUIPMENT_VISUALS_DESIGN.md#future-races-and-base-models).
+
+### A New Paint Layer
+
+1. `.\tools\art\New-ArtAsset.ps1 -Kind paint -Asset art/Paint/<Name> -PaintCategory tattoo`,
+   or `scar`, or `underwear` with `-Slot body` or `-Slot legs`.
+2. Paint `T_Paint_<Name>` on `Canvas` in Blender and save.
+3. Run the build. It moves the paint to every body, and the layer's `paint`
+   waits.
+4. Render its sheet, which the sync does not,
+   `.\tools\art\Render-ArtPreview.ps1 -Asset art/Paint/<Name>`, and look at it.
+   The game views show a layer only when an outfit names it.
+5. Approve and run the build again. It exports the layer and updates the
+   appearance catalogs.
+6. Offer it in `content/characters/appearance.json`.
+
+More: [Make A Paint Layer](#make-a-paint-layer).
 
 ## Setup
 
@@ -588,9 +746,9 @@ When the reviewer approves the model, record the approval, export, and verify:
 ```
 
 Expected result: `Approved the 'model' stage of Resource_IronVein
-(triangles=878).`, `Exported Resource_IronVein to
+(triangles=<n>).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified <n> art asset(s).` Each asset of an approval
+(triangles=<n>).`, and `Verified <n> art asset(s).` Each asset of an approval
 or an export ends with the seconds it took, such as `Resource_IronVein took
 3.9 s.`; see [Cache Of The Garment Checks](#cache-of-the-garment-checks). Unity
 imports the model the next time it gets focus, or at once with
@@ -636,28 +794,31 @@ Run these checks after a change that other assets follow, such as an edit of
 the human bodies or the garment cage, or to confirm a clean state. They need
 [Blender](#set-up-blender) and confirm that the committed art sources,
 approvals, and exports agree and that every review sheet shows what the
-reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender,
-and [Build The Art](#build-the-art) runs the syncs that the records show are
-needed, with the exports and the Unity follow-up, in one command.
+reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
 
-1. Run `.\tools\art\Sync-HumanBase.ps1`, `.\tools\art\Sync-CageAsset.ps1`, and
-   `.\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/<Name>` and
-   `.\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/<Name>` for
-   each garment and texture. Expected result: the human base reports each body
-   as unchanged with its committed file kept and every approval holding, and
-   every other asset is up to date and meets every rule with its stages approved
-   for this content, such as `Shirt: the 'rig' approval holds.` and
-   `Shirt meets every rule, and both stages are approved for this content.` The
-   garment reports also state how much skin comes through in the test poses;
-   skin that comes through a garment at rest stops the sync.
-2. Open the review sheets that the scripts write below `artifacts`, such as
+1. Run `.\tools\art\Sync-HumanBase.ps1`, which the build does not run.
+   Expected result: it reports each body as unchanged, with its committed file
+   kept and every approval holding.
+2. Run `.\tools\art\Build-Art.ps1`. Expected result: what
+   [Build The Art](#build-the-art) gives for a clean checkout, every asset
+   `nothing`, `Left for a person: nothing.`, and exit code 0. The build syncs
+   only what the records show is needed. To check one asset with its sync
+   alone, run `.\tools\art\Sync-CageAsset.ps1`,
+   `.\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/<Name>`, or
+   `.\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/<Name>`.
+   Expected result: the asset is up to date and meets every rule with its
+   stages approved for this content, such as `Shirt: the 'rig' approval holds.`
+   and `Shirt meets every rule, and both stages are approved for this
+   content.` The garment reports also state how much skin comes through in the
+   test poses; skin that comes through a garment at rest stops the sync.
+3. Open the review sheets that the scripts write below `artifacts`, such as
    `artifacts\art-previews\Humanoid.png` for the garment cage and
    `artifacts\human-base\review\Human_Male_rig_chains.png` for the cloth chains.
    Expected result: each sheet shows the asset as
    [Assets](#assets) describes it, with masks applied,
    and the mask rows of a garment show orange where it covers the body and a
    yellow band of visible skin along its edges.
-3. Render the animation library's review sheet:
+4. Render the animation library's review sheet:
 
    ```powershell
    .\tools\art\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions
@@ -669,7 +830,7 @@ needed, with the exports and the Unity follow-up, in one command.
    `Walk`, and `Jog`: the male and the female stand, walk, and jog in place,
    the pelvis turning and the arms and hands following the swing. Close Blender
    without saving.
-4. Open `art\Characters\Human_Male\Human_Male.blend`. Expected result: the
+5. Open `art\Characters\Human_Male\Human_Male.blend`. Expected result: the
    Outliner holds `Source > Male_Body`, shown in the viewport, and `Export >
    Male`, the armature, with `Male_Body`, the ten hidden body parts from
    `Male_Head` to `Male_Feet`, and the eyes, teeth, and tongue as its children,
@@ -703,7 +864,9 @@ confirm a clean state:
      it lies over for a garment template, whose sync keeps it clear of that
      template, its template's `uv` for a texture, its rig for a library, a body's paint layout
      or the cage for a paint layer, or when its own content differs from its
-     approval, which the sync fits again and shows on a new review sheet. The
+     approval, which the sync fits again. The syncs of the cage, a garment
+     template, and a texture render a new review sheet; those of a library and
+     a paint layer render none, so render it with `Render-ArtPreview.ps1`. The
      human bodies have no sync here; `Sync-HumanBase.ps1` stays a step of its
      own. No garment template or texture follows an animation library, so a new
      or changed clip gives none of them a need; the game views of that clip
@@ -854,7 +1017,7 @@ and says "waits for your approval". In this order it shows:
    it waits for, such as `waits for the approval of art/Garments/Trousers, which
    it follows`; what its measurement of the baseline did to the numbers, a line
    over every measured view and one per outfit and body, such as `Linen on
-   Male: 35 view(s) measured; in the poses where nothing may come through, skin
+   Male: <n> view(s) measured; in the poses where nothing may come through, skin
    <a> -> <b> px and inner <c> -> <d> px.`; the data it staged; and the problems
    of staging and drawing.
 
@@ -882,9 +1045,9 @@ from Git; run it, such as
 run the build again.
 
 Expected result on a clean checkout: the plan lists every asset with
-`nothing` and ends with `In all: 44 nothing.`, then `Verified 44 art
+`nothing` and ends with `In all: <n> nothing.`, then `Verified <n> art
 asset(s).` and `The baseline of the game views holds for the committed content
-of their 560 view(s).`, the seconds per phase without a `staging`, `changed
+of their <n> view(s).`, the seconds per phase without a `staging`, `changed
 views`, or `game views` phase, `Left for a person: nothing.`, `Result: every
 asset is exported and verified.`, and the page's path, exit code 0, in about a
 minute; `git status` lists nothing. The page says `Nothing to approve.` with
@@ -902,19 +1065,19 @@ the build syncs the template, the templates of higher layers worn over it,
 which a UV leaves as they are, and its texture `WoolTrousers` for the new UVs,
 lists the template and the texture for an approval with their review sheets
 and commands, marks the templates over it and the masked textures on them
-`waits`, stages the data of the 14 templates and textures that the changed
-views read, draws the 490 views of the outfits that wear the trousers with it,
-exports nothing, keeps the baseline entries of those views, which the
-verification lists as problems that wait for an approval, names the synced
-assets under `Synced by this run`, and ends with exit code 2 and the page's
-path, after about 20 minutes with the cache of the checks of an earlier run.
+`waits`, stages the data of the templates and textures that the changed views
+read, draws the views of the outfits that wear the trousers with it, exports
+nothing, keeps the baseline entries of those views, which the verification
+lists as problems that wait for an approval, names the synced assets under
+`Synced by this run`, and ends with exit code 2 and the page's path. How long
+this takes has not been measured since the checks stopped stepping the clips.
 The page lists 3 review stages of 2 assets with their commands and the way back,
 `git checkout HEAD -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, since
 the syncs of the templates over it leave their files as they are; `Trousers`,
 `Changed: the UVs.`, and `WoolTrousers`, `Changed: the image. It follows the
-new UVs of Trousers.`, each with its review sheet; and `490 game view(s)
-changed: 0 worse, 0 better, 112 with other pixels but the same show-through,
-and 378 that look exactly as before`. Run it again: it syncs and stages
+new UVs of Trousers.`, each with its review sheet; and `<n> game view(s)
+changed: 0 worse, 0 better, <n> with other pixels but the same show-through,
+and <n> that look exactly as before`. Run it again: it syncs and stages
 nothing, since the files and what they follow are as its syncs and its staging
 left them, takes the views from the cache, and ends with the same list, page,
 and exit code 2 in a few minutes. Restore the files and records with the way
@@ -924,15 +1087,15 @@ To see that a clip needs no garment exported, turn a bone a little at one key
 of a clip in `art\Animations\Human_Actions\Human_Actions.blend`, such as the
 `Spine` at frame 24 of `BowShot`, save, and run `.\tools\art\Build-Art.ps1
 -Plan`. Expected result: `art/Animations/Human_Actions sync: its 'animation'
-content differs from its approval`, `In all: 43 nothing, 1 sync.`, no garment
+content differs from its approval`, `In all: <n> nothing, 1 sync.`, no garment
 template or texture with a need, and the library's `animation` stage under
 `Review stages that wait for an approval` with `the parts clip:BowShot
 changed`. Without `-Plan`, the build syncs the library, which leaves its file
-as it is, stages nothing, draws the 32 views of `BowShot`, and ends with exit
-code 2 in about three minutes. Approve the stage with the command it gives and
-run the build again: it exports the library alone, `In all: 1 export, 43
-nothing.`, measures the 32 views of the clip from the views cache and keeps the
-other 528 entries, and ends with `Result: every asset is exported and
+as it is, stages nothing, draws the views of the frames of `BowShot`, and ends
+with exit code 2 in about three minutes. Approve the stage with the command it
+gives and run the build again: it exports the library alone, `In all: 1
+export, <n> nothing.`, measures the views of the clip from the views cache and
+keeps the other entries, and ends with `Result: every asset is exported and
 verified.` and exit code 0 in about two minutes, with no garment template or
 texture exported and only the library's `asset.json`, its FBX, and
 `art/Views/baseline.json` changed, besides what the Unity follow-up imports. On
@@ -1699,9 +1862,10 @@ Each file holds one character:
 - Two eyeballs (`<Label>_Eye_L` and `_R`) for gaze animation, and upper and lower
   teeth and a tongue inside a closed mouth cavity for jaw animation, edited where
   they are.
-- 15,084 triangles with the eyeballs, teeth, and tongue. Both bodies are
-  exactly mirror symmetric and have identical topology, so paint moves from one
-  body to the other exactly, face by face.
+- The same number of triangles on both bodies, with the eyeballs, teeth, and
+  tongue, which the approval and the export print as `triangles=<n>`. Both
+  bodies are exactly mirror symmetric and have identical topology, so paint
+  moves from one body to the other exactly, face by face.
 - Smooth shading and textures: `M_Body_<Label>` uses the 4096 x 2048 px body
   texture `T_Body_<Label>`, plain skin under the underwear, which is paint of
   its own, `M_Face_<Label>` a 2048 px face texture, `M_Eye_<Label>` a 512 px
@@ -1846,37 +2010,42 @@ beside the neck.
    & $env:BLENDER_PATH artifacts\human-base\Human_Base_Rig.blend
    ```
 
-   When the reviewer approves the changed characters, record both stages in
-   order, then export the characters and the animation library and verify:
-
-   ```powershell
-   foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
-       .\tools\art\Approve-ArtAsset.ps1 -Asset $asset -Stage model
-       .\tools\art\Approve-ArtAsset.ps1 -Asset $asset -Stage rig
-   }
-   .\tools\art\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male, art/Characters/Human_Female, art/Animations/Human_Actions
-   .\tools\art\Verify-ArtAssets.ps1
-   ```
-
-   Expected result: `Approved the 'model' stage of Human_Male (triangles=15084).`
-   and the same for `rig` and `Human_Female`, `Exported Human_Male to
-   src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=15084).` and
-   the same for the female, `Exported Human_Actions to
+5. Run the build, `.\tools\art\Build-Art.ps1`. Expected result: the `model`
+   and `rig` stages of both bodies under `Review stages that wait for an
+   approval`, with their approve commands, exit code 2, and the review page,
+   whose game views show the bodies as their files are now, with every garment
+   still on its last fit.
+6. When the reviewer approves the changed characters, run the approve commands
+   the page gives and the build again. Expected result: `Approved the 'model'
+   stage of Human_Male (triangles=<n>).` and the same for `rig` and
+   `Human_Female`; the build prints `Exported Human_Male to
+   src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=<n>).` and
+   the same for the female, and `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,...).`, and `Verified <n> art asset(s).` The library is
-   exported with the characters because it records the content of its rig;
-   `Verify-ArtAssets.ps1` otherwise stops with `was exported against other
-   content of its rig`. After `-Rig`, sync the library first and review its clips
-   on the new rig, as [Make A Clip](#make-a-clip) describes.
+   (clips=Death,Idle,Walk,...).` The library is exported with the characters
+   because it records the content of its rig; `Verify-ArtAssets.ps1` otherwise
+   stops with `was exported against other content of its rig`. After `-Rig`,
+   the build syncs the library onto the new rig and its `animation` waits for a
+   review of its clips, as [Make A Clip](#make-a-clip) describes. The same
+   build fits what follows the bodies, whose approvals wait next, as
+   [A Changed Body](#a-changed-body) lists.
+
+To do a step alone, `Approve-ArtAsset.ps1 -Asset <body> -Stage model` and
+`-Stage rig` approve a body,
+`Export-ArtAsset.ps1 -Asset art/Characters/Human_Male, art/Characters/Human_Female, art/Animations/Human_Actions`
+exports the characters with the library, and `Verify-ArtAssets.ps1` checks the
+records.
 
 The export also writes the textures below
 `src/Client/Assets/Art/Textures/Characters`, the face and eye variants that
-`variants` in `asset.json` names among them. When Unity gets focus it imports the
-models, creates any material the export added, and updates the appearance
-catalogs. Expected result: the Console lists created materials and each changed
-catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Clean)`, and
-nothing when nothing changed. Commit the `.blend` files, `asset.json`, the FBX
-and texture files, the catalogs, and their `.meta` files together. An export of
+`variants` in `asset.json` names among them. The build's Unity follow-up
+imports the models, creates any material the export added, and updates the
+appearance catalogs, and prints what it wrote, such as `Wrote <n> appearance
+catalog(s), content asset(s), or Addressables change(s).`; an open Editor that
+updates them itself when it gets focus lists each changed catalog with its
+slots in its Console, such as `Eye (Teal, Brown), Face (Stubble, Clean)`.
+Commit the `.blend` files, `asset.json`, the FBX and
+texture files, the catalogs, and their `.meta` files together. An export of
 unchanged sources leaves every file as it is.
 
 An edit that changes what the garment cage, a paint layer, or a garment reads
@@ -1885,7 +2054,8 @@ names every asset that must follow, with the script to run: the cage, as
 [Fit The Garment Cage](#fit-the-garment-cage) describes, every paint layer of
 the body ([Make A Paint Layer](#make-a-paint-layer)), every garment template in
 the order of its layers ([Make A Garment](#make-a-garment)), and their textures
-([Make A Garment Texture](#make-a-garment-texture)). A change of only a body's
+([Make A Garment Texture](#make-a-garment-texture)). The build syncs, stages,
+and exports all of them, and stops at each approval. A change of only a body's
 images changes none of them.
 
 ### Add A Face Or Eye Variant
@@ -1905,10 +2075,10 @@ A face or an eye color is another image of a body's face or eye material; see
 3. Run `.\tools\art\Sync-HumanBase.ps1`. Expected result: every check passes,
    and the faces sheet `artifacts\human-base\review\Human_Base_faces.png` shows
    the new option next to the others.
-4. When the reviewer approves, approve the `model` and `rig` stages of the body,
-   export it with the animation library, and verify, as in step 4 of
-   [Edit The Human Base Characters](#edit-the-human-base-characters). Expected
-   result: the export writes `T_Face_Male_Bearded.png` below
+4. Run the build, and when the reviewer approves, approve the `model` and `rig`
+   stages of the body and run the build again, as steps 5 and 6 of
+   [Edit The Human Base Characters](#edit-the-human-base-characters) describe.
+   Expected result: the export writes `T_Face_Male_Bearded.png` below
    `src/Client/Assets/Art/Textures/Characters`, and when Unity gets focus the
    Console lists the catalog with `Face (Stubble, Clean, Bearded)`. In the game,
    the `Face` row of the Admin menu's `Look` tab (F3) offers the new face.
@@ -2298,8 +2468,7 @@ its first one.
   edge times their ring's share, on the upper lid 1, 1, 1, 0.9, 0.55, and 0.15 out
   to the brow, on the lower lid 1, 1, 1, 0.7, 0.35, and 0.1 out to the cheek, and
   the pocket behind the edge follows the edge. The step reports how much of the
-  skeleton's closed turns each lid needs: the male's upper lids 45.9 of 46
-  degrees and his lower lids 10.9 of 11, the female's 41.7 and 10.4.
+  skeleton's closed turns each lid needs.
 - **The face on the skull.** The face and the skull are rigid on the head: the
   head's skin follows the neck only near the cut between the two parts, as much
   as bone heat gave it within 5 mm of the cut and not at all from 35 mm on.
@@ -2341,11 +2510,11 @@ closest at `<Asset>_rig_face.png`, with the jaw opening and the lids closing,
 `<Asset>_rig_arms.png`, `<Asset>_rig_hips.png`, `<Asset>_rig_hands.png`, and
 the lids on `<Asset>_rig_weights.png`.
 
-The command writes the rigged bodies over the two model files. When the
-reviewer approves them, sync the animation library on the new rig, approve the
-`model` and `rig` stages, export the bodies with the library, and verify, as
-step 4 of [Edit The Human Base Characters](#edit-the-human-base-characters)
-describes.
+The command writes the rigged bodies over the two model files. Then run the
+build and approve in turns, as steps 5 and 6 of
+[Edit The Human Base Characters](#edit-the-human-base-characters) describe:
+it syncs the animation library on the new rig, whose `animation` then waits
+too, and exports the bodies with the library.
 
 ## Animation Libraries
 
@@ -2415,8 +2584,8 @@ over the ball, and a planned swing, and the legs reach it with analytic two-bone
 IK while the hips sink where a leg cannot reach. The pelvis turns, drops, and
 tilts with the steps, the lower back takes up the tilt, the shoulders turn
 against the pelvis, and the arms, forearms, hands, and fingers follow the swing a
-little later. A planted foot slips at most 8 to 13 mm in the walk and about 1 mm
-in the jog. The clips of `Human_Actions` are the model's clips as approved; edit
+little later. A planted foot slips a little, as the library's sync reports per
+clip. The clips of `Human_Actions` are the model's clips as approved; edit
 them by hand from there. A Unity test checks that the controller's walk and jog
 speeds match the model's.
 
@@ -2484,9 +2653,10 @@ the clip's content, against their baseline, and shown on the review page of
    art/Characters/Human_Male: ...` followed by `Human_Actions: the 'animation'
    content changed after its approval; ...` and the reminder to review and
    approve the clips again, and one line per locomotion clip with
-   how far a foot on the ground slides, such as `Humanoid Walk: 28 frames,
-   1.4 m/s, hips 0.810 to 0.824 m, largest slip of a foot on the ground
-   8.4 mm`. To start a locomotion clip from the gait model instead of an empty
+   how far a foot on the ground slides, such as `Humanoid Walk: <n> frames,
+   1.4 m/s, hips <a> to <b> m, largest slip of a foot on the ground
+   <s> mm`. The build runs this sync itself when the rig changed or a clip
+   did. To start a locomotion clip from the gait model instead of an empty
    action, add `-Generate Walk` (or `Idle`, `Jog`). Expected result: `Added Walk
    to Human_Actions and its asset.json; ...` when the library lacks it, or
    `Walk: the library has the clip already` when it has it, which leaves the
@@ -2513,53 +2683,52 @@ the clip's content, against their baseline, and shown on the review page of
    button in the Action Editor), so Blender keeps it when no armature plays it,
    and add its name to `clips` in `asset.json`. Then clear the armature's active
    action, reset its pose to the rest pose (`Alt+G`, `Alt+R` on every bone), and
-   save. The approval in the next step records the library's new content; until
-   then `Verify-ArtAssets.ps1` reports that the file was saved after its content
+   save. The approval records the library's new content; until then
+   `Verify-ArtAssets.ps1` reports that the file was saved after its content
    was read, and until the library is exported again, its export record as
    stale.
-4. Render the review sheet, review it and the clip in Blender, then approve,
-   export, and verify:
+4. Run the build, `.\tools\art\Build-Art.ps1`, and render the review sheet,
+   which the library's sync does not:
 
    ```powershell
    .\tools\art\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/Animations/Human_Actions -Stage animation
-   .\tools\art\Export-ArtAsset.ps1 -Asset art/Animations/Human_Actions
-   .\tools\art\Verify-ArtAssets.ps1
    ```
 
-   Expected result: `Review sheet for Human_Actions:` with the path of
-   `artifacts\art-previews\Human_Actions.png`, two rows of eight frames per
-   clip, `Approved the 'animation' stage of Human_Actions
-   (clips=Death,Idle,Walk,...).`, `Exported Human_Actions to
-   src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,...).`, and, when the standard set of the game views
-   has frames of a changed clip, that those views were measured on other
-   content than the committed one, which the next step measures. No garment
-   template or texture is named: none follows the library. Unity imports the
-   clips as Humanoid motion when it gets focus. A library whose armature is not
-   the current rig stops the approval and the export with `The armature
+   Expected result: the build syncs the library, with the lines of step 1,
+   lists its `animation` stage under `Review stages that wait for an approval`
+   with `the parts clip:<Name> changed` and the approve command, names no
+   garment template or texture, since none follows the library, and ends with
+   exit code 2 and the review page. The page shows the game views of the
+   clip's frames that changed, before and after: a garment that comes through
+   another in the clip shows there, and its shape or weights are fixed in its
+   `.blend` file and reviewed again. The sheet command prints `Review sheet for
+   Human_Actions:` with the path of `artifacts\art-previews\Human_Actions.png`,
+   two rows of eight frames per clip. Review it and the clip in Blender, and in
+   motion with [Render-ArtClips.ps1](#render-the-clips-as-videos).
+5. When the reviewer approves, run the approve command the page gives and the
+   build again. Expected result: `Approved the 'animation' stage of
+   Human_Actions (clips=Death,Idle,Walk,...).`; the build prints `Exported
+   Human_Actions to src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
+   (clips=Death,Idle,Walk,...).`, runs the Unity follow-up, which imports the
+   clips as Humanoid motion, measures the game views of the clip's frames, and
+   ends with `Result: every asset is exported and verified.` No garment
+   template or texture is exported again. A library whose armature is not the
+   current rig stops the approval and the export with `The armature
    "Humanoid" is not the current rig "Male" ...`; sync it first. Commit the
-   `.blend` file, `asset.json`, the FBX, and its `.meta` file together.
-5. Measure the game views of the clip, which shows how the garments look in it;
-   no garment template or texture is exported again:
+   `.blend` file, `asset.json`, the FBX, its `.meta` file, and
+   `art/Views/baseline.json` together.
 
-   ```powershell
-   .\tools\art\Render-ArtViews.ps1 -WriteBaseline
-   .\tools\art\Verify-ArtAssets.ps1
-   ```
+To do a step alone,
+`Approve-ArtAsset.ps1 -Asset art/Animations/Human_Actions -Stage animation`
+approves the clips, `Export-ArtAsset.ps1 -Asset art/Animations/Human_Actions`
+exports the library, `Render-ArtViews.ps1 -WriteBaseline` measures the game
+views of the clip, and `Verify-ArtAssets.ps1` checks the records.
 
-   Expected result: `The baseline art/Views/baseline.json is ...` with the views
-   of the clip's frames measured now and the others kept as they were, and then
-   `Verified <n> art asset(s).` After the approval, `.\tools\art\Build-Art.ps1`
-   exports the library and measures its views in one run, and its review page
-   shows the views of the clip that changed, before and after; a garment that
-   comes through another in the clip shows there, and its shape or weights are
-   fixed in its `.blend` file and reviewed again.
-
-When the characters' content changes, for example after an edit, export the
-library again too; `Verify-ArtAssets.ps1` otherwise stops with `was exported
-against other content of its rig`. If the edit changed the rig, the sync
-changes the library, and it needs a new review and approval first. A clip that
+When the characters' content changes, for example after an edit, the library
+is exported again too, which the build does; `Verify-ArtAssets.ps1` otherwise
+stops with `was exported against other content of its rig`. If the edit
+changed the rig, the sync changes the library, and it needs a new review and
+approval first. A clip that
 a weapon or a tool names needs a state in the controller as well; see
 [Make An Attachment](#make-an-attachment).
 
@@ -2575,9 +2744,9 @@ motion next to the review sheet, and measures each clip:
 .\tools\art\Render-ArtClips.ps1 -Asset art/Creatures/Wolf -Clip Walk -Speed 1.4
 ```
 
-Expected result: per clip one line, such as `SwordSlash: 1.00 s; root travels
-0.18 m and sinks to 91 %; fastest Hand_R at 6.7 m/s; 29 % of the joints turn;
-lowest point 0.015 m: <path>`, and the video
+Expected result: per clip one line, such as `SwordSlash: <n> s; root travels
+<n> m and sinks to <n> %; fastest <bone> at <n> m/s; <n> % of the joints turn;
+lowest point <n> m: <path>`, and the video
 `artifacts\art-previews\Human_Actions_SwordSlash.mp4`: every body the file
 shows, for a library its rig's body and its preview bodies, from the front
 right on a checkered ground of quarter-meter squares, the clip played three
@@ -2600,8 +2769,8 @@ bones of cloth chains, in world space on every frame:
   a hand or a foot and would always outrun it;
 - the share of the bones that turn in their joints, against their parents, by
   more than 5 degrees from the clip's first frame, which is low when only a
-  part of the body moves, such as 29 % in `SwordSlash`, where the arm strikes
-  and the body stands, against 80 % in `Death`;
+  part of the body moves, as in `SwordSlash`, where the arm strikes and the
+  body stands, and high in `Death`;
 - the lowest head or tail of those bones, below 0 under the ground;
 - for a looping clip that does not end where it starts, `the loop jumps` and
   the largest distance of a bone head between its first and last frame.
@@ -2748,14 +2917,15 @@ ways:
   taken from in the scene property `cage_content`, and the export records that
   content.
 
-The cage keeps the paint's place along the bones: an armband that the woman
+The cage keeps the paint's place along the bones. Measured on the rebuilt
+bodies on 2026-11-21, an armband that the woman
 would get from the man's canvas through the cage, as a body of another topology
 does, lies at 0.41 to 0.61 of the way from the shoulder to the elbow, where the
 man has it at 0.43 to 0.61 and the shared topology puts it on her at 0.42 to
 0.61. Where one body has a form the other lacks, the cage spans it and the paint
-stretches: the rune emblem, 91 mm wide on the man's upper breastbone, would come
-out 94 mm wide on the woman through the cage instead of the 73 mm that the shared
-topology gives her, since her cleavage has no counterpart on the man.
+stretches: on those bodies the rune emblem, 91 mm wide on the man's upper
+breastbone, would come out 94 mm wide on the woman through the cage instead of
+the 73 mm that the shared topology gives her, since her cleavage has no counterpart on the man.
 `tools/art/Test-PaintProjection.ps1` checks this move on subdivided copies of
 the bodies, another topology of the same surfaces: the canvas's own body must
 take the paint within 0.5 mm (median) and 1 mm (95%) of its place, and for the
@@ -2842,17 +3012,17 @@ describes.
    `Paint_Female`, and the ground. Select `Canvas`, switch to Texture Paint, and
    paint into `T_Paint_Tattoo`, or change its custom properties `roughness` and
    `metallic`. A stroke on one side stays on that side; turn on X mirror in the
-   tool settings to paint both sides at once. Save, then run the sync again.
-   Expected result: `Synced Tattoo`, and `Paint_Male` and `Paint_Female` show
-   the new paint when the file is opened again.
-3. Render the review sheet, review it and the file, then approve, export, and
-   verify:
+   tool settings to paint both sides at once. Save, then run the build,
+   `.\tools\art\Build-Art.ps1`. Expected result: it syncs the layer,
+   `Synced Tattoo: ...`, lists its `paint` stage under `Review stages that
+   wait for an approval` with the approve command, and ends with exit code 2;
+   `Paint_Male` and `Paint_Female` show the new paint when the file is opened
+   again.
+3. Render the review sheet, which the sync does not, and review it and the
+   file:
 
    ```powershell
    .\tools\art\Render-ArtPreview.ps1 -Asset art/Paint/Tattoo
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/Paint/Tattoo -Stage paint
-   .\tools\art\Export-ArtAsset.ps1 -Asset art/Paint/Tattoo
-   .\tools\art\Verify-ArtAssets.ps1
    ```
 
    Expected result: a review sheet that shows the layer on every body as the
@@ -2861,33 +3031,36 @@ describes.
    the paint up close on each body, such as the emblem and each armband, from up
    to four sides it is seen from, framed on the part the camera sees, and then
    the canvas's image over grey with the outlines of its faces in
-   `UVMap_Paint`, both sides of the body apart; `Approved the 'paint' stage of
-   Tattoo (paint).`, `Exported Tattoo to src/Client/Assets/Art/Textures/Paint
-   (T_Paint_Tattoo_Male, T_Paint_Tattoo_Female).`, and the verification without
-   problems. When Unity gets focus, it updates the appearance catalogs. Expected
-   result: the Console lists `Paint Tattoo` in both catalogs when the paint
-   layer is new. Commit the `.blend` file, `asset.json`, the PNG files, the
-   catalogs, the changed files of `Assets/AddressableAssetsData/AssetGroups`,
-   and their `.meta` files together. Add a new layer to the options of
+   `UVMap_Paint`, both sides of the body apart.
+4. When the reviewer approves, run the approve command the review page gives
+   and the build again. Expected result: `Approved the 'paint' stage of Tattoo
+   (paint).`; the build prints `Exported Tattoo to
+   src/Client/Assets/Art/Textures/Paint (T_Paint_Tattoo_Male,
+   T_Paint_Tattoo_Female).`, and its Unity follow-up updates the appearance
+   catalogs, `Wrote <n> appearance catalog(s), content asset(s), or
+   Addressables change(s).` for a new layer, and the build ends with
+   `Result: every asset is exported and verified.` Commit the `.blend` file,
+   `asset.json`, the PNG files, the catalogs, the changed files of
+   `Assets/AddressableAssetsData/AssetGroups`, and their `.meta` files
+   together. Add a new layer to the options of
    its kind, and for underwear its slot, of every body model it fits in
    `content/characters/appearance.json`, as
    [Character Appearance](../content/README.md#character-appearance) describes;
    `CharacterLookTests` requires the content to offer exactly what every body's
    catalog has.
-4. After a change of the move or the garment cage, check the move that a body of
+5. After a change of the move or the garment cage, check the move that a body of
    another topology than the canvas gets:
 
    ```powershell
    .\tools\art\Test-PaintProjection.ps1 -Asset art/Paint/Tattoo
    ```
 
-   Expected result: about `Male: through the cage 0.02 mm (median) and 0.23 mm
-   (95%) from the exact move ...` and `Female: through the cage 4.89 mm
-   (median) and 26.89 mm (95%) ...`, without an error: the canvas's own body
-   takes the paint within a millimeter of its place, and the woman shows how
-   far the cage and the landmarks place the paint from where the shared
-   topology does.
-5. To paint a layer on another body from then on, such as a new base model that
+   Expected result: `Male: through the cage <m> mm (median) and <p> mm (95%)
+   from the exact move ...` and the same for `Female`, without an error: the
+   canvas's own body takes the paint within a millimeter of its place, and the
+   woman shows how far the cage and the landmarks place the paint from where
+   the shared topology does.
+6. To paint a layer on another body from then on, such as a new base model that
    joined its `bodies`, move its canvas there, review the paint on it, and touch
    it up on the canvas:
 
@@ -3077,8 +3250,11 @@ drawn 4 mm off its place, so the skin does not shine through.
 art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
 `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
 
-1. Fit it to the bodies and check it, after a body, the figure scale, or a line
-   in `asset.json` changed, or after a region was added to the pipeline:
+1. Fit it to the bodies and check it. The build runs this sync itself when a
+   body's export changed or a body joined the cage's `bodies`, or the cage's
+   file was edited; after a change of the figure scale or a line in
+   `asset.json` alone, or after a region was added to the pipeline, run it
+   yourself:
 
    ```powershell
    .\tools\art\Sync-CageAsset.ps1
@@ -3119,25 +3295,23 @@ art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of its
    help, save, and run the sync again; it keeps the correction and records the
    new content. Close Blender without saving otherwise, so the file stays as it
    is.
-4. Approve it and verify:
-
-   ```powershell
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/Cages/Humanoid -Stage model
-   .\tools\art\Verify-ArtAssets.ps1
-   ```
-
-   Expected result: `Approved the 'model' stage of Humanoid (faces=<n>).` and
-   then the problems of the garment templates fitted to the old content of the
-   cage. The cage has no export; commit the `.blend` file and `asset.json`
-   together. Every template on the cage records the content of the cage's
-   `model` stage in `cageContentSha256`, so after a change of that content sync,
-   review, approve, and export its templates again, and their textures, as
-   `Build-Art.ps1` does up to the approvals, as [Make A Garment](#make-a-garment) and
-   [Make A Garment Texture](#make-a-garment-texture) describe; a template whose
-   regions did not move keeps its shape, its weights, and its exported files.
-   Expected result: `Verified <n> art asset(s).` once they are all exported. A
-   cage file saved again without a change of its content keeps its approval
-   and leaves every template and paint layer as it is.
+4. Run the build, `.\tools\art\Build-Art.ps1`. When the reviewer approves, run
+   the approve commands it gives, then the build again. Expected result: every
+   template on the cage records the content of the cage's `model` stage in
+   `cageContentSha256`, so the first build fits the templates to the new cage
+   too and lists under `Review stages that wait for an approval` the cage's
+   `model` and the `model` and `rig` of every template whose shape changed,
+   with their review sheets; a template whose regions did not move keeps its
+   shape, its weights, and its exported files. The approval prints
+   `Approved the 'model' stage of Humanoid (faces=<n>).`, and the second build
+   exports the templates and their textures and ends with
+   `Result: every asset is exported and verified.` The cage has no export;
+   commit the `.blend` file and `asset.json` together. A cage file saved again
+   without a change of its content keeps its approval and leaves every
+   template and paint layer as it is. To do the approval alone, run
+   `.\tools\art\Approve-ArtAsset.ps1 -Asset art/Cages/Humanoid -Stage model`;
+   `Verify-ArtAssets.ps1` then names the garment templates fitted to the old
+   content of the cage.
 
 ## Garments
 
@@ -3168,7 +3342,7 @@ The recipe in `asset.json` says what the pipeline builds:
 | --- | --- |
 | `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and `head`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
-| `splits` | Optional: standard lines of its regions where it gets an edge loop without being cut there, each optionally moved by an `offset` in meters, above 0 and up to 0.05, `toward` the `head` or the `tail` of the line's bone along the line's normal. A template of a higher layer that ends at that line hides the template's faces beyond the [hide margin](#what-a-template-covers) of its edge face by face, so the recipes split at the line and inside the outer template up to just beyond its largest margin, as far as the margin reaches into the inner template on the first body, rounded up to a millimeter: the trousers at `HemHip` and 11, 13, 15, 17, and 19 mm toward its `tail`, inside a top's hem, whose margin is 10 mm at the back of the hip and up to 16.5 mm at its front, so the faces between go where the margin around them allows, the loops at 13 and 15 mm where the trousers come through the back of a top in motion, and the loop at 19 mm because a top is fitted 1.5 mm outside the trousers worn under it, which that loop holds closer to them there, so they come through it least in motion; and at `BootCalf` and 40 mm toward its `tail`, inside a boot's shaft, whose rim stands off them; the long shirt and the robe at `GloveCuff` and 11 mm toward its `tail`, inside a glove. A split comes after the UVs are unfolded and moves no vertex: it runs through a vertex within 1 mm of its plane, and its new vertices take UVs interpolated along the edges they cut, so a texture keeps its place. A wrong entry fails with a message that names the entry and the key; `toward` and `offset` come together. |
+| `splits` | Optional: standard lines of its regions where it gets an edge loop without being cut there, each optionally moved by an `offset` in meters, above 0 and up to 0.05, `toward` the `head` or the `tail` of the line's bone along the line's normal. A template of a higher layer that ends at that line hides the template's faces beyond the [hide margin](#what-a-template-covers) of its edge face by face, so the recipes split at the line and inside the outer template up to just beyond its largest margin, as far as the margin reaches into the inner template on the first body, rounded up to a millimeter: the trousers at `HemHip` and 11, 13, 15, 17, and 19 mm toward its `tail`, inside a top's hem, whose margin, which the checks report, is its least of 10 mm at the back of the hip and wider at its front, so the faces between go where the margin around them allows, the loops at 13 and 15 mm where the trousers come through the back of a top in motion, and the loop at 19 mm because a top is fitted 1.5 mm outside the trousers worn under it, which that loop holds closer to them there, so they come through it least in motion; and at `BootCalf` and 40 mm toward its `tail`, inside a boot's shaft, whose rim stands off them; the long shirt and the robe at `GloveCuff` and 11 mm toward its `tail`, inside a glove. A split comes after the UVs are unfolded and moves no vertex: it runs through a vertex within 1 mm of its plane, and its new vertices take UVs interpolated along the edges they cut, so a texture keeps its place. A wrong entry fails with a message that names the entry and the key; `toward` and `offset` come together. |
 | `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there it is built, and may lie, the inner band's distance farther off the cage, rising to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm, and its cloth keeps 1.5 mm outside the real surface of the templates of lower layers it lies over there, their triangles as the game draws them, instead of the inner band's nominal distance, so a later build of an inner template that comes closer fails the outer one's sync. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest. A [turned edge](#turned-edges) takes its band from the cloth it is turned from: it may lie under the inner garment's surface, down to the cage, inside its own cloth. |
 | `hang` | Optional: its [loose parts](EQUIPMENT_VISUALS_DESIGN.md#loose-parts), which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. A part across the back may also have a `top` and a `width`, shares above 0 and up to 1.5 of how far the shoulder joints lie from the middle: with a `top`, the template keeps only its middle within the top, cut straight down there, and its back only above the part's line, with a cut that need not be a cage line, and the part hangs from the template's open edge at its line behind the bone there; with a `width`, no smaller than the top, the part fans out to that width by the first joint of its chains. A part may name a line of the legs as `to`, its hem: it then hangs down to that line's height on every body, between the body's two sides, instead of to the tips of its chains, and the sync stops when that line lies below the tips. The robe hangs a skirt `all` around from `SkirtWaist` on the `skirt` chains with a flare of 0.04 down to `SkirtHem`; the cloak hangs its back from `CloakNape` on the `cloak` chains with a flare of 0.03, a top of 0.72, and a width of 0.8. A template with loose parts names the matching `cloth` profile. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, up to 0.03, fading out over 60 mm. The templates have none; see [Templates](EQUIPMENT_VISUALS_DESIGN.md#templates). |
@@ -3415,10 +3589,10 @@ armature, the motion check, and the pair check:
   lies through at rest breaks the rule; skin that comes through in a test pose
   is reported per phase, the rest pose and the test poses, as the pair check
   reports, with how many faces come through by more than 1 mm and the deepest
-  place of all, such as `Trousers_Female: 143 drawn faces of the body lie under
-  it, with 147 visible vertices; the deepest their skin comes through it in 11
-  poses: the rest pose 0.00 mm, the test poses 5.87 mm (sit); 11 faces come
-  through by more than 1 mm, by at most 5.9 mm (Pelvis in sit), red on the
+  place of all, such as `Trousers_Female: <n> drawn faces of the body lie under
+  it, with <n> visible vertices; the deepest their skin comes through it in 11
+  poses: the rest pose 0.00 mm, the test poses <d> mm (<pose>); <n> faces come
+  through by more than 1 mm, by at most <d> mm (<part> in <pose>), red on the
   review sheet`, and the review sheet shows those faces red.
 - The pair check puts every exported template of another visual slot and a
   lower layer of the cage, such as the trousers under a shirt, on the bodies from
@@ -3443,10 +3617,10 @@ armature, the motion check, and the pair check:
   deepest place in millimeters, and its position. The report names, per phase,
   the rest pose and the test poses, the deepest any of them comes
   through and where, and how many come through by more than 1 mm, such as
-  `Trousers under Shirt_Male: 159 drawn triangles of it lie under Shirt_Male; the
-  deepest they come through it in 11 poses: the rest pose 0.00 mm, the test
-  poses 1.04 mm (sit); 2 come through by more than 1 mm, by at most 1.0 mm
-  (Pelvis in sit)`.
+  `Trousers under Shirt_Male: <n> drawn triangles of it lie under Shirt_Male;
+  the deepest they come through it in 11 poses: the rest pose 0.00 mm, the
+  test poses <d> mm (<pose>); <n> come through by more than 1 mm, by at most
+  <d> mm (<part> in <pose>)`.
   The faces this template hides, but for their turned edges, are followed too,
   by the cover rule that hid them: in the rest pose with the chains laid and in
   every test pose, from each of a face's samples, held where they
@@ -3467,7 +3641,7 @@ armature, the motion check, and the pair check:
   [What A Template Covers](#what-a-template-covers) describes; no pose and no
   frame of a clip takes a face off it. A hole is reported, not chosen by: the
   report adds, per phase, the most hidden triangles that show a hole in one
-  pose, such as `...; of the 276 triangles it hides, the most that show a hole:
+  pose, such as `...; of the <n> triangles it hides, the most that show a hole:
   the rest pose 0, the test poses 0`. A list that went stale, chosen over another
   build of a template of a lower layer, is caught by the export's records, as
   [Export Of A Template](#export-of-a-template) describes: the template's `pairSources`, which
@@ -3493,9 +3667,9 @@ armature, the motion check, and the pair check:
   with the same data. Such pairs are, for example, the boots,
   the gloves, and the trousers under the hoods, the helmet, and the hair. The
   boots under the cloak do meet by this test: the cloak's hem at the back hangs
-  about 1 cm above the boots' shafts at rest, whose triangles are about 40 mm
-  wide, so it lies within their radius and the 30 mm reach of its `tight` band,
-  although none of their triangles lies under it. The motion check and the pair
+  just above the boots' shafts at rest, whose triangles are wide, so it lies
+  within their radius and the 30 mm reach of its `tight` band, although none of
+  their triangles lies under it. The motion check and the pair
   check of any pair step through no test pose either when they find nothing to
   follow at rest, and count the poses instead.
 - Both checks follow loose parts with their cloth chains laid in every pose in
@@ -3561,10 +3735,11 @@ in the faces and vertices of the body's editable mesh:
   between its edge and the surface under it, so the margin of a place is four
   times its gap, how far it lies from the nearer of the inner template's surface
   and the body, and at least 10 mm; a segment of a border takes the larger gap
-  of its two ends. A top's hem that stands up to about 4 mm off the trousers
-  keeps a margin of up to 16.5 mm over them, a boot's rim about 10 mm off them one
-  of about 41 mm, and a glove's cuff over a sleeve the least, 10 mm, while hair
-  and headwear, which stand far off what lies under them, hide little of it.
+  of its two ends. A top's hem that stands a few millimeters off the trousers
+  keeps a margin a little over the least over them, a boot's rim that stands
+  farther off them a much wider one, and a glove's cuff over a sleeve the least,
+  10 mm, while hair and headwear, which stand far off what lies under them,
+  hide little of it.
   The margins are measured on every body, each with that body's versions at
   rest, and a face is hidden only when it lies beyond them on every body. The
   recipes lay their `splits` just beyond the margins on the first body; every
@@ -3577,7 +3752,7 @@ in the faces and vertices of the body's editable mesh:
   template that swings, such as a cloak's back, is never hidden, and neither is
   anything under cloth of the garment that swings; a template with
   `"covers": false` hides nothing at all. The checks report the margins on every
-  body, such as `Shirt_Male keeps a hide margin of 10.0 to 16.5 mm over Trousers
+  body, such as `Shirt_Male keeps a hide margin of <a> to <b> mm over Trousers
   where its open edges lie within it of them`. The rest rule is applied on the
   first body, and its list is the one every body hides, so every body's data
   names the same faces. These rules hold one thing: on every body at rest, no
@@ -3754,7 +3929,7 @@ the checks were computed or cached.
 `Sync-TextureAsset.ps1`, and `Render-ArtPreview.ps1` take `-NoCache`, which
 computes every unit and neither reads nor writes the cache. Each ends an asset
 with a line of the seconds it took and how many units came from the cache, such
-as `Shirt took 21.4 s; 6 of 6 check units came from the cache.`, with each
+as `Shirt took <n> s; <c> of <u> check units came from the cache.`, with each
 reason once when a unit could not be cached, such as `Not cached, since the body
 Female in the file of Shirt has another fit than its export.` An asset without
 such checks gets only its seconds.
@@ -3768,9 +3943,9 @@ git status --porcelain -- art src
 ```
 
 Expected result: both runs print the same report lines and `Exported Robe to
-...`; the second ends with `Robe took <n> s; 3 of 3 check units came from the
-cache.` in a fraction of the first one's time, and `git status` lists nothing,
-since both wrote the same files. With `-NoCache` the run takes as long as the
+...`; the second ends with `Robe took <n> s; <u> of <u> check units came from
+the cache.` in a fraction of the first one's time, and `git status` lists
+nothing, since both wrote the same files. With `-NoCache` the run takes as long as the
 first and writes the same files again.
 
 ### Game Views
@@ -3842,7 +4017,8 @@ avatar. So a clip frame on any other body, the female, is not played on her
 armature: the renderer appends the rig's armature from its file, never drawn,
 plays the frame on it, and `art_pipeline/retarget_pose.py` poses her after it.
 The rest pose of every body is its rest. The model is Unity's data and a
-reconstruction, each piece with its evidence in the module's docstring:
+reconstruction, each piece with its evidence in the module's docstring; the
+numbers below were measured when it was made, on 2026-11-23:
 
 - **Unity's data, the reference poses.** A Humanoid avatar measures every turn
   from its reference pose, the rest pose with the arms raised to a T-pose, which
@@ -3952,9 +4128,9 @@ What the views do not match, on purpose or as a known limit:
 
 - Contact follows the reach of each garment's band at rest, and the robe and the
   cloak are `tight`, 30 mm. A boot that a jogging leg kicks through the robe's
-  skirt is contact: at rest the skirt hangs 50 to 75 mm off the boot's shaft and
-  ends above most of the boot. So is the side of the robe that the cloak swings
-  onto in an attack, which the cloak does not lie over at rest.
+  skirt is contact: at rest the skirt hangs off the boot's shaft beyond that
+  reach and ends above most of the boot. So is the side of the robe that the
+  cloak swings onto in an attack, which the cloak does not lie over at rest.
 - A garment covers a triangle at rest as a whole: a wrist under the robe's
   sleeve at rest is through, not contact, where it presses into the robe's skirt.
 - An outer garment that sinks into the body below the skin is counted only
@@ -4048,15 +4224,15 @@ name, committed key, cache key, numbers, and pictures. `-Jobs <n>` runs that man
 at once, half the logical processors and at most 8 by default, each one outfit
 on one body, so the files are opened once. `-NoCache` renders every chosen view
 again and replaces its entry. Expected result: per view a line such as
-`Linen_Male_Walk03_Y215: skin 0, inner 0, contact 11, figure 87811 px (0.57 s)`,
-or `(cached)`, then the totals, `560 view(s), 560 rendered and 0 from the cache:
-skin through <n> px and inner through <n> px in <n> view(s), contact <n> px.
-...`, the seconds of each outfit and body, and `Render-ArtViews took <n> s.`
-On a machine with 16 logical processors and an 8 GB graphics card, the whole set
-takes about 100 to 110 s with 8 processes, each outfit on one body 40 to 49 s
-beside seven others; 4 processes took about 40 % longer and 16 nearly three
-times as long, since they fill the graphics memory. A run from a full cache
-takes about 13 s.
+`Linen_Male_Walk03_Y215: skin <n>, inner <n>, contact <n>, figure <n> px (<t> s)`,
+or `(cached)`, then the totals, `<n> view(s), <n> rendered and <n> from the
+cache: skin through <n> px and inner through <n> px in <n> view(s), contact
+<n> px. ...`, the seconds of each outfit and body, and `Render-ArtViews took
+<n> s.` On a machine with 16 logical processors and an 8 GB graphics card, a
+run of all 560 views with an empty cache took 328 s on 2026-11-23, and a run
+from a full cache 12 to 28 s. In an earlier measurement 4 processes took about
+40 % longer than 8 and 16 nearly three times as long, since they fill the
+graphics memory.
 
 `-WriteBaseline` writes what it can to `art/Views/baseline.json`, sorted by name,
 one line per view with its name, committed key, and numbers: it measures every
@@ -4084,15 +4260,15 @@ and 0 otherwise.
 Blender: every view of the set has an entry whose key is its committed key, and
 no entry names a view the set lacks. A view whose asset waits for an approval,
 as `Build-Art.ps1` passes it with `-Waiting`, is that asset's problem and does
-not fail the build; any other is, such as `art/Views/baseline.json: 35 view(s)
+not fail the build; any other is, such as `art/Views/baseline.json: <n> view(s)
 of Linen on Male were measured on other content than the committed one or not
-at all: Linen_Male_Rest_Y215, Linen_Male_Rest_Y035, Linen_Male_Rest_Y125, and 32
+at all: Linen_Male_Rest_Y215, Linen_Male_Rest_Y035, Linen_Male_Rest_Y125, and <n>
 more; run tools/art/Render-ArtViews.ps1 -WriteBaseline once every asset of these
 views is approved and exported.` `Build-Art.ps1` runs `-WriteBaseline` itself
 after its exports while such a problem is there, see [Build The
-Art](#build-the-art). Expected result on a clean checkout: `Verified 44 art
+Art](#build-the-art). Expected result on a clean checkout: `Verified <n> art
 asset(s).` and `The baseline of the game views holds for the committed content
-of their 560 view(s).` `tools/ci/Test-ArtViews.ps1` checks the helpers of
+of their <n> view(s).` `tools/ci/Test-ArtViews.ps1` checks the helpers of
 `ArtViews.ps1` without Blender: the key and what changes it, the rig a body
 follows with the avatar skeletons of the two `.fbx.meta` files and their
 fingerprint, the code's fingerprint, the paint layers, the baseline's round trip and partial write, the
@@ -4118,11 +4294,11 @@ and the verification passes. Restore the file with
 To see the classes, render `.\tools\art\Render-ArtViews.ps1 -Outfit Linen
 -Body Male,Female -Pose Rest,Idle30,SwordSlash16` and open the contact sheets
 `artifacts/art-views/Linen_Male.png` and `Linen_Female.png`. Expected result:
-each view's look beside its look with the class pixels over it;
-`Linen_Male_Rest_Y215` counts `inner 11` and no contact, as no rest pose has;
-`Linen_Male_Idle30_Y215` counts `skin 10`, `inner 13`, and `contact 14`, red
-pixels at the sleeve's hem on the inner side of the upper arm, green ones at the
-hood beside the face, and blue ones where the hand rests on the thigh; and
+each view's look beside its look with the class pixels over it, with the counts
+that `art/Views/baseline.json` holds for them; `Linen_Male_Rest_Y215` counts
+no contact, as no rest pose has; `Linen_Male_Idle30_Y215` shows red pixels at
+the sleeve's hem on the inner side of the upper arm, green ones at the hood
+beside the face, and blue ones where the hand rests on the thigh; and
 `Linen_Female_SwordSlash16_Y215` counts `contact 0`: played on her bone for bone,
 as before the views followed the game's retargeting, the frame pressed her
 forearm into the shirt over the chest, 713 blue pixels, which the game's pose
@@ -4223,8 +4399,9 @@ runs only when it is started, does this:
   springs start again from the target pose, and the cloth settles until it
   sleeps on the target pose, or until no particle moved more than 0.5 mm for
   half a second, or for `-SettleSeconds`, 3 by default. In the rest pose it
-  sleeps on the target pose the Blender view lays; in a pose whose hips lean, it
-  comes to rest beside it, where gravity holds it, up to 44 mm away in `Death31`.
+  sleeps on the target pose the Blender view lays; in a pose whose hips lean,
+  such as `Death31`, it comes to rest beside it, where gravity holds it, and
+  `capture.json` says how far.
 - The camera is the capture's own and renders as the player's camera does
   (`CameraRendering.CopyFrom`), with the pipeline's MSAA, into 512 by 768
   pixels. `GameViewFraming` places it by the rules of `game_view.py`'s `aim`:
@@ -4548,33 +4725,37 @@ slot, so a shirt and a jerkin replace each other.
    turns and scales it with the cage's later moves.
    A hairstyle, a template of `-Slot hair -Band hair -Modeled`, also has the
    shape key `UnderHeadwear` on its first version, the hair pressed flat under
-   hoods and helmets, shaped in Edit Mode with that key active. Save, then fit
-   and check it:
-
-   ```powershell
-   .\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/Tunic
-   ```
-
-   Expected result: the report lines, `Synced Tunic: ...`, the paths of the
-   review sheet and the review file, how much skin comes through it in the test
-   poses, what it covers on each body, such as `Tunic_Male: covers <n> of 7292 body
-   faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
-   what it hides of every exported template of another slot and a lower layer,
-   such as `Tunic_Male hides <h> of the <f> faces of Trousers worn under it`,
-   the pair check over them, such as `Trousers under Tunic_Male: <t> drawn
-   triangles of it lie under Tunic_Male; the deepest they come through it in
-   11 poses: the rest pose 0.00 mm, the test poses ...`, a line
-   per stage, such as `Tunic: the 'model' stage is not approved yet.`,
-   `Tunic meets every rule. Review it, ...`, and `Tunic took <n> s; <c> of <u>
-   check units came from the cache.` A second run prints `Tunic is up to date:
-   ...`, leaves the file as it is, and takes every unit from the
-   [cache](#cache-of-the-garment-checks). A broken rule stops
-   it with the list of rules, such as a version that leaves its band, with the
-   body parts where it does. After a change of the recipe in `asset.json`, run
-   it with `-Rebuild`, which builds the first version again and keeps its
-   handmade shape. `-Weights` transfers every weight from the bodies again, also
-   the weights painted by hand.
-3. Look at `artifacts\art-previews\Tunic.png`, the sheet that
+   hoods and helmets, shaped in Edit Mode with that key active. Save.
+3. Give it a texture and wear the texture in an outfit of the game views, as
+   steps 1 to 3 of [Make A Garment Texture](#make-a-garment-texture) describe:
+   a template is in the views and in the game only with a texture. The
+   standard set must also wear every pair of templates that can meet together.
+4. Run the build, `.\tools\art\Build-Art.ps1`. Expected result: it syncs the
+   template with `Sync-GarmentAsset.ps1`, whose lines it prints: the report
+   lines, `Synced Tunic: ...`, the paths of the review sheet and the review
+   file, how much skin comes through it in the test poses, what it covers on
+   each body, such as `Tunic_Male: covers <n> of <b> body faces, leaves <m> at
+   its edges visible, and pulls in <k> visible vertices`, what it hides of
+   every exported template of another slot and a lower layer, such as
+   `Tunic_Male hides <h> of the <f> faces of Trousers worn under it`, the pair
+   check over them, such as `Trousers under Tunic_Male: <t> drawn triangles of
+   it lie under Tunic_Male; the deepest they come through it in 11 poses: the
+   rest pose 0.00 mm, the test poses ...`, a line per stage, such as `Tunic:
+   the 'model' stage is not approved yet.`, `Tunic meets every rule. Review
+   it, ...`, and `Tunic took <n> s; <c> of <u> check units came from the
+   cache.` It then syncs the texture, lists the template's `model` and `rig`
+   and the texture's `texture` under `Review stages that wait for an
+   approval`, draws the game views that wear them, and ends with exit code 2
+   and the review page. A broken rule stops the sync with the list of rules,
+   such as a version that leaves its band, with the body parts where it does.
+   To fit and check the template alone, run
+   `.\tools\art\Sync-GarmentAsset.ps1 -Asset art/Garments/Tunic`; a second run
+   prints `Tunic is up to date: ...`, leaves the file as it is, and takes every
+   unit from the [cache](#cache-of-the-garment-checks). After a change of the
+   recipe in `asset.json`, run it with `-Rebuild`, which builds the first
+   version again and keeps its handmade shape. `-Weights` transfers every
+   weight from the bodies again, also the weights painted by hand.
+5. Look at `artifacts\art-previews\Tunic.png`, the sheet that
    [Checks And Review Of A Template](#checks-and-review-of-a-template)
    describes, and open `artifacts\art-previews\Tunic_poses.blend` in Blender and
    play the timeline. Expected result: on the sheet, the grid in the template's
@@ -4583,36 +4764,31 @@ slot, so a shirt and a jerkin replace each other.
    skin comes through it in a test pose; in the review file, both bodies side by side
    in the template, stepping through the test poses, with the template following
    the arms, the torso, and the legs without the body showing through. Close the
-   review file without saving.
-4. Approve both stages, export, and verify:
-
-   ```powershell
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Tunic -Stage model
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Tunic -Stage rig
-   .\tools\art\Export-ArtAsset.ps1 -Asset art/Garments/Tunic
-   .\tools\art\Verify-ArtAssets.ps1
-   ```
-
-   Expected result: `Approved the 'model' stage of Tunic (triangles=...)`, the
-   same for `rig`, `Exported Tunic to
-   src/Client/Assets/Art/Models/Garments/Tunic_Male.fbx,
+   review file without saving. On the review page, look at the game views that
+   wear it, in the rest pose and in frames of walk, jog, and combat.
+6. When the reviewer approves, run the approve commands the page gives and the
+   build again. Expected result: `Approved the 'model' stage of Tunic
+   (triangles=<n>).` and the same for `rig`; the build prints `Exported Tunic
+   to src/Client/Assets/Art/Models/Garments/Tunic_Male.fbx,
    src/Client/Assets/Art/Models/Garments/Tunic_Female.fbx with their data
-   (...)`, and `Verified <n> art asset(s).` The `rig` approval and the export
-   take what the sync checked from the cache, so the export ends with `Tunic
-   took <n> s; <u> of <u> check units came from the cache.` When Unity gets
-   focus, it creates `Assets/Art/Materials/Garments/M_Garment_Tunic.mat`.
-   Commit the `.blend` file, `asset.json`, the FBX and JSON files, the material,
-   and their `.meta` files together. A template is exported again whenever its
-   cage or a body changes, with the templates of higher layers, as
+   (...)`, then `Tunic took <n> s; <u> of <u> check units came from the
+   cache.`, since the export takes what the sync checked from the cache, and
+   the export of the texture. Its Unity follow-up creates
+   `Assets/Art/Materials/Garments/M_Garment_Tunic.mat` and prints `Created the
+   project materials ... for the exported art.`, and the build ends with
+   `Result: every asset is exported and verified.` Commit the `.blend` file,
+   `asset.json`, the FBX and JSON files, the material, and their `.meta` files
+   together. A template is exported again whenever its cage or a body changes,
+   with the templates of higher layers, as
    [Export Of A Template](#export-of-a-template) describes, but not when an
-   animation library changes; `Build-Art.ps1` finds every such export, as
-   [Build The Art](#build-the-art) describes.
-5. Give it a texture, as [Make A Garment Texture](#make-a-garment-texture)
-   describes, and once both are exported, look at it in walk, jog, and combat:
-   add it to an outfit of the [game views](#game-views) and read the views of
-   its clip frames on the review page of `Build-Art.ps1`, or try it on in
-   [the Wardrobe](#the-wardrobe) and play its clips; a template with loose parts
-   has the swing of its cloth reviewed there.
+   animation library changes; the build finds every such export.
+7. Try it on in [the Wardrobe](#the-wardrobe) and play its clips; a template
+   with loose parts has the swing of its cloth reviewed there.
+
+To do a step alone,
+`Approve-ArtAsset.ps1 -Asset art/Garments/Tunic -Stage model` and
+`-Stage rig` approve it, `Export-ArtAsset.ps1 -Asset art/Garments/Tunic`
+exports it, and `Verify-ArtAssets.ps1` checks the records.
 
 ## Garment Textures
 
@@ -4783,27 +4959,32 @@ at the front where the skin shows between the laces.
 2. Open the file in Blender and paint `T_Garment_WoolTunic` on `Preview` in
    Texture Paint mode, with its custom properties `roughness` and `metallic`.
    Paint the alpha below 0.5 where the skin should show, such as a net or a laced
-   opening; an opaque texture has none. Save, then check it:
-
-   ```powershell
-   .\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolTunic
-   ```
-
-   Expected result: the path of the review sheet, `WoolTunic: the 'texture'
-   stage is not approved yet.`, `WoolTunic meets every rule. Review it, then
-   record the approval with tools/art/Approve-ArtAsset.ps1 -Asset
-   art/GarmentTextures/WoolTunic -Stage texture.`, and `WoolTunic took <n> s.`,
-   for a texture with transparent parts with how many units of its masks came
-   from the [cache](#cache-of-the-garment-checks). After the template's UVs
-   changed, such as after a rebuild, it first prints `Moved WoolTunic to the new
-   UVs of Tunic: ...` and the notes of the move. A move that keeps the image as it
-   is, because only the template's shape changed, leaves the approval holding.
-3. Look at `artifacts\art-previews\WoolTunic.png`, the sheet that
-   [Garment Textures](#garment-textures) describes. Expected result: the
+   opening; an opaque texture has none. Save.
+3. Wear it in an outfit of `tools/art/views/standard-set.json`, one garment per
+   visual slot, so the [game views](#game-views) show it. `test_game_view.py`
+   requires every texture in an outfit and holds the set's size.
+4. Run the build, `.\tools\art\Build-Art.ps1`. Expected result: it syncs the
+   texture with `Sync-TextureAsset.ps1`, whose lines it prints: the path of the
+   review sheet, `WoolTunic: the 'texture' stage is not approved yet.`,
+   `WoolTunic meets every rule. Review it, then record the approval with
+   tools/art/Approve-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic -Stage
+   texture.`, and `WoolTunic took <n> s.`, for a texture with transparent
+   parts with how many units of its masks came from the
+   [cache](#cache-of-the-garment-checks). It lists the `texture` stage under
+   `Review stages that wait for an approval`, draws the game views that wear
+   it, and ends with exit code 2 and the review page. After the template's UVs
+   changed, such as after a rebuild, the sync first prints `Moved WoolTunic to
+   the new UVs of Tunic: ...` and the notes of the move. A move that keeps the
+   image as it is, because only the template's shape changed, leaves the
+   approval holding. To check the texture alone, run
+   `.\tools\art\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolTunic`.
+5. Look at `artifacts\art-previews\WoolTunic.png`, the sheet that
+   [Garment Textures](#garment-textures) describes, and at the game views that
+   wear it on the review page. Expected result: the
    texture lies on both bodies as painted, with its trim at the template's hems,
    and for a texture with transparent parts the body without it shows the skin
    under the holes and along their edges visible.
-4. To make the texture dyeable, give its template dye channels in its
+6. To make the texture dyeable, give its template dye channels in its
    `asset.json`, such as `"dyes": 1`, and give the texture its dye mask, with
    the regions PNG of [Dyeable Textures](#dyeable-textures), or without it to
    tint every texel with the first channel:
@@ -4813,27 +4994,25 @@ at the front where the skin shows between the laces.
    ```
 
    Expected result: `WoolTunic: natural colors #RRGGBB; <n> texels too light to
-   be dyed in full.`, then the output of `Sync-TextureAsset.ps1` above. The
+   be dyed in full.`, then the lines of the texture's sync of step 4. The
    review sheet shows the texture as before, since the undyed texture wears its
-   natural colors.
-5. Approve, export, and verify:
-
-   ```powershell
-   .\tools\art\Approve-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic -Stage texture
-   .\tools\art\Export-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic
-   .\tools\art\Verify-ArtAssets.ps1
-   ```
-
-   Expected result: `Approved the 'texture' stage of WoolTunic
-   (texture=T_Garment_WoolTunic).`, `Exported WoolTunic to
+   natural colors. Run the build again, so its page shows the new content.
+7. When the reviewer approves, run the approve command the page gives and the
+   build again. Expected result: `Approved the 'texture' stage of WoolTunic
+   (texture=T_Garment_WoolTunic).`; the build prints `Exported WoolTunic to
    src/Client/Assets/Art/Textures/Garments/T_Garment_WoolTunic.png with its
    material M_Garment_WoolTunic.`, for a texture with transparent parts with
    `and its masks src/Client/Assets/Art/Models/Garments/WoolTunic_Male.json,
    ...` and the report of what it covers and how much skin comes through it in
    motion, which the export takes from the cache that the sync and the approval
-   filled, and `Verified <n> art asset(s).` When Unity gets focus, it creates
+   filled. Its Unity follow-up creates
    `Assets/Art/Materials/Garments/M_Garment_WoolTunic.mat` and updates the
-   appearance catalogs: the Console lists `Garment WoolTunic` in both. Commit the
+   appearance catalogs, `Wrote <n> appearance catalog(s), content asset(s), or
+   Addressables change(s).`, and the build ends with `Result: every asset is
+   exported and verified.` To do a step alone,
+   `Approve-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic -Stage texture`
+   approves it, `Export-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic`
+   exports it, and `Verify-ArtAssets.ps1` checks the records. Commit the
    `.blend` file, `asset.json`, the PNG and JSON files, the material, the
    catalogs, the content assets below `Assets/Content/Bodies/Garments`, the
    changed files of `Assets/AddressableAssetsData/AssetGroups`, and their
@@ -4841,7 +5020,7 @@ at the front where the skin shows between the laces.
    `T_Garment_WoolTunic_Dye.png`, and Unity gives the material its dye mask and
    natural colors. A texture is exported again after every change of its
    template's content.
-6. Try it on in [the Wardrobe](#the-wardrobe), and give it an item to wear it in
+8. Try it on in [the Wardrobe](#the-wardrobe), and give it an item to wear it in
    the game: in `MMORPG > Tools > Item Catalog`, select an item of the
    template's equipment slot, enter `WoolTunic` in `Garments` under
    `Client Presentation`, with its dye colors in `Dye Colors` for a dyeable
@@ -5224,20 +5403,26 @@ passes.
 
 ## Assets
 
+The table describes each asset as it was made. What is measured on it changes
+with every edit, so it is read where the tools write it: the triangles of a
+model in the line of its approval and its export, `(triangles=<n>)`, and the
+length of each clip in `frames` in the `clips` of its export record in
+`asset.json`.
+
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
-| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. From the gait model, looping: `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. The tools' strokes `Mine` and `Chop`, 45 frames each, looping, both hands closed on a tool's haft, the right hand 33 cm above the left; see [Tools In Use](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use). The weapons' hold poses, one frame each and looping, and attack clips, not looping: `HoldStaff` and `Cast`, 27 frames; `HoldGreataxe` and `GreataxeSwing`, 40 frames; `HoldBow` and `BowShot`, 48 frames; `SwordSlash`, 30 frames; and `OneHandStrike`, 32 frames; see [Weapon Poses And Attack Clips](EQUIPMENT_VISUALS_DESIGN.md#weapon-poses-and-attack-clips). |
-| `art/Attachments/HeaterShield` | `static` | `Grip` | A small heater shield held on `off_hand`, 1,436 triangles: a board 56 cm wide and 70 cm from the straight top to the point, 12 mm thick and bowed 4 cm toward the arm at its sides, its face painted blue, its back plain wood, an iron edging bent over the edge, a leather-wrapped handle in the fist on two straps, a loose leather strap around the forearm 20 cm toward the elbow, and iron rivets through both faces where the straps hold. It lies 76 mm behind the handle along the forearm, turned 12 degrees toward the little finger, as the wrist of `Idle` turns the hand, so it hangs outward at the side with its point down. Flat material colors. |
-| `art/Attachments/IronGreataxe` | `static` | `Grip` | A two-handed iron greataxe held on `main_hand`, 2,162 triangles, 1.33 m with its top spike: a crescent blade with a polished edge of 41 cm, an arc window slot, and a brass Tiwaz rune, a curved back spike, an eye with collars and riveted langets, a red cloth band with tails, an iron knob, and leather wraps where the right hand holds it, 38 cm from the butt, and the left, 28 cm further down, its `offHandGrip`, which its swing brings that hand to. Hand-painted on one texture. `holdClip` `HoldGreataxe`, `attackClip` `GreataxeSwing`, released at 0.6 s. |
-| `art/Attachments/IronSword` | `static` | `Grip` | A plain iron arming sword held on `main_hand`, 1,008 triangles, 94 cm: a disc pommel with a peened tang end, a leather grip of 10 cm swelling slightly in the middle, a straight cross guard of 19 cm, and a blade of 74 cm, 5 cm wide at the guard, with a fuller over 70 % of it, tapering to the point. Flat material colors. `attackClip` `SwordSlash`, released at 0.35 s, without a hold clip. |
-| `art/Attachments/MiningPickaxe` | `static` | `Grip` | The tool of the Starter Pickaxe, held on `main_hand` with both hands while mining, 960 triangles, 86 cm: an ash haft with a leather wrap in seven bands where the left hand holds it and a brass butt cap, and a curved iron head, 43 cm across, with a long point on the striking side and a flared chisel, both curving toward the hands, on a chamfered eye boss with a blue faceted ore crystal in a brass bezel on each cheek, over a brass collar inlaid in blue with the rune Fehu on its front and back. Flat material colors. `useClip` `Mine`, `offHandGrip` 33 cm down the haft. |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. From the gait model, looping: `Idle`, `Walk` at 1.4 m/s, and `Jog` at 5.0 m/s. `Death`, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. The tools' strokes `Mine` and `Chop`, looping, both hands closed on a tool's haft, the right hand 33 cm above the left; see [Tools In Use](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use). The weapons' hold poses, one frame each and looping, and attack clips, not looping: `HoldStaff` and `Cast`; `HoldGreataxe` and `GreataxeSwing`; `HoldBow` and `BowShot`; `SwordSlash`; and `OneHandStrike`; see [Weapon Poses And Attack Clips](EQUIPMENT_VISUALS_DESIGN.md#weapon-poses-and-attack-clips). |
+| `art/Attachments/HeaterShield` | `static` | `Grip` | A small heater shield held on `off_hand`: a board 56 cm wide and 70 cm from the straight top to the point, 12 mm thick and bowed 4 cm toward the arm at its sides, its face painted blue, its back plain wood, an iron edging bent over the edge, a leather-wrapped handle in the fist on two straps, a loose leather strap around the forearm 20 cm toward the elbow, and iron rivets through both faces where the straps hold. It lies 76 mm behind the handle along the forearm, turned 12 degrees toward the little finger, as the wrist of `Idle` turns the hand, so it hangs outward at the side with its point down. Flat material colors. |
+| `art/Attachments/IronGreataxe` | `static` | `Grip` | A two-handed iron greataxe held on `main_hand`, 1.33 m with its top spike: a crescent blade with a polished edge of 41 cm, an arc window slot, and a brass Tiwaz rune, a curved back spike, an eye with collars and riveted langets, a red cloth band with tails, an iron knob, and leather wraps where the right hand holds it, 38 cm from the butt, and the left, 28 cm further down, its `offHandGrip`, which its swing brings that hand to. Hand-painted on one texture. `holdClip` `HoldGreataxe`, `attackClip` `GreataxeSwing`, released at 0.6 s. |
+| `art/Attachments/IronSword` | `static` | `Grip` | A plain iron arming sword held on `main_hand`, 94 cm: a disc pommel with a peened tang end, a leather grip of 10 cm swelling slightly in the middle, a straight cross guard of 19 cm, and a blade of 74 cm, 5 cm wide at the guard, with a fuller over 70 % of it, tapering to the point. Flat material colors. `attackClip` `SwordSlash`, released at 0.35 s, without a hold clip. |
+| `art/Attachments/MiningPickaxe` | `static` | `Grip` | The tool of the Starter Pickaxe, held on `main_hand` with both hands while mining, 86 cm: an ash haft with a leather wrap in seven bands where the left hand holds it and a brass butt cap, and a curved iron head, 43 cm across, with a long point on the striking side and a flared chisel, both curving toward the hands, on a chamfered eye boss with a blue faceted ore crystal in a brass bezel on each cheek, over a brass collar inlaid in blue with the rune Fehu on its front and back. Flat material colors. `useClip` `Mine`, `offHandGrip` 33 cm down the haft. |
 | `art/Attachments/OakStaff` | `static` | `Grip` | The Oak Staff, the first magic weapon, held on `main_hand`, about 1.7 m: a knotted oak staff with a silver-shod foot, a leather grip between two silver bands, a twig with two oak leaves, and four roots that hold a glowing blue crystal, whose material glows. Flat material colors. `holdClip` `HoldStaff`, `attackClip` `Cast`, released at 0.15 s, its `launchPoint` the crystal. |
-| `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand: an ash recurve with a dark laminated back, a dark oak riser with a brass oak leaf, a cross-laced leather grip, a sight window with a shelf on the left, horn tips with a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip, 1,860 triangles, hand-painted on one UV layout. On the `Bow` skeleton with its clip `Draw`, 15 frames from brace to full draw. `holdClip` `HoldBow`, `attackClip` `BowShot`, released at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. |
-| `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. Flat material colors. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. |
+| `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand: an ash recurve with a dark laminated back, a dark oak riser with a brass oak leaf, a cross-laced leather grip, a sight window with a shelf on the left, horn tips with a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip, hand-painted on one UV layout. On the `Bow` skeleton with its clip `Draw` from brace to full draw. `holdClip` `HoldBow`, `attackClip` `BowShot`, released at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. |
+| `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. Flat material colors. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body and fitted to the male and the female, with a figure scale of 60 mm and the standard lines; see [Garment Cage](#garment-cage). |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, built by `tools/art/blender/human_build`; see [Human Base Characters](#human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, with its source body, ten body parts, eyeballs, teeth, and tongue, 15,084 triangles, an unmirrored UV map, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
-| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, built like the female, 1.79 m, with the same pose and topology as the female, its source body, 15,084 triangles, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
-| `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (120 frames, breathing, looking about, an ear flick, and a tail sway), `Walk` (16 frames, a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (12 frames, a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (30 frames, a lunge with the bite at frame 8), and `Death` (60 frames, a fall onto its side that lies on the ground). The game shows it with `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`; see [Prefabs](#prefabs). |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, built by `tools/art/blender/human_build`; see [Human Base Characters](#human-base-characters). 1.70 m, in an A-pose with the arms 45 degrees out, with its source body, ten body parts, eyeballs, teeth, and tongue, an unmirrored UV map, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Blush` and `Freckles` and the eyes `Teal` and `Hazel`. |
+| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, built like the female, 1.79 m, with the same pose and topology as the female, its source body, and the `Humanoid` rig with eyelids. Its skin is plain, in one colour, under the underwear, which is paint of its own; the faces `Stubble` and `Clean` and the eyes `Teal` and `Brown`. It is the default body model. |
+| `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (breathing, looking about, an ear flick, and a tail sway), `Walk` (a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (a lunge with the bite at frame 8), and `Death` (a fall onto its side that lies on the ground). The game shows it with `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`; see [Prefabs](#prefabs). |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. |
 | `art/GarmentTextures/IronNasalHelm` | `texture` | none | Matte wrought iron on `NasalHelm`, 1024 px, painted by a script from each texel's point and from the part of the helmet its face is, which the template marks in the face attribute `paint_part`: hammered plates darkened by patina with a few rust specks toward the rim and into the corners beside the bands, the bands a little lighter and worn bright along their edges, domed rivets down every band, round the brow band, at the cap, and two on the nasal, the iron's dark underside at the rim, and the brown leather lining below it. Roughness 0.55, metallic 0.45. |
 | `art/GarmentTextures/LeatherBoots` | `texture` | none | Dark brown leather on `Boots`, 1024 px, painted by a script from each texel's point on the template: fine grain and blotches, a darker band with stitches along the top of the shaft, stitched seams around the ankle and up the inside of the shaft and the back of the heel, a burnished toe cap and heel counter, and a near-black sole with a darker welt stitched around it. Roughness 0.55. |
@@ -5251,25 +5436,25 @@ passes.
 | `art/GarmentTextures/WoolHoodUp` | `texture` | none | The undyed grey-brown wool of `WoolRobe` on `HoodUp`, 1024 px, painted by a script from each texel's point on the template: fibres and mottling, a stitched seam down the middle from the face opening over the crown to the collar's hem and down the bib, and a darker turned hem with stitches along the face opening and the collar's hem. Roughness 0.86. Dyeable like `WoolRobe`, natural color `#8D806E`. |
 | `art/GarmentTextures/WoolRobe` | `texture` | none | Undyed grey-brown wool on `Robe`, 1024 px, painted the same way: fibres and mottling, folds that deepen down the skirt from the waist, stitched seams, among them the waist seam where the skirt starts, and darker turned hems with stitches at the neckline, the cuffs, and the skirt's hem. Roughness 0.86. Dyeable: one dye channel over all of it, natural color `#8D806E`; its image is the neutral wool, which the natural color gives back within one step of 255. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
-| `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. |
-| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03, 892 triangles per body, 243 vertices of them on the chains. It covers nothing (`"covers": false`). One dye channel. |
-| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,840 triangles per body, the cuff about 7 cm up the forearm. |
-| `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
-| `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
-| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,468 triangles per body. |
-| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh, 74 of its 1,083 vertices, and the stiff part `nasal` in `asset.json` (`"stiff": [{ "name": "nasal", "vertex": 1009 }]`), so the sync carries it as one piece where the smooth field would bend the thin bar that stands off the face. The female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage; the sync keeps that shape and turns and scales it with later moves of her cage. |
-| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,980 triangles per body, 384 vertices of them on the chains, 320 of its cloth and 64 of the turned edge of its hem. It hides the `legs` slot, so the boots show below it. One dye channel. |
-| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
-| `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
-| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,904 triangles per body, with seams along the inside of the legs. |
+| `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. |
+| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the trapezius, not the shoulder muscle, from the round neckline down to below the collarbones in front, kept within a top of 0.72 of the shoulders' half width, and a loose back hanging taut from `CloakNape`, just below the base of the neck, between the arms on the `cloak` chains to the middle of the calves, fanning out to a width of 0.8 with a flare of 0.03. It covers nothing (`"covers": false`). One dye channel. |
+| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, the cuff about 7 cm up the forearm. |
+| `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
+| `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`. |
+| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, within a budget of 2,500 triangles per body, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and the stiff part `nasal` in `asset.json` (`"stiff": [{ "name": "nasal", "vertex": 1009 }]`), so the sync carries it as one piece where the smooth field would bend the thin bar that stands off the face. The female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand off the bridge of her nose and the band holds from the cage; the sync keeps that shape and turns and scales it with later moves of her cage. |
+| `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist. It hides the `legs` slot, so the boots show below it. One dye channel. |
+| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar. |
+| `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |
+| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, with seams along the inside of the legs. |
 | `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, painted on a canvas of the female after her form: a pale blue bra with a darker band about 2.5 cm high under the bust, a cup over each breast with one smooth upper edge down to a centre piece between the breasts, and darker straps about 1.2 cm wide from the cups over the shoulders, midway between the neck and the shoulder joint, and straight down the back to the band. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900, on a canvas of the male, moved to the female: pale blue briefs with a darker waistband, lifted out of the male body texture. Roughness 0.8. |
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
 | `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, layer 200, painted on a canvas of the male and moved to the female: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
-| `art/Projectiles/BronzeArrow` | `static` | `Arrow` | The arrow of every weapon that shoots arrows: a flat bronze broadhead on a six-sided shaft with three fletching vanes, the red cock vane up along +Z, and its nock 76 cm behind the point, 202 triangles, hand-painted; see [Projectiles](#projectiles). |
-| `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Flat material colors. |
-| `art/WorldActors/Resource_OakTree` | `static` | `Available`, `Depleted` | A fantasy oak, 1,456 triangles in all: a thick trunk twisted about 70 degrees on five flaring roots, three boughs into a broad crown of eight faceted leaf clumps, dark green with light green where a face looks up, and four golden acorns of 41 cm on stalks below the crown's rim, so the tree reads from every side; the depleted state is the stump cut slanted at about 0.8 m with a pale heartwood face, two splinters on its high side, the same roots, and five wood chips. The tree is about 5.6 m high and 4 m wide, inside its 4 by 5.6 by 4 m interaction bounds. Five flat materials: bark, leaves, light leaves, acorn, and heartwood. |
+| `art/Projectiles/BronzeArrow` | `static` | `Arrow` | The arrow of every weapon that shoots arrows: a flat bronze broadhead on a six-sided shaft with three fletching vanes, the red cock vane up along +Z, and its nock 76 cm behind the point, hand-painted; see [Projectiles](#projectiles). |
+| `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Flat material colors. |
+| `art/WorldActors/Resource_OakTree` | `static` | `Available`, `Depleted` | A fantasy oak: a thick trunk twisted about 70 degrees on five flaring roots, three boughs into a broad crown of eight faceted leaf clumps, dark green with light green where a face looks up, and four golden acorns of 41 cm on stalks below the crown's rim, so the tree reads from every side; the depleted state is the stump cut slanted at about 0.8 m with a pale heartwood face, two splinters on its high side, the same roots, and five wood chips. The tree is about 5.6 m high and 4 m wide, inside its 4 by 5.6 by 4 m interaction bounds. Five flat materials: bark, leaves, light leaves, acorn, and heartwood. |
 
 ## Planned
 
