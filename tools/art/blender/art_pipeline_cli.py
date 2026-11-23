@@ -5,7 +5,10 @@
 
 content prints the content record of the open file, which validate and export print too, and
 content-proof prints it after a scripted edit that it saves into the open file, for the proof in
-tools/art/Test-ArtContent.ps1, which runs it on copies.
+tools/art/Test-ArtContent.ps1, which runs it on copies. stage runs the export of a garment template or a
+garment texture up to its data and writes only the data, each file by a rename, into the folder --target
+names: what a template covers on each body, or a masked texture's masks, as the export would write them for
+the content of the open file, with no model, no image, and no record.
 
 new-static writes the first file of a static asset, library-sync builds or updates an animation
 library, paint-sync a paint layer, garment-create and garment-sync a garment template,
@@ -57,8 +60,9 @@ def _cache_arguments(command: argparse.ArgumentParser) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="art_pipeline_cli")
     commands = parser.add_subparsers(dest="command", required=True)
-    # content takes the arguments of a validation, and content-proof too, with the edit it makes.
-    for name in ("validate", "export", "content", "content-proof"):
+    # content takes the arguments of a validation, and content-proof too, with the edit it makes; stage
+    # those of an export, without the files an export writes but its data.
+    for name in ("validate", "export", "content", "content-proof", "stage"):
         command = commands.add_parser(name)
         command.add_argument("--kind", required=True)
         command.add_argument("--roots", required=True, help="Comma-separated root object names.")
@@ -98,6 +102,9 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--opaque-only", help="Why a garment texture may be exported only when it has no "
                                                        "transparent parts, whose masks would be checked in clips and "
                                                        "over the templates of lower layers.")
+        if name == "stage":
+            command.add_argument("--target", required=True,
+                                 help="The staging folder the data of a garment template or a masked texture goes to.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
@@ -358,6 +365,20 @@ def _print_cache(units: check_cache.Units) -> None:
     print(f"ART_CACHE {json.dumps(units.report(), separators=(',', ':'))}")
 
 
+def _write_by_rename(path: str, data: dict) -> None:
+    """Writes a staged data file as the export writes its data, under a temporary name in the same folder
+    first, which then takes its place, so a reader finds the whole old or the whole new file."""
+    folder, name = os.path.split(path)
+    os.makedirs(folder, exist_ok=True)
+    temporary = os.path.join(folder, f".{name}.{os.getpid()}.tmp")
+    try:
+        coverage.write_record(temporary, data)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+
+
 def _sheet_check(name: str, band: str, covers: bool, clips: coverage.Clips, units: check_cache.Units):
     """What the review sheet shows of a garment on a body, its own check, through the cache."""
     def checked(label: str) -> coverage.Coverage:
@@ -458,8 +479,15 @@ def _texture(args, content_record: dict) -> int:
                 data = os.path.join(args.target, f"{args.texture}_{label}.json")
                 coverage.write_record(data, texture.mask_record(args.texture, args.garment, result))
                 print(f"ART_TEXTURE_MASK {json.dumps({'label': label, 'data': data}, separators=(',', ':'))}")
+            elif args.command == "stage":
+                # The same record and name as the export's, in the staging folder.
+                data = os.path.join(args.target, f"{args.texture}_{label}.json")
+                _write_by_rename(data, texture.mask_record(args.texture, args.garment, result))
+                print(f"ART_STAGED {json.dumps({'label': label, 'data': data}, separators=(',', ':'))}")
     else:
         print(f"ART_REPORT {args.texture} is opaque and uses the masks of its template {args.garment}.")
+        if args.command == "stage":
+            print(f"ART_STAGE_OPAQUE {args.texture}")
     print(f"ART_VALIDATION texture={texture.image_name(args.texture)}")
     if exported is not None:
         written, record = exported
@@ -548,15 +576,21 @@ def _garment(args, content_record: dict) -> int:
         return 1
     triangles = max(sum(len(p.vertices) - 2 for p in v.data.polygons) for v in versions)
     print(f"ART_VALIDATION triangles={triangles}")
-    if args.command == "export":
+    if args.command in ("export", "stage"):
         if args.stage != "rig":
             raise ArtPipelineError("A garment is exported with its rig stage, which checks it in motion.")
         _leave_bones(labels, [inner for inner, _band, _recipe, _objects in inners], own, under)
         for label, target in garment.export_paths(args.garment, labels, args.target):
-            export_fbx("garment", target, garment.collection_name(label))
             data = os.path.splitext(target)[0] + ".json"
+            if args.command == "stage":
+                # The export's record and name in the staging folder, without the model.
+                _write_by_rename(data, coverage.record(args.garment, own[label].coverage))
+                print(f"ART_STAGED {json.dumps({'label': label, 'data': data}, separators=(',', ':'))}")
+                continue
+            export_fbx("garment", target, garment.collection_name(label))
             coverage.write_record(data, coverage.record(args.garment, own[label].coverage))
             print(f"ART_GARMENT_FBX {json.dumps({'label': label, 'path': target, 'data': data}, separators=(',', ':'))}")
+    if args.command == "export":
         for record in material_records(versions):
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         if args.textures:
@@ -601,10 +635,12 @@ def main() -> int:
     args = parse_args(_parser())
     # The content of the file as it was opened, before a validation or export opens other files.
     content_record = None
-    if args.command in ("validate", "export", "content"):
+    if args.command in ("validate", "export", "content", "stage"):
         content_record = _print_content(args)
         if args.command == "content":
             return 0
+    if args.command == "stage" and args.kind not in ("garment", "texture"):
+        raise ArtPipelineError(f'Only a garment template or a garment texture has data to stage, not an asset of kind "{args.kind}".')
     if args.command == "content-proof":
         content.proof_edit(args.edit, args)
         bpy.ops.wm.save_mainfile()

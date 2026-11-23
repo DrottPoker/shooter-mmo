@@ -10,6 +10,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import types
 import unittest
 
@@ -80,7 +81,7 @@ class ParserTests(unittest.TestCase):
     def test_every_command_the_scripts_start_exists_and_every_command_is_started_by_a_script(self):
         text = all_powershell()
         started = set(re.findall(r'"--",\s*"([a-z][a-z-]+)"', text))
-        started |= set(re.findall(r'@\("(validate|export|content|content-proof|preview|reference|clips)"', text))
+        started |= set(re.findall(r'@\("(validate|export|content|content-proof|stage|preview|reference|clips)"', text))
         self.assertEqual(started, set(subcommands()))
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
@@ -122,6 +123,18 @@ class ParserTests(unittest.TestCase):
         self.assertIsNone(export.opaque_only)
         with self.assertRaises(SystemExit):
             parse("validate", "--kind", "static", "--roots", "Rock", "--target", "out.fbx")
+
+    def test_a_stage_takes_the_arguments_of_an_export_and_writes_only_data_to_its_folder(self):
+        cache = ["--body-fit", "Male=" + "1" * 64, "--pair-content", "Trousers=" + "3" * 64, "--cache-root", "c"]
+        args = parse("stage", "--kind", "garment", "--roots", "Male", "--stage", "rig", "--target", "staging",
+                     "--pair", "t.blend=Trousers:tight", *cache)
+        self.assertEqual((args.command, args.target, args.stage, args.cache_root), ("stage", "staging", "rig", "c"))
+        self.assertEqual(cli._pairs(args), [(os.path.abspath("t.blend"), "Trousers", "tight")])
+        with self.assertRaises(SystemExit):
+            parse("stage", "--kind", "garment", "--roots", "Male")
+        for option in ("--textures", "--opaque-only"):
+            with self.subTest(option=option), self.assertRaises(SystemExit):
+                parse("stage", "--kind", "texture", "--roots", "Male", "--target", "staging", option, "x")
 
     def test_a_preview_needs_a_file_to_write_and_draws_its_cells_420_texels_wide(self):
         with self.assertRaises(SystemExit):
@@ -528,6 +541,43 @@ class BlenderJobTests(unittest.TestCase):
         self.assertIn("2 * $slashes + 1", body)
         self.assertIn("2 * $slashes)", body)
         self.assertIn("ConvertTo-ArtProcessArgument $_", PairSourceTests.function("Start-ArtBlenderJob"))
+
+
+class StageTests(unittest.TestCase):
+    """The stage command writes the data an export of the same content writes, with the export's own record
+    and name, by a rename, and nothing else: no model, no image, no asset.json."""
+
+    @staticmethod
+    def _function(name: str) -> str:
+        text = source_text("art_pipeline_cli.py")
+        start = text.index(f"\ndef {name}(")
+        end = text.find("\ndef ", start + 1)
+        return text[start:end if end >= 0 else len(text)]
+
+    def test_a_staged_file_has_the_bytes_the_export_writes_and_comes_by_a_rename(self):
+        records = load("art_pipeline/coverage.py", "write_record")
+        staged = load("art_pipeline_cli.py", "_write_by_rename", coverage=types.SimpleNamespace(write_record=records.write_record))
+        data = {"schemaVersion": 3, "garment": "Shirt", "body": "Male", "covered": list(range(20)), "pullInDistances": [0.0015, 0.002]}
+        with tempfile.TemporaryDirectory() as folder:
+            exported, target = os.path.join(folder, "exported.json"), os.path.join(folder, "staging", "Shirt_Male.json")
+            records.write_record(exported, data)
+            staged._write_by_rename(target, {"old": 1})
+            staged._write_by_rename(target, data)
+            self.assertEqual(pathlib.Path(target).read_bytes(), pathlib.Path(exported).read_bytes())
+            self.assertEqual(sorted(os.listdir(os.path.dirname(target))), ["Shirt_Male.json"])
+        self.assertIn("os.replace(temporary, path)", self._function("_write_by_rename"))
+
+    def test_a_template_s_stage_writes_its_data_before_any_model_and_a_texture_s_only_its_masks(self):
+        garment = self._function("_garment")
+        stage = garment[garment.index('if args.command == "stage":'):garment.index("continue", garment.index('if args.command == "stage":'))]
+        self.assertIn("_write_by_rename(data, coverage.record(args.garment, own[label].coverage))", stage)
+        self.assertNotIn("export_fbx", stage)
+        self.assertLess(garment.index("_leave_bones("), garment.index('if args.command == "stage":'))
+        self.assertIn('if args.command == "export":\n        for record in material_records', garment)
+        texture_run = self._function("_texture")
+        self.assertIn('texture.exported_image(args.texture) if args.command == "export" else None', texture_run)
+        self.assertIn("_write_by_rename(data, texture.mask_record(args.texture, args.garment, result))", texture_run)
+        self.assertIn('print(f"ART_STAGE_OPAQUE {args.texture}")', texture_run)
 
 
 class ResultLineTests(unittest.TestCase):

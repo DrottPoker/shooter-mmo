@@ -1,14 +1,19 @@
 # Renders the game views: the outfits of tools/art/views/standard-set.json on the bodies, in the poses
 # and from the cameras the set names, drawn as the game draws them, with their numbers, the pixels of
 # skin and of an inner garment through the cloth over them, of contact, where that cloth belongs to
-# another part of the body, and of the whole figure. -All renders every view, -Outfit, -Body, and -Pose
-# choose some; -Jobs runs that many Blender processes at once, each one outfit on one body. A view is
-# taken from the cache below the shared art cache's views folder while nothing it reads changed;
-# -NoCache renders it again. -WriteBaseline measures every view whose assets are all approved and
-# exported from their current content, with their exported files as recorded, and whose entry in
-# art/Views/baseline.json is not current, prints how the numbers differ from the old entries, and
-# writes them; the entries of the other views stay as they are. -Check compares the numbers with the
-# baseline. See docs/ART_PIPELINE.md, Game Views.
+# another part of the body, and of the whole figure. -All renders every view, -Outfit, -Body, -Pose, and
+# -View, whole view names, choose some; -Jobs runs that many Blender processes at once, each one outfit
+# on one body. A view is taken from the cache below the shared art cache's views folder while nothing it
+# reads changed; -NoCache renders it again. A view drawn from exactly the data its export records name
+# notes in the cache's index which entry holds the pictures of its committed key, so a later change can
+# show it as the picture before. -DataFolder puts other data in front of the exported, such as the staged data of
+# tools/art/Build-Art.ps1, and -OpaqueTexture names textures whose current content has no transparent
+# parts, which read their template's data. -WriteBaseline measures every view whose assets are all
+# approved and exported from their current content, with their exported files as recorded, and whose
+# entry in art/Views/baseline.json is not current, prints how the numbers differ from the old entries,
+# and writes them; the entries of the other views stay as they are. -Check compares the numbers with the
+# baseline. -Report gets one record per chosen view with numbers: its name, committed key, cache key,
+# numbers, and pictures, for tools/art/Build-Art.ps1. See docs/ART_PIPELINE.md, Game Views.
 #
 # Exit codes: 0 done, and for -Check no view shows more skin or garment through pixels than the
 # baseline; 2 for -Check a view does; 1 an error, or for -Check a view without an entry.
@@ -17,11 +22,14 @@ param(
     [string[]]$Outfit = @(),
     [string[]]$Body = @(),
     [string[]]$Pose = @(),
+    [string[]]$View = @(),
     [int]$Jobs = 0,
     [switch]$NoCache,
     [switch]$WriteBaseline,
     [switch]$Check,
     [string[]]$DataFolder = @(),
+    [string[]]$OpaqueTexture = @(),
+    [System.Collections.IList]$Report,
     [string]$BlenderPath
 )
 
@@ -165,12 +173,14 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
 
     $fileLines = @{}
     $fileHashes = @{}
+    $opaque = [string[]]@(Split-ArtViewList $OpaqueTexture)
     foreach ($view in $EveryView) {
         $isChosen = $chosen.ContainsKey($view.Name)
         $folderList = if ($isChosen) { $folders } else { @($exportFolder) }
+        $opaqueList = if ($isChosen) { $opaque } else { [string[]]@() }
         try {
             $garments = @($view.Garments | ForEach-Object {
-                    [pscustomobject]@{ Texture = $_.Texture; Template = $_.Template; Data = (Find-ArtViewData $_ $view.Label $folderList) }
+                    [pscustomobject]@{ Texture = $_.Texture; Template = $_.Template; Data = (Find-ArtViewData $_ $view.Label $folderList $opaqueList) }
                 })
         }
         catch {
@@ -349,6 +359,24 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
     }
 
     Write-ArtViewKeys $keysPath $keys
+
+    # The index of the pictures by committed key, of the views drawn from exactly the data their export
+    # records name, as the baseline measures them; the upkeep keeps the entries the baseline's keys
+    # point to.
+    foreach ($entry in $done) {
+        if (Test-ArtViewIndexable $entry.View ([string[]]@($entry.Garments | ForEach-Object { $_.Data })) $fileHashes) {
+            Write-ArtViewIndex $cacheRoot $entry.Committed $entry.Key
+        }
+    }
+
+    Add-ArtViewBaselineKeep $cacheRoot (Read-ArtViewBaseline) $keep
+    if ($null -ne $Report) {
+        foreach ($entry in $done) {
+            $null = $Report.Add([pscustomobject]@{ Name = $entry.View.Name; Committed = $entry.Committed; Key = $entry.Key; Numbers = $entry.Numbers
+                    Look = $entry.Look; Classes = $entry.Classes; Cached = $entry.Cached; Data = [string[]]@($entry.Garments | ForEach-Object { $_.Data }) })
+        }
+    }
+
     $removed = Remove-ArtViewCacheEntries $cacheRoot $keep
     $skin = [int](($done | ForEach-Object { [int]$_.Numbers.skin } | Measure-Object -Sum).Sum)
     $inner = [int](($done | ForEach-Object { [int]$_.Numbers.inner } | Measure-Object -Sum).Sum)
@@ -373,21 +401,21 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
 
 function Invoke-ArtViews {
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    $filtered = (Split-ArtViewList $Outfit).Count + (Split-ArtViewList $Body).Count + (Split-ArtViewList $Pose).Count -gt 0
+    $filtered = (Split-ArtViewList $Outfit).Count + (Split-ArtViewList $Body).Count + (Split-ArtViewList $Pose).Count + (Split-ArtViewList $View).Count -gt 0
     if ($WriteBaseline -and $filtered) {
-        throw "-WriteBaseline measures the views of the whole standard set; leave out -Outfit, -Body, and -Pose."
+        throw "-WriteBaseline measures the views of the whole standard set; leave out -Outfit, -Body, -Pose, and -View."
     }
 
-    if ($WriteBaseline -and $DataFolder.Count -gt 0) {
-        throw "-WriteBaseline measures the exported data only; leave out -DataFolder."
+    if ($WriteBaseline -and ($DataFolder.Count -gt 0 -or $OpaqueTexture.Count -gt 0)) {
+        throw "-WriteBaseline measures the exported data only; leave out -DataFolder and -OpaqueTexture."
     }
 
     if (-not ($All -or $filtered -or $WriteBaseline -or $Check)) {
-        throw "Name -All, or choose views with -Outfit, -Body, or -Pose."
+        throw "Name -All, or choose views with -Outfit, -Body, -Pose, or -View."
     }
 
     $everyView = @(Read-ArtViewSet)
-    $views = @(Select-ArtViews $everyView $Outfit $Body $Pose)
+    $views = @(Select-ArtViews $everyView $Outfit $Body $Pose $View)
     $baseline = Read-ArtViewBaseline
     if ($Check -and $null -eq $baseline) {
         throw "art/Views/baseline.json is missing; run tools/art/Render-ArtViews.ps1 -WriteBaseline first."

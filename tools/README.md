@@ -101,7 +101,8 @@ each script is in [Art Pipeline](../docs/ART_PIPELINE.md).
 | `art/Sync-TextureAsset.ps1` | Brings a garment texture up to date with its template and checks it |
 | `art/Set-TextureDyes.ps1` | Makes a garment texture dyeable or sets its dyes again |
 | `art/Test-PaintProjection.ps1` | Measures how a paint layer moves to a body of another topology |
-| `art/ArtPipelineCommon.ps1` | Shared helpers of the art scripts |
+| `art/ArtPipelineCommon.ps1` | Shared helpers of the art scripts, also the staging of data of content that is not exported yet |
+| `art/ArtReviewPage.ps1` | Writes the review page of `art/Build-Art.ps1`: what waits for an approval, the commands, and the game views that changed before and after |
 
 ## Self-Hosted Runner
 
@@ -114,4 +115,4 @@ in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 | `ci/Register-UnityRunnerTask.ps1` | Registers the scheduled task that keeps the runner running |
 | `ci/Test-UnityCommon.ps1` | Checks, in a temporary Git repository, that the helpers of `UnityCommon.ps1` put a working tree back after a Unity run without touching what the developer had changed or deleted, and find a player's log; CI and `Test-Changes.ps1` run it |
 | `ci/Test-ClientCrowdCommon.ps1` | Checks the helpers of `ClientCrowdCommon.ps1` without Unity or a stack: the bot settings, the Mob variant, the requests, the load samples, and the summary tables, whose standing table must stay the baseline's; CI and `Test-Changes.ps1` run it |
-| `ci/Test-ArtViews.ps1` | Checks the helpers of `art/ArtViews.ps1` without Blender: what changes a game view's committed key, the fingerprint of the renderer's code, the paint layers a body shows, the baseline's round trip and partial write, the stale views and the asset that waits for them, the exit codes of the check, the data lookup, the cache upkeep, and the shared cache's root; CI and `Test-Changes.ps1` run it |
+| `ci/Test-ArtViews.ps1` | Checks the helpers of `art/ArtViews.ps1` without Blender: what changes a game view's committed key, the fingerprint of the renderer's code, the paint layers a body shows, the baseline's round trip and partial write, the stale views and the asset that waits for them, the exit codes of the check, the data lookup, the cache upkeep with the index of pictures by committed key, the staged data's index, the review page of `art/ArtReviewPage.ps1`, and the shared cache's root; CI and `Test-Changes.ps1` run it |
