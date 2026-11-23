@@ -117,11 +117,12 @@ function Get-ArtFollowed($Manifest) {
     # The assets whose content or export an asset follows: the bodies of the cage, of a garment, and of
     # a paint layer, whose exports give the fit and the paint layout; and the content of a garment's
     # cage, animation libraries, and templates of lower layers, a texture's template with its libraries
-    # and its template's lower layers, a library's rig, and a paint layer's cage.
+    # and its template's lower layers, a library's rig, and a paint layer's cage. A garment's sync is
+    # given only the exported templates of lower layers, so it sees one of them once it is exported.
     $followed = New-Object System.Collections.Generic.List[object]
-    function Add-Followed([string]$Asset, [bool]$ReadsExport) {
+    function Add-Followed([string]$Asset, [bool]$ReadsExport, [bool]$SeenWhenExported = $false) {
         if (-not [string]::IsNullOrEmpty($Asset) -and @($followed | Where-Object { $_.Asset -ceq $Asset }).Count -eq 0) {
-            $followed.Add([pscustomobject]@{ Asset = $Asset; ReadsExport = $ReadsExport })
+            $followed.Add([pscustomobject]@{ Asset = $Asset; ReadsExport = $ReadsExport; SeenWhenExported = $SeenWhenExported })
         }
     }
 
@@ -133,7 +134,7 @@ function Get-ArtFollowed($Manifest) {
             Add-Followed $Manifest.Cage.RelativeDirectory $false
             foreach ($body in @($Manifest.Bodies)) { Add-Followed $body.Asset $true }
             foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) { Add-Followed $library.Asset $false }
-            foreach ($pair in @(Get-ArtGarmentPairs $Manifest)) { Add-Followed $pair.RelativeDirectory $false }
+            foreach ($pair in @(Get-ArtGarmentPairs $Manifest)) { Add-Followed $pair.RelativeDirectory $false $true }
         }
         "texture" {
             Add-Followed $Manifest.Garment.RelativeDirectory $false
@@ -289,7 +290,8 @@ function Save-ArtSyncRecords($Records) {
 
 function Get-ArtFollowedFingerprints($Manifest, $Manifests) {
     # What an asset follows as it is now: of a body whose export it reads, the fit and the paint layout
-    # of that export; of every other asset, its content.
+    # of that export; of every other asset, its content, and of a template of a lower layer that is
+    # not exported yet, that it is not, since a sync does not see it until then.
     $fingerprints = @{}
     foreach ($followed in @(Get-ArtFollowed $Manifest)) {
         $other = $Manifests[$followed.Asset]
@@ -298,6 +300,9 @@ function Get-ArtFollowedFingerprints($Manifest, $Manifests) {
         }
         elseif ($followed.ReadsExport) {
             if ($null -eq $other.Export) { "not exported" } else { "fit=$($other.Export.fitSha256);paint=$($other.Export.paintSha256)" }
+        }
+        elseif ($followed.SeenWhenExported -and $null -eq $other.Export) {
+            "not exported"
         }
         else {
             "content=$(Get-ArtExportedContent $other)"
@@ -362,8 +367,11 @@ function Get-ArtBuildPlan {
             Follows = @()
         }
         $followed = @(Get-ArtFollowed $manifest)
+        # A template of a lower layer exported for the first time is exported before the sync of the
+        # templates over it, which sees it only then.
         $syncing = @($followed | Where-Object { @("sync", "later") -contains $needs[$_.Asset] -or
-                ($_.ReadsExport -and $needs[$_.Asset] -eq "export") })
+                ($_.ReadsExport -and $needs[$_.Asset] -eq "export") -or
+                ($_.SeenWhenExported -and $needs[$_.Asset] -eq "export" -and $null -eq $manifests[$_.Asset].Export) })
         $waiting = @($followed | Where-Object { @("approval", "waits") -contains $needs[$_.Asset] })
         $syncReasons = if ($synced.Contains($manifest.RelativeDirectory)) { @() } else { @(Get-ArtSyncReasons $manifest $manifests) }
         if ($syncReasons.Count -gt 0 -and (Test-ArtSyncRecordHolds $manifest $manifests $syncRecords)) {

@@ -504,6 +504,18 @@ class BlenderJobTests(unittest.TestCase):
         self.assertIn("$pairProblem = Get-ArtPairSourcesProblem $Manifest", reasons)
         self.assertIn("(Get-ArtGarmentPairArguments $manifest)", powershell("Sync-GarmentAsset.ps1"))
 
+    def test_the_build_exports_a_new_template_of_a_lower_layer_before_it_syncs_the_templates_over_it(self):
+        """The sync script is given only the exported templates of lower layers, so the build exports
+        one that has no export yet first, and a sync that ran without it is not taken as having
+        followed it."""
+        build = powershell("Build-Art.ps1")
+        self.assertIn("foreach ($pair in @(Get-ArtGarmentPairs $Manifest)) { Add-Followed $pair.RelativeDirectory $false $true }", build)
+        self.assertIn('($_.SeenWhenExported -and $needs[$_.Asset] -eq "export" -and $null -eq $manifests[$_.Asset].Export)', build)
+        fingerprints = build[build.index("function Get-ArtFollowedFingerprints"):build.index("function Test-ArtSyncRecordHolds")]
+        self.assertIn("elseif ($followed.SeenWhenExported -and $null -eq $other.Export) {", fingerprints)
+        self.assertIn("$null -ne $other.Export -or @($script:ArtExportingTemplates) -ccontains $other.RelativeDirectory",
+                      PairSourceTests.function("Get-ArtGarmentPairs"))
+
     def test_the_unity_follow_up_runs_one_method_in_the_editor_or_headless(self):
         text = powershell("Update-UnityArt.ps1")
         self.assertIn('$method = "Mmorpg.Client.Editor.ArtExportFollowUp.ApplyFromCommandLine"', text)

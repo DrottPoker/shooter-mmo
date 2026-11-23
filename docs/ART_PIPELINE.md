@@ -698,8 +698,10 @@ confirm a clean state:
    - `waits` when it needs an export but follows an asset that waits for an
      approval, also through other assets, so nothing that depends on an
      unapproved change is exported;
-   - `later` when it follows an asset that this build syncs first, or a body
-     that it exports first, whose new fit or paint layout decides what it needs;
+   - `later` when it follows an asset that this build syncs first, a body that
+     it exports first, whose new fit or paint layout decides what it needs, or
+     a template of a lower layer that it exports for the first time, which the
+     sync of a template over it sees only then;
    - `nothing` otherwise.
 
    `-Plan` makes the content records current, prints the plan with the
