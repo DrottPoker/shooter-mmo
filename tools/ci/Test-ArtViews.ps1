@@ -167,7 +167,7 @@ try {
     Assert-Equal "Numbers read back" "1 2 3 400 k-B_Male_Rest_Y215" "$($read['B_Male_Rest_Y215'].Skin) $($read['B_Male_Rest_Y215'].Inner) $($read['B_Male_Rest_Y215'].Contact) $($read['B_Male_Rest_Y215'].Figure) $($read['B_Male_Rest_Y215'].Key)"
     $lines = @([IO.File]::ReadAllLines($baselinePath) | Where-Object { $_ -match '"name"' })
     Assert-True "One sorted line per view" ($lines.Count -eq 2 -and $lines[0] -match "A_Male" -and $lines[1] -match "B_Male")
-    Assert-True "No temporary file is left" (@(Get-ChildItem -LiteralPath (Split-Path -Parent $baselinePath) -Filter "*.tmp").Count -eq 0)
+    Assert-True "No temporary file is left" (@(Get-ChildItem -LiteralPath (Split-Path -Parent $baselinePath) -Filter "*.tmp" -Force).Count -eq 0)
     $measured = New-ArtViewTable
     $measured["A_Male_Rest_Y215"] = New-TestLine "A_Male_Rest_Y215" 0 1 0 300
     $measured["C_Male_Rest_Y215"] = New-TestLine "C_Male_Rest_Y215" 9 9 9 900
@@ -260,7 +260,8 @@ try {
     $keep = New-ArtViewTable
     $keep["kept"] = $true
     Assert-Equal "Entries removed" 1 (Remove-ArtViewCacheEntries $cache $keep)
-    $left = [string[]]@(Get-ChildItem -LiteralPath $folder -File | ForEach-Object { $_.Name })
+    # -Force: a name that starts with a dot is a hidden file outside Windows.
+    $left = [string[]]@(Get-ChildItem -LiteralPath $folder -File -Force | ForEach-Object { $_.Name })
     [Array]::Sort($left, [StringComparer]::Ordinal)
     Assert-Equal "What the upkeep leaves" ".new.png.123.tmp.png fresh.png kept.json kept.png recent.json" ($left -join " ")
     Assert-True "The upkeep leaves the cache of the checks alone" (Test-Path -LiteralPath (Join-Path $cache "checks/ab/old.json"))

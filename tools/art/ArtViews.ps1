@@ -766,7 +766,8 @@ function Remove-ArtViewCacheEntries([string]$CacheRoot, $Keep, [DateTime]$Now = 
         }
     }
 
-    foreach ($left in @(Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Name.StartsWith(".") -and $_.Name -like "*.tmp*" -and $_.LastWriteTime -lt $day })) {
+    # -Force: a name that starts with a dot is a hidden file outside Windows.
+    foreach ($left in @(Get-ChildItem -LiteralPath $folder -File -Force | Where-Object { $_.Name.StartsWith(".") -and $_.Name -like "*.tmp*" -and $_.LastWriteTime -lt $day })) {
         Remove-Item -LiteralPath $left.FullName -Force -ErrorAction SilentlyContinue
     }
 
