@@ -151,48 +151,42 @@ class CommittedRecordTests(unittest.TestCase):
 class MotionReportTests(unittest.TestCase):
     @staticmethod
     def _motion(**fields):
-        values = {"label": "Male", "vertices": 120, "through": 0, "depth": 0.0, "where": "", "zone": "", "checked": 40,
-                  "faces": 96, "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0004, "sit"),
-                                         "Walk": (0.0, ""), "Jog": (0.0, "")}, **fields}
+        values = {"label": "Male", "vertices": 120, "through": 0, "depth": 0.0, "where": "", "zone": "", "checked": 11,
+                  "faces": 96, "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0004, "sit")}, **fields}
         return coverage.Motion(**values)
 
     def test_a_garment_over_no_drawn_face_says_so(self):
         self.assertEqual(coverage.motion_summary("Cloak", self._motion(faces=0, vertices=0, worst={})),
-                         "Cloak_Male: none of the drawn faces of the body lies under it in 40 poses and clip frames")
+                         "Cloak_Male: none of the drawn faces of the body lies under it in 11 poses")
 
-    def test_the_skin_under_a_garment_is_reported_with_its_deepest_place_per_phase(self):
+    def test_the_skin_under_a_garment_is_reported_with_its_deepest_place_at_rest_and_in_the_test_poses(self):
         self.assertEqual(coverage.motion_summary("Shirt", self._motion()),
                          "Shirt_Male: 96 drawn faces of the body lie under it, with 120 visible vertices; the deepest their "
-                         "skin comes through it in 40 poses and clip frames: the rest pose 0.00 mm, the test poses 0.40 mm "
-                         "(sit), Walk 0.00 mm, Jog 0.00 mm")
+                         "skin comes through it in 11 poses: the rest pose 0.00 mm, the test poses 0.40 mm (sit)")
 
-    def test_skin_that_comes_through_is_counted_by_its_faces_and_a_clip_is_named_beside_a_deeper_one(self):
-        worst = {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0, ""), "Death": (0.0108, "Death frame 21"),
-                 "Jog": (0.0021, "Jog frame 5")}
-        text = coverage.motion_summary("Trousers", self._motion(through=7, depth=0.0108, where="Death frame 21", zone="Pelvis",
+    def test_skin_that_comes_through_is_counted_by_its_faces_with_the_test_pose_it_is_deepest_in(self):
+        worst = {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0108, "stride")}
+        text = coverage.motion_summary("Trousers", self._motion(through=7, depth=0.0108, where="stride", zone="Pelvis",
                                                                 worst=worst))
-        self.assertTrue(text.endswith(": the rest pose 0.00 mm, the test poses 0.00 mm, Death 10.80 mm (frame 21), Jog 2.10 mm "
-                                      f"(frame 5); 7 faces come through by more than {coverage.CLIP_TOLERANCE * 1000:.0f} mm, "
-                                      "by at most 10.8 mm (Pelvis in Death frame 21), red on the review sheet"), text)
+        self.assertTrue(text.endswith(": the rest pose 0.00 mm, the test poses 10.80 mm (stride); 7 faces come through by more "
+                                      f"than {coverage.CLIP_TOLERANCE * 1000:.0f} mm, by at most 10.8 mm (Pelvis in stride), "
+                                      "red on the review sheet"), text)
 
     @staticmethod
     def _pair(**fields):
-        values = {"label": "Male", "triangles": 120, "checked": 40,
-                  "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0004, "sit"),
-                            "Walk": (0.0, ""), "Jog": (0.0021, "Jog frame 15")}, **fields}
+        values = {"label": "Male", "triangles": 120, "checked": 11,
+                  "worst": {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.0021, "arms_up")}, **fields}
         return coverage.Pair(**values)
 
     def test_an_inner_garment_is_reported_under_the_outer_one_with_its_deepest_place_per_phase(self):
         self.assertEqual(coverage.pair_summary("Robe", "Shirt", self._pair(label="Female", triangles=0)),
-                         "Shirt under Robe_Female: none of its drawn triangles lies under Robe_Female in 40 poses and "
-                         "clip frames")
+                         "Shirt under Robe_Female: none of its drawn triangles lies under Robe_Female in 11 poses")
         self.assertEqual(coverage.pair_summary("Shirt", "Trousers", self._pair()),
                          "Trousers under Shirt_Male: 120 drawn triangles of it lie under Shirt_Male; the deepest they come "
-                         "through it in 40 poses and clip frames: the rest pose 0.00 mm, the test poses 0.40 mm (sit), "
-                         "Walk 0.00 mm, Jog 2.10 mm (frame 15)")
-        text = coverage.pair_summary("Shirt", "Trousers", self._pair(through=3, depth=0.0021, zone="Pelvis", where="Jog frame 15"))
+                         "through it in 11 poses: the rest pose 0.00 mm, the test poses 2.10 mm (arms_up)")
+        text = coverage.pair_summary("Shirt", "Trousers", self._pair(through=3, depth=0.0021, zone="Pelvis", where="arms_up"))
         self.assertTrue(text.endswith(f"; 3 come through by more than {coverage.CLIP_TOLERANCE * 1000:.0f} mm, by at most "
-                                      "2.1 mm (Pelvis in Jog frame 15)"))
+                                      "2.1 mm (Pelvis in arms_up)"))
 
     def test_triangles_that_lie_through_at_rest_break_the_rule_with_the_pair_body_count_depth_and_place(self):
         self.assertIsNone(self._pair().rest_error("Shirt_Male", "Trousers"))
@@ -204,14 +198,14 @@ class MotionReportTests(unittest.TestCase):
         self.assertTrue(one.startswith('1 drawn triangle of Trousers worn under "Shirt_Male" lies through it at rest'))
 
     def test_the_hidden_triangles_are_reported_with_the_most_that_show_per_phase(self):
-        shown = {coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), coverage.TEST_POSES: (4, "stride", (0.1, 0.0, 0.9)),
-                 "Walk": (0, "Walk frame 0", (0.0, 0.0, 0.0)), "Death": (6, "Death frame 30", (0.1, 0.1, 0.5))}
+        shown = {coverage.REST: (2, coverage.REST, (0.1, 0.0, 0.9)), coverage.TEST_POSES: (4, "stride", (0.1, 0.0, 0.9))}
         text = coverage.pair_summary("Shirt", "Trousers", self._pair(hidden=208, shown=shown))
-        self.assertTrue(text.endswith("; of the 208 triangles it hides, the most that show a hole: the rest pose 0, "
-                                      "the test poses 4 (stride), Walk 0, Death 6 (frame 30)"))
-        alone = coverage.pair_summary("Boots", "Trousers", self._pair(triangles=0, hidden=320, shown={coverage.REST: shown[coverage.REST]}))
-        self.assertEqual(alone, "Trousers under Boots_Male: none of its drawn triangles lies under Boots_Male in 40 poses and "
-                                "clip frames; of the 320 triangles it hides, the most that show a hole: the rest pose 0")
+        self.assertTrue(text.endswith("; of the 208 triangles it hides, the most that show a hole: the rest pose 2, "
+                                      "the test poses 4 (stride)"), text)
+        alone = coverage.pair_summary("Boots", "Trousers", self._pair(triangles=0, hidden=320,
+                                                                      shown={coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0))}))
+        self.assertEqual(alone, "Trousers under Boots_Male: none of its drawn triangles lies under Boots_Male in 11 poses; "
+                                "of the 320 triangles it hides, the most that show a hole: the rest pose 0")
 
     def test_nothing_is_wrong_when_nothing_lies_through_at_rest(self):
         self.assertIsNone(self._motion().rest_error("Shirt_Male", "drawn faces of the body"))

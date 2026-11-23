@@ -48,8 +48,6 @@ def _cache_arguments(command: argparse.ArgumentParser) -> None:
                          help="Compute every check of a garment and neither read nor write the cache of the checks.")
     command.add_argument("--body-fit", action="append", default=[],
                          help="<armature>=<SHA-256> of the fit of a body, from its export while that is current.")
-    command.add_argument("--clip-content", action="append", default=[],
-                         help="<file.blend>=<SHA-256> of the content of an animation library given with --clip-library.")
     command.add_argument("--pair-content", action="append", default=[],
                          help="<Template>=<SHA-256> of the rig stage content of a template given with --pair.")
     command.add_argument("--texture-content", help="The SHA-256 of a texture's image part, for its review sheet.")
@@ -81,8 +79,6 @@ def _parser() -> argparse.ArgumentParser:
                              help="The garment hides nothing under it, such as a cloak that lies on top.")
         command.add_argument("--body", action="append", default=[],
                              help="<file.blend>=<armature> of a body a garment fits, the first body first.")
-        command.add_argument("--clip-library", action="append", default=[],
-                             help="<file.blend>=<Clip>+<Clip> of an animation library whose clips a garment is checked in.")
         command.add_argument("--manifest", help="The asset.json of a cage or a garment template.")
         command.add_argument("--cage-manifest", help="The asset.json of a garment template's cage.")
         command.add_argument("--cage-content", help="The content fingerprint of a garment template's cage, which a "
@@ -100,8 +96,8 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
             command.add_argument("--opaque-only", help="Why a garment texture may be exported only when it has no "
-                                                       "transparent parts, whose masks would be checked in clips and "
-                                                       "over the templates of lower layers.")
+                                                       "transparent parts, whose masks would be checked over the "
+                                                       "templates of lower layers.")
         if name == "stage":
             command.add_argument("--target", required=True,
                                  help="The staging folder the data of a garment template or a masked texture goes to.")
@@ -112,8 +108,6 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--garment", help="The name of a garment, whose sheet also shows what it covers.")
     command.add_argument("--band", help="The band of a garment.")
     command.add_argument("--covers-nothing", action="store_true", help="The garment hides nothing under it.")
-    command.add_argument("--clip-library", action="append", default=[],
-                         help="<file.blend>=<Clip>+<Clip> of an animation library whose clips complete a garment's mask.")
     command.add_argument("--roots", help="Comma-separated armatures of the bodies of a cage, a texture, or a garment "
                                          "whose sheet takes its checks through their cache, in order.")
     command.add_argument("--cage-content", help="The content fingerprint of the cage of a garment or a texture's template, "
@@ -259,23 +253,6 @@ def _hidden_reports(name: str, label: str, coverage_result: coverage.Coverage) -
             for inner, hidden in sorted(coverage_result.hidden.items())]
 
 
-def _choice_reports(name: str, inner: str, labels: list[str], check: coverage.UnderCheck) -> list[str]:
-    """Which of the faces the rest rule hides of a template worn under a garment the garment leaves
-    drawn, one list for every body, because a look past it shows a hole there on a body at rest or in
-    a frame of a clip, and where they first show one."""
-    lines = []
-    for label, where in zip(labels, check.where):
-        for face, (frame, place) in sorted(where.items()):
-            at = ", ".join(f"{x:.3f}" for x in place)
-            lines.append(f"{garment.version_name(name, label)} would show a hole at face {face} of {inner} in {frame} at ({at}) m, "
-                         "so it leaves that face drawn")
-    dropped = int(check.candidates.sum()) - int(check.chosen.sum())
-    if dropped:
-        lines.append(f"{name} hides {int(check.chosen.sum())} faces of {inner} on every body; {dropped} faces the rest rule would "
-                     "hide stay drawn where a look past it shows a hole")
-    return lines
-
-
 def _margin_reports(name: str, margins: dict[str, list]) -> list[str]:
     """The hide margins of a garment's open edges on every body, where they reach each template of a
     lower layer worn under it, per template the body and the margins that reach it."""
@@ -317,14 +294,14 @@ def _template_content(name: str, labels: list[str]) -> str:
 def _units(args, name: str, labels: list[str], cage_content: str | None, pairs: list, template_content: str | None = None,
            texture_entry: dict | None = None, sources: list[dict] = ()) -> check_cache.Units:
     """The cached units of this run's checks of the template in the open file: their store and what their
-    keys are made of. PowerShell passes the fingerprints of the bodies' fit, the cage, the clip libraries,
-    and the templates of lower layers from their content records, made current first; the content of the
-    file the run opened Python reads itself, as the content record does, here unless given, so call it
-    before anything changes the file. A fit or a cage content that the open file does not hold, as in a
+    keys are made of. PowerShell passes the fingerprints of the bodies' fit, the cage, and the templates
+    of lower layers from their content records, made current first; the content of the file the run
+    opened Python reads itself, as the content record does, here unless given, so call it before
+    anything changes the file. A fit or a cage content that the open file does not hold, as in a
     template not synced since its body or cage changed, or a fingerprint that is missing, leaves the
-    units that need it computed and not cached. The clip libraries and the templates of lower layers,
-    with sources, the other files the run reads from disk, are held to their fingerprints whenever an
-    entry is written."""
+    units that need it computed and not cached. The templates of lower layers, with sources, the other
+    files the run reads from disk, are held to their fingerprints whenever an entry is written. No unit
+    reads a clip."""
     store = check_cache.Store(os.path.join(args.cache_root, "checks") if args.cache_root else None, enabled=not args.no_cache)
     if args.no_cache:
         return check_cache.Units(store)
@@ -340,8 +317,6 @@ def _units(args, name: str, labels: list[str], cage_content: str | None, pairs: 
     if cage_content is not None and bpy.context.scene.get(garment.CAGE_CONTENT) != cage_content:
         notes.append(f"{name} was fitted to other content of its cage")
         cage_content = None
-    contents = {os.path.abspath(path): sha for path, sha in _named(args.clip_content)}
-    clips = [{"content": contents.get(path), "clips": clip_names} for path, clip_names in _clip_libraries(args)]
     folder = os.path.dirname(bpy.data.filepath)
     template = {"name": name, "content": template_content, "band": args.band, "covers": not args.covers_nothing,
                 "fields": check_cache.manifest_fields(os.path.join(folder, "asset.json"))}
@@ -349,15 +324,12 @@ def _units(args, name: str, labels: list[str], cage_content: str | None, pairs: 
     inners = {inner: {"name": inner, "content": pair_contents.get(inner), "band": inner_band,
                       "fields": check_cache.manifest_fields(os.path.join(os.path.dirname(path), "asset.json"))}
               for path, inner, inner_band in pairs}
-    base = check_cache.base_inputs(_code(args), template, cage_content, clips, texture_entry)
+    base = check_cache.base_inputs(_code(args), template, cage_content, texture_entry)
     # The files the checks read from other assets, each with the fingerprint given for it and where it
-    # lies in that asset's content record: the clips, the library's last stage, as an export records it.
-    library_stage = ["stages", content_core.STAGES["animations"][-1]]
+    # lies in that asset's content record: the templates of lower layers, their last stage.
     template_stage = ["stages", content_core.STAGES["garment"][-1]]
-    held = [{"name": pathlib.Path(path).stem, "path": path, "record": library_stage, "content": contents[path]}
-            for path, _clip_names in _clip_libraries(args) if contents.get(path)]
-    held += [{"name": inner, "path": os.path.abspath(path), "record": template_stage, "content": pair_contents[inner]}
-             for path, inner, _inner_band in pairs if pair_contents.get(inner)]
+    held = [{"name": inner, "path": os.path.abspath(path), "record": template_stage, "content": pair_contents[inner]}
+            for path, inner, _inner_band in pairs if pair_contents.get(inner)]
     return check_cache.Units(store, base, fits, inners, notes, held + list(sources))
 
 
@@ -379,10 +351,10 @@ def _write_by_rename(path: str, data: dict) -> None:
             os.remove(temporary)
 
 
-def _sheet_check(name: str, band: str, covers: bool, clips: coverage.Clips, units: check_cache.Units):
+def _sheet_check(name: str, band: str, covers: bool, units: check_cache.Units):
     """What the review sheet shows of a garment on a body, its own check, through the cache."""
     def checked(label: str) -> coverage.Coverage:
-        return coverage.own_cover(name, label, band, covers, clips, units)
+        return coverage.own_cover(name, label, band, covers, units)
     return checked
 
 
@@ -395,10 +367,6 @@ def _rest_bones(labels: list[str]) -> None:
     bpy.context.view_layer.update()
 
 
-def _clip_libraries(args) -> list[tuple[str, list[str]]]:
-    return [(os.path.abspath(path), clips.split("+")) for path, clips in (e.rsplit("=", 1) for e in args.clip_library)]
-
-
 def _held_attachments(args) -> list[tuple[str, str, str]]:
     return [(os.path.abspath(path), rest.split(":", 1)[0], rest.split(":", 1)[1])
             for path, rest in (entry.rsplit("=", 1) for entry in args.held_attachment)]
@@ -407,10 +375,10 @@ def _held_attachments(args) -> list[tuple[str, str, str]]:
 def _texture(args, content_record: dict) -> int:
     """Validation and export of a garment texture: its image in its template's current UVs, and its
     material. A texture with transparent parts also gets masks of its own on every body, with the
-    skin that comes through the garment in the test poses and the clips and the pair check of every
-    template of a lower layer worn under it, whose hidden faces its holes change, and its export
-    writes them next to the template's models. Its checks are the units of its template's with its
-    image on it, which the cache keys by the image part of the texture's content record."""
+    skin that comes through the garment in the test poses and the pair check of every template of a
+    lower layer worn under it, whose hidden faces its holes change, and its export writes them next
+    to the template's models. Its checks are the units of its template's with its image on it, which
+    the cache keys by the image part of the texture's content record."""
     labels = args.roots.split(",")
     garment_file = os.path.abspath(args.garment_file)
     if args.stage != "texture":
@@ -422,7 +390,7 @@ def _texture(args, content_record: dict) -> int:
         return 1
     holes = texture.has_holes(bpy.data.images[texture.image_name(args.texture)])
     if holes and getattr(args, "opaque_only", None):
-        raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked in the clips and over the "
+        raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked over the "
                                f"templates of lower layers worn under its template: {args.opaque_only}.")
     # The image is read before the masks open the template's file, and written only once every
     # rule holds.
@@ -444,14 +412,11 @@ def _texture(args, content_record: dict) -> int:
                                sources=[own]))
             return made[0]
 
-        margins, results, notes = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels,
-                                                args.band, _clip_libraries(args), not args.covers_nothing, inners,
-                                                template_recipe, hair == "compress", units=units)
+        margins, results = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels, args.band,
+                                         not args.covers_nothing, inners, template_recipe, hair == "compress", units=units)
         _print_cache(made[0])
         for line in _margin_reports(args.garment, margins):
             print(f"ART_REPORT {args.texture} on {line}")
-        for line in notes:
-            print(f"ART_REPORT {line}")
         for label in labels:
             result, motion, pairs = results[label]
             version = garment.version_name(args.garment, label)
@@ -499,8 +464,8 @@ def _garment(args, content_record: dict) -> int:
     armature from its own collection and with its data: the cover mask, underlay, and pull-in. The
     model stage checks the shape, the fitting, and the band, and reports the mask; the rig stage
     checks the armature and the weights, and reports the skin that comes through the garment in the
-    test poses and the clips. The export needs the rig stage. The checks of what it covers come from
-    their cache where it holds them, keyed by the rig stage of the file's content record."""
+    test poses. The export needs the rig stage. The checks of what it covers come from their cache
+    where it holds them, keyed by the rig stage of the file's content record. No check reads a clip."""
     body_list = _bodies(args)
     labels = args.roots.split(",")
     if [root for _path, root in body_list] != labels:
@@ -534,24 +499,17 @@ def _garment(args, content_record: dict) -> int:
     if not errors:
         # Its own checks on every body, and over every template of a lower layer the hide margins of its open
         # edges on every body, which the recipes split just beyond on the first body, the faces the rest rule
-        # hides of it there beyond the margins on every body, and at the rig stage, without the faces at
-        # which a look past it shows a hole on any body, at rest or in any frame of any clip, which stay
-        # drawn and are followed like every other drawn face, the pair check: from the cache or computed.
-        clips = coverage.Clips(_clip_libraries(args))
+        # hides of it there beyond the margins on every body, which it hides on every body, and at the rig
+        # stage the pair check: from the cache or computed.
         units = _units(args, args.garment, labels, args.cage_content, _pairs(args), content_record["stages"].get("rig"))
         own, under = coverage.checks(args.garment, labels, args.band, not args.covers_nothing, recipe,
                                      [(inner, inner_band, inner_recipe, (lambda found=objects: found))
                                       for inner, inner_band, inner_recipe, objects in inners],
-                                     clips, args.stage == "rig", units)
-        clips.remove()
+                                     args.stage == "rig", units)
         _print_cache(units)
         for line in _margin_reports(args.garment, {inner: list(zip(labels, check.over)) for inner, check in under.items()
                                                    if check.over is not None}):
             print(f"ART_REPORT {line}")
-        if args.stage == "rig":
-            for inner, _inner_band, _inner_recipe, _objects in inners if not args.covers_nothing else []:
-                for line in _choice_reports(args.garment, inner, labels, under[inner]):
-                    print(f"ART_REPORT {line}")
         for label in labels:
             motion = own[label].motion
             if motion is not None:
@@ -654,11 +612,10 @@ def main() -> int:
                            texture_entry={"name": args.texture, "image": args.texture_content},
                            sources=held if args.texture_content else [])
             holes = texture.dress(args.garment, texture_file, args.texture, labels)
-            clips = coverage.Clips(_clip_libraries(args))
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size,
-                                                args.garment if holes else None, args.band, _clip_libraries(args),
-                                                args.garment, not args.covers_nothing,
-                                                _sheet_check(args.garment, args.band, not args.covers_nothing, clips, units))
+                                                args.garment if holes else None, args.band, args.garment,
+                                                not args.covers_nothing,
+                                                _sheet_check(args.garment, args.band, not args.covers_nothing, units))
             _print_cache(units)
             print(f"ART_PREVIEW {path}")
             return 0
@@ -673,10 +630,9 @@ def main() -> int:
             checked, units = None, None
             if args.roots:
                 units = _units(args, args.garment, args.roots.split(","), args.cage_content, [])
-                checked = _sheet_check(args.garment, args.band, not args.covers_nothing,
-                                       coverage.Clips(_clip_libraries(args)), units)
+                checked = _sheet_check(args.garment, args.band, not args.covers_nothing, units)
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size, args.garment, args.band,
-                                                _clip_libraries(args), covers=not args.covers_nothing, checked=checked)
+                                                covers=not args.covers_nothing, checked=checked)
             if units is not None:
                 _print_cache(units)
             print(f"ART_PREVIEW {path}")

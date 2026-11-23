@@ -5,8 +5,9 @@
 # round trip and partial write, the grouping of stale views and the asset that waits for them, the exit
 # codes of the check, the order the data is looked up in, the views' choice, the upkeep of the views
 # cache with the index of the pictures by committed key, the class of a change, the data staged for the
-# views by tools/art/Build-Art.ps1 with its index and key, the review page of tools/art/ArtReviewPage.ps1,
-# the keys of the readable copies, and the root of the shared cache.
+# views by tools/art/Build-Art.ps1 with its index and key, which no animation library enters, an export
+# record that still names clipSources, the review page of tools/art/ArtReviewPage.ps1, the keys of the
+# readable copies, and the root of the shared cache.
 #
 # Exit codes: 0 every case holds, 1 a case failed.
 $ErrorActionPreference = "Stop"
@@ -419,6 +420,34 @@ try {
     Assert-True "A texture's key is its own" ("$(Get-ArtStagingKey $net 'code-1')" -cmatch '^[0-9a-f]{64}$' -and (Get-ArtStagingKey $net "code-1") -cne $stagingKey)
     $net.Garment.Content.stages["rig"] = "0" * 64
     Assert-True "Its template's content changes a texture's key" ((Get-ArtStagingKey $net "code-1") -cne (Get-ArtStagingKey (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/GarmentTextures/NetShirt")) "code-1"))
+
+    # No clip library enters the staged data of a template or a texture, so a new or changed clip stages
+    # nothing again: with libraries that cannot even be listed, both keys stay as they were.
+    $shirt = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/Garments/Shirt")
+    $net = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot "art/GarmentTextures/NetShirt")
+    $keys = "$(Get-ArtStagingKey $shirt 'code-1') $(Get-ArtStagingKey $net 'code-1')"
+    $keysWithoutLibraries = & {
+        function Get-ArtClipLibraries { throw "No garment or texture reads an animation library." }
+        "$(Get-ArtStagingKey $shirt 'code-1') $(Get-ArtStagingKey $net 'code-1')"
+    }
+    Assert-True "Both staging keys hold" ($keys -cmatch '^[0-9a-f]{64} [0-9a-f]{64}$')
+    Assert-Equal "No clip library in the staging keys" $keys $keysWithoutLibraries
+
+    # An export record written while garments were checked in the clips names clipSources: it still reads,
+    # nothing keeps the field, and the next record leaves it out.
+    foreach ($older in @(@{ Folder = "art/Garments/Shirt"; Read = "Read-ArtGarmentManifest"; Write = "Write-ArtGarmentManifest" },
+            @{ Folder = "art/GarmentTextures/NetShirt"; Read = "Read-ArtTextureManifest"; Write = "Write-ArtTextureManifest" })) {
+        $directory = Join-Path $script:ArtRepositoryRoot $older.Folder
+        $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
+        $json.export | Add-Member -Force -NotePropertyName clipSources -NotePropertyValue @([pscustomobject]@{
+                library = "art/Animations/Human_Actions"; contentSha256 = "1" * 64 })
+        $read = & $older.Read $directory $json $older.Folder
+        Assert-True "$($older.Folder) with clipSources reads" ($null -ne $read.Export -and -not $read.Export.Contains("clipSources"))
+        $read.ManifestPath = Join-Path $root "$(Split-Path -Leaf $directory).json"
+        & $older.Write $read
+        $written = Get-Content -Raw -LiteralPath $read.ManifestPath
+        Assert-True "$($older.Folder) writes no clipSources" ($written -cnotmatch 'clipSources' -and $null -ne ($written | ConvertFrom-Json).export)
+    }
 
     # The review page: what changed in words, the views that changed with their class, and a page that
     # encodes every text, shows only what changed, and approves nothing.

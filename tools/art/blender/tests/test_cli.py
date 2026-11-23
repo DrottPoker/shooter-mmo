@@ -26,8 +26,7 @@ BLENDER_OPTIONS = {"--background", "--factory-startup", "--python-use-system-env
 scene = load("art_pipeline/scene.py", "ArtPipelineError", "parse_args")
 texture = load("art_pipeline/texture.py", "DYE_LEVEL")
 content = load("art_pipeline/content.py", "PROOF_EDITS")
-cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture,
-           content=content)
+cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_held_attachments", texture=texture, content=content)
 
 
 def subcommands() -> dict[str, argparse.ArgumentParser]:
@@ -100,8 +99,8 @@ class ParserTests(unittest.TestCase):
 
     def test_validate_has_the_defaults_a_static_asset_needs(self):
         args = parse("validate", "--kind", "static", "--roots", "Rock")
-        self.assertEqual((args.command, args.stage, args.clips, args.body, args.pair, args.clip_library, args.dyes),
-                         ("validate", "model", "", [], [], [], 0))
+        self.assertEqual((args.command, args.stage, args.clips, args.body, args.pair, args.dyes),
+                         ("validate", "model", "", [], [], 0))
         self.assertIsNone(args.triangle_budget)
         self.assertFalse(args.covers_nothing)
 
@@ -221,9 +220,18 @@ class ListArgumentTests(unittest.TestCase):
         args = parse("validate", "--kind", "garment", "--roots", "Male", "--pair", "s.blend=Name:a:b")
         self.assertEqual(cli._pairs(args), [(os.path.abspath("s.blend"), "Name", "a:b")])
 
-    def test_a_clip_library_is_a_path_and_its_clips_joined_by_plus(self):
-        args = parse("validate", "--kind", "garment", "--roots", "Male", "--clip-library", "h.blend=Idle+Walk+Jog")
-        self.assertEqual(cli._clip_libraries(args), [(os.path.abspath("h.blend"), ["Idle", "Walk", "Jog"])])
+    def test_a_garment_s_checks_take_no_clip_library(self):
+        """Its checks pose the rest pose and the test poses only, so neither a validation, an export, a
+        stage, nor a review sheet takes a library or its content."""
+        for command in ("validate", "export", "content", "stage", "preview"):
+            required = ["--output", "o"] if command == "preview" else ["--kind", "garment", "--roots", "Male"]
+            if command == "stage":
+                required += ["--target", "t"]
+            with self.subTest(command=command):
+                options = {option for action in subcommands()[command]._actions for option in action.option_strings}
+                self.assertFalse({"--clip-library", "--clip-content"} & options)
+                with self.assertRaises(SystemExit):
+                    parse(command, *required, "--clip-library", "h.blend=Idle+Walk+Jog")
 
     def test_a_held_attachment_is_a_path_a_clip_and_a_socket_bone(self):
         args = parse("clips", "--output", "o", "--armature", "Humanoid", "--held-attachment", "art/a=b.blend=Mine:Socket_MainHand")
@@ -233,7 +241,7 @@ class ListArgumentTests(unittest.TestCase):
 
     def test_no_lists_give_no_entries(self):
         args = parse("validate", "--kind", "static", "--roots", "Rock")
-        self.assertEqual((cli._bodies(args), cli._pairs(args), cli._clip_libraries(args)), ([], [], []))
+        self.assertEqual((cli._bodies(args), cli._pairs(args)), ([], []))
 
     def test_an_entry_without_an_equals_sign_is_an_error_and_not_a_guess(self):
         args = parse("validate", "--kind", "x", "--roots", "y", "--body", "no_armature.blend")
@@ -269,9 +277,7 @@ class PairSourceTests(unittest.TestCase):
         self.assertNotIn(".Export.contentSha256 }", text)
         self.assertIn("garmentContentSha256 = Get-ArtExportedContent $template", self.function("New-ArtTextureJob"))
         self.assertIn("$rigContentSha256 = Get-ArtExportedContent $rig", self.function("New-ArtModelJob"))
-        self.assertIn("contentSha256 = [string]$_.ContentSha256", self.function("Get-ArtClipSourceRecords"))
         self.assertIn("Get-ArtExportedContent $_", self.function("Get-ArtPairSourcesProblem"))
-        self.assertIn("[string]$_.ContentSha256", self.function("Get-ArtClipSourcesProblem"))
         self.assertIn("(Get-ArtExportedContent $rig) -cne $manifest.Export.rigContentSha256", powershell("Verify-ArtAssets.ps1"))
         self.assertIn("(Get-ArtExportedContent $manifest.Garment) -cne $manifest.Export.garmentContentSha256",
                       powershell("Verify-ArtAssets.ps1"))
@@ -292,6 +298,31 @@ class PairSourceTests(unittest.TestCase):
         self.assertIn("recipe.splits entry $($i + 1) (line $([string]$split.line))", body)
         self.assertIn('""toward"" and ""offset"" come together', body)
         self.assertIn("Get-ArtGarmentSplitProblem $Json.recipe $cage", powershell("ArtPipelineCommon.ps1"))
+
+
+class NoClipSourceTests(unittest.TestCase):
+    """A garment or a masked texture follows no animation library: its checks step no frame of a clip, so
+    a new or changed clip needs no garment or texture synced, approved, staged, or exported. Only a record
+    written before names clipSources, which is read past and left out at the next export."""
+
+    def test_no_script_passes_records_or_compares_the_clips_a_garment_was_checked_in(self):
+        text = all_powershell()
+        for name in ("Get-ArtClipSourcesProblem", "Get-ArtClipSourceRecords", "Get-ArtClipSourceProblem",
+                     "Get-ArtGarmentClipArguments", '"--clip-library"', '"--clip-content"'):
+            with self.subTest(name=name):
+                self.assertNotIn(name, text)
+        for function in ("Read-ArtGarmentManifest", "Write-ArtGarmentManifest", "Read-ArtTextureManifest",
+                         "Write-ArtTextureManifest", "New-ArtGarmentJob", "Complete-ArtGarmentJob", "New-ArtTextureJob",
+                         "Complete-ArtTextureJob", "Get-ArtGarmentDependencyProblems"):
+            with self.subTest(function=function):
+                self.assertNotRegex(PairSourceTests.function(function), r'\.clipSources|clipSources\s*=|"clipSources"|ClipSources')
+
+    def test_neither_the_cache_the_staging_key_nor_the_build_follows_a_library_for_a_garment_or_a_texture(self):
+        for function in ("Get-ArtStagingKey", "Get-ArtCacheArguments", "Get-ArtValidationArguments", "Invoke-ArtGarmentSheet",
+                         "Invoke-ArtTextureSheet"):
+            with self.subTest(function=function):
+                self.assertNotIn("Get-ArtClipLibraries", PairSourceTests.function(function))
+        self.assertNotIn("Get-ArtClipLibraries", powershell("Build-Art.ps1", "Verify-ArtAssets.ps1", "Export-ArtAsset.ps1"))
 
 
 class ContentRecordRaceTests(unittest.TestCase):
@@ -393,17 +424,17 @@ class CheckCacheTests(unittest.TestCase):
     SCRIPTS = ("Export-ArtAsset.ps1", "Approve-ArtAsset.ps1", "Sync-GarmentAsset.ps1", "Sync-TextureAsset.ps1")
 
     def test_validate_export_and_preview_take_the_fingerprints_and_the_switch(self):
-        cache = ["--no-cache", "--body-fit", "Male=" + "1" * 64, "--clip-content", "h.blend=" + "2" * 64, "--pair-content",
-                 "Trousers=" + "3" * 64, "--texture-content", "4" * 64]
+        cache = ["--no-cache", "--body-fit", "Male=" + "1" * 64, "--pair-content", "Trousers=" + "3" * 64,
+                 "--texture-content", "4" * 64]
         for command in ("validate", "export", "preview"):
             required = ["--output", "o"] if command == "preview" else ["--kind", "garment", "--roots", "Male"]
             args = parse(command, *required, *cache, "--cage-content", "5" * 64)
             with self.subTest(command=command):
                 self.assertTrue(args.no_cache)
-                self.assertEqual((args.body_fit, args.clip_content, args.pair_content), ([cache[2]], [cache[4]], [cache[6]]))
+                self.assertEqual((args.body_fit, args.pair_content), ([cache[2]], [cache[4]]))
                 self.assertEqual((args.texture_content, args.cage_content), ("4" * 64, "5" * 64))
         args = parse("validate", "--kind", "garment", "--roots", "Male")
-        self.assertEqual((args.no_cache, args.body_fit, args.clip_content, args.pair_content), (False, [], [], []))
+        self.assertEqual((args.no_cache, args.body_fit, args.pair_content), (False, [], []))
 
     def test_every_script_that_runs_the_checks_passes_the_cache_arguments_and_has_the_switch(self):
         for name in self.SCRIPTS + ("Render-ArtPreview.ps1",):
@@ -438,7 +469,7 @@ class CheckCacheTests(unittest.TestCase):
     def test_the_cache_never_stops_a_command_and_says_what_it_leaves_out(self):
         body = PairSourceTests.function("Get-ArtCacheArguments")
         tries, catches = len(re.findall(r"\btry \{", body)), re.findall(r"catch \{\s*(?:\$Pairs = @\(\)\s*)?(\S+)", body)
-        self.assertGreaterEqual(tries, 6)
+        self.assertGreaterEqual(tries, 5)
         self.assertEqual((len(catches), set(catches)), (tries, {"Write-ArtUncached"}))
         for line in body.splitlines():
             if "Update-ArtContentRecord" in line or "Read-ArtAssetManifest" in line or "Get-ArtCageContent" in line:

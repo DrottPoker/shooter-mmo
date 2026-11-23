@@ -358,21 +358,29 @@ middle plane along mirrored diagonals, so cloth folds alike on both sides of the
 body and an inner quad never bulges out on one hip where its outer one folds in;
 a modeled template keeps the splits its maker gave it. The pipeline's pair check
 puts every template on the bodies over every exported template of another visual
-slot and a lower layer, such as a shirt over the trousers, at rest, in the test
-poses, and in the clips, and follows the inner garment's drawn triangles, those
-the game still draws under the outer one: none may lie through it at rest, and
-the report names the deepest any comes through in each pose and clip. It follows
-the faces the outer one hides too: a look past the outer garment that reaches
-one of them, past only what the game draws there, must end on the front of the
-outer garment's cloth behind it, as it does where a hidden face has come out
-through the cloth, and never on the background or the inside of the body or of
-a garment, at rest or in any frame of any clip the game plays, a corpse's fall
-included. A face where it would is left drawn, on every body alike, so the
-hidden faces are one list for every body, and the report names the test poses.
-What these rules hold is this: on every body at rest, no hidden face lies within
-the hide margin of an open edge; at rest and in every clip, no look within a
-hidden face's cone of rays and the band's reach shows a hole; and in the test
-poses such holes are reported, not ruled out. The numbers and the sampling are in
+slot and a lower layer, such as a shirt over the trousers, at rest and in the
+test poses, and follows the inner garment's drawn triangles, those the game
+still draws under the outer one: none may lie through it at rest, and the report
+names the deepest any comes through at rest and in the test poses. It follows
+the faces the outer one hides too, and reports where a look past the outer
+garment that reaches one of them, past only what the game draws there, would
+end on the background or the inside of the body or of a garment instead of on
+the front of the outer garment's cloth behind it. The hidden faces are the ones
+the rest rule gives on the first body, one list for every body, and what these
+rules hold is this: on every body at rest, no hidden face lies within the hide
+margin of an open edge. A hole at rest or in a test pose is reported, not ruled
+out, and no check steps a frame of a clip.
+
+**Where motion is judged.** A garment's checks hold its fit at rest and report
+the test poses. How it looks in walk, jog, and combat is measured by the
+[game views](ART_PIPELINE.md#game-views), dressed bodies drawn as the game draws
+them in frames of the clips, against their baseline, and shown on the review
+page of [Build The Art](ART_PIPELINE.md#build-the-art), and a new clip
+therefore needs no garment exported. This was decided on 2026-11-23 after a
+trial over the 560 game views: choosing the hidden faces at rest instead of in
+every frame of every clip showed 40 of 7918 pixels of inner garment less and
+no new hole, and it takes a clip out of everything a garment and a masked
+texture follow. The numbers and the sampling are in
 [Garments](ART_PIPELINE.md#garments). Templates of the same slot are never worn
 together, so they are not checked against each other.
 
@@ -419,7 +427,7 @@ projection.
 
 Ease is more room where the body folds in motion, at the front and the back of
 the lower armholes. The close-fitting templates use none: ease there lets more
-skin come through in the clips, because the cloth then follows the arm's bones
+skin come through in motion, because the cloth then follows the arm's bones
 less. It is meant for templates whose cloth stands off the body.
 
 Unique garments, such as a ceremonial robe, are templates with one texture. A
@@ -500,8 +508,8 @@ approvals.
 - A texture with transparent parts, such as a net or a laced V, has a cover
   mask, edges, and pull-in of its own per body, computed by the pipeline with
   the same rules as the template's, because its holes change what the body
-  shows, and the skin its holes show is checked in motion like the template's,
-  in the test poses and the clips. An opaque texture uses the template's. The
+  shows, and the skin its holes show is checked like the template's, at rest and
+  in the test poses. An opaque texture uses the template's. The
   leather jerkin's V is such a texture: the skin shows between its laces, and
   the cover mask leaves the skin under the V and along its cut edges visible.
 - A texture records the template export it was checked against, so a new
@@ -549,10 +557,11 @@ a garment fits, the pipeline computes:
   garment that swings is never hidden, since it swings out from under what lies
   over it at rest, so a cloak's back under hair or a hood stays whole. A net
   shirt hides nothing under its holes, swinging cloth hides nothing, and a
-  garment that covers nothing hides nothing. With the pair check's rule for the
-  hidden faces, in [How Garments Meet](#how-garments-meet), these rules hold
-  that no hidden face lies within a margin at rest and that no look within its
-  cone shows a hole at rest or in a clip; the numbers are in
+  garment that covers nothing hides nothing. The faces the rule gives on the
+  first body are the ones every body hides, so these rules hold that no hidden
+  face lies within a margin at rest; a look within its cone that shows a hole
+  is reported by the pair check, in [How Garments Meet](#how-garments-meet),
+  and a hole in walk, jog, or combat shows in the game views. The numbers are in
   [What A Template Covers](ART_PIPELINE.md#what-a-template-covers).
 - **The pull-in**: for every body vertex that stays visible but lies closer to
   the garment than its band allows, such as the skin right at a tight collar or
@@ -560,10 +569,11 @@ a garment fits, the pipeline computes:
   through the hem. The game draws a face as flat triangles between its corners,
   so the middle of a face can lie closer to the cloth than its corners: there
   the corners move inward by what the middle lacks.
-- **In motion**, visible skin under the garment can come through it in the test
-  poses and the clips, at a corner of a face or in its middle, so the pipeline
-  follows both. Skinning blends the bones of a fold, such as an armpit,
-  so the gap between skin and cloth closes there in motion whatever the weights.
+- **In motion**, visible skin under the garment can come through it, at a
+  corner of a face or in its middle, so the pipeline follows both in the test
+  poses, and the game views measure it in the clips. Skinning blends the bones
+  of a fold, such as an armpit, so the gap between skin and cloth closes there
+  in motion whatever the weights.
   Such skin lies at an opening that shows it, and hiding it would leave a hole
   there in every pose, so the pipeline reports it instead, and the template's
   shape or weights fix it. A fold also turns the skin along the cloth, so moving

@@ -23,9 +23,9 @@ except ImportError:
 garment = load("art_pipeline/garment.py", "quad_bend", "mirror_faces", "split_starts", "mirror_split_faces",
                "mirror_split_error", "recipe_text", "FLAT_BEND", "MIRROR_MATCH", "SPLIT_SNAP", "OVER_GAP", "turned_edges",
                numpy=True)
-coverage = load("art_pipeline/coverage.py", "margin_slack", "edge_margins", "beyond_margin", "turned_follow", "chosen_hidden",
-                "triangle_samples", "overlay_weights", "phase_of", "HIDE_MARGIN", "HIDE_ROUNDING", "TRIANGLE_SPACING", "REST",
-                "TEST_POSES", "DEPTH_ROUNDING", "EDGE_GAPS", "removed_under", "drawn_triangles", numpy=True)
+coverage = load("art_pipeline/coverage.py", "margin_slack", "edge_margins", "beyond_margin", "turned_follow",
+                "triangle_samples", "overlay_weights", "HIDE_MARGIN", "HIDE_ROUNDING", "TRIANGLE_SPACING", "DEPTH_ROUNDING",
+                "EDGE_GAPS", "removed_under", "drawn_triangles", numpy=True)
 texture = load("art_pipeline/texture.py", "same_corners", "refines", "in_uv_face", "places_match", numpy=True)
 
 ART = REPOSITORY_ROOT / "art"
@@ -286,19 +286,12 @@ class TurnedFollowTests(unittest.TestCase):
         state = np.array([True, False])
         self.assertEqual(coverage.turned_follow(self.CLOTH, [], state).tolist(), [True, False])
 
-    def test_the_hidden_list_is_one_for_every_body_without_any_face_that_shows_a_hole_on_any_of_them(self):
-        # The rest rule on the first body hides both cloth faces and their turned edges; a look shows
-        # a hole at the second cloth face on the second body only.
-        candidates = np.array([True, True, True, True, True, True])
-        first_body = np.zeros(6, bool)
-        second_body = np.array([False, True, False, False, False, False])
-        chosen = coverage.chosen_hidden(candidates, [first_body, second_body], self.FACES, self.TURNED)
-        # The face goes, and the rim and flap turned from it with it; the rest stays hidden.
-        self.assertEqual(chosen.tolist(), [True, False, True, True, False, False])
-        self.assertEqual(coverage.chosen_hidden(candidates, [], self.FACES, self.TURNED).tolist(), [True] * 6)
-        # A face the rest rule leaves drawn stays drawn.
-        self.assertEqual(coverage.chosen_hidden(np.array([False, True] + [False] * 4), [], self.FACES, self.TURNED).tolist(),
-                         [False, True, False, False, True, True])
+    def test_the_rest_rule_s_list_with_its_turned_edges_following_stays_as_it_is(self):
+        # The list every body hides is the one the rest rule gives on the first body, whose turned edges
+        # follow their cloth already: following them once more changes nothing.
+        hidden = coverage.turned_follow(self.FACES, self.TURNED, np.array([False, True] + [False] * 4))
+        self.assertEqual(hidden.tolist(), [False, True, False, False, True, True])
+        self.assertEqual(coverage.turned_follow(self.FACES, self.TURNED, hidden).tolist(), hidden.tolist())
 
 
 class RemovedUnderTests(unittest.TestCase):
@@ -354,14 +347,6 @@ class TriangleSampleTests(unittest.TestCase):
         body = types.SimpleNamespace(data=types.SimpleNamespace(polygons=polygons))
         self.assertEqual(list(coverage.drawn_triangles(body, np.array([False, True, False]))),
                          [(0, (4, 5, 6)), (0, (4, 6, 7)), (2, (1, 2, 3)), (2, (1, 3, 8)), (2, (1, 8, 9))])
-
-
-class PhaseTests(unittest.TestCase):
-    def test_a_clip_frame_belongs_to_its_clip_and_a_test_pose_to_the_test_poses(self):
-        self.assertEqual(coverage.phase_of("Walk frame 3"), "Walk")
-        self.assertEqual(coverage.phase_of("GreataxeSwing frame 12"), "GreataxeSwing")
-        self.assertEqual(coverage.phase_of("sit"), coverage.TEST_POSES)
-        self.assertEqual(coverage.phase_of(coverage.REST), coverage.REST)
 
 
 class TurnedCornerTests(unittest.TestCase):

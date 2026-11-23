@@ -140,14 +140,9 @@ foreach ($directory in $directories) {
         }
     }
 
-    # A texture with masks of its own was checked in the clips of these libraries, and its masks name
-    # the faces they hide of these exports of the templates of lower layers worn under its template.
+    # A texture with masks of its own names the faces they hide of these exports of the templates of
+    # lower layers worn under its template. No clip: its masks' checks step no frame of a clip.
     if ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
-        $clipProblem = Get-ArtClipSourcesProblem $manifest "tools/art/Sync-TextureAsset.ps1"
-        if ($null -ne $clipProblem) {
-            Add-ArtAssetProblem $where "${where}: $clipProblem."
-        }
-
         $pairProblem = Get-ArtPairSourcesProblem $manifest $manifest.Garment "tools/art/Sync-TextureAsset.ps1"
         if ($null -ne $pairProblem) {
             Add-ArtAssetProblem $where "${where}: $pairProblem."
@@ -162,8 +157,8 @@ foreach ($directory in $directories) {
     }
 
     if ($manifest.Kind -eq "garment") {
-        # The template still matches its cage, the bodies of the cage, and the content of the clips and
-        # the templates of lower layers it was checked in and over.
+        # The template still matches its cage, the bodies of the cage, and the content of the templates
+        # of lower layers it was checked over; a new or changed clip needs no garment exported.
         foreach ($dependencyProblem in @(Get-ArtGarmentDependencyProblems $manifest)) {
             Add-ArtAssetProblem $where "${where}: $dependencyProblem."
         }

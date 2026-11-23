@@ -27,9 +27,6 @@
             { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "8d788e8ec81ce7a04965b74d4824cded6ec8cd0e6c4ecb79c8ca5b4bcd2b67a2" },
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "b2c50cf8b25c71137a05880b80e8ab549108797df8398ef8fb2f9bd24bc9122c" }
         ],
-        "clipSources": [
-            { "library": "art/Animations/Human_Actions", "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c" }
-        ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "contentSha256": "ccca32c1312c6f51eac7dc8d149c87e127ce6251166f1f88e1686f30a04042fa" },
             { "garment": "art/Garments/Trousers", "contentSha256": "cfdd90bdaffbdb85ec89f0f95969c03c71643cdd34b5efd0299bfa63e852f8f5" }

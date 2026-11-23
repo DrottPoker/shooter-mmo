@@ -391,7 +391,7 @@ GARMENT_POSE_YAW = 215.0
 # instead of the torso.
 CLOSE_SHARE = 0.4
 # The mask view: body faces the garment covers, the skin at its edges that stays visible, the
-# vertices it pulls in, the skin that comes through it in motion even so, and the other skin.
+# vertices it pulls in, the skin that comes through it in the test poses even so, and the other skin.
 COVERED_SRGB = (0.95, 0.45, 0.10)
 EDGE_SRGB = (0.98, 0.84, 0.40)
 THROUGH_SRGB = (0.85, 0.10, 0.20)
@@ -445,25 +445,24 @@ def _review_grid(versions: list[bpy.types.Object]) -> None:
         material.node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
 
 
-def _own_cover(name: str, band: str, covers: bool, actions: list, label: str) -> coverage.Coverage:
-    """What a garment version covers on its body with the skin that comes through it in motion."""
+def _own_cover(name: str, band: str, covers: bool, label: str) -> coverage.Coverage:
+    """What a garment version covers on its body with the skin that comes through it in the test poses."""
     result = coverage.compute(name, label, band, covers)
-    coverage.check_motion(name, result, actions)
+    coverage.check_motion(name, result)
     return result
 
 
 def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
-                         libraries: list[tuple[str, list[str]]] | None = None, template: str | None = None,
-                         covers: bool = True, checked=None) -> str:
+                         template: str | None = None, covers: bool = True, checked=None) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
     with its torso, or the garment itself when it is a glove or a boot, up close, then the test poses
     that bend it, and with the garment's name and band the body without it, colored: orange the
     covered faces, yellow the skin at the garment's edges that stays visible, blue the pulled-in
-    vertices, and red the skin that comes through the garment in the test poses and the clips of the
-    libraries. template names the garment's template where name is left out, for the close-ups.
-    checked, given a body's armature name, gives what the garment covers there with the skin that
-    comes through it, its own check, such as from the cache of the checks; without it the sheet
-    computes it."""
+    vertices, and red the skin that comes through the garment in the test poses. The sheet shows no
+    frame of a clip: how the garment looks in walk, jog, and combat is seen in the game views. template
+    names the garment's template where name is left out, for the close-ups. checked, given a body's
+    armature name, gives what the garment covers there with the skin that comes through it, its own
+    check, such as from the cache of the checks; without it the sheet computes it."""
     template = template or name
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
@@ -504,7 +503,7 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
         return Vector((center.x, center.y, low.z + height * 0.68)), height * 0.22, (180.0, 0.0)
 
     if name and checked is None:
-        checked = functools.partial(_own_cover, name, band, covers, coverage.load_actions(libraries or []))
+        checked = functools.partial(_own_cover, name, band, covers)
     with tempfile.TemporaryDirectory() as scratch:
         for index, arm in enumerate(armatures):
             shown = set(descendants(arm))

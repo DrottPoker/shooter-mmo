@@ -76,9 +76,6 @@
                 "dataSha256": "88827d81256f25c5c4a336e1871c7a47961428a98437bc8bb8c0c9077f9bfcb0"
             }
         ],
-        "clipSources": [
-            { "library": "art/Animations/Human_Actions", "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c" }
-        ],
         "materials": [
             {
                 "name": "M_Garment_Trousers",
