@@ -92,6 +92,8 @@ REACH = 0.985
 SOFT_MIN = 0.005
 # The swinging leg starts to hold the hips down from this share of its swing.
 APPROACH = 0.5
+# A leg that does not hold the hips down lets them stand this much (m) above its reach.
+SLACK = 0.3
 
 
 def _ease(x):
@@ -115,6 +117,20 @@ def _hermite(y0, y1, m0, m1, u):
 def _soft_min(values, width):
     low = min(values)
     return low - width * math.log(sum(math.exp(-(v - low) / width) for v in values))
+
+
+def _hold(gait, p):
+    """How firmly a leg holds the hips low enough to reach its footprint, from 0 to 1, at a phase
+    of its own cycle: fully from its heel strike until its heel lifts, then less and less while it
+    pushes off, not at all when it leaves the ground, and more and more from APPROACH of its swing
+    toward the next strike. It has no jump anywhere in the cycle, so the hips' height has none,
+    whichever phases the frames of a clip fall on."""
+    p %= 1.0
+    if p < gait.stance:
+        s = p / gait.stance
+        return 1.0 - _ease((s - gait.heel_off) / (1 - gait.heel_off))
+    u = (p - gait.stance) / (1 - gait.stance)
+    return _ease((u - APPROACH) / (1 - APPROACH))
 
 
 def _turn(bone, turns):
@@ -222,9 +238,7 @@ def _foot(rig, side, gait, cycle, phase):
     turn = Matrix.Rotation(math.radians(pitch), 3, "X")
     track = math.copysign(gait.track * rig.leg, rest_ankle.x)
     ankle = Vector((track, rest_ankle.y + y, rest_ankle.z + lift)) + (pivot - turn @ pivot)
-    # How firmly the leg must reach its foot: on the ground fully, and while it swings toward the
-    # next landing more and more, so the hips are low enough when the heel strikes.
-    contact = 1.0 if p < gait.stance else _ease((u - APPROACH) / (1 - APPROACH))
+    contact = _hold(gait, p)
     landing = ankle if p < gait.stance else _foot(rig, side, gait, cycle, 0.0)[0]
     return ankle, pitch, toes, contact, landing
 
@@ -297,8 +311,9 @@ def gait_frame(rig, gait, frames, frame):
         _ankle, _pitch, _toes, contact, ankle = feet[side]
         flat = (joint.x - ankle.x) ** 2 + (joint.y - ankle.y) ** 2
         # A leg early in its swing bends its knee and does not hold the hips down; late in the
-        # swing it holds them low enough to reach its next footprint.
-        limits.append(ankle.z + math.sqrt(max(reach * reach - flat, 0.0)) - joint.z + (1.0 - contact) * 0.3)
+        # swing it holds them low enough to reach its next footprint. A leg that pushes off lets
+        # go of them as its heel rises, and leaves the ground where it cannot reach it any more.
+        limits.append(ankle.z + math.sqrt(max(reach * reach - flat, 0.0)) - joint.z + (1.0 - contact) * SLACK)
     offset = Vector((sway, 0.0, _soft_min(limits, SOFT_MIN)))
     hips_q, hips_loc, hips_pose = rig.hips(rotation, offset)
     local = {"Hips": hips_q}
@@ -415,11 +430,12 @@ def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
     return action
 
 
-def generate(path, label, names, skeleton_path):
+def generate(path, label, names, skeleton_path, replace=False):
     """Adds the named clips of the gait model (Idle, Walk, Jog) and the hand pose Grip, fitted to
     the hand of the library's body, to an animation library on its armature label, as starting
     points to edit by hand, and saves it. A clip the library already has is kept as it is, so
-    handmade keys are never replaced."""
+    handmade keys are never replaced, unless replace asks for the named clips to be made again,
+    as after a change of the gait model."""
     from . import grip
 
     unknown = [name for name in names if name not in CLIPS and name != grip.CLIP]
@@ -438,8 +454,13 @@ def generate(path, label, names, skeleton_path):
     made = []
     for name in names:
         if name in bpy.data.actions:
-            print(f"KEPT {name}: the library has the clip already")
-            continue
+            if not replace:
+                print(f"KEPT {name}: the library has the clip already")
+                continue
+            if active == bpy.data.actions[name]:
+                active = None
+            bpy.data.actions.remove(bpy.data.actions[name])
+            print(f"REMADE {name}: made again, in place of the clip the library had")
         if name == grip.CLIP:
             hand = grip.read_hand(arm)
             angles, across = grip.fit(hand)

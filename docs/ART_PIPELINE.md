@@ -104,9 +104,11 @@ the build again. Commit what `git status` lists once the build ends with
 
 1. Key the clip in `art\Animations\Human_Actions\Human_Actions.blend`, name a
    new one in `clips` in its `asset.json`, and save.
-2. Run the build. It syncs the library, which reports how far a foot slides in
-   `Idle`, `Walk`, and `Jog`. Only the library's `animation` waits: no garment
-   template or texture follows a clip, and none is exported.
+2. Run the build. It syncs the library, which reports how far a foot slides
+   and how much the hips' height jolts from one frame to the next in `Idle`,
+   `Walk`, and `Jog`, and refuses a jolt over 15 mm, which shows as a bounce in
+   the game. Only the library's `animation` waits: no garment template or
+   texture follows a clip, and none is exported.
 3. Render the sheet and a video, which the sync does not:
    `.\tools\art\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions` and
    `.\tools\art\Render-ArtClips.ps1 -Asset art/Animations/Human_Actions -Clip <Name>`.
@@ -2574,14 +2576,25 @@ keys: key poses on `Humanoid`, smoothed by Blender's curves, as
 model instead, and the hand pose `Grip` from the fit above:
 `Sync-AnimationLibrary.ps1 -Generate Walk` adds the model's
 `Walk` when the library lacks it, and the same for `Idle` and `Jog`, and never
-replaces a clip the library has.
+replaces a clip the library has. After a change of the gait model,
+`-Generate Walk,Jog -Replace` makes the named clips again in place of the
+library's, which loses every edit made to them by hand.
 
 The gait model, `tools/art/blender/human_base/animate.py`, makes its clips with
 the strides matched to the game: `Walk` at 1.4 m/s and `Jog` at 5.0 m/s, the
 movement speed of players, and a 4 s breathing `Idle` with a slow weight shift
 and a look around. Each foot follows a contact model with a heel strike, a roll
 over the ball, and a planned swing, and the legs reach it with analytic two-bone
-IK while the hips sink where a leg cannot reach. The pelvis turns, drops, and
+IK while the hips sink where a leg cannot reach. A leg holds the hips down
+fully from its heel strike until its heel lifts, less and less while it pushes
+off, not at all as it leaves the ground, and more and more late in its swing,
+toward the next strike: the hold has no jump anywhere in the cycle, so the
+hips' height has none, whichever phases a clip's frames fall on. A foot that
+pushes off leaves the ground where its leg cannot reach it any more. The
+library's sync measures the jolt of the hips' height, the change of its step
+from one frame to the next, in `Idle`, `Walk`, and `Jog`, and refuses one over
+15 mm: the `Jog` of 2026-11-20 had a frame just before a toe off, 6 cm lower
+than its neighbours, which showed as a bounce in the game. The pelvis turns, drops, and
 tilts with the steps, the lower back takes up the tilt, the shoulders turn
 against the pelvis, and the arms, forearms, hands, and fingers follow the swing a
 little later. A planted foot slips a little, as the library's sync reports per
@@ -2653,14 +2666,16 @@ the clip's content, against their baseline, and shown on the review page of
    art/Characters/Human_Male: ...` followed by `Human_Actions: the 'animation'
    content changed after its approval; ...` and the reminder to review and
    approve the clips again, and one line per locomotion clip with
-   how far a foot on the ground slides, such as `Humanoid Walk: <n> frames,
-   1.4 m/s, hips <a> to <b> m, largest slip of a foot on the ground
-   <s> mm`. The build runs this sync itself when the rig changed or a clip
+   how far a foot on the ground slides and how much the hips jolt, such as
+   `Humanoid Walk: <n> frames, 1.4 m/s, hips <a> to <b> m, largest slip of a
+   foot on the ground <s> mm, largest jolt of the hips <j> mm`. The build runs
+   this sync itself when the rig changed or a clip
    did. To start a locomotion clip from the gait model instead of an empty
    action, add `-Generate Walk` (or `Idle`, `Jog`). Expected result: `Added Walk
    to Human_Actions and its asset.json; ...` when the library lacks it, or
    `Walk: the library has the clip already` when it has it, which leaves the
-   clip as it is. A new library starts with
+   clip as it is, unless `-Replace` is added: then `Walk: made again, in place
+   of the clip the library had`. A new library starts with
    `.\tools\art\New-ArtAsset.ps1 -Kind animations -Asset art/Animations/<Name>`,
    keyed on `art/Characters/Human_Male` and shown on
    `art/Characters/Human_Female` unless `-Rig` and `-Previews` say otherwise; it

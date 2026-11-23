@@ -18,6 +18,7 @@ Steps:
     review-rig <asset.blend> <Male|Female> <skeleton.json> <output dir> <prefix>
     rig-review-file <male.blend> <female.blend> <skeleton.json> <review.blend>
     generate-clips <library.blend> <armature> <Idle,Walk,Jog,Grip> <skeleton.json>
+    remake-clips <library.blend> <armature> <Idle,Walk,Jog,Grip> <skeleton.json>
     check-clips <library.blend> <armature>
     import-clip <library.blend> <armature> <source file> <map.json> <Clip+Clip> <Name> <-|L|R|LR> <skeleton.json>
     refit-clips <library.blend> <armature> <library before.blend> <skeleton.json> <Clip,Clip|->
@@ -44,6 +45,8 @@ STEPS = {
     "rig": (4, rig.rig),
     "review-file": (3, review.review_file),
     "generate-clips": (4, lambda path, armature, names, skeleton: animate.generate(path, armature, names.split(","), skeleton)),
+    "remake-clips": (4, lambda path, armature, names, skeleton: animate.generate(path, armature, names.split(","), skeleton,
+                                                                               replace=True)),
 }
 CHECKS = {
     "check-mesh": (2, checks.mesh),
