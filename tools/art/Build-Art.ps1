@@ -4,18 +4,21 @@
 # follow each other; runs the syncs and plans again; lists every review stage that waits for an
 # approval with what changed, its review sheet, and the command that approves it; exports every asset
 # whose approvals hold and that follows no asset waiting for one, with several Blender processes at
-# once; runs the Unity follow-up after an export (tools/art/Update-UnityArt.ps1); verifies the records
-# (tools/art/Verify-ArtAssets.ps1); and prints the seconds of each phase and asset, how many check units
-# came from the cache, the assets it synced, and what is left for a person. It never records an
-# approval. A body's export gives the fit and the paint layout that the cage, the garments, and the
-# paint layers follow, so after an export of a body it plans again. A sync is not run again while the
-# asset's file and everything it follows are as the build's last sync of it left them, which
-# artifacts/art-build/synced.json keeps. The Unity follow-up runs while an export left its marker
-# artifacts/art-build/unity/pending, also one of an earlier run whose follow-up failed. See
-# docs/ART_PIPELINE.md, Build The Art.
+# once; runs the Unity follow-up after an export (tools/art/Update-UnityArt.ps1); measures the
+# baseline of the game views when an entry of it is not current (tools/art/Render-ArtViews.ps1
+# -WriteBaseline), the views of approved and exported content, while the others keep their entries;
+# verifies the records (tools/art/Verify-ArtAssets.ps1); and prints the seconds of each phase and
+# asset, how many check units came from the cache, the assets it synced, and what is left for a
+# person. It never records an approval. A body's export gives the fit and the paint layout that the
+# cage, the garments, and the paint layers follow, so after an export of a body it plans again. A sync
+# is not run again while the asset's file and everything it follows are as the build's last sync of it
+# left them, which artifacts/art-build/synced.json keeps. The Unity follow-up runs while an export
+# left its marker artifacts/art-build/unity/pending, also one of an earlier run whose follow-up
+# failed. See docs/ART_PIPELINE.md, Build The Art.
 #
 # Exit codes: 0 everything is exported and verified, 2 review stages wait for an approval and
-# everything else that could be exported was, 1 an error.
+# everything else that could be exported was, 1 an error, also a measurement of the game views that
+# failed.
 param(
     # Prints what every asset needs and why, and stops.
     [switch]$Plan,
@@ -627,6 +630,20 @@ try {
         Add-ArtPhase "unity follow-up" $watch
         if ($unityExit -ne 0) {
             throw "The Unity follow-up failed with exit code $unityExit; the next run of this command runs it again, or run tools/art/Update-UnityArt.ps1 after the cause is fixed."
+        }
+    }
+
+    # The baseline of the game views follows the exported content: when a view's entry is not current,
+    # the views whose assets are all approved and exported are measured, and the others keep their
+    # entries for the verification to list with the assets that wait.
+    . (Join-Path $PSScriptRoot "ArtViews.ps1")
+    if (@(Get-ArtViewBaselineProblems).Count -gt 0) {
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        & (Join-Path $PSScriptRoot "Render-ArtViews.ps1") -WriteBaseline -Jobs $Jobs -BlenderPath $blender
+        $viewsExit = $LASTEXITCODE
+        Add-ArtPhase "game views" $watch
+        if ($viewsExit -ne 0) {
+            throw "The baseline of the game views could not be measured, exit code $viewsExit; see the lines of tools/art/Render-ArtViews.ps1 above."
         }
     }
 

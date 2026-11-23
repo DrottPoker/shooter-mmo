@@ -232,6 +232,27 @@ if (Test-Path -LiteralPath $textureRoot) {
     }
 }
 
+# The baseline of the game views was measured on the committed content of every asset its views read; a
+# view that one of its assets waiting for an approval changed is that asset's problem.
+. (Join-Path $PSScriptRoot "ArtViews.ps1")
+$viewProblems = @()
+try {
+    $viewProblems = @(Get-ArtViewBaselineProblems)
+}
+catch {
+    $problems.Add($_.Exception.Message)
+}
+
+foreach ($viewProblem in $viewProblems) {
+    $owner = Get-ArtViewProblemOwner $viewProblem $waitingAssets
+    if ($null -ne $owner) {
+        Add-ArtAssetProblem $owner $viewProblem.Problem
+    }
+    else {
+        $problems.Add($viewProblem.Problem)
+    }
+}
+
 if ($waitingProblems.Count -gt 0) {
     Write-Host "These problems belong to assets that wait for an approval, so they do not fail the verification:`n - $($waitingProblems -join "`n - ")"
 }
@@ -242,3 +263,6 @@ if ($problems.Count -gt 0) {
 
 $waitingNote = if ($waitingProblems.Count -gt 0) { " $($waitingProblems.Count) problem(s) above wait for an approval." } else { "" }
 Write-Host "Verified $($directories.Count) art asset(s).$waitingNote"
+if ($viewProblems.Count -eq 0) {
+    Write-Host "The baseline of the game views holds for the committed content of their $(@(Read-ArtViewSet).Count) view(s)."
+}

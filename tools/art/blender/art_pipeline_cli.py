@@ -50,6 +50,8 @@ def _cache_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--pair-content", action="append", default=[],
                          help="<Template>=<SHA-256> of the rig stage content of a template given with --pair.")
     command.add_argument("--texture-content", help="The SHA-256 of a texture's image part, for its review sheet.")
+    command.add_argument("--cache-root", help="The folder of the shared cache of the art scripts, whose folder checks holds "
+                                              "the cache of the checks; this checkout's artifacts/art-cache without it.")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -316,7 +318,7 @@ def _units(args, name: str, labels: list[str], cage_content: str | None, pairs: 
     units that need it computed and not cached. The clip libraries and the templates of lower layers,
     with sources, the other files the run reads from disk, are held to their fingerprints whenever an
     entry is written."""
-    store = check_cache.Store(enabled=not args.no_cache)
+    store = check_cache.Store(os.path.join(args.cache_root, "checks") if args.cache_root else None, enabled=not args.no_cache)
     if args.no_cache:
         return check_cache.Units(store)
     if template_content is None:

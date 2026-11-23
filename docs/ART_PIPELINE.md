@@ -74,6 +74,7 @@ art has one how-to:
 | Make a garment template, the form of clothes or armor, from a recipe on the cage | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](#make-a-garment) |
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
+| See dressed bodies as the game draws them, count the pixels of skin and of inner garments that come through and of contact, and compare them with the baseline | `Render-ArtViews.ps1` | [Game Views](#game-views) |
 | Bring every asset from its changed file to the game in one run: records, syncs, the approvals that wait, exports, Unity, and the verification | `Build-Art.ps1` | [Build The Art](#build-the-art) |
 | Update the materials, catalogs, Addressables entries, and cloth fixtures after an export without a focused Editor | `Update-UnityArt.ps1` | [Unity Import Rules](#unity-import-rules) |
 | Record the content of a file saved by hand and see which approvals still hold | `Update-ArtContent.ps1` | [Update The Content Record](#update-the-content-record) |
@@ -179,7 +180,11 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
 | `artifacts/art-build` | The output of every Blender run of an export, `export/<Name>.log`, and of a content run, `content/<Name>.log`, the seconds of each asset's last export with its checks computed, `export/seconds.json`, which puts the longest export first, the Unity log of the follow-up, `unity/follow-up.log`, the marker `unity/pending`, which an export leaves until the Unity follow-up succeeds, and `synced.json`, per asset the SHA-256 of its file as the build's last sync of it left it and the fingerprints of what it followed then, so the build does not sync it again while nothing changed. |
-| `artifacts/art-cache`, `tools/art/blender/art_pipeline/check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): their results by the content of what they read, so a sync, an approval, and an export compute each once. Safe to delete at any time. |
+| `artifacts/art-cache` of the main checkout, `tools/art/blender/art_pipeline/check_cache.py` | The caches of the art scripts, which every worktree of the repository shares, `Get-ArtCacheRoot` in `ArtPipelineCommon.ps1` finds, and the scripts pass to Blender: below `checks` the [cache of the garment checks](#cache-of-the-garment-checks), their results by the content of what they read, so a sync, an approval, and an export compute each once, and below `views` the pictures and numbers of the [game views](#game-views). Safe to delete at any time. |
+| `artifacts/art-views` | The pictures of the [game views](#game-views) under readable names, a contact sheet per outfit and body, and `keys.json`, the key of every copy and sheet, so a run writes again only what changed. |
+| `art/Views/baseline.json` | The baseline of the game views: per view its committed key and its numbers, measured on approved, exported content. |
+| `tools/art/Render-ArtViews.ps1`, `ArtViews.ps1`, `tools/art/views/standard-set.json`, `tools/ci/Test-ArtViews.ps1` | The [game views](#game-views): the renderer's script, the standard set of views, the helpers with the committed key of a view, the check of the baseline, which `Verify-ArtAssets.ps1` runs, the comparison, and the cache's upkeep, and their check without Blender. |
+| `tools/art/blender/art_pipeline/game_view.py`, `tools/art/blender/art_views_cli.py` | The renderer of the game views and its Blender entry point: an outfit on a body drawn by the client's rules for what a body draws, and the classes of its triangles. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`, which also runs several Blender processes at once. |
 | `tools/art/Build-Art.ps1` | The [build command](#build-the-art): every content record, sync, and export that changed files need, the approvals that wait, the Unity follow-up, and the verification, in one run. |
@@ -724,12 +729,19 @@ confirm a clean state:
    leaves once it wrote a record and `Update-UnityArt.ps1` removes when it
    succeeds, so a follow-up that failed, such as in Play Mode or after its time,
    runs again with the next build, also without an export.
-6. It runs `Verify-ArtAssets.ps1 -Waiting` with every asset whose need is not
-   `nothing`: their problems are listed apart and do not fail it, while every
-   other problem does, also one that belongs to no asset, such as a stray file or
-   a material of two assets. Without `-Waiting`, as CI runs it, every problem
-   fails it.
-7. It lists, once and from its last plan, every review stage that waits for an
+6. It measures the baseline of the [game views](#game-views) when an entry of
+   it is not current for the committed content, after an export or a change of
+   the renderer's code: it runs `Render-ArtViews.ps1 -WriteBaseline` with `-Jobs`
+   Blender processes, which measures the views whose assets are all approved and
+   exported from their current content and keeps the entries of the others, and
+   prints the seconds as the phase `game views`. A measurement that fails fails
+   the build. While every entry is current, it starts no Blender for the views.
+7. It runs `Verify-ArtAssets.ps1 -Waiting` with every asset whose need is not
+   `nothing`: their problems are listed apart and do not fail it, also the views
+   of the game views' baseline that read them, while every other problem does,
+   also one that belongs to no asset, such as a stray file or a material of two
+   assets. Without `-Waiting`, as CI runs it, every problem fails it.
+8. It lists, once and from its last plan, every review stage that waits for an
    approval, in the order to approve them: the asset, which parts of its
    content differ from the last committed `asset.json`, its review sheet, and
    the exact `Approve-ArtAsset.ps1` command. Then it prints the seconds of each
@@ -740,7 +752,8 @@ confirm a clean state:
 Exit code 0 means every asset is exported and verified, 2 that review stages
 wait for an approval and everything else that could be exported was, and 1 an
 error, such as a sync or an export that breaks a rule, a failed Unity
-follow-up, or a problem of the verification that no approval explains.
+follow-up, a measurement of the game views that failed, or a problem of the
+verification that no approval explains.
 `-Jobs <n>` sets how many Blender processes run at once, and `-NoCache`
 computes every check of a garment template or a masked texture.
 
@@ -754,9 +767,10 @@ the build again.
 
 Expected result on a clean checkout: the plan lists every asset with
 `nothing` and ends with `In all: 44 nothing.`, then `Verified 44 art
-asset(s).`, the seconds per phase, `Left for a person: nothing.`, and `Result:
-every asset is exported and verified.`, exit code 0, in about a minute;
-`git status` lists nothing.
+asset(s).` and `The baseline of the game views holds for the committed content
+of their 560 view(s).`, the seconds per phase without a `game views` phase,
+`Left for a person: nothing.`, and `Result: every asset is exported and
+verified.`, exit code 0, in about a minute; `git status` lists nothing.
 
 To see the build stop at an approval, move one UV of a garment template's first
 version in Blender, such as `Trousers_Male` in
@@ -769,7 +783,9 @@ stages that wait for an approval` with `the parts uv changed`. Without `-Plan`,
 the build syncs the template, then its texture `WoolTrousers` for the new UVs,
 lists both for an approval with their review sheets and commands, marks the
 templates of higher layers worn over it and the masked textures on them
-`waits`, exports nothing, names both under `Synced by this run`, and ends with
+`waits`, exports nothing, keeps the baseline entries of the game views that
+read them, which the verification lists as problems that wait for an approval,
+names both under `Synced by this run`, and ends with
 exit code 2 after a few minutes. Run it again: it syncs nothing, since both
 files and what they follow are as its syncs left them, and ends with the same
 list and exit code 2. Restore the files and records with
@@ -3443,8 +3459,19 @@ templates` until it is exported again.
 ### Cache Of The Garment Checks
 
 The checks of what a template covers take most of a sync, an approval, and an
-export, so their results are cached below `artifacts/art-cache/checks`, which
-Git ignores and which may be deleted at any time; `check_cache.py` keeps it. A
+export, so their results are cached below `artifacts/art-cache/checks` of the
+repository's main checkout, which Git ignores and which may be deleted at any
+time; `check_cache.py` keeps it. Every worktree of the repository shares that
+folder, so a new worktree starts with what any other one computed:
+`Get-ArtCacheRoot` in `ArtPipelineCommon.ps1` takes the parent of Git's common
+folder, `git rev-parse --path-format=absolute --git-common-dir`, when that is a
+checkout of this repository, which has `tools/art/ArtPipelineCommon.ps1` and is
+the top level Git names there, or else this checkout, also when Git cannot say,
+and the scripts pass the folder to Blender with `--cache-root`. Sharing is safe: a key holds content and code fingerprints and
+never a path, no entry holds a path of a checkout, and every entry is written to
+a temporary name and moved into place. A worktree on other code of the pipeline
+has another code fingerprint, so it neither takes nor replaces the entries of
+another. A
 result computed once, by a sync or an approval, is taken by every later run
 until something it depends on changes, so the export of unchanged content
 computes nothing. Two kinds of unit are cached:
@@ -3532,6 +3559,279 @@ cache.` in a fraction of the first one's time, and `git status` lists nothing,
 since both wrote the same files. With `-NoCache` the run takes as long as the
 first and writes the same files again.
 
+### Game Views
+
+A game view is a dressed body drawn as the game draws it, with the pixels
+counted that must not show: skin that comes through a garment, an inner garment
+that comes through an outer one, and apart from them contact, where a limb
+presses into the cloth over another part of the body. The geometry, the images,
+the paint, and the clips come from the current `.blend` files; what the game
+leaves out of a garment comes from the data of the garment's last export. A
+garment whose content changed since its export is drawn with the data of that
+export, which may no longer fit it, until the pipeline writes data of content
+that is not exported yet, a later step; `Render-ArtViews.ps1` names every outfit
+and body that reads such a garment, such as `Linen on Male: art/Garments/Shirt
+changed since its last export; drawn with the data of its last export.`
+`tools/art/Render-ArtViews.ps1` renders the views of the standard set,
+`tools/art/views/standard-set.json`, and `art/Views/baseline.json` keeps their
+numbers, measured on approved content as it was exported, so a change that lets
+more through shows as a number.
+
+**What a view draws.** The renderer, `art_pipeline/game_view.py`, runs one
+Blender per outfit and body, through `art_views_cli.py` with one job file that
+`Render-ArtViews.ps1` writes, and opens no asset's file: it appends the body from
+its own file with its eyes, teeth, and tongue, each garment's version for the
+body from its template's file, as the pair check does, with its texture on in its
+natural dyes, and the paint layers the body shows on the skin, as the paint
+sheet lays them. What the game leaves out comes from the data the export wrote,
+`src/Client/Assets/Art/Models/Garments/<Name>_<Label>.json`: a masked texture's
+own, or else its template's. `-DataFolder` names other folders to look in: a
+texture's own data from the first folder that has it comes before its
+template's, and each from the first folder that has it, so data that is not
+exported yet can be put in front. The selection mirrors the client's
+`PlayerBodyMeshPlan` and `BodyAppearanceCatalog` rule for rule, over plain data,
+which `test_game_view.py` pins:
+
+- A worn garment is left out when a worn garment of a higher layer hides its
+  slot, also one that is not drawn itself, and the hair under headwear that
+  hides it; the others are drawn by layer, then by the texture's name.
+- The hair takes its shape key `UnderHeadwear` in full under headwear that
+  presses it flat; hair without that shape key stops the view, as the game
+  cannot draw it.
+- A body face is left out when a drawn garment covers it, and a garment face
+  when a drawn garment of a higher layer covers the body face under it or hides
+  it among the faces of its template.
+- A body vertex moves inward by the largest pull-in of the drawn garments.
+- Of the paint layers that fit the body, in the order of its catalog, the layer
+  and then the name, the body shows of each category and slot the first the
+  outfit names, and its first underwear of a slot the outfit names none of,
+  since underwear is always worn; no underwear of a slot whose drawn garment
+  hides it; and categories compare without case. An outfit that would show more
+  than four paint layers on one material, the skin shader's
+  `PlayerBodyMaterials.MaximumPaintLayers`, is refused.
+- Every face is split from its first corner, as Unity's import splits it; a
+  face of more than four corners is split off triangle by triangle from it.
+
+The pose is the rest pose or a frame of a clip, from frame 0 to the clip's last,
+with the cloth chains of every drawn garment laid together in the game's target
+pose by `cloth.follow`.
+
+**The two pictures.** Each view is 512 by 768 pixels, seen with the game camera's
+vertical field of view of 55 degrees, framing the whole figure, the feet whole,
+or for a close view the head or the waist at the game's least distance of 0.6 m.
+The look is Eevee with the back faces of the body, its eyes, teeth, and tongue
+culled, as their materials' `_Cull` of 2 has the skin shader and URP Lit cull
+them, the garments drawn from both sides and clipped at an alpha of 0.5, a white
+sun of strength 2 pi, as Unity's intensity 2 lights a surface, 50 degrees above
+the horizon and 30 degrees beside the camera, and a mid grey sky that lights it
+and is its background, with the `Standard` view transform. It reads like the
+game without matching it pixel for pixel; the game's own picture is the Unity
+capture. The class picture is drawn with the same camera and culling in flat
+colours without light, one sample, and no filter: red for skin through, green
+for a garment through, blue for contact, black for everything else, which still
+hides what lies behind it, and a transparent background. Its counts are exact,
+since the renderer stops when any pixel has another colour. A view's numbers are
+its red, green, and blue pixels and every pixel of the figure.
+
+**What the three numbers tell.** Skin and inner are show-through of cloth that
+covered that surface at rest: skin through the garment over it, or an inner
+garment through the one over it. That is the garment's fit to answer for, and
+`-Check` fails when either grows. Contact is two things that lie apart at rest
+and run into each other in motion: a boot kicked into the robe's skirt, the
+cloak swung onto the robe's side, a forearm against the chest, a hand on the
+thigh. That is the clip's or the cloth's motion to answer for, so it is counted
+apart and never fails the check. The rest pose has no contact.
+
+**The classes**, decided per drawn triangle in the pose of the view: from the
+triangle's centre and its corners pulled a fifth of the way to the centre, a ray
+goes into the body, against the triangle's outward side. A drawn body triangle
+lies under cloth when one of its rays meets the opaque cloth of a drawn garment
+within 30 mm before the body's own surface, all of it, pulled in; a drawn
+garment triangle, also one of its turned edges, lies under cloth when a ray
+meets the opaque cloth of a garment drawn after it in the same way. Cloth is the
+drawn faces of a garment without its turned edges, whose rims and flaps lie
+inside it by design, as the pair check takes it, met on its outer side: a ray
+passes the transparent places of its texture and cloth it meets from the inside,
+as the pair check does, such as the lining of a hood's brim behind the hair in
+its opening, or a shirt's side that an arm pressed against the body sinks
+behind, where the shirt shows and not the skin. A triangle whose rays passed a
+hole of cloth on its outer side, such as the mesh of a net shirt, and found no
+cloth that covered it at rest is followed again at points 3 mm apart, so the
+thin strands under it count too.
+
+Each ray that meets cloth asks whether that garment's cloth covered the triangle
+at rest, or whether motion brought the triangle into it. At rest, with the cloth
+chains of every drawn garment laid together, a garment covers a triangle of the
+body or of a garment under it when the rule above, the same rays within 30 mm,
+finds that garment's cloth under the triangle in the rest pose, so nothing that
+shows through at rest is contact, such as hair 20 mm out of a hood's brim in its
+opening; or when, from one of the triangle's samples, along its outward normal,
+the pair check's own test of a place at rest, `coverage._rest_cover`, finds the
+garment's inner side where it is opaque within the reach of the garment's band,
+`coverage.REACH` (30 mm for `tight`, 300 mm for `loose`), before the body's
+surface, or finds the triangle already through the garment by at most the pair
+check's depth at rest, 10 mm; under a garment with holes the triangle is
+followed at points 3 mm apart. Each answer is found once per outfit and body,
+when a pose first asks for it. A triangle under cloth that
+covered it at rest is skin through, or a garment through; one whose rays met
+only cloth that did not is contact, such as a forearm pressed into the shirt
+over the chest in `SwordSlash16`, or a hand on a thigh or in a skirt.
+
+What the views do not match, on purpose or as a known limit:
+
+- Contact follows the reach of each garment's band at rest, and the robe and the
+  cloak are `tight`, 30 mm. A boot that a jogging leg kicks through the robe's
+  skirt is contact: at rest the skirt hangs 50 to 75 mm off the boot's shaft and
+  ends above most of the boot. So is the side of the robe that the cloak swings
+  onto in an attack, which the cloak does not lie over at rest.
+- A garment covers a triangle at rest as a whole: a wrist under the robe's
+  sleeve at rest is through, not contact, where it presses into the robe's skirt.
+- An outer garment that sinks into the body below the skin is counted only
+  within the band the body's surface leaves: skin over cloth that lies deeper
+  than 30 mm, or deeper than the body's own surface behind it, is not marked.
+- No weapon or tool is drawn in the frames of the attacks.
+- The alpha of a garment's texture is read at the nearest texel.
+- The client pulls a vertex in along the normals of its body parts, the body's
+  corner normals; the views pull along Blender's vertex normals, as the checks
+  do, which differs at a sharp edge by less than the 3 mm of the largest
+  pull-in.
+
+**The standard set** names the outfits, each a list of garment textures that a
+player can wear together, one per visual slot, with the paint layers the look
+names; the bodies; the poses, each the rest pose or a frame of a clip with its
+phase, `clean` or `rare`; and the cameras, each its yaw and pitch in degrees and
+what it frames, `figure`, `feet`, `head`, or `waist`. It shows every template and
+texture, and every pair of templates that can meet worn together, in eight
+outfits on both bodies, in the rest pose from four sides and up close, and in
+frames of `Idle`, `Walk`, `Jog`, the five attacks, where the limbs lie farthest
+from rest, and once late in the `Death` fall, which is the only `rare` phase: 35
+views per outfit and body, 560 in all. Every view is named
+`<Outfit>_<Body>_<Pose>_<Camera>`, such as `Linen_Male_Walk03_Y215`.
+
+**The cache.** A view's pictures and numbers are cached below `views` of the
+[shared cache](#cache-of-the-garment-checks), `<key>.png`, `<key>.classes.png`,
+and `<key>.json`, each written to a temporary name and moved into place. The key
+covers the view's committed key text, below, which holds the renderer's code,
+the version and build of the Blender that renders, and the SHA-256 of every file
+the view reads, the `.blend` files and the data, so a change of any of them
+renders the view again. After a Blender process, its files are hashed again: a
+file that changed while it ran removes what it wrote, and the run fails for that
+outfit and body with `<file> changed during the run; run again.` A run that
+takes an entry touches its numbers, so the age of an entry is its last use. A
+run removes the entries that no run took for 30 days and that no view of the
+set would take now, with the files and the code as they are, of every view
+whose data is there; a picture without its numbers and a file that an
+interrupted run left under a temporary name go after a day. The upkeep touches
+nothing outside `views`. `artifacts/art-views` gets a copy of every picture
+under the view's name, and one contact sheet per outfit and body,
+`<Outfit>_<Body>.png`, with each view's look beside its look with the class
+pixels over it; `keys.json` there, written by a rename and read as empty when
+it is broken, keeps the key of every copy and sheet, so a run writes again only
+what changed.
+
+**The committed key** of a view is the SHA-256 of a text that PowerShell builds
+without Blender: the version of its format, `$script:ArtViewVersion` in
+`ArtViews.ps1` and `VIEW_VERSION` in `game_view.py`, raised when the key's text
+or the baseline's format changes; the fingerprint of the renderer's code, every
+file of `tools/art/blender/art_pipeline` and `human_base`, `art_views_cli.py`,
+the skeleton definitions in `art/Skeletons`, and the scripts that build the
+renderer's job and the keys, `Render-ArtViews.ps1` and `ArtViews.ps1`, each by its repository path and
+the SHA-256 of its text with LF line ends, so a checkout on Windows and one on
+Linux agree and a change of the code changes every key; the Blender version the
+pipeline pins, `$script:ArtBlenderVersion`; the view's definition; and per
+asset it reads the fingerprint of its content record in the committed
+`asset.json`: the body's last stage, each template's `rig` stage with the fields
+of its `asset.json` that decide what is drawn and its band, whose reach decides
+contact, each texture's `texture` stage,
+the `dataSha256` of the data the export wrote for the body, since the faces a
+template hides depend on every clip and on the templates under it, each paint
+layer the body shows with its `paint` stage and fields, and for a clip pose the
+parts `clip:<Name>` and `skeleton` of its library, so another clip leaves the
+key alone. The garment cage is not read. A Python test holds that the code's
+folders cover every module the renderer imports.
+
+To render views and see their numbers:
+
+```powershell
+.\tools\art\Render-ArtViews.ps1 -Outfit Linen -Body Male -Pose Rest,Walk03
+.\tools\art\Render-ArtViews.ps1 -All
+```
+
+`-Outfit`, `-Body` (the body's label or folder), and `-Pose` choose views, and
+`-All` takes every view of the set. `-Jobs <n>` runs that many Blender processes
+at once, half the logical processors and at most 8 by default, each one outfit
+on one body, so the files are opened once. `-NoCache` renders every chosen view
+again and replaces its entry. Expected result: per view a line such as
+`Linen_Male_Walk03_Y215: skin 0, inner 0, contact 11, figure 87811 px (0.57 s)`,
+or `(cached)`, then the totals, `560 view(s), 560 rendered and 0 from the cache:
+skin through <n> px and inner through <n> px in <n> view(s), contact <n> px.
+...`, the seconds of each outfit and body, and `Render-ArtViews took <n> s.`
+On a machine with 16 logical processors and an 8 GB graphics card, the whole set
+takes about 100 to 110 s with 8 processes, each outfit on one body 40 to 49 s
+beside seven others; 4 processes took about 40 % longer and 16 nearly three
+times as long, since they fill the graphics memory. A run from a full cache
+takes about 13 s.
+
+`-WriteBaseline` writes what it can to `art/Views/baseline.json`, sorted by name,
+one line per view with its name, committed key, and numbers: it measures every
+view whose assets are all approved, exported from their current content, and
+whose exported files are as their record names them, and whose entry is missing
+or of another key; the entries of the other views stay as they are, and it
+names those views per outfit and body with the reason, as `<Outfit> on <Body>:
+<n> view(s) keep their entries, since <asset>: <reason>.` It prints how the measured numbers
+differ from the old entries, as `-Check` does, before it writes, drops the entry
+of a view the set no longer has, and ends with `The baseline
+art/Views/baseline.json is written: <n> view(s) measured now, <n> kept as they
+were, <n> without an entry.` It measures the exported data only, so it refuses
+`-DataFolder`, and the whole set, so it refuses `-Outfit`, `-Body`, and `-Pose`;
+it is never an approval. `-Check` compares the numbers with the baseline and
+lists per view what differs: more skin or garment pixels than the baseline is a
+regression, fewer an improvement, a change of contact is listed apart and never
+fails, and apart from that it lists the known show-through, the views of the
+clean phases whose baseline has skin or garment through pixels. Two runs of the
+whole set give the same numbers to the pixel, so the tolerance is 0. Exit code 2
+when a view regressed, else 1 when a view has no baseline entry or on an error,
+and 0 otherwise.
+
+`Verify-ArtAssets.ps1` holds the baseline to the committed content without
+Blender: every view of the set has an entry whose key is its committed key, and
+no entry names a view the set lacks. A view whose asset waits for an approval,
+as `Build-Art.ps1` passes it with `-Waiting`, is that asset's problem and does
+not fail the build; any other is, such as `art/Views/baseline.json: 35 view(s)
+of Linen on Male were measured on other content than the committed one or not
+at all: Linen_Male_Rest_Y215, Linen_Male_Rest_Y035, Linen_Male_Rest_Y125, and 32
+more; run tools/art/Render-ArtViews.ps1 -WriteBaseline once every asset of these
+views is approved and exported.` `Build-Art.ps1` runs `-WriteBaseline` itself
+after its exports while such a problem is there, see [Build The
+Art](#build-the-art). Expected result on a clean checkout: `Verified 44 art
+asset(s).` and `The baseline of the game views holds for the committed content
+of their 560 view(s).` `tools/ci/Test-ArtViews.ps1` checks the helpers of
+`ArtViews.ps1` without Blender: the key and what changes it, the code's
+fingerprint, the paint layers, the baseline's round trip and partial write, the
+stale views and the asset that waits for them, the exit codes of `-Check`, the
+data lookup, the cache's upkeep, and the shared cache's root. Expected result:
+`Result: the game view helpers hold in every case`.
+
+To see the guard work, change one character of the key of the view
+`Linen_Male_Rest_Y215` in `art/Views/baseline.json` and run
+`.\tools\art\Verify-ArtAssets.ps1`. Expected result: it fails with the message
+above for the one view, `1 view(s) of Linen on Male ...`; with `-Waiting
+art/Garments/Shirt` the same problem is listed as one that waits for an approval
+and the verification passes. Restore the file with
+`git checkout -- art/Views/baseline.json`.
+
+To see the classes, render `.\tools\art\Render-ArtViews.ps1 -Outfit Linen
+-Body Male,Female -Pose Rest,Idle30,SwordSlash16` and open the contact sheets
+`artifacts/art-views/Linen_Male.png` and `Linen_Female.png`. Expected result:
+each view's look beside its look with the class pixels over it;
+`Linen_Male_Rest_Y215` counts `contact 11`, a few blue pixels where the hair
+lies over the edge of the hood at the face, farther out than the pair check's
+depth at rest; `Linen_Male_Idle30_Y215` counts `skin 10` and `contact 27`, red
+pixels at the sleeve's hem on the inner side of the upper arm and blue ones
+where the hand rests on the thigh and at the hair; and
+`Linen_Female_SwordSlash16_Y215` counts `contact 722`, the forearm pressed into
+the shirt over the chest in blue.
+
 ### Cloth Parity
 
 The review sheets, review files, and checks lay a garment's cloth chains in the
@@ -3615,6 +3915,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines, and the PowerShell rules that tie a texture's masks to the content of the templates under its template and that name a wrong split's entry and key; the fingerprints and `-NoCache` that the scripts pass to the cache of the garment checks, and their line of seconds; that an export's records name the content of the other assets, not their exports; the Blender processes that `Invoke-ArtBlenderJobs` runs at once, with the environment and the result handling of `Invoke-ArtBlender` and their arguments quoted, and an export that plans a wave before it runs it and writes each `asset.json` whole; and that `Build-Art.ps1` records no approval and starts only the pipeline's own scripts, and `Update-UnityArt.ps1` the follow-up's method. |
 | `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken, also while several runs write and read one entry at once; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
 | `test_manifest_io.py` | `manifest_io.read_json`, which every reader of an `asset.json` in the pipeline uses: it reads the file again while Windows refuses it during a replace, for a few seconds, then raises, and raises any other error at once. |
+| `test_game_view.py` | The [game views](#game-views): what a body draws of the garments it wears, rule for rule as the client's `PlayerBodyMeshPlan`, the hidden slots, the hair under headwear and its shape key, the order, the cover layers, the pull-in, the faces left out, the paint layers a body shows with the underwear it always wears, the category without case, at most four on a material, and the split of a face from its first corner, and every committed garment data read as the catalog reads it; the rule of the classes against hand-made cloth and skin, a quad that pokes through, one a millimeter under, one beside the cloth's edge, one beyond the reach or behind the body's own surface, a transparent place, contact with cloth of another part of the body against through with its own, and a garment's turned edges, which can be marked and are no cloth; the camera that frames a figure, and the exact counts of a class picture; the standard set, which shows every template and texture in outfits a player wears, every pair of templates that can meet together, and frames of the clips with their phases, below 600 views; the baseline, one line per view of the set; the code of the key, which covers every module the renderer runs; and how the scripts run the renderer, its job file, the shared cache root, the committed key, the gate of the baseline, the hook in `Verify-ArtAssets.ps1`, and the measurement in `Build-Art.ps1`. It needs numpy. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |

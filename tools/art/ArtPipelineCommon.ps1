@@ -3255,10 +3255,12 @@ $script:ArtBlenderEnvironment = [ordered]@{
     PYTHONUSERBASE = $null
 }
 
-function Get-ArtBlenderArguments($Manifest, [string[]]$Arguments) {
-    # Blender's command line for one art_pipeline_cli.py command on the asset's file.
-    return @("--background", "--factory-startup", "--python-use-system-env", $Manifest.SourcePath,
-        "--python-exit-code", "1", "--python", $script:ArtBlenderCli, "--") + $Arguments
+function Get-ArtBlenderArguments($Manifest, [string[]]$Arguments, [string]$Script = $script:ArtBlenderCli) {
+    # Blender's command line for one command of a script, art_pipeline_cli.py unless another is given,
+    # on the asset's file, or on no file when the asset names none.
+    $file = @(if (-not [string]::IsNullOrEmpty($Manifest.SourcePath)) { $Manifest.SourcePath })
+    return @("--background", "--factory-startup", "--python-use-system-env") + $file +
+        @("--python-exit-code", "1", "--python", $Script, "--") + $Arguments
 }
 
 function Get-ArtBlenderResults($Manifest, [string[]]$Output, [int]$ExitCode) {
@@ -3331,12 +3333,13 @@ function ConvertTo-ArtProcessArgument([string]$Value) {
 
 function New-ArtBlenderJob($Manifest, [string[]]$Arguments, [string]$LogPath, [hashtable]$Fields) {
     # One art_pipeline_cli.py command for Invoke-ArtBlenderJobs: the asset whose file Blender opens, its
-    # arguments, the file its output goes to, and the caller's own fields. The runner sets Results, the
-    # ART_ lines Invoke-ArtBlender returns, or Error, the message Invoke-ArtBlender throws, and Seconds,
-    # how long Blender ran.
+    # arguments, the file its output goes to, and the caller's own fields, among them Script for another
+    # script of tools/art/blender. The runner sets Results, the ART_ lines Invoke-ArtBlender returns, or
+    # Error, the message Invoke-ArtBlender throws, and Seconds, how long Blender ran.
     $job = [ordered]@{
         Name = $Manifest.Name
         Manifest = $Manifest
+        Script = $script:ArtBlenderCli
         Arguments = [string[]]$Arguments
         LogPath = $LogPath
         Watch = New-Object System.Diagnostics.Stopwatch
@@ -3361,7 +3364,7 @@ function Start-ArtBlenderJob([string]$Blender, $Job) {
     # a full pipe never stops it.
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $Blender
-    $info.Arguments = (@(Get-ArtBlenderArguments $Job.Manifest $Job.Arguments) | ForEach-Object { ConvertTo-ArtProcessArgument $_ }) -join " "
+    $info.Arguments = (@(Get-ArtBlenderArguments $Job.Manifest $Job.Arguments $Job.Script) | ForEach-Object { ConvertTo-ArtProcessArgument $_ }) -join " "
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true
@@ -3570,7 +3573,7 @@ function Get-ArtCacheArguments([string]$Blender, $Manifest, [switch]$NoCache, [s
     }
 
     $template = if ($Manifest.Kind -eq "texture") { $Manifest.Garment } else { $Manifest }
-    $arguments = @()
+    $arguments = @("--cache-root", (Get-ArtCacheRoot))
     foreach ($body in @($template.Bodies)) {
         try {
             $bodyManifest = Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)
@@ -3755,6 +3758,72 @@ function Format-ArtElapsed([string]$Name, [System.Diagnostics.Stopwatch]$Watch, 
 function Get-ArtDefaultJobs {
     # How many Blender processes run at once by default: half the logical processors, at most 8.
     return [Math]::Max(1, [Math]::Min(8, [int][Math]::Floor([Environment]::ProcessorCount / 2)))
+}
+
+$script:ArtCacheRootPath = $null
+
+function Test-ArtSamePath([string]$First, [string]$Second) {
+    # Whether two paths name the same folder, without case on Windows.
+    $comparison = if ($env:OS -eq "Windows_NT") { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    return [string]::Equals([System.IO.Path]::GetFullPath($First).TrimEnd('\', '/'), [System.IO.Path]::GetFullPath($Second).TrimEnd('\', '/'), $comparison)
+}
+
+function Resolve-ArtCacheRoot([string]$Repository, [string]$CommonDir) {
+    # The folder of the shared caches for a checkout and the common folder Git names for it:
+    # artifacts/art-cache of the parent of the common folder when that is a checkout of this
+    # repository, which has tools/art/ArtPipelineCommon.ps1 and is the top level Git names there, so
+    # every worktree shares the main checkout's cache; else the checkout's own.
+    $own = Join-Path $Repository "artifacts/art-cache"
+    if ([string]::IsNullOrWhiteSpace($CommonDir)) {
+        return $own
+    }
+
+    $main = Split-Path -Parent ([System.IO.Path]::GetFullPath($CommonDir))
+    if ([string]::IsNullOrEmpty($main) -or -not (Test-Path -LiteralPath (Join-Path $main "tools/art/ArtPipelineCommon.ps1") -PathType Leaf)) {
+        return $own
+    }
+
+    try {
+        # Git's own options, as one text, since the tests read the quoted options of these scripts as
+        # those of the pipeline's command line files.
+        $top = @(Invoke-ArtNative "git" (@("-C", $main) + ("rev-parse --show-toplevel" -split " "))) | Select-Object -First 1
+    }
+    catch {
+        return $own
+    }
+
+    if ($script:ArtNativeExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($top) -or -not (Test-ArtSamePath $top $main)) {
+        return $own
+    }
+
+    return Join-Path $main "artifacts/art-cache"
+}
+
+function Get-ArtCacheRoot {
+    # The folder of the caches of the art scripts, the checks below checks and the game views below
+    # views: artifacts/art-cache of the repository's main checkout, the parent of Git's common folder,
+    # so every worktree of the repository shares one cache, or of this checkout when Git cannot say or
+    # that folder is no checkout of this repository (Resolve-ArtCacheRoot). The keys hold content and
+    # code fingerprints and never a path, and every entry is written by a rename, so the checkouts share
+    # it safely.
+    if ($null -eq $script:ArtCacheRootPath) {
+        $common = $null
+        try {
+            $common = @(Invoke-ArtNative "git" (@("-C", $script:ArtRepositoryRoot) + ("rev-parse --path-format=absolute --git-common-dir" -split " "))) |
+                Select-Object -First 1
+            if ($script:ArtNativeExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($common) -or -not (Test-Path -LiteralPath $common -PathType Container)) {
+                $common = $null
+            }
+        }
+        catch {
+            # Without Git the cache is this checkout's own.
+            $common = $null
+        }
+
+        $script:ArtCacheRootPath = Resolve-ArtCacheRoot $script:ArtRepositoryRoot $common
+    }
+
+    return $script:ArtCacheRootPath
 }
 
 function Get-ArtBuildFolder([string]$Name) {

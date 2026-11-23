@@ -47,6 +47,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   unity-restore    tools/ci/Test-UnityCommon.ps1
 #   crowd            tools/ci/Test-ClientCrowdCommon.ps1
+#   art-views        tools/ci/Test-ArtViews.ps1
 #   observability    tools/Verify-Observability.ps1
 #   deploy           tools/Verify-Deployment.ps1
 #   verify-content   the item catalog, world collision, world actor, quest catalog, and text table verifiers
@@ -84,10 +85,20 @@ $rules = @(
     # below them, which the next rule covers.
     @{ Pattern = '^tools/art/blender/tests/[^/]+\.(py|txt)$'
         Checks = @("blender-python"); Reason = "the art pipeline's Python tests" },
+    # The baseline of the game views and their standard set, which the art check and the Python tests
+    # read and Unity does not.
+    @{ Pattern = '^art/Views/[^/]+\.json$'
+        Checks = @("art", "blender-python"); Reason = "the baseline of the game views, which the art check and the Python tests read" },
+    @{ Pattern = '^tools/art/views/[^/]+\.json$'
+        Checks = @("art", "blender-python"); Reason = "the standard set of the game views, which the art check and the Python tests read" },
     # The Unity Editor reads the art manifests and skeletons, and a Unity test the clip speeds in
     # the Blender animation script.
     @{ Pattern = '^(art|tools/art/blender)/'
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
+    # The helpers of the game views and the shared helpers they stand on, which their own check runs
+    # without Blender.
+    @{ Pattern = '^tools/(art/(ArtViews|ArtPipelineCommon)|ci/Test-ArtViews)\.ps1$'
+        Checks = @("art", "blender-python", "art-views"); Reason = "the helpers of the game views, the shared art helpers, and their check" },
     # The Python tests compare the tables and the content version that the shared helpers keep, and
     # read every script for how it calls Blender and what it records.
     @{ Pattern = '^tools/art/[^/]+\.ps1$'
@@ -547,6 +558,7 @@ try {
     elseif ($scripts.Count -gt 0) { Write-Host "  PowerShell syntax of the changed scripts: $($scripts -join ', ')" }
     if ($full -or $tokens.Contains("unity-restore")) { Write-Host "  Unity file restore" }
     if ($full -or $tokens.Contains("crowd")) { Write-Host "  client crowd helpers" }
+    if ($full -or $tokens.Contains("art-views")) { Write-Host "  game view helpers" }
     if ($full -or $tokens.Contains("deps")) { Write-Host "  dependency policy" }
     if ($full -or $tokens.Contains("art")) { Write-Host "  art assets" }
     if ($full -or $tokens.Contains("blender-python")) { Write-Host "  art pipeline Python tests" }
@@ -572,7 +584,7 @@ try {
         Write-Host "  Unity tests that hold in batchmode, as CI runs them"
         Write-Host "  Unity EditMode and PlayMode tests$unityScope"
     }
-    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability") -or $tokens.Contains("deploy") -or $tokens.Contains("crowd"))) {
+    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability") -or $tokens.Contains("deploy") -or $tokens.Contains("crowd") -or $tokens.Contains("art-views"))) {
         Write-Host "  none; no change can affect a check"
     }
     if ($Plan) {
@@ -602,6 +614,9 @@ try {
     }
     if ($full -or $tokens.Contains("crowd")) {
         $null = Invoke-Check "Client crowd helpers" { (Invoke-Script "ci/Test-ClientCrowdCommon.ps1") -eq 0 }
+    }
+    if ($full -or $tokens.Contains("art-views")) {
+        $null = Invoke-Check "Game view helpers" { (Invoke-Script "ci/Test-ArtViews.ps1") -eq 0 }
     }
     if ($full -or $tokens.Contains("deps")) {
         $null = Invoke-Check "Dependency policy" { (Invoke-Script "Verify-DependencyPolicy.ps1") -eq 0 }
