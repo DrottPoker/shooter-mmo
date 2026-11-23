@@ -3001,6 +3001,34 @@ Pick each body in turn in `Body`.
    cloak's back show whole under the hood and the helmet, never a hole or the
    background.
 
+### Game Views Captured From The Game
+
+[Capturing The Views From The Game](ART_PIPELINE.md#capturing-the-views-from-the-game)
+describes the capture. Start without a stack and without an Editor on the
+checkout, so the script shows that it starts and stops both.
+
+1. Run `.\tools\art\Render-ArtViews.ps1 -Outfit Linen -Body Male`, then
+   `.\tools\art\Capture-GameViews.ps1 -Outfit Linen -Body Male`. Expected result:
+   the script starts the containers, GameService, and the default worker, opens
+   an Editor, enters Play Mode from `LoginMenu`, captures 35 views in a few
+   seconds, closes the Editor, stops the services and the containers it
+   started, deletes the copy of `.env` in a worktree, and ends with exit code 0
+   in about two minutes; `git status` shows nothing new, and no `dotnet.exe`
+   whose command line holds `MSBuild.dll` is left from the run. Run it again.
+   Expected result: the same, signed in to the account `capture_views` that the
+   first run on the database registered, with its character `Capture Views`.
+2. Open `artifacts/art-views/game/Linen_Male.png`. Expected result: per view the
+   Blender look on grey beside the game's picture in the town, the same body,
+   outfit, pose, and framing. The rest views overlap 1.000: the body stands in
+   the same place of the picture to the pixel. The views from yaw 215 are lit
+   from the front in both; from yaw 35 the game shows the body's shaded back
+   with its shadow on the ground. The attack frames hold the hands open, where
+   the Blender view curls the fingers.
+3. Run `.\tools\art\Capture-GameViews.ps1 -Outfit CloakRobe -Body Female -Pose
+   Rest,Jog08` while the stack runs and the Editor is open. Expected result: it
+   uses both, leaves both running, and the robe's skirt and the cloak lie as in
+   the Blender view at rest and swing out in `Jog08`.
+
 ## World Builder
 
 The [World Builder](DEVELOPMENT_WORLDS.md#world-builder) is checked in the Unity

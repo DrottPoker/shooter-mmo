@@ -81,7 +81,7 @@ largest, is split by area:
 | Folder | Holds |
 | --- | --- |
 | `Editor` | `ClientAddressablesLayout`, `ItemIconImportRules`, and `WorldCollisionBaker` |
-| `Editor/Art` | The import side of the art pipeline: model import rules, appearance catalogs, project materials, topology maps, manifests, and `CreaturePresentationBuilder` |
+| `Editor/Art` | The import side of the art pipeline: model import rules, appearance catalogs, project materials, topology maps, manifests, and `CreaturePresentationBuilder`, and `GameViewCapture`, the [capture of the game views](ART_PIPELINE.md#capturing-the-views-from-the-game) in Play Mode |
 | `Editor/Cloth` | Cloth measurement, the stress motions, and the cloth fixtures for the art pipeline's checks |
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
 | `Editor/Build` | The player build: `ClientPlayerBuild`, the build method of `tools/Build-Client.ps1`, `ClientBuildKindSettings`, the player settings of each build kind, and `ClientBuildFile`, which bakes the environment and the build stamp into every player build |
@@ -176,7 +176,15 @@ packages, whose versions the build stamp holds. It also holds the import side of
 pipeline, such as `ArtModelImportRules`, the import rules for every model the art
 pipeline exports to `Assets/Art/Models`, and `ArtAppearanceCatalogs`, which
 writes the appearance catalogs of the exported bodies; see
-[Unity Import Rules](ART_PIPELINE.md#unity-import-rules).
+[Unity Import Rules](ART_PIPELINE.md#unity-import-rules). For the
+[capture of the game views](ART_PIPELINE.md#capturing-the-views-from-the-game),
+which signs in and enters a World through the running client as the PlayMode
+tests of the live stack do, it also references Api, Networking, App, whose
+`ClientBootstrap` holds the running client's session, and
+`Unity.ResourceManager`, whose handle the World scene's load returns. Gameplay
+shows its internals to the Editor assembly, besides the EditMode and PlayMode
+tests, so the capture dresses its bodies with `WorldSceneContext`'s shared
+`BodyMeshes` and `BodyMaterials` and keeps their lids out of `EyelidScheduler`.
 
 `ClientAssemblyArchitectureTests` pins the exact declared references of every
 client assembly, including shared and package assemblies, the layer order, and

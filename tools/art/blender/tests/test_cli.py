@@ -86,8 +86,8 @@ class ParserTests(unittest.TestCase):
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
         known = {option for parser in subcommands().values() for action in parser._actions for option in action.option_strings}
-        # Update-UnityArt.ps1 starts Unity and its CLI, not Blender.
-        used = set(re.findall(r'"(--[a-z][a-z-]*)"', all_powershell("Update-UnityArt.ps1"))) - BLENDER_OPTIONS
+        # Update-UnityArt.ps1 and Capture-GameViews.ps1 start Unity and its CLI, not Blender.
+        used = set(re.findall(r'"(--[a-z][a-z-]*)"', all_powershell("Update-UnityArt.ps1", "Capture-GameViews.ps1"))) - BLENDER_OPTIONS
         self.assertEqual(sorted(used - known), [])
 
     def test_validate_and_export_need_a_kind_and_the_root_objects(self):
