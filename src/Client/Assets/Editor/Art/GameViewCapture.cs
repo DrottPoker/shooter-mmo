@@ -260,6 +260,7 @@ namespace Mmorpg.Client.Editor
                     body.ShowRest();
                     result.restFromBindPose = body.FromBindPose(out result.restFarthestBone);
                     result.restVertexOffset = body.FromBindVertices() * 1000f;
+                    result.bones = body.BoneNames();
                     foreach (var pose in Groups(views, view => view.pose))
                     {
                         yield return Pose(body, pose);
@@ -345,6 +346,7 @@ namespace Mmorpg.Client.Editor
                 pose.clothFromTarget = fromTarget * 1000f;
                 pose.detail = solver != null ? solver.CurrentDetail.ToString() : string.Empty;
                 pose.hipsTurn = body.HipsTurn();
+                pose.bonePositions = body.BonePositions();
                 status.poses.Add(pose);
                 var figure = body.Figure();
                 foreach (var view in views)

@@ -193,7 +193,8 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
         }
 
         $files = [string[]]@(@($view.Body.SourcePath) + @($garments | ForEach-Object { $_.Template.SourcePath; $_.Texture.SourcePath; $_.Data }) +
-            @($view.Paints | ForEach-Object { $_.SourcePath }) + @(if ($null -ne $view.Pose.Clip) { $view.Library.SourcePath }))
+            @($view.Paints | ForEach-Object { $_.SourcePath }) + @(if ($null -ne $view.Pose.Clip) { $view.Library.SourcePath }) +
+            @(if ($null -ne $view.Rig) { $view.Rig.Manifest.SourcePath }))
         $lines = foreach ($file in $files) {
             if (-not $fileLines.ContainsKey($file)) {
                 $fileHashes[$file] = Get-ArtFileSha256 $file
@@ -247,8 +248,16 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
     $jobs = New-Object System.Collections.Generic.List[object]
     foreach ($group in @($entries | Where-Object { -not $_.Cached } | Group-Object { "$($_.View.Outfit)_$($_.View.Label)" })) {
         $first = $group.Group[0]
+        # A body that is not the library's rig follows the rig in the clip poses, through the reference
+        # poses of the two avatars.
+        $rig = @($group.Group | Where-Object { $null -ne $_.View.Rig } | ForEach-Object { $_.View.Rig }) | Select-Object -First 1
+        $body = [ordered]@{ file = $first.View.Body.SourcePath; root = $first.View.Label }
+        if ($null -ne $rig) {
+            $body["reference"] = $rig.BodyAvatar.Path
+        }
+
         $job = [ordered]@{
-            body = [ordered]@{ file = $first.View.Body.SourcePath; root = $first.View.Label }
+            body = $body
             garments = @($first.Garments | ForEach-Object {
                     [ordered]@{ texture = $_.Texture.Name; textureFile = $_.Texture.SourcePath; template = $_.Template.Name
                         templateFile = $_.Template.SourcePath; data = $_.Data }
@@ -265,6 +274,11 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
                         look = $_.Look; classes = $_.Classes; numbers = $_.NumbersPath }
                 })
         }
+        if ($null -ne $rig) {
+            $job["rig"] = [ordered]@{ file = $rig.Manifest.SourcePath; root = $rig.Manifest.RootObjects[0]; reference = $rig.Avatar.Path
+                skeleton = $rig.Manifest.SkeletonPath }
+        }
+
         $jobPath = Join-Path $logs "$($group.Name).job.json"
         [System.IO.File]::WriteAllText($jobPath, ($job | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
         $manifest = [pscustomobject]@{ Name = "$($first.View.Outfit) on $($first.View.Label)"; SourcePath = "" }
@@ -342,9 +356,13 @@ function Invoke-ArtViewRender($Views, $EveryView, $Committed) {
     $keys = Read-ArtViewKeys $keysPath
     foreach ($entry in $done) {
         $look = Join-Path $readable "$($entry.View.Name).png"
-        if ($keys[$entry.View.Name] -cne $entry.Key -or -not (Test-Path -LiteralPath $look)) {
+        $numbersCopy = Join-Path $readable "$($entry.View.Name).json"
+        if ($keys[$entry.View.Name] -cne $entry.Key -or -not (Test-Path -LiteralPath $look) -or -not (Test-Path -LiteralPath $numbersCopy)) {
             Copy-Item -LiteralPath $entry.Look -Destination $look -Force
             Copy-Item -LiteralPath $entry.Classes -Destination (Join-Path $readable "$($entry.View.Name).classes.png") -Force
+            # The numbers with the bone heads of the pose, which tools/art/Capture-GameViews.ps1 holds
+            # against the game's.
+            Copy-Item -LiteralPath $entry.NumbersPath -Destination $numbersCopy -Force
             $keys[$entry.View.Name] = $entry.Key
         }
     }

@@ -181,6 +181,8 @@ namespace Mmorpg.Client.Editor
         public string restFarthestBone = string.Empty;
         public float restVertexOffset;
         public float headLength;
+        // The bones each pose's bonePositions name, in their order.
+        public string[] bones = new string[0];
     }
 
     // A pose of an outfit on a body: the state and time the Animator shows, how many frames and
@@ -205,6 +207,10 @@ namespace Mmorpg.Client.Editor
         public string detail = string.Empty;
         // How far the hips turned about the upright from the rest pose, in degrees.
         public float hipsTurn;
+        // Where the head of every bone the body is skinned to lies, in the body's own frame and the
+        // game's axes, x right, y up, z front, in meters: three numbers per bone, in the order of
+        // the outfit's bones, to hold the Blender views' poses against.
+        public float[] bonePositions = new float[0];
     }
 
     [Serializable]

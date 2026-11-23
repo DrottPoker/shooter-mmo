@@ -9,7 +9,7 @@
 # tools/art/blender/art_pipeline/game_view.py keeps as VIEW_VERSION and a Python test holds equal: it is
 # raised when the text of the committed key or the baseline's format changes. A change of the
 # renderer's code changes every key by itself, through the fingerprint of its code in the key.
-$script:ArtViewVersion = 3
+$script:ArtViewVersion = 4
 $script:ArtViewSetPath = Join-Path $PSScriptRoot "views/standard-set.json"
 $script:ArtViewBaselinePath = Join-Path $script:ArtRepositoryRoot "art/Views/baseline.json"
 # What a camera frames, the phases of a pose, and the data folder of the exported garments.
@@ -31,6 +31,7 @@ $script:ArtViewTolerance = 0
 # take now go; a picture without its numbers, and a file an interrupted run left, after a day.
 $script:ArtViewCacheDays = 30
 $script:ArtViewManifests = @{}
+$script:ArtViewAvatars = @{}
 $script:ArtViewCode = $null
 
 function New-ArtViewTable {
@@ -45,6 +46,66 @@ function Get-ArtViewManifest([string]$Asset) {
     }
 
     return $script:ArtViewManifests[$Asset]
+}
+
+function Get-ArtViewAvatarLines([string]$Text) {
+    # The lines of humanDescription.skeleton of a model's .fbx.meta, the avatar's reference pose that Unity
+    # wrote when it imported the model: the entries under "    skeleton:" without their line ends, or none
+    # when the meta has no avatar, as avatar_skeleton_lines in retarget_pose.py takes them.
+    $lines = $Text.Replace("`r`n", "`n").Split("`n")
+    $start = [Array]::IndexOf($lines, "  humanDescription:")
+    if ($start -lt 0) {
+        return @()
+    }
+
+    for ($index = $start + 1; $index -lt $lines.Count; $index++) {
+        $line = $lines[$index]
+        if ($line.TrimEnd() -ceq "    skeleton:") {
+            $found = New-Object System.Collections.Generic.List[string]
+            for ($next = $index + 1; $next -lt $lines.Count; $next++) {
+                if (-not ($lines[$next].StartsWith("    - ") -or $lines[$next].StartsWith("      "))) {
+                    break
+                }
+
+                $found.Add($lines[$next].TrimEnd())
+            }
+
+            return $found.ToArray()
+        }
+
+        if ($line.StartsWith("  ") -and -not $line.StartsWith("   ")) {
+            break
+        }
+    }
+
+    return @()
+}
+
+function Get-ArtViewAvatarFingerprint([string]$Path) {
+    # The fingerprint of the avatar skeleton of a model's .fbx.meta, so an import setting that leaves the
+    # reference pose alone leaves the views' keys alone; "none" when the file is missing or has no avatar.
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return "none"
+    }
+
+    $lines = @(Get-ArtViewAvatarLines ([System.IO.File]::ReadAllText($Path)))
+    if ($lines.Count -eq 0) {
+        return "none"
+    }
+
+    return Get-ArtTextSha256 ("art-view-avatar/1`n" + ($lines -join "`n") + "`n")
+}
+
+function Get-ArtViewAvatar($Manifest) {
+    # The avatar of a model whose reference pose the clip views of a body that is not the library's rig
+    # read: its .fbx.meta by path and by repository path, and the fingerprint of its avatar skeleton.
+    $asset = $Manifest.RelativeDirectory
+    if (-not $script:ArtViewAvatars.ContainsKey($asset)) {
+        $path = "$($Manifest.TargetPath).meta"
+        $script:ArtViewAvatars[$asset] = [pscustomobject]@{ Path = $path; Name = "$($Manifest.Target).meta"; Fingerprint = Get-ArtViewAvatarFingerprint $path }
+    }
+
+    return $script:ArtViewAvatars[$asset]
 }
 
 function Format-ArtViewNumber($Value) {
@@ -244,6 +305,9 @@ function Read-ArtViewSet {
 
     $catalog = @(Get-ArtViewPaintCatalog)
     $bodies = @($json.bodies | ForEach-Object { Get-ArtViewManifest ([string]$_) })
+    # The library's clips are keyed on its rig; a body that is not the rig follows it as the game
+    # retargets the clips, through the reference poses of the two avatars.
+    $rigManifest = if ($null -ne $library.Rig) { Get-ArtViewManifest $library.Rig.Asset } else { $null }
     $views = New-Object System.Collections.Generic.List[object]
     $names = @{}
     foreach ($outfit in @($json.outfits)) {
@@ -276,10 +340,19 @@ function Read-ArtViewSet {
                 throw $paintProblem
             }
 
+            $retarget = if ($null -ne $rigManifest -and $body.RelativeDirectory -cne $rigManifest.RelativeDirectory) {
+                [pscustomobject]@{ Manifest = $rigManifest; Avatar = (Get-ArtViewAvatar $rigManifest); BodyAvatar = (Get-ArtViewAvatar $body) }
+            }
+            else {
+                $null
+            }
+
             foreach ($pose in $poses) {
+                $rig = if ($null -ne $pose.Clip) { $retarget } else { $null }
                 foreach ($cameraName in $pose.Cameras) {
                     $assets = @(@($body.RelativeDirectory) + @($worn | ForEach-Object { $_.Template.RelativeDirectory; $_.Texture.RelativeDirectory }) +
-                        @($shown | ForEach-Object { $_.RelativeDirectory }) + @(if ($null -ne $pose.Clip) { $library.RelativeDirectory }))
+                        @($shown | ForEach-Object { $_.RelativeDirectory }) + @(if ($null -ne $pose.Clip) { $library.RelativeDirectory }) +
+                        @(if ($null -ne $rig) { $rig.Manifest.RelativeDirectory }))
                     $views.Add([pscustomobject]@{
                             Name = "${outfitName}_${label}_$($pose.Name)_$cameraName"
                             Outfit = $outfitName
@@ -290,6 +363,7 @@ function Read-ArtViewSet {
                             Catalog = $fitting
                             Named = $named
                             Library = $library
+                            Rig = $rig
                             Pose = $pose
                             Camera = $cameras[$cameraName]
                             Assets = [string[]]$assets
@@ -388,7 +462,9 @@ function Get-ArtViewKeyText($View, [string]$Code) {
     # body's last stage, each template's rig stage with the fields of its asset.json that decide what is
     # drawn and its band, whose reach decides contact, each texture's texture stage, the data each garment's export wrote for the body, each paint
     # layer the body shows with its stage and fields, and for a clip pose the clip's own part and the
-    # skeleton part of its library, so another clip leaves the key alone. The garment cage is not read.
+    # skeleton part of its library, so another clip leaves the key alone, and on a body that is not the
+    # library's rig the rig's skeleton part with the fingerprints of the avatar skeletons of the rig's and
+    # the body's .fbx.meta, whose reference poses retarget the clip. The garment cage is not read.
     $culture = [System.Globalization.CultureInfo]::InvariantCulture
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("art-view/$script:ArtViewVersion")
@@ -419,6 +495,11 @@ function Get-ArtViewKeyText($View, [string]$Code) {
         $library = $View.Library
         $lines.Add("asset $($library.RelativeDirectory) clip:$($View.Pose.Clip)=$(Get-ArtViewContent $library 'parts' "clip:$($View.Pose.Clip)") " +
             "skeleton=$(Get-ArtViewContent $library 'parts' 'skeleton')")
+        $rig = $View.Rig
+        if ($null -ne $rig) {
+            $lines.Add("rig $($rig.Manifest.RelativeDirectory) skeleton=$(Get-ArtViewContent $rig.Manifest 'parts' 'skeleton') " +
+                "avatars $($rig.Avatar.Name)=$($rig.Avatar.Fingerprint) $($rig.BodyAvatar.Name)=$($rig.BodyAvatar.Fingerprint)")
+        }
     }
 
     return ($lines -join "`n") + "`n"
@@ -584,9 +665,9 @@ function Get-ArtViewProblemOwner($Problem, [string[]]$Waiting) {
 }
 
 function Get-ArtViewManifestsOf($View) {
-    # The manifests of the assets a view reads.
+    # The manifests of the assets a view reads, the library's rig too when the body follows it.
     return @(@($View.Body) + @($View.Garments | ForEach-Object { $_.Template; $_.Texture }) + @($View.Paints) +
-        @(if ($null -ne $View.Pose.Clip) { $View.Library }))
+        @(if ($null -ne $View.Pose.Clip) { $View.Library }) + @(if ($null -ne $View.Rig) { $View.Rig.Manifest }))
 }
 
 function Get-ArtViewGate($Views) {
