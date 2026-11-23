@@ -185,7 +185,13 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Unity.Addressables.Editor",
                     "UnityEngine.UI",
                     "Unity.TextMeshPro",
-                    "Mmorpg.Client.Ui"
+                    "Mmorpg.Client.Ui",
+                    // The capture of the game views signs in and enters a World through the
+                    // running client, as the PlayMode tests of the live stack do.
+                    "Mmorpg.Client.Api",
+                    "Mmorpg.Client.Networking",
+                    "Mmorpg.Client.App",
+                    "Unity.ResourceManager"
                 }
             };
 

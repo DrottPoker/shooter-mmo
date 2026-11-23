@@ -156,6 +156,18 @@ namespace Mmorpg.Client.Gameplay
             get { return bodyContent; }
         }
 
+        // The shared meshes and materials of the World visit, for the Editor's capture of the game
+        // views, which dresses bodies of its own as a player's body is dressed.
+        internal PlayerBodyMeshes BodyMeshes
+        {
+            get { return bodyMeshes; }
+        }
+
+        internal PlayerBodyMaterials BodyMaterials
+        {
+            get { return bodyMaterials; }
+        }
+
         // Whether the World shows: the local player spawned, the content of its look loaded, and the
         // first view ready or its cap passed. Until then a cover hides the World.
         public bool IsWorldShown

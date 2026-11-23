@@ -16,7 +16,11 @@
     "Unity.Addressables.Editor",
     "UnityEngine.UI",
     "Unity.TextMeshPro",
-    "Mmorpg.Client.Ui"
+    "Mmorpg.Client.Ui",
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Networking",
+    "Mmorpg.Client.App",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [
     "Editor"

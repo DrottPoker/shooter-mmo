@@ -184,6 +184,9 @@ only you run Claude Code, and save your work before a live session.
 | `artifacts/art-build` | The output of every Blender run of an export, `export/<Name>.log`, of a content run, `content/<Name>.log`, and of a stage run, `stage/<Name>.log`, the seconds of each asset's last export with its checks computed, `export/seconds.json`, which puts the longest export first, the Unity log of the follow-up, `unity/follow-up.log`, the marker `unity/pending`, which an export leaves until the Unity follow-up succeeds, `synced.json`, per asset the SHA-256 of its file as the build's last sync of it left it and the fingerprints of what it followed then, so the build does not sync it again while nothing changed, `staging`, the [staged data](#build-the-art) of garments that are not exported from their current content with `index.json`, what each was computed from, and `review`, the [review page](#build-the-art) `index.html` with the pictures it shows. |
 | `artifacts/art-cache` of the main checkout, `tools/art/blender/art_pipeline/check_cache.py` | The caches of the art scripts, which every worktree of the repository shares, `Get-ArtCacheRoot` in `ArtPipelineCommon.ps1` finds, or `MMORPG_ART_CACHE_ROOT` names, and the scripts pass to Blender: below `checks` the [cache of the garment checks](#cache-of-the-garment-checks), their results by the content of what they read, so a sync, an approval, and an export compute each once, and below `views` the pictures and numbers of the [game views](#game-views), with `views/committed`, which entry holds the pictures of each committed key. Safe to delete at any time. |
 | `artifacts/art-views` | The pictures of the [game views](#game-views) under readable names, a contact sheet per outfit and body, and `keys.json`, the key of every copy and sheet, so a run writes again only what changed. |
+| `artifacts/art-views/game` | The game views [captured from the game](#capturing-the-views-from-the-game): a picture per view, a sheet per outfit and body with each Blender look beside the game's picture, and `capture.json`, what the capture measured. |
+| `tools/art/Capture-GameViews.ps1` | Captures the game views from the Unity client in Play Mode against the local stack, with the stack and the Editor it needs, and writes the sheets; see [Capturing The Views From The Game](#capturing-the-views-from-the-game). |
+| `src/Client/Assets/Editor/Art/GameViewCapture.cs`, `GameViewBody.cs`, `GameViewFraming.cs`, `GameViewLogin.cs`, `GameViewJob.cs` | The capture in Play Mode: the stage, its cameras and pictures, the body built and posed as a player's, the framing of `game_view.py` in C#, the way into the World, and the job and status files. |
 | `art/Views/baseline.json` | The baseline of the game views: per view its committed key and its numbers, measured on approved, exported content. |
 | `tools/art/Render-ArtViews.ps1`, `ArtViews.ps1`, `tools/art/views/standard-set.json`, `tools/ci/Test-ArtViews.ps1` | The [game views](#game-views): the renderer's script, the standard set of views, the helpers with the committed key of a view, the check of the baseline, which `Verify-ArtAssets.ps1` runs, the comparison, the cache's upkeep and its index of the pictures by committed key, and their check without Blender, which also checks the staged data's index and the review page. |
 | `tools/art/blender/art_pipeline/game_view.py`, `tools/art/blender/art_views_cli.py` | The renderer of the game views and its Blender entry point: an outfit on a body drawn by the client's rules for what a body draws, and the classes of its triangles. |
@@ -3759,8 +3762,8 @@ them, the garments drawn from both sides and clipped at an alpha of 0.5, a white
 sun of strength 2 pi, as Unity's intensity 2 lights a surface, 50 degrees above
 the horizon and 30 degrees beside the camera, and a mid grey sky that lights it
 and is its background, with the `Standard` view transform. It reads like the
-game without matching it pixel for pixel; the game's own picture is the Unity
-capture. The class picture is drawn with the same camera and culling in flat
+game without matching it pixel for pixel; the game's own picture is the
+[capture from the game](#capturing-the-views-from-the-game). The class picture is drawn with the same camera and culling in flat
 colours without light, one sample, and no filter: red for skin through, green
 for a garment through, blue for contact, black for everything else, which still
 hides what lies behind it, and a transparent background. Its counts are exact,
@@ -3978,6 +3981,193 @@ pixels at the sleeve's hem on the inner side of the upper arm and blue ones
 where the hand rests on the thigh and at the hair; and
 `Linen_Female_SwordSlash16_Y215` counts `contact 722`, the forearm pressed into
 the shirt over the chest in blue.
+
+#### Capturing The Views From The Game
+
+The Blender views are the fast everyday tool. The same views captured from the
+game are the truth to hold them against, and the tool that judges a change of
+how the client draws a body. `tools/art/Capture-GameViews.ps1` captures them
+from the Unity client in Play Mode in the Editor, logged in against the local
+stack and standing in Development World 2, with the game's own meshes, shaders,
+light, post-processing, and cloth:
+
+```powershell
+.\tools\art\Capture-GameViews.ps1 -Outfit Linen -Body Male
+.\tools\art\Capture-GameViews.ps1 -All
+```
+
+`-All`, `-Outfit`, `-Body`, `-Pose`, and `-View` choose views as for
+`Render-ArtViews.ps1`, and one of them is required. The script:
+
+1. Uses the local stack when GameService answers on port 5000 and lists
+   `local-shard-1` online. Otherwise it starts PostgreSQL and Redis with
+   `docker compose up -d --wait`, builds GameService and SimulationWorker in
+   Release, and starts both in the Development environment, the worker with its
+   default World, as `tools/Measure-ClientCrowd.ps1` does. The builds run with
+   MSBuild's node reuse and the build servers off, so no MSBuild node or
+   compiler server outlives the run. A worktree has no
+   `.env`: the script copies the main checkout's into the worktree root for the
+   run, which Git ignores, sets `COMPOSE_PROJECT_NAME` to the main checkout's
+   folder name, so Compose uses the main checkout's containers, and deletes the
+   copy when the run ends, also when it fails. It refuses a process on port 5000
+   that lists no `local-shard-1` online, and one on UDP port 27015 while
+   GameService does not run, so it never restarts a stack it did not start.
+2. Uses the Editor that has this checkout's `src/Client` open, or opens one with
+   `unity open` and asks that Editor alone, with `editor_status`, until it is
+   ready; `--until-ready` would make the Editor log an error. It imports changed
+   files, stops when the scripts do not compile, and leaves a Play Mode that
+   runs.
+3. Enters Play Mode from `LoginMenu` through `EditorSceneManager.playModeStartScene`,
+   whatever scene the Editor shows, and puts the start scene back afterwards.
+4. Starts `Mmorpg.Client.Editor.GameViewCapture` through `eval_file` with a job
+   file of the chosen views, and follows the status file the capture writes,
+   with a limit on every wait: `-TimeoutMinutes`, 10 by default, for the stack,
+   the Editor, and Play Mode, and three minutes in which the capture writes
+   nothing.
+5. Leaves Play Mode, writes the sheets, and stops what it started: the Editor it
+   opened, the services and containers it started, and the copy of `.env`. It
+   puts back the Unity-owned files the Editor rewrote during the run, as
+   `tools/Run-UnityTests.ps1` does.
+
+**In Play Mode** the capture, which lives in `src/Client/Assets/Editor/Art` and
+runs only when it is started, does this:
+
+- It signs in to its own account, `capture_views`, with the character `Capture
+  Views`, through the client's own `ApiClient`, and joins `local-shard-1`
+  through the running client's session and hub, as the PlayMode tests of the
+  live stack do, until the World shows the local player. The account exists in
+  the local database for the capture alone: the first capture on a database
+  registers it, when the sign-in answers that no such account exists, and
+  creates its character, and every later capture signs in to them again. Its
+  password is a constant of `GameViewLogin` for the local development stack
+  only, as the development account's is, so the capture sends nothing unless
+  the client's GameService address is on this computer: with an address
+  override of the Editor that names another stack it stops and says so. The
+  capture sends no input and never
+  changes the character's look, items, or place, so every run finds it standing
+  at the spawn as the first did. It never uses the entry screens, so the login,
+  character, and shard that they remember in `PlayerPrefs`, which the Editors of
+  a computer share, stay as they were; the capture takes the three keys
+  `Mmorpg.Account.*` at its start and puts back any that changed.
+- It puts one body at a time 8 m east and 6 m north of the player, on the open
+  ground of the town, built and dressed exactly as a player's body is: the body
+  model's prefab, `CombineParts` and `ApplyLook` with the World's shared
+  `PlayerBodyMeshes`, `PlayerBodyMaterials`, and `PlayerBodyContent`, which
+  `WorldSceneContext` shows to the Editor's assembly for it, and a `BodyLook`
+  of the outfit's garment textures and paint layers in their natural colors,
+  the hair and the cloak among the garments. It waits for the look's content as
+  any body does. The body's lids stay open: no clip and no Blender view turns
+  them, and a blink would come at random.
+- The pose is the rest pose or a frame of a clip, held still. The rest pose is
+  the Animator off and every transform as the prefab put it in, the pose the
+  mesh is bound in: the male's bones lie within 1e-5 of the mesh's bind poses,
+  and `capture.json` names, per outfit and body, the bone farthest from them and
+  how far a drawn vertex moved. A clip
+  frame is the controller's state that plays the clip at normalized time frame
+  over last frame, at speed 0: `Idle` and `Death`, with `Dead` set, in the base
+  layer, `Walk` and `Jog` in the `Locomotion` blend at 1.4 and 5.0 m/s, where
+  it plays only that clip, and an attack on the `Action` layer at full weight
+  over the base layer's `Idle` at its start, as the game plays an attack,
+  without the grip and hold layers, since no weapon is held. The game plays no
+  attack for a body without a weapon. The `Action` layer's mask is the whole
+  body without the fingers, so the legs follow the attack as in the Blender
+  view, and the fingers keep `Idle`'s, where the Blender view shows the clip's.
+- The cloth swings as a player's does: the capture's camera is a view of
+  `ClothChainScheduler`, which gives the body springs. After the pose is set the
+  springs start again from the target pose, and the cloth settles until it
+  sleeps on the target pose, or until no particle moved more than 0.5 mm for
+  half a second, or for `-SettleSeconds`, 3 by default. In the rest pose it
+  sleeps on the target pose the Blender view lays; in a pose whose hips lean, it
+  comes to rest beside it, where gravity holds it, up to 44 mm away in `Death31`.
+- The camera is the capture's own and renders as the player's camera does
+  (`CameraRendering.CopyFrom`), with the pipeline's MSAA, into 512 by 768
+  pixels. `GameViewFraming` places it by the rules of `game_view.py`'s `aim`:
+  the same field of view of 55 degrees, margin, distance range, and close
+  distance, from the drawn vertices of the posed body as
+  `SkinnedMeshRenderer.BakeMesh` gives them, the feet, the point 40 % along the
+  head bone, or the hips bone's head; `GameViewFramingTests` holds it to
+  `game_view.py`'s numbers for one figure, a close view, and the feet. The
+  players stay out of the pictures, and the ground and the town are the
+  background. A view where something of the World stands between the camera
+  and the body is listed.
+- The light is the World's: its sun, sky, and shadows. The body faces so that
+  the sun falls on it from where Blender's sun falls in the views from yaw 215,
+  30 degrees beside that camera and 50 degrees high, so `Y215`, `Head`,
+  `WaistFront`, and `Feet` are lit alike in both. Blender's sun follows the
+  camera, so the other views differ on purpose: from yaw 35 the game sees the
+  body's shaded back.
+- A second picture draws the body alone on a clear background. Its silhouette,
+  every pixel at least half covered, held against the Blender view's class
+  picture, every pixel that is not clear, gives the view's overlap, the pixels
+  in both over the pixels in either. It catches a gross mismatch of pose or
+  framing, not a difference of looks.
+
+The script writes `artifacts/art-views/game/<view>.png`, per outfit and body a
+sheet `artifacts/art-views/game/<Outfit>_<Body>.png` with each view's Blender
+look and the game's picture side by side under its pose, camera, and overlap,
+and `capture.json`, what the capture measured: the phases and their seconds,
+per outfit and body the garments it wears and how far its rest pose lies from
+the bind pose, per pose what the Animator shows, how the cloth settled, and how
+far the hips turned, and per view its overlap. The Blender looks come from
+`artifacts/art-views`, so run `Render-ArtViews.ps1` for the same views first; a
+view without one says so on the sheet and shows the game's picture alone.
+Nothing of a capture is committed; it has no baseline. `-Overlap`, 0.85 by
+default, is the overlap below which a view is listed. `-AfterCapture <file>`
+runs a C# file through `eval_file` in the same Play Mode once the views are
+captured, for a check of one's own; `GameViewCapture.Picture(eye, target,
+path)` draws the World from a point with the capture's camera into a PNG.
+
+Expected result: per phase a line, per outfit and body `<Outfit> on <Body>:
+<n> s, put together in <n> s.`, then `<n> of <n> view(s) captured`, the views
+whose overlap is below 0.85, the poses whose cloth came to rest beside its
+target pose, the seconds of every phase, and exit code 0; exit code 1 names
+what failed. On the machine of the Blender views' measurements, from a cold
+start without a stack and without an Editor, `-Outfit Linen -Body Male` took
+122 s: 55 s for the stack with its builds, 18 s to open the Editor, 6 s to
+compile, 10 s to enter Play Mode, 3 s to sign in and enter the World, 3 s for
+the 35 views, and 18 s to stop what it started. `-All` took 246 s, of it 141 s
+for the 560 views: 2.3 to 2.9 s per outfit and body without loose cloth and 12
+to 17 s with a robe or a cloak, whose cloth settles in about a second per pose.
+A view takes about 50 ms.
+
+What the first capture of the whole set showed where the game and the Blender
+views differ, on 2026-11-23:
+
+- **The rest pose** overlaps 0.997 to 1.000 in all 128 rest views: the framing,
+  the facing, the drawn garments, and the bind pose agree to a few pixels. Only the
+  female's right thumb rests 13 to 14 mm off its bind pose at its tip:
+  `HumanFemaleBody.prefab` overrides the local rotation of one bone, which the
+  capture names `ThumbDistal_R`; every clip poses that bone, so only the rest
+  pose shows it.
+- **Clip frames on the male** overlap 0.81 to 1.00, 0.96 on average; the hips
+  turn as far as in Blender, such as 40 degrees in `BowShot21`. **On the
+  female** they overlap 0.45 to 0.99, 0.82 on average, lowest in `BowShot21`,
+  `Death31`, `SwordSlash16`, and `GreataxeSwing12`: the arms, the legs, and the
+  torso's lean differ by a few degrees to tens of degrees. The library is keyed
+  on the male's rig; the Blender views pose the female by copying its bones'
+  turns in local space, as the library's `Reference` collection does, while
+  the game retargets the Humanoid clips through her own avatar. The Blender
+  views of the female's clip frames are therefore not what the game shows.
+- **The fingers** of an attack frame keep `Idle`'s pose in the game, open,
+  because the `Action` layer's mask leaves out the fingers; the Blender view
+  curls them as the clip does. In play a weapon is held and the grip layers
+  close the hands on it.
+- **Loose cloth** rests beside its target pose where the hips lean: springs
+  feel gravity as far as the body leans from the bind pose, so a robe's skirt
+  of a body that lies dead hangs open and flat, up to 44 mm from the target
+  pose, and a cloak of a lying body hangs down through the ground, which hides
+  it, where the Blender view lays it straight out behind the body. The cloth
+  meets no ground.
+- **The light** of the World differs on purpose: from yaw 35 the back is in the
+  shade, and the shadows come from the World's shadow maps, blocky on the
+  ground and on a shirt under the hood's or the head's shadow, and the helmet
+  casts no shadow on the face up close, where Blender's is sharp.
+- **The textures** are filtered as the game filters them: the net shirt's
+  strands thin out with the distance in the figure views, and the fringe of
+  `DarkBrownHair` shows a thin light stripe in the views from the front, where
+  Blender's is solid.
+- The capture keeps the lids open, as the Blender views do; the game blinks and
+  closes them while a body lies dead.
 
 ### Cloth Parity
 
