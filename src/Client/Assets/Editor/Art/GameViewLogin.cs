@@ -35,6 +35,15 @@ namespace Mmorpg.Client.Editor
         private const string AccountExists = "account_already_exists";
         private const float WorldSeconds = 90f;
 
+        // Whether a GameService address is on this computer: an absolute http or https address whose
+        // host is the loopback, by name or by number.
+        internal static bool IsLocalAddress(string baseUrl)
+        {
+            return Uri.TryCreate(baseUrl, UriKind.Absolute, out var address)
+                && (address.Scheme == Uri.UriSchemeHttp || address.Scheme == Uri.UriSchemeHttps)
+                && address.IsLoopback;
+        }
+
         // Signs in to the capture's account with its character, made the first time, joins the
         // shard, and loads its World, until the World shows its local player; signedIn gets what it
         // signed in to or made, and entered the World's context.
@@ -50,6 +59,14 @@ namespace Mmorpg.Client.Editor
 
             var api = new ApiClient(10);
             var baseUrl = session.Settings.GameServiceBaseUrl;
+            if (!IsLocalAddress(baseUrl))
+            {
+                // An address override of the Editor may point the client at another stack; the
+                // capture's account and its password are for the local one only.
+                throw new InvalidOperationException("The client's GameService address " + baseUrl + " is not on this computer. The capture "
+                    + "signs in only to the local development stack; clear the GameService address override of the Editor and run it again.");
+            }
+
             phase("account");
             AuthResponse account = null;
             ApiError error = null;

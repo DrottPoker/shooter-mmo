@@ -4040,7 +4040,10 @@ runs only when it is started, does this:
   registers it, when the sign-in answers that no such account exists, and
   creates its character, and every later capture signs in to them again. Its
   password is a constant of `GameViewLogin` for the local development stack
-  only, as the development account's is. The capture sends no input and never
+  only, as the development account's is, so the capture sends nothing unless
+  the client's GameService address is on this computer: with an address
+  override of the Editor that names another stack it stops and says so. The
+  capture sends no input and never
   changes the character's look, items, or place, so every run finds it standing
   at the spawn as the first did. It never uses the entry screens, so the login,
   character, and shard that they remember in `PlayerPrefs`, which the Editors of

@@ -29,6 +29,22 @@ namespace Mmorpg.Client.Tests.EditMode
             new Vector3(0.4f, -0.02f, 0.9f),
         };
 
+        // The capture's account and password go to the local development stack only, also when
+        // the Editor's address override names another one.
+        [TestCase("http://localhost:5000", true)]
+        [TestCase("http://127.0.0.1:5100", true)]
+        [TestCase("http://[::1]:5000", true)]
+        [TestCase("https://game.example.com", false)]
+        [TestCase("http://192.168.1.20:5000", false)]
+        [TestCase("ftp://localhost/", false)]
+        [TestCase("localhost:5000", false)]
+        [TestCase("", false)]
+        [TestCase(null, false)]
+        public void TheCaptureSignsInOnlyOnThisComputer(string address, bool local)
+        {
+            Assert.That(GameViewLogin.IsLocalAddress(address), Is.EqualTo(local));
+        }
+
         [Test]
         public void AFigureFromTheFrontIsFramedAsTheBlenderViewFramesIt()
         {
