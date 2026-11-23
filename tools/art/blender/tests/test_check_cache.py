@@ -1,8 +1,8 @@
-"""The cache of the garment checks and the checks that need no frame: the keys of the units, which
-change with everything a unit reads, the entries, which read back as exactly what was written, the
-count of poses and clip frames a check with nothing to follow reports without stepping, and the order
-and the shortcuts of coverage.checks, run here with stand-ins for what needs Blender. Runs without
-Blender: see blender_source.py. It needs numpy."""
+"""The cache of the garment checks and the checks that need no pose: the keys of the units, which
+change with everything a unit reads and with no clip, the entries, which read back as exactly what was
+written, the count of poses a check with nothing to follow reports without stepping, and the order and
+the shortcuts of coverage.checks, run here with stand-ins for what needs Blender. Runs without Blender:
+see blender_source.py. It needs numpy."""
 
 import json
 import pathlib
@@ -24,7 +24,7 @@ np = __import__("numpy")
 garment = load("art_pipeline/garment.py", "version_name")
 poses = load("art_pipeline/poses.py", "POSES")
 REAL = ("Coverage", "Motion", "Pair", "OwnCheck", "UnderCheck", "own_entry", "own_from", "under_entry", "under_from",
-        "frame_names", "skipped_frames", "phase_of", "pair_summary", "motion_summary", "REST", "TEST_POSES")
+        "skipped_poses", "pair_summary", "motion_summary", "REST", "TEST_POSES")
 coverage = load("art_pipeline/coverage.py", *REAL, garment=garment, poses=poses, numpy=True)
 
 
@@ -36,9 +36,9 @@ def base(**changed) -> dict:
     """The inputs every unit of a run reads, with any of them changed."""
     values = {"code": sha("code"), "garment": {"name": "Shirt", "content": sha("shirt"), "band": "tight", "covers": True,
                                                "fields": {"band": "tight", "recipe": {"ease": 0.004}, "layer": 300}},
-              "cage": sha("cage"), "clips": [{"content": sha("clips"), "clips": ["Idle", "Walk"]}], "texture": None}
+              "cage": sha("cage"), "texture": None}
     values.update(changed)
-    return cache.base_inputs(values["code"], values["garment"], values["cage"], values["clips"], values["texture"])
+    return cache.base_inputs(values["code"], values["garment"], values["cage"], values["texture"])
 
 
 INNER = {"name": "Trousers", "content": sha("trousers"), "band": "tight", "fields": {"band": "tight", "layer": 200}}
@@ -73,13 +73,14 @@ class KeyTests(unittest.TestCase):
         self.assertNotEqual(own_key(fit=sha("male refitted")), own_key())
         self.assertNotEqual(pair_key(fits=[FITS[0], ("Female", sha("female refitted"))]), pair_key())
 
-    def test_a_change_of_a_clip_or_of_the_list_of_clips_misses_at_the_rig_stage_only(self):
-        edited = base(clips=[{"content": sha("clips edited"), "clips": ["Idle", "Walk"]}])
-        fewer = base(clips=[{"content": sha("clips"), "clips": ["Idle"]}])
-        for changed in (edited, fewer):
-            self.assertNotEqual(own_key(changed), own_key())
-            self.assertNotEqual(pair_key(changed), pair_key())
-            self.assertEqual(own_key(changed, stage="model"), own_key(stage="model"))
+    def test_no_unit_reads_a_clip_so_a_changed_clip_misses_no_entry(self):
+        """The checks pose the rest pose and the test poses only, so neither a unit's inputs nor what
+        every unit of a run reads names an animation library or its clips."""
+        self.assertEqual(sorted(base()), ["cage", "code", "garment", "texture"])
+        for stage in ("model", "rig"):
+            with self.subTest(stage=stage):
+                self.assertNotIn("clips", cache.own_inputs(base(), "Male", sha("male"), stage))
+                self.assertNotIn("clips", cache.pair_inputs(base(), FITS, INNER, stage))
 
     def test_a_change_of_band_or_recipe_misses(self):
         template = base()["garment"]
@@ -108,15 +109,15 @@ class KeyTests(unittest.TestCase):
         self.assertIsNone(cache.pair_inputs(base(), FITS, {**INNER, "content": None}, "rig"))
         self.assertIsNone(cache.pair_inputs(base(), FITS, None, "rig"))
 
-    def test_a_library_without_its_content_keeps_only_the_model_stage(self):
-        missing = base(clips=[{"content": None, "clips": ["Idle"]}])
-        self.assertIsNone(missing["clips"])
-        self.assertIsNone(cache.own_inputs(missing, "Male", sha("male"), "rig"))
-        self.assertIsNotNone(cache.own_inputs(missing, "Male", sha("male"), "model"))
+    def test_the_rig_stage_has_a_key_with_the_fingerprints_of_the_model_stage(self):
+        for stage in ("model", "rig"):
+            with self.subTest(stage=stage):
+                self.assertIsNotNone(cache.own_inputs(base(), "Male", sha("male"), stage))
+                self.assertIsNotNone(cache.pair_inputs(base(), FITS, INNER, stage))
 
     def test_the_inputs_name_what_the_unit_reads(self):
         inputs = cache.pair_inputs(base(), FITS, INNER, "rig")
-        self.assertEqual(sorted(inputs), ["bodies", "cage", "clips", "code", "garment", "inner", "stage", "texture", "unit"])
+        self.assertEqual(sorted(inputs), ["bodies", "cage", "code", "garment", "inner", "stage", "texture", "unit"])
         self.assertEqual(inputs["bodies"], [{"label": "Male", "fit": sha("male")}, {"label": "Female", "fit": sha("female")}])
 
 
@@ -166,7 +167,7 @@ class StoreTests(unittest.TestCase):
     def test_an_entry_reads_back_as_exactly_what_was_written(self):
         arrays = {"covered": np.array([True, False, True]), "underlay": np.array([3, 1, 2], np.int64),
                   "distances": np.array([0.1 + 0.2, 1e-300, -0.0]), "empty": np.empty(0, np.int64)}
-        data = {"depth": 0.1 + 0.2, "worst": [["the rest pose", 0.0, "the rest pose"]], "count": 518}
+        data = {"depth": 0.1 + 0.2, "worst": [["the rest pose", 0.0, "the rest pose"]], "count": 11}
         self.assertTrue(self.store.save(self.key, self.inputs, data, arrays))
         found_data, found_arrays = self.store.load(self.key)
         self.assertEqual(found_data, data)
@@ -256,13 +257,12 @@ class SourceTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         root = pathlib.Path(self.folder.name)
-        self.library = root / "Human_Actions" / "Human_Actions.blend"
-        self.library.parent.mkdir()
-        self.library.write_bytes(b"clips as exported")
-        self.record({"sourceSha256": self.hash(b"clips as exported"), "stages": {"animation": sha("clips")}})
+        self.template = root / "Trousers" / "Trousers.blend"
+        self.template.parent.mkdir()
+        self.template.write_bytes(b"trousers as exported")
+        self.record({"sourceSha256": self.hash(b"trousers as exported"), "stages": {"rig": sha("trousers")}})
         self.store = cache.Store(root / "cache")
-        self.source = {"name": "Human_Actions", "path": str(self.library), "record": ["stages", "animation"],
-                       "content": sha("clips")}
+        self.source = {"name": "Trousers", "path": str(self.template), "record": ["stages", "rig"], "content": sha("trousers")}
 
     def tearDown(self):
         self.folder.cleanup()
@@ -272,8 +272,8 @@ class SourceTests(unittest.TestCase):
         return __import__("hashlib").sha256(data).hexdigest()
 
     def record(self, content) -> None:
-        record = {"kind": "animations"} if content is None else {"kind": "animations", "content": content}
-        (self.library.parent / "asset.json").write_text(json.dumps(record), encoding="utf-8")
+        record = {"kind": "garment"} if content is None else {"kind": "garment", "content": content}
+        (self.template.parent / "asset.json").write_text(json.dumps(record), encoding="utf-8")
 
     def save(self, sources=None, store=None) -> object:
         units = cache.Units(store or self.store, base(), dict(FITS), {}, sources=[self.source] if sources is None else sources)
@@ -286,71 +286,54 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(self.save().report(), {"units": 0, "cached": 0, "stored": 2, "notes": []})
 
     def test_a_source_saved_with_other_bytes_than_its_record_stops_every_write(self):
-        self.library.write_bytes(b"clips saved again")
+        self.template.write_bytes(b"trousers saved again")
         units = self.save()
-        self.assertEqual((units.stored, units.notes), (0, ["Human_Actions changed during the run"]))
+        self.assertEqual((units.stored, units.notes), (0, ["Trousers changed during the run"]))
 
     def test_a_record_with_another_fingerprint_than_the_one_given_stops_every_write(self):
-        self.record({"sourceSha256": self.hash(b"clips as exported"), "stages": {"animation": sha("other clips")}})
+        self.record({"sourceSha256": self.hash(b"trousers as exported"), "stages": {"rig": sha("other trousers")}})
         units = self.save()
-        self.assertEqual((units.stored, units.notes), (0, ["Human_Actions changed during the run"]))
+        self.assertEqual((units.stored, units.notes), (0, ["Trousers changed during the run"]))
 
     def test_a_source_without_its_asset_json_or_content_record_stops_every_write(self):
         self.record(None)
-        self.assertEqual(self.save().notes, ["Human_Actions has no content record to compare"])
-        (self.library.parent / "asset.json").unlink()
-        self.assertEqual(self.save().notes, ["Human_Actions has no asset.json to compare"])
-        self.library.unlink()
-        self.assertEqual(self.save().notes, ["Human_Actions could not be read"])
+        self.assertEqual(self.save().notes, ["Trousers has no content record to compare"])
+        (self.template.parent / "asset.json").unlink()
+        self.assertEqual(self.save().notes, ["Trousers has no asset.json to compare"])
+        self.template.unlink()
+        self.assertEqual(self.save().notes, ["Trousers could not be read"])
 
     def test_a_file_of_the_run_s_own_asset_is_held_to_its_bytes_when_the_run_began(self):
-        own = {"name": "NetShirt", "path": str(self.library), "sha256": self.hash(b"clips as exported")}
+        own = {"name": "NetShirt", "path": str(self.template), "sha256": self.hash(b"trousers as exported")}
         self.assertEqual(self.save([own]).stored, 2)
-        self.library.write_bytes(b"painted again")
+        self.template.write_bytes(b"painted again")
         self.assertEqual(self.save([own]).notes, ["NetShirt changed during the run"])
 
     def test_nothing_is_read_from_a_source_when_nothing_is_written(self):
-        self.library.write_bytes(b"clips saved again")
+        self.template.write_bytes(b"trousers saved again")
         units = self.save(store=cache.Store(self.folder.name, enabled=False))
         self.assertEqual((units.stored, units.notes), (0, []))
 
 
-def frames(**clips):
-    """Clips as the checks read them: a name, a frame range, and whether they loop."""
-    return [types.SimpleNamespace(name=name, frame_range=(0.0, float(last)), get=lambda key, loop=loop: loop if key == "loop" else None)
-            for name, (last, loop) in clips.items()]
+class PoseCountTests(unittest.TestCase):
+    """A check with nothing to follow steps through no test pose but reports the same count and the same
+    phases as one that stepped."""
 
+    def test_the_reports_name_the_rest_pose_and_the_ten_test_poses(self):
+        self.assertEqual(1 + len(poses.POSES), 11)
 
-class FrameCountTests(unittest.TestCase):
-    """A check with nothing to follow steps through no pose and no frame but reports the same count and
-    the same phases."""
-
-    def test_the_names_are_the_test_poses_then_every_clip_frame_without_a_looping_clip_s_last(self):
-        names = coverage.frame_names(frames(Walk=(3, True), Death=(2, False)))
-        self.assertEqual(names, [name for name, _d, _p in poses.POSES] + ["Walk frame 0", "Walk frame 1", "Walk frame 2",
-                                                                          "Death frame 0", "Death frame 1", "Death frame 2"])
-        self.assertEqual(coverage.frame_names(frames(Walk=(3, True)), test_poses=False), ["Walk frame 0", "Walk frame 1",
-                                                                                          "Walk frame 2"])
-
-    def test_the_clips_of_the_human_library_give_the_518_poses_and_frames_the_reports_name(self):
-        library = json.loads((REPOSITORY_ROOT / "art" / "Animations" / "Human_Actions" / "asset.json").read_text(encoding="utf-8"))
-        clips = frames(**{clip["name"]: (clip["frames"], clip["loop"]) for clip in library["export"]["clips"]})
-        # The rest pose and every pose and frame after it.
-        self.assertEqual(1 + len(coverage.frame_names(clips)), 518)
-
-    def test_skipped_frames_add_every_phase_at_nothing_in_the_order_stepping_adds_them(self):
+    def test_skipped_poses_add_the_test_poses_at_nothing_after_the_rest_pose(self):
         worst = {coverage.REST: (0.0, coverage.REST)}
-        count = coverage.skipped_frames(worst, frames(Walk=(3, True), Death=(2, False)))
-        self.assertEqual(count, len(poses.POSES) + 6)
-        self.assertEqual(list(worst.items()), [(coverage.REST, (0.0, coverage.REST)), (coverage.TEST_POSES, (0.0, "")),
-                                               ("Walk", (0.0, "")), ("Death", (0.0, ""))])
+        count = coverage.skipped_poses(worst)
+        self.assertEqual(count, len(poses.POSES))
+        self.assertEqual(list(worst.items()), [(coverage.REST, (0.0, coverage.REST)), (coverage.TEST_POSES, (0.0, ""))])
 
     def test_a_pair_with_nothing_to_follow_reports_as_one_that_stepped(self):
         pair = coverage.Pair("Male", 0, 1, {coverage.REST: (0.0, coverage.REST)})
-        pair.checked += coverage.skipped_frames(pair.worst, frames(Walk=(3, True)))
+        pair.checked += coverage.skipped_poses(pair.worst)
         self.assertEqual(coverage.pair_summary("HoodUp", "Boots", pair),
-                         f"Boots under HoodUp_Male: none of its drawn triangles lies under HoodUp_Male in {len(poses.POSES) + 4} "
-                         "poses and clip frames")
+                         f"Boots under HoodUp_Male: none of its drawn triangles lies under HoodUp_Male in {len(poses.POSES) + 1} "
+                         "poses")
 
 
 class Stand:
@@ -360,11 +343,6 @@ class Stand:
         self.calls = []
         self.hides = set(hides)
         self.meeting = set(meets)
-        self.loaded = 0
-
-    def actions(self):
-        self.loaded += 1
-        return []
 
     def functions(self) -> dict:
         def note(*call):
@@ -389,35 +367,22 @@ class Stand:
             note("meets", inner.name, label)
             return (inner.name, label) in self.meeting
 
-        def follow_failures(name, cover, inner, hides, actions, recipe, inner_recipe, inner_covered):
-            note("failures", inner.name, cover.label)
-            failed = np.zeros(4, bool)
-            failed[1] = True
-            return failed, {1: ("Walk frame 2", (0.1, 0.2, 0.3))}
-
-        def check_motion(name, cover, actions):
+        def check_motion(name, cover):
             note("motion", cover.label)
             cover.through = np.zeros(6, bool)
-            return coverage.Motion(cover.label, 2, 0, 0.0, "", "", 518, faces=3, worst={coverage.REST: (0.0, coverage.REST)})
+            return coverage.Motion(cover.label, 2, 0, 0.0, "", "", 11, faces=3, worst={coverage.REST: (0.0, coverage.REST)})
 
-        def check_pair(name, cover, inner, underlay, hides, actions, recipe, inner_recipe, inner_covered):
+        def check_pair(name, cover, inner, underlay, hides, recipe, inner_recipe, inner_covered):
             note("pair", inner.name, cover.label)
-            return coverage.Pair(cover.label, 2, 518, {coverage.REST: (0.0, coverage.REST)}, faces=np.zeros(4, bool),
+            return coverage.Pair(cover.label, 2, 11, {coverage.REST: (0.0, coverage.REST)}, faces=np.zeros(4, bool),
                                  hidden=int(hides.sum()))
 
-        def apart_pair(name, label, inner, actions):
+        def apart_pair(name, label, inner):
             note("apart", inner.name, label)
-            return coverage.Pair(label, 0, 518, {coverage.REST: (0.0, coverage.REST)}, faces=np.zeros(4, bool))
-
-        def chosen_hidden(candidates, failures, polygons, turned):
-            chosen = np.array(candidates, bool)
-            for failed in failures:
-                chosen &= ~failed
-            return chosen
+            return coverage.Pair(label, 0, 11, {coverage.REST: (0.0, coverage.REST)}, faces=np.zeros(4, bool))
 
         return {"body_margins": body_margins, "hidden": hidden, "compute": compute, "meets": meets,
-                "follow_failures": follow_failures, "check_motion": check_motion, "check_pair": check_pair,
-                "apart_pair": apart_pair, "chosen_hidden": chosen_hidden, "_turned_of": lambda obj, recipe: []}
+                "check_motion": check_motion, "check_pair": check_pair, "apart_pair": apart_pair}
 
 
 def versions(name: str) -> list:
@@ -443,8 +408,7 @@ class ChecksTests(unittest.TestCase):
         units = cache.Units(cache.Store(self.folder.name), base(garment={**base()["garment"], "covers": covers}), dict(FITS),
                             {inner: dict(INNER, name=inner, content=inner_content or sha(inner)) for inner in inners})
         given = [(inner, "mid", None, (lambda found=versions(inner): found)) for inner in inners]
-        own, under = checks("Shirt", self.LABELS, "tight", covers, None, given,
-                            types.SimpleNamespace(actions=stand.actions), rig, units, pair_checks, motion_first)
+        own, under = checks("Shirt", self.LABELS, "tight", covers, None, given, rig, units, pair_checks, motion_first)
         return own, under, units
 
     def test_a_pair_that_cannot_meet_on_any_body_computes_no_cover_of_it_and_follows_nothing(self):
@@ -462,19 +426,17 @@ class ChecksTests(unittest.TestCase):
                          [("meets", "Boots", "Male"), ("meets", "Boots", "Female"), ("meets", "Gloves", "Male"),
                           ("meets", "Gloves", "Female")])
         self.assertIn(("compute", "Boots", "Female"), stand.calls)
-        # follow_failures returns at once for a template without faces the rest rule hides.
-        self.assertEqual([c[1] for c in stand.calls if c[0] == "failures"], ["Boots", "Boots", "Gloves", "Gloves", "Trousers",
-                                                                             "Trousers"])
 
     def test_the_checks_run_in_their_order_with_the_motion_before_the_pairs_for_a_template(self):
         stand = Stand(hides=["Trousers"], meets=[("Boots", "Male")])
-        self.run_checks(stand)
+        _own, under, _units = self.run_checks(stand)
         kinds = [call[0] for call in stand.calls]
         self.assertEqual(kinds, ["margins", "margins", "hidden", "hidden", "compute", "compute", "meets", "compute", "compute",
-                                 "compute", "compute", "failures", "failures", "failures", "failures", "motion", "motion",
-                                 "pair", "pair", "pair", "pair"])
+                                 "compute", "compute", "motion", "motion", "pair", "pair", "pair", "pair"])
         self.assertEqual([c[1:] for c in stand.calls if c[0] == "pair"],
                          [("Boots", "Male"), ("Boots", "Female"), ("Trousers", "Male"), ("Trousers", "Female")])
+        # The pair check on every body follows the faces the rest rule hides on the first body, all of them.
+        self.assertEqual([pair.hidden for pair in under["Trousers"].pairs], [2, 2])
 
     def test_a_texture_checks_each_body_s_pairs_before_its_motion_and_a_template_that_covers_nothing_has_no_pair_check(self):
         stand = Stand(meets=[("Boots", "Male")])
@@ -486,7 +448,7 @@ class ChecksTests(unittest.TestCase):
         _own, under, _units = self.run_checks(stand, covers=False, pair_checks=False, motion_first=False)
         self.assertEqual([c[0] for c in stand.calls], ["hidden", "hidden", "compute", "compute", "motion", "motion"])
         self.assertIsNone(under["Trousers"].over)
-        self.assertFalse(under["Trousers"].chosen.any())
+        self.assertFalse(under["Trousers"].hides.any())
 
     def test_the_model_stage_runs_the_margins_the_rest_rule_and_the_covers_only(self):
         stand = Stand(hides=["Trousers"])
@@ -494,7 +456,13 @@ class ChecksTests(unittest.TestCase):
         self.assertEqual([c[0] for c in stand.calls], ["margins", "margins", "hidden", "hidden", "compute", "compute"])
         self.assertIsNone(own["Male"].motion)
         self.assertEqual(own["Male"].coverage.hidden["Trousers"].tolist(), [True, True, False, False])
-        self.assertEqual(stand.loaded, 0)
+
+    def test_the_rig_stage_hides_what_the_rest_rule_hides(self):
+        stand = Stand(hides=["Trousers"], meets=[("Boots", "Male")])
+        own, under, _units = self.run_checks(stand)
+        for label in self.LABELS:
+            self.assertEqual(own[label].coverage.hidden["Trousers"].tolist(), [True, True, False, False])
+        self.assertEqual(under["Trousers"].hides.tolist(), [True, True, False, False])
 
     def test_a_second_run_takes_every_unit_from_the_cache_and_gives_the_same_results(self):
         stand = Stand(hides=["Trousers"], meets=[("Boots", "Male")])
@@ -502,7 +470,7 @@ class ChecksTests(unittest.TestCase):
         self.assertEqual(units.report(), {"units": 4, "cached": 0, "stored": 4, "notes": []})
         again = Stand(hides=["Trousers"], meets=[("Boots", "Male")])
         cached_own, cached_under, cached_units = self.run_checks(again)
-        self.assertEqual((again.calls, again.loaded), ([], 0))
+        self.assertEqual(again.calls, [])
         self.assertEqual(cached_units.report(), {"units": 4, "cached": 4, "stored": 0, "notes": []})
         for label in self.LABELS:
             self.assertEqual(coverage.motion_summary("Shirt", cached_own[label].motion), coverage.motion_summary("Shirt", own[label].motion))
@@ -512,17 +480,15 @@ class ChecksTests(unittest.TestCase):
         for inner in ("Boots", "Trousers"):
             self.assertEqual([coverage.pair_summary("Shirt", inner, p) for p in cached_under[inner].pairs],
                              [coverage.pair_summary("Shirt", inner, p) for p in under[inner].pairs])
-            self.assertEqual(cached_under[inner].where, under[inner].where)
             self.assertEqual(cached_under[inner].apart, under[inner].apart)
-        self.assertEqual(cached_under["Trousers"].chosen.tolist(), [True, False, False, False])
+        self.assertEqual(cached_under["Trousers"].hides.tolist(), [True, True, False, False])
 
     def test_a_changed_inner_template_misses_only_its_pair(self):
         self.run_checks(Stand(hides=["Trousers"], meets=[("Boots", "Male")]))
         stand = Stand(hides=["Trousers"], meets=[("Boots", "Male")])
         _own, _under, units = self.run_checks(stand, inners=("Boots",), inner_content=sha("boots edited"))
         self.assertEqual(units.report()["cached"], 2)
-        self.assertEqual([c[0] for c in stand.calls], ["margins", "hidden", "meets", "compute", "compute", "failures", "failures",
-                                                       "pair", "pair"])
+        self.assertEqual([c[0] for c in stand.calls], ["margins", "hidden", "meets", "compute", "compute", "pair", "pair"])
 
 
 class EntryTests(unittest.TestCase):
@@ -531,9 +497,8 @@ class EntryTests(unittest.TestCase):
     def test_an_own_check_reads_back_with_its_arrays_and_its_motion(self):
         cover = coverage.Coverage("Male", "tight", np.array([True, False]), np.array([1, 0], np.int64), np.array([3], np.int64),
                                   np.array([0.0019]), 2, 4, 2, np.array([False, True]), np.array([False, False]))
-        motion = coverage.Motion("Male", 12, 1, 0.0129, "Death frame 27", "Pelvis", 518, faces=146, rest=0,
-                                 worst={coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.00493, "sit"),
-                                        "Death": (0.0129, "Death frame 27")})
+        motion = coverage.Motion("Male", 12, 1, 0.00493, "sit", "Pelvis", 11, faces=146, rest=0,
+                                 worst={coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.00493, "sit")})
         data, arrays = coverage.own_entry(coverage.OwnCheck(cover, motion))
         back = coverage.own_from(json.loads(json.dumps(data)), arrays)
         self.assertEqual(coverage.motion_summary("Trousers", back.motion), coverage.motion_summary("Trousers", motion))
@@ -543,22 +508,20 @@ class EntryTests(unittest.TestCase):
         self.assertEqual((back.coverage.body_faces, back.coverage.body_vertices, back.coverage.garment_faces), (2, 4, 2))
 
     def test_a_pair_reads_back_with_every_phase_in_its_order(self):
-        pair = coverage.Pair("Female", 162, 518, {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.02102, "arms_up"),
-                                                  "Jog": (0.0479, "Jog frame 1")}, through=33, depth=0.0479, where="Jog frame 1",
-                             zone="Neck", rest=0, faces=np.array([False, True]), places={"Jog": (0.1, -0.2, 1.5)}, hidden=782,
-                             shown={coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), "Jog": (3, "Jog frame 4", (0.1, 0.2, 0.3))})
-        check = coverage.UnderCheck([np.array([0.0146, 0.2771]), np.empty(0)], np.array([True, False]), np.array([True, False]),
-                                    [np.array([False, False]), np.array([False, True])], [{}, {1: ("Walk frame 2", (0.1, 0.2, 0.3))}],
-                                    [pair, pair], False)
+        pair = coverage.Pair("Female", 162, 11, {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.02102, "arms_up")},
+                             through=33, depth=0.02102, where="arms_up", zone="Neck", rest=0, faces=np.array([False, True]),
+                             places={coverage.TEST_POSES: (0.1, -0.2, 1.5)}, hidden=782,
+                             shown={coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), coverage.TEST_POSES: (3, "sit", (0.1, 0.2, 0.3))})
+        check = coverage.UnderCheck([np.array([0.0146, 0.2771]), np.empty(0)], np.array([True, False]), [pair, pair], False)
         data, arrays = coverage.under_entry(check)
         back = coverage.under_from(json.loads(json.dumps(data)), arrays)
         self.assertEqual(coverage.pair_summary("HoodUp", "Cloak", back.pairs[0]), coverage.pair_summary("HoodUp", "Cloak", pair))
         self.assertEqual(list(back.pairs[1].worst), list(pair.worst))
         self.assertEqual((back.pairs[0].places, back.pairs[0].shown), (pair.places, pair.shown))
-        self.assertEqual(back.where, check.where)
         self.assertEqual([o.tolist() for o in back.over], [o.tolist() for o in check.over])
-        self.assertEqual([f.tolist() for f in back.failed], [f.tolist() for f in check.failed])
-        self.assertIsNone(coverage.under_from(*coverage.under_entry(coverage.UnderCheck(None, check.candidates, check.chosen))).over)
+        self.assertEqual(back.hides.tolist(), check.hides.tolist())
+        self.assertEqual(sorted(data), ["apart", "over", "pairs"])
+        self.assertIsNone(coverage.under_from(*coverage.under_entry(coverage.UnderCheck(None, check.hides))).over)
 
 
 class ManifestFieldTests(unittest.TestCase):

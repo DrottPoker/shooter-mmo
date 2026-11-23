@@ -94,7 +94,7 @@ Write-Host "Review sheet: $sheet"
 Write-Host "Review file with the test poses (play the timeline): $reviewFile"
 
 # Every rule of both stages, so a broken one shows before the review, and what the garment covers
-# at rest and in motion.
+# at rest and in the test poses; how it looks in the clips is measured by the game views.
 $cacheArguments = Get-ArtCacheArguments $blender $manifest -NoCache:$NoCache
 $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + $cacheArguments)

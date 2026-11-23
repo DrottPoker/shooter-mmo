@@ -149,40 +149,13 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
     }
 }
 
-function Get-ArtClipSourceProblem([string]$Blender, $Manifest) {
-    # Returns $null when the approvals of every animation library of the skeleton hold for its current
-    # content, which Blender reads from the library's file for the motion check, otherwise the reason
-    # they do not.
-    foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
-        $current = Get-ArtCurrentManifest $Blender (Join-Path $script:ArtRepositoryRoot $library.Asset)
-        $problem = Get-ArtExportGateProblem $current
-        if ($null -ne $problem) {
-            return "the animation library $($library.Asset) is not approved for its content: $problem"
-        }
-    }
-
-    return $null
-}
-
-function Get-ArtClipSourceRecords([string]$Blender, $Manifest) {
-    # The content of the animation libraries whose clips a garment or a texture's masks are checked in.
-    $problem = Get-ArtClipSourceProblem $Blender $Manifest
-    if ($null -ne $problem) {
-        throw "$($Manifest.Name) cannot be exported while $problem."
-    }
-
-    return @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            [ordered]@{ library = $_.Asset; contentSha256 = [string]$_.ContentSha256 }
-        })
-}
-
 function New-ArtTextureJob([string]$Blender, $Manifest) {
     # A garment texture exports its image and its material, and with transparent parts its masks
-    # per body of its template, checked in the clips of the skeleton's libraries, with the faces they
-    # hide of the templates of lower layers worn under its template. It records the content of its
-    # template and of the libraries and the lower templates its masks were made with, so a change of
-    # any of them needs a new export of the texture. The masks are computed in the template's file,
-    # so its approvals must hold for that file's content.
+    # per body of its template, checked at rest and in the test poses, with the faces they hide of the
+    # templates of lower layers worn under its template. It records the content of its template and of
+    # the lower templates its masks were made with, so a change of any of them needs a new export of
+    # the texture; a change of a clip needs none. The masks are computed in the template's file, so
+    # its approvals must hold for that file's content.
     $template = Get-ArtCurrentManifest $Blender $Manifest.Garment.Directory
     $templateProblem = Get-ArtExportGateProblem $template
     if ($null -ne $templateProblem) {
@@ -215,12 +188,10 @@ function New-ArtTextureJob([string]$Blender, $Manifest) {
         throw "$($Manifest.Name) cannot be exported: $reviewProblem."
     }
 
-    # Only the masks of a texture with transparent parts are checked in the clips and name the faces
-    # they hide of the templates of lower layers worn under its template, so a library or such a
-    # template whose approvals do not hold for the content Blender reads stops only such a texture, in
-    # Blender, before anything is written; whether the texture has them shows only there.
-    $clipProblem = Get-ArtClipSourceProblem $Blender $Manifest
-    $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Blender $Manifest } else { @() }
+    # Only the masks of a texture with transparent parts name the faces they hide of the templates of
+    # lower layers worn under its template, so such a template whose approvals do not hold for the
+    # content Blender reads stops only such a texture, in Blender, before anything is written; whether
+    # the texture has them shows only there.
     $pairProblem = $null
     $pairSources = @()
     $pairs = @(Get-ArtGarmentPairs $template)
@@ -234,7 +205,7 @@ function New-ArtTextureJob([string]$Blender, $Manifest) {
         $pairSources += [ordered]@{ garment = $pair.RelativeDirectory; contentSha256 = Get-ArtExportedContent $current }
     }
 
-    $opaqueReason = @($clipProblem, $pairProblem | Where-Object { $null -ne $_ }) -join "; "
+    $opaqueReason = @($pairProblem | Where-Object { $null -ne $_ }) -join "; "
     $opaqueOnly = if ($opaqueReason) { @("--opaque-only", $opaqueReason) } else { @() }
     $folder = $script:ArtGarmentTextureFolder
     return New-ArtExportJob $Manifest (
@@ -244,7 +215,6 @@ function New-ArtTextureJob([string]$Blender, $Manifest) {
         (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Pairs $pairs)) @{
         Folder = $folder
         garmentContentSha256 = Get-ArtExportedContent $template
-        ClipSources = $clipSources
         PairSources = $pairSources
     }
 }
@@ -289,7 +259,6 @@ function Complete-ArtTextureJob($Job) {
         contentSha256 = Get-ArtExportedContent $Manifest
         garmentContentSha256 = [string]$Job.Context.garmentContentSha256
         masks = $masks
-        clipSources = $(if ($masks.Count -gt 0) { $Job.Context.ClipSources } else { @() })
         pairSources = $(if ($masks.Count -gt 0) { $Job.Context.PairSources } else { @() })
         materials = $materials
         textures = $textures
@@ -306,8 +275,8 @@ function Complete-ArtTextureJob($Job) {
 function New-ArtGarmentJob([string]$Blender, $Manifest) {
     # A garment template exports one model per body, each with that body's armature and its data.
     # It records the approved content of its cage, the fit of the bodies' exports, and the content of
-    # the animation libraries it was checked in and of the templates of lower layers it was checked
-    # over, so a change of any of them needs a new export of the template.
+    # the templates of lower layers it was checked over, so a change of any of them needs a new export
+    # of the template. Its checks read no clip, so a change of a clip needs none.
     $null = Update-ArtContentRecord $Blender $Manifest.Cage
     $cageProblem = Get-ArtCageGateProblem $Manifest.Cage
     if ($null -ne $cageProblem) {
@@ -324,7 +293,6 @@ function New-ArtGarmentJob([string]$Blender, $Manifest) {
         $bodyExports[$body.Root] = [string]$bodyExport.fitSha256
     }
 
-    $clipSources = Get-ArtClipSourceRecords $Blender $Manifest
     # The templates of a lower layer it is checked over, each approved for its current content, since
     # Blender reads their current files.
     $pairs = @(Get-ArtGarmentPairs $Manifest)
@@ -346,7 +314,6 @@ function New-ArtGarmentJob([string]$Blender, $Manifest) {
         Folder = $folder
         BodyFits = $bodyExports
         cageContentSha256 = Get-ArtCageContent $Manifest.Cage
-        ClipSources = $clipSources
         PairSources = $pairSources
     }
 }
@@ -399,7 +366,6 @@ function Complete-ArtGarmentJob($Job) {
         contentSha256 = Get-ArtExportedContent $Manifest
         cageContentSha256 = [string]$Job.Context.cageContentSha256
         models = $models
-        clipSources = $Job.Context.ClipSources
         pairSources = $Job.Context.PairSources
         materials = $materials
         textures = $textures

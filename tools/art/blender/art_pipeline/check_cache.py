@@ -1,19 +1,19 @@
 """The cache of the garment checks below the folder checks of the shared art cache, artifacts/art-cache of
 the repository's main checkout, whose folder the scripts pass, or of this checkout without it: the results a
 sync, an approval, the review sheet, and the export would otherwise compute again. Two kinds of unit are
-cached: a garment's own check on one body, what it covers and, at the rig stage, what motion does to the
-skin under it; and a pair, a template of a lower layer worn under it, on every body: the hide margins, the
-hidden faces, and the pair check. A masked texture's units are those of its template with the texture on it.
+cached: a garment's own check on one body, what it covers and, at the rig stage, what the test poses do to
+the skin under it; and a pair, a template of a lower layer worn under it, on every body: the hide margins,
+the hidden faces, and the pair check. A masked texture's units are those of its template with the texture
+on it. No unit reads a clip, so a change of an animation library misses no entry.
 
 The key of a unit is the SHA-256 of everything it reads, which its entry names for debugging: the
 content fingerprints of the garments involved and of a texture's image, the fit of each body, the cage's
-content, the content of each clip library with its clips, the fields of the templates' asset.json that
-the checks read, the review stage and the kind of unit, and one fingerprint of the pipeline's code and
-Blender's version, so any change of the code misses every entry. A unit with a fingerprint missing is
-computed and not cached, and a run writes no entry once a file it reads from another asset, a clip
-library, a template of a lower layer, or a texture, is no longer what the fingerprint given for it
-says. An entry is a JSON file and an .npz file of arrays, which is loaded without pickle; a missing,
-broken, or older entry reads as none, so the folder may be deleted at any time.
+content, the fields of the templates' asset.json that the checks read, the review stage and the kind of
+unit, and one fingerprint of the pipeline's code and Blender's version, so any change of the code misses
+every entry. A unit with a fingerprint missing is computed and not cached, and a run writes no entry once
+a file it reads from another asset, a template of a lower layer or a texture, is no longer what the
+fingerprint given for it says. An entry is a JSON file and an .npz file of arrays, which is loaded
+without pickle; a missing, broken, or older entry reads as none, so the folder may be deleted at any time.
 
 Standard library, numpy, and manifest_io only, so the tests run it without Blender. See docs/ART_PIPELINE.md, Cache Of
 The Garment Checks."""
@@ -32,7 +32,7 @@ import numpy as np
 from . import manifest_io
 
 # The version of the keys and entries; a change misses every older entry.
-SCHEMA = 2
+SCHEMA = 3
 ROOT = pathlib.Path(__file__).resolve().parents[4] / "artifacts" / "art-cache" / "checks"
 # The fields of a template's asset.json that the checks read, or that choose what they read.
 FIELDS = ("band", "covers", "hair", "hides", "layer", "recipe", "slot")
@@ -89,41 +89,30 @@ def key(inputs: dict) -> str:
 
 
 def own_inputs(base: dict | None, label: str, fit, stage: str) -> dict | None:
-    """What a garment's own check on one body reads, or None when a fingerprint is missing: at the rig
-    stage also the clips."""
-    if base is None or not is_sha(fit) or (stage == "rig" and base["clips"] is None):
+    """What a garment's own check on one body reads, or None when a fingerprint is missing."""
+    if base is None or not is_sha(fit):
         return None
-    inputs = {"unit": "own", "stage": stage, "code": base["code"], "garment": base["garment"],
-              "texture": base["texture"], "cage": base["cage"], "body": {"label": label, "fit": fit}}
-    if stage == "rig":
-        inputs["clips"] = base["clips"]
-    return inputs
+    return {"unit": "own", "stage": stage, "code": base["code"], "garment": base["garment"],
+            "texture": base["texture"], "cage": base["cage"], "body": {"label": label, "fit": fit}}
 
 
 def pair_inputs(base: dict | None, fits: list[tuple[str, object]], inner: dict | None, stage: str) -> dict | None:
     """What a pair reads, the garment over a template of a lower layer on every body, or None when a
-    fingerprint is missing: at the rig stage also the clips."""
-    if base is None or inner is None or not is_sha(inner.get("content")) or not all(is_sha(fit) for _label, fit in fits) or \
-            (stage == "rig" and base["clips"] is None):
+    fingerprint is missing."""
+    if base is None or inner is None or not is_sha(inner.get("content")) or not all(is_sha(fit) for _label, fit in fits):
         return None
-    inputs = {"unit": "pair", "stage": stage, "code": base["code"], "garment": base["garment"],
-              "texture": base["texture"], "cage": base["cage"],
-              "bodies": [{"label": label, "fit": fit} for label, fit in fits], "inner": inner}
-    if stage == "rig":
-        inputs["clips"] = base["clips"]
-    return inputs
+    return {"unit": "pair", "stage": stage, "code": base["code"], "garment": base["garment"],
+            "texture": base["texture"], "cage": base["cage"],
+            "bodies": [{"label": label, "fit": fit} for label, fit in fits], "inner": inner}
 
 
-def base_inputs(code, garment: dict, cage, clips: list[dict] | None, texture: dict | None = None) -> dict | None:
-    """What every unit of a run reads: the code, the garment with its content and fields, the cage, the
-    clip libraries, each its content and clips, or None when one lacks its content, and a texture's image.
-    None when a fingerprint the units all need is missing."""
+def base_inputs(code, garment: dict, cage, texture: dict | None = None) -> dict | None:
+    """What every unit of a run reads: the code, the garment with its content and fields, the cage, and a
+    texture's image. None when a fingerprint the units all need is missing."""
     if not is_sha(code) or not is_sha(garment.get("content")) or not is_sha(cage) or \
             (texture is not None and not is_sha(texture.get("image"))):
         return None
-    if clips is not None and not all(is_sha(c.get("content")) for c in clips):
-        clips = None
-    return {"code": code, "garment": garment, "cage": cage, "clips": clips, "texture": texture}
+    return {"code": code, "garment": garment, "cage": cage, "texture": texture}
 
 
 class Store:

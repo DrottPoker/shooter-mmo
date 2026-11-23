@@ -31,12 +31,13 @@ if ([string]::IsNullOrWhiteSpace($Output)) {
 $Output = [System.IO.Path]::GetFullPath($Output)
 $blender = Resolve-ArtBlender $BlenderPath
 if ($manifest.Kind -eq "garment") {
-    # The sheet of a garment also shows what it covers, at rest and in the clips.
+    # The sheet of a garment also shows what it covers, at rest and in the test poses; how it looks in
+    # the clips is seen in the game views.
     $results = @(Invoke-ArtGarmentSheet $blender $manifest $Output -NoCache:$NoCache)
 }
 elseif ($manifest.Kind -eq "texture") {
     # The sheet of a texture is rendered in its template's file, with the texture on every version.
-    # A texture with transparent parts also shows its own masks, at rest and in the clips.
+    # A texture with transparent parts also shows its own masks, at rest and in the test poses.
     $results = @(Invoke-ArtTextureSheet $blender $manifest $Output -NoCache:$NoCache)
 }
 else {

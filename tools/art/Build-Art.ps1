@@ -136,9 +136,11 @@ function Get-ArtGroup($Manifest, $Bodies) {
 function Get-ArtFollowed($Manifest) {
     # The assets whose content or export an asset follows: the bodies of the cage, of a garment, and of
     # a paint layer, whose exports give the fit and the paint layout; and the content of a garment's
-    # cage, animation libraries, and templates of lower layers, a texture's template with its libraries
-    # and its template's lower layers, a library's rig, and a paint layer's cage. A garment's sync is
-    # given only the exported templates of lower layers, so it sees one of them once it is exported.
+    # cage and templates of lower layers, a texture's template and its template's lower layers, a
+    # library's rig, and a paint layer's cage. No garment or texture follows an animation library: their
+    # checks step no frame of a clip, so a new clip needs no garment exported, and the game views measure
+    # how the garments look in it. A garment's sync is given only the exported templates of lower
+    # layers, so it sees one of them once it is exported.
     $followed = New-Object System.Collections.Generic.List[object]
     function Add-Followed([string]$Asset, [bool]$ReadsExport, [bool]$SeenWhenExported = $false) {
         if (-not [string]::IsNullOrEmpty($Asset) -and @($followed | Where-Object { $_.Asset -ceq $Asset }).Count -eq 0) {
@@ -153,12 +155,10 @@ function Get-ArtFollowed($Manifest) {
         "garment" {
             Add-Followed $Manifest.Cage.RelativeDirectory $false
             foreach ($body in @($Manifest.Bodies)) { Add-Followed $body.Asset $true }
-            foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) { Add-Followed $library.Asset $false }
             foreach ($pair in @(Get-ArtGarmentPairs $Manifest)) { Add-Followed $pair.RelativeDirectory $false $true }
         }
         "texture" {
             Add-Followed $Manifest.Garment.RelativeDirectory $false
-            foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) { Add-Followed $library.Asset $false }
             foreach ($pair in @(Get-ArtGarmentPairs $Manifest.Garment)) { Add-Followed $pair.RelativeDirectory $false }
         }
         "animations" {
@@ -246,9 +246,9 @@ function Get-ArtExportReasons($Manifest, $Manifests) {
             }
 
             if (@($Manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
-                foreach ($problem in @((Get-ArtClipSourcesProblem $Manifest "tools/art/Sync-TextureAsset.ps1"),
-                        (Get-ArtPairSourcesProblem $Manifest $Manifest.Garment "tools/art/Sync-TextureAsset.ps1") | Where-Object { $null -ne $_ })) {
-                    $reasons.Add("it $problem")
+                $pairProblem = Get-ArtPairSourcesProblem $Manifest $Manifest.Garment "tools/art/Sync-TextureAsset.ps1"
+                if ($null -ne $pairProblem) {
+                    $reasons.Add("it $pairProblem")
                 }
             }
         }

@@ -973,9 +973,9 @@ function Get-ArtGarmentDataTarget([string]$Name, [string]$Label) {
 }
 
 function Get-ArtClipLibraries([string]$Skeleton) {
-    # The animation libraries of a skeleton, whose clips a garment is checked in: their repository
-    # path, their .blend file, their clips, and the content of their one stage as their content record
-    # holds it, which an export records.
+    # The animation libraries of a skeleton, whose clips its bodies play and its attachments name: their
+    # repository path, their .blend file, and their clips. No garment or texture follows them: their
+    # checks step no frame of a clip, and the game views measure how the garments look in the clips.
     return @(Get-ArtAssetDirectories | ForEach-Object {
             $json = Get-Content -Raw -LiteralPath (Join-Path $_ "asset.json") | ConvertFrom-Json
             if ([string]$json.kind -eq "animations" -and [string]$json.skeleton -ceq $Skeleton) {
@@ -984,23 +984,9 @@ function Get-ArtClipLibraries([string]$Skeleton) {
                     Asset = Get-ArtRelativePath $_
                     SourcePath = Join-Path $_ "$name.blend"
                     Clips = [string[]]@($json.clips | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
-                    ContentSha256 = if ($null -ne $json.content -and $null -ne $json.content.stages) { [string]$json.content.stages.animation } else { "" }
-                    Export = $json.export
                 }
             }
         })
-}
-
-function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
-    # Returns $null when the export of a garment template, or a texture's masks, was checked in the
-    # current content of the animation libraries of its skeleton, otherwise the reason it was not.
-    $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object { [string]$_.Asset + "=" + [string]$_.ContentSha256 } | Sort-Object)
-    $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.contentSha256)" } | Sort-Object)
-    if (($libraries -join ",") -cne ($recorded -join ",")) {
-        return "was checked in other clips than the current content of the $($Manifest.Skeleton) animation libraries; run $Sync to see its checks in them, then run tools/art/Export-ArtAsset.ps1"
-    }
-
-    return $null
 }
 
 function Get-ArtPaintDependencyProblems($Manifest) {
@@ -1073,17 +1059,12 @@ function Get-ArtCageContent($Cage) {
 
 function Get-ArtGarmentDependencyProblems($Manifest) {
     # The reasons the export of a garment template no longer matches what it was made from: the
-    # content of its cage, the bodies of the cage and their exports, and the content of the animation
-    # libraries it was checked in and of the templates of lower layers it was checked over. None when
-    # it matches.
+    # content of its cage, the bodies of the cage and their exports, and the content of the templates
+    # of lower layers it was checked over. None when it matches. No clip is among them: a new or
+    # changed clip needs no garment exported.
     $problems = New-Object System.Collections.Generic.List[string]
     foreach ($problem in @(Get-ArtGarmentFitProblems $Manifest)) {
         $problems.Add($problem)
-    }
-
-    $clipProblem = Get-ArtClipSourcesProblem $Manifest "tools/art/Sync-GarmentAsset.ps1"
-    if ($null -ne $clipProblem) {
-        $problems.Add($clipProblem)
     }
 
     $pairProblem = Get-ArtPairSourcesProblem $Manifest
@@ -1191,17 +1172,6 @@ function Get-ArtPairSourcesProblem($Manifest, $Template, [string]$Sync) {
     }
 
     return $null
-}
-
-function Get-ArtGarmentClipArguments($Manifest) {
-    $arguments = @()
-    foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
-        if ($library.Clips.Count -gt 0) {
-            $arguments += @("--clip-library", "$($library.SourcePath)=$($library.Clips -join '+')")
-        }
-    }
-
-    return $arguments
 }
 
 function Get-ArtGarmentCoverArguments($Garment) {
@@ -1570,12 +1540,9 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                 ([string]$record.bodyFitSha256 -cmatch $script:ArtShaPattern -or [string]$record.bodySourceSha256 -cmatch $script:ArtShaPattern)
         }
 
-        $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
-        $clipSourcesMatch = @($clipSources | Where-Object {
-                [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
-                [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
-            @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
-        # The templates of a lower layer it was checked over, with the contentSha256 of their exports.
+        # The templates of a lower layer it was checked over, with the contentSha256 of their exports. A
+        # record written while garments were checked in the clips also names clipSources, which nothing
+        # reads and the next export leaves out.
         $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
         $pairSourcesMatch = @($pairSources | Where-Object {
                 [string]$_.garment -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
@@ -1588,9 +1555,6 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
         elseif (-not $modelsMatch) {
             $problems.Add("export.models must list the model of each body once with its body, the bodyFitSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
-        }
-        elseif (-not $clipSourcesMatch) {
-            $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the contentSha256 of its export")
         }
         elseif (-not $pairSourcesMatch) {
             $problems.Add("export.pairSources must list every template of a lower layer the garment was checked over once, with its garment (art/Garments/<Name>) and the contentSha256 of its export")
@@ -1618,7 +1582,6 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                             dataSha256 = [string]$_.dataSha256
                         }
                     })
-                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; contentSha256 = [string]$_.contentSha256 } })
                 pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; contentSha256 = [string]$_.contentSha256 } })
                 materials = $materials
                 textures = $textures
@@ -1778,13 +1741,6 @@ function Write-ArtGarmentManifest($Manifest) {
             $lines.Add("                `"data`": `"$($models[$i].data)`",")
             $lines.Add("                `"dataSha256`": `"$($models[$i].dataSha256)`"")
             $lines.Add("            }$comma")
-        }
-        $lines.Add('        ],')
-        $lines.Add('        "clipSources": [')
-        $sources = @($Manifest.Export.clipSources)
-        for ($i = 0; $i -lt $sources.Count; $i++) {
-            $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
-            $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"contentSha256`": `"$($sources[$i].contentSha256)`" }$comma")
         }
         $lines.Add('        ],')
         $pairs = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ })
@@ -2074,16 +2030,9 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
                 [string]$record.dataSha256 -cmatch $script:ArtShaPattern
         }
 
-        # Masks are checked in the clips of every animation library of the skeleton, which may have
-        # none; an opaque texture has neither masks nor clip sources.
-        $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
-        $clipSourcesMatch = ($maskRecords.Count -gt 0 -or $clipSources.Count -eq 0) -and
-            @($clipSources | Where-Object {
-                    [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
-                    [string]$_.contentSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
-            @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
         # Masks name the faces they hide of the templates of lower layers worn under the template,
-        # with the contentSha256 of the exports they were made with.
+        # with the contentSha256 of the exports they were made with. A record written while masks were
+        # checked in the clips also names clipSources, which nothing reads and the next export leaves out.
         $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
         $pairSourcesMatch = ($maskRecords.Count -gt 0 -or $pairSources.Count -eq 0) -and
             @($pairSources | Where-Object {
@@ -2095,9 +2044,6 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
         elseif (-not $masksMatch) {
             $problems.Add("export.masks must be empty for an opaque texture, or list the masks of each body once with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
-        }
-        elseif (-not $clipSourcesMatch) {
-            $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the contentSha256 of its export, and be empty without masks")
         }
         elseif (-not $pairSourcesMatch) {
             $problems.Add("export.pairSources must list, for a texture with masks, every template of a lower layer its masks hide faces of once, with its garment (art/Garments/<Name>) and the contentSha256 of its export, and be empty without masks")
@@ -2114,7 +2060,6 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
                 contentSha256 = [string]$Json.export.contentSha256
                 garmentContentSha256 = [string]$Json.export.garmentContentSha256
                 masks = @($maskRecords | ForEach-Object { [ordered]@{ body = [string]$_.body; data = [string]$_.data; dataSha256 = [string]$_.dataSha256 } })
-                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; contentSha256 = [string]$_.contentSha256 } })
                 pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; contentSha256 = [string]$_.contentSha256 } })
                 materials = $materials
                 textures = $textures
@@ -2180,14 +2125,6 @@ function Write-ArtTextureManifest($Manifest) {
             for ($i = 0; $i -lt $masks.Count; $i++) {
                 $comma = if ($i -lt $masks.Count - 1) { "," } else { "" }
                 $lines.Add("            { `"body`": `"$($masks[$i].body)`", `"data`": `"$($masks[$i].data)`", `"dataSha256`": `"$($masks[$i].dataSha256)`" }$comma")
-            }
-
-            $lines.Add('        ],')
-            $lines.Add('        "clipSources": [')
-            $sources = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ })
-            for ($i = 0; $i -lt $sources.Count; $i++) {
-                $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
-                $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"contentSha256`": `"$($sources[$i].contentSha256)`" }$comma")
             }
 
             $lines.Add('        ],')
@@ -3498,18 +3435,18 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
 
         # The templates of lower layers it is worn over: its band clears their real surface where it
         # lies over one, and at its rig stage it hides what it covers of them and none comes through.
-        return $arguments + (Get-ArtGarmentPairArguments $Manifest) + (Get-ArtGarmentClipArguments $Manifest)
+        # No clip: the checks pose the rest pose and the test poses only.
+        return $arguments + (Get-ArtGarmentPairArguments $Manifest)
     }
 
     # A texture is checked against its template's current UVs, and one with transparent parts gets
     # its masks in its template's band, with what it hides of the templates of lower layers worn
-    # under it, checked in the clips of the skeleton's libraries.
+    # under it, checked in the test poses.
     if ($Manifest.Kind -eq "texture") {
         return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
             "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
             "--dyes", [string]$Manifest.Garment.Dyes) +
-            (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentPairArguments $Manifest.Garment) +
-            (Get-ArtGarmentClipArguments $Manifest)
+            (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentPairArguments $Manifest.Garment)
     }
 
     # A cage is checked against the current files of its bodies and against the figure scale and
@@ -3555,10 +3492,10 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
 function Get-ArtCacheArguments([string]$Blender, $Manifest, [switch]$NoCache, [switch]$Preview, [object[]]$Pairs) {
     # The fingerprints by which the cache of the checks of a garment template or a garment texture keys
     # their results, from the content records of the other assets they read, each made current first:
-    # the fit of every body from its export while that export is current, the content of every clip
-    # library and of every template of a lower layer, and for a preview or a texture the cage's content,
-    # which a template's validation already passes, and for a texture's preview its image, whose file
-    # the preview does not open. Blender reads the content of the file it opens itself. A fingerprint
+    # the fit of every body from its export while that export is current, the content of every template
+    # of a lower layer, and for a preview or a texture the cage's content, which a template's validation
+    # already passes, and for a texture's preview its image, whose file the preview does not open. No
+    # clip library: the checks read none. Blender reads the content of the file it opens itself. A fingerprint
     # left out leaves the units that need it computed and not cached. -NoCache computes every unit and
     # neither reads nor writes the cache. -Pairs gives the templates of lower layers when the caller
     # has them, as Get-ArtGarmentPairs gives them. The cache never stops a command: an asset whose
@@ -3592,31 +3529,6 @@ function Get-ArtCacheArguments([string]$Blender, $Manifest, [switch]$NoCache, [s
         }
         catch {
             Write-ArtUncached $body.Asset $_.Exception.Message
-        }
-    }
-
-    $libraries = @()
-    try {
-        $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | Where-Object { $_.Clips.Count -gt 0 })
-    }
-    catch {
-        Write-ArtUncached "the animation libraries of $($Manifest.Skeleton)" $_.Exception.Message
-    }
-
-    foreach ($library in $libraries) {
-        try {
-            $current = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $library.Asset)
-            $null = Update-ArtContentRecord $Blender $current
-            $problem = Get-ArtContentProblem $current
-            if ($null -ne $problem) {
-                Write-ArtUncached $library.Asset $problem
-                continue
-            }
-
-            $arguments += @("--clip-content", "$($library.SourcePath)=$(Get-ArtExportedContent $current)")
-        }
-        catch {
-            Write-ArtUncached $library.Asset $_.Exception.Message
         }
     }
 
@@ -3688,8 +3600,7 @@ function Invoke-ArtGarmentSheet([string]$Blender, $Manifest, [string]$Output, [s
     # Renders the review sheet of a garment template with what it covers on every body, its own checks
     # through the cache of the checks, and returns Blender's result lines.
     return Invoke-ArtBlender $Blender $Manifest (@("preview", "--output", $Output, "--kind", "garment", "--garment", $Manifest.Name) +
-        (Get-ArtGarmentCoverArguments $Manifest) + (Get-ArtGarmentClipArguments $Manifest) +
-        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
+        (Get-ArtGarmentCoverArguments $Manifest) + (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
 }
 
 function Invoke-ArtTextureSheet([string]$Blender, $Manifest, [string]$Output, [switch]$NoCache) {
@@ -3699,7 +3610,7 @@ function Invoke-ArtTextureSheet([string]$Blender, $Manifest, [string]$Output, [s
     return Invoke-ArtBlender $Blender $Manifest.Garment (@("preview", "--output", $Output, "--kind", "texture",
             "--roots", ($Manifest.RootObjects -join ","), "--garment", $Manifest.Garment.Name, "--texture", $Manifest.Name,
             "--texture-file", $Manifest.SourcePath) + (Get-ArtGarmentCoverArguments $Manifest.Garment) +
-        (Get-ArtGarmentClipArguments $Manifest) + (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
+        (Get-ArtCacheArguments $Blender $Manifest -NoCache:$NoCache -Preview))
 }
 
 # Where Write-ArtLine puts its lines: $null prints them, a list collects them, so the lines of an asset
@@ -3874,10 +3785,10 @@ function Get-ArtManifestFieldsText($Manifest) {
 function Get-ArtStagingKey($Manifest, [string]$Code) {
     # The fingerprint of what the staged data of a garment template or a garment texture is computed from:
     # the pipeline's code, Code; the asset's file, content, and fields, and of a texture its template's
-    # too; the content of the template's cage; the fit of every body's export; the content of every clip
-    # library of its skeleton with its clips; and every template of a lower layer it is checked over, with
-    # its file, content, band, and fields. $null when one of them is not current, such as a content record
-    # read from another version of a file, so the data is staged again.
+    # too; the content of the template's cage; the fit of every body's export; and every template of a
+    # lower layer it is checked over, with its file, content, band, and fields. No clip library: the data
+    # reads none, so a changed clip stages nothing again. $null when one of them is not current, such as
+    # a content record read from another version of a file, so the data is staged again.
     try {
         $template = if ($Manifest.Kind -eq "texture") { $Manifest.Garment } else { $Manifest }
         $lines = New-Object System.Collections.Generic.List[string]
@@ -3902,10 +3813,6 @@ function Get-ArtStagingKey($Manifest, [string]$Code) {
             }
 
             $lines.Add("body $($body.Asset) $($body.Root) fit=$($export.fitSha256)")
-        }
-
-        foreach ($library in @(Get-ArtClipLibraries $template.Skeleton)) {
-            $lines.Add("library $($library.Asset) content=$($library.ContentSha256) clips=$($library.Clips -join '+')")
         }
 
         foreach ($pair in @(Get-ArtGarmentPairs $template)) {
