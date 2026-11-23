@@ -26,11 +26,12 @@ rig = load("human_base/rig.py", "ZONE_BONES", "RULE_BONES", "HINGES", "DIGITS", 
            "MAX_INFLUENCES", "MIN_WEIGHT", "FINGER_LAYERS", "THUMB_LAYERS", "RING_SIZE", bodies=bodies)
 animate = load("human_base/animate.py", "Gait", "WALK", "JOG", "CLIPS", "WALK_SPEED", "JOG_SPEED", "IDLE_FRAMES", "FPS",
                "RELAXED_FINGERS", "RELAXED_THUMB", "SEGMENTS", "SIDES", "_ease", "_lift", "_hermite", "_soft_min",
-               "gait_frames", "REACH", "SOFT_MIN", poses=poses)
+               "gait_frames", "REACH", "SOFT_MIN", "_hold", "APPROACH", "SLACK", poses=poses)
 preview = load("art_pipeline/preview.py", "GARMENT_POSES")
 skinned = load("art_pipeline/skinned.py", "MAX_INFLUENCES", "FRAME_RATE")
 library = load("art_pipeline/library.py", "FRAME_RATE")
-checks = load("human_base/checks.py", "CHARACTERS", "BODIES", "_mirror_name", "TINY_AREA", "TINY_AREA_HIDDEN", "HIDDEN_PARTS")
+checks = load("human_base/checks.py", "CHARACTERS", "BODIES", "_mirror_name", "TINY_AREA", "TINY_AREA_HIDDEN", "HIDDEN_PARTS",
+              "hips_jolt", "JOLT_TOLERANCE")
 files = load("human_base/files.py", "LABELS")
 review = load("human_base/review.py", "BODIES")
 rig_review = load("human_base/rig_review.py", "WEIGHT_VIEWS")
@@ -282,6 +283,37 @@ class GaitTests(unittest.TestCase):
         self.assertEqual(steps, sorted(steps))
         self.assertLess(animate._ease(0.01), 1e-5)
         self.assertGreater(animate._ease(0.99), 1 - 1e-5)
+
+    def test_a_leg_holds_the_hips_down_without_a_jump_anywhere_in_its_cycle(self):
+        # A jump at the toe off dropped the hips for the one frame of Jog that fell just before it.
+        for gait in (animate.WALK, animate.JOG):
+            with self.subTest(speed=gait.speed):
+                steps = 4000
+                holds = [animate._hold(gait, i / steps) for i in range(steps + 1)]
+                self.assertLess(max(abs(b - a) for a, b in zip(holds, holds[1:])), 0.01)
+                self.assertEqual(holds[0], 1.0)
+                self.assertAlmostEqual(holds[-1], 1.0)
+                # Fully until the heel lifts, and not at all on either side of the toe off.
+                self.assertEqual(animate._hold(gait, gait.stance * gait.heel_off), 1.0)
+                self.assertLess(animate._hold(gait, gait.stance - 1e-9), 1e-6)
+                self.assertEqual(animate._hold(gait, gait.stance), 0.0)
+                self.assertLess(animate._hold(gait, gait.stance + (1 - gait.stance) * animate.APPROACH), 1e-9)
+                self.assertTrue(all(0.0 <= hold <= 1.0 for hold in holds))
+                # A leg that lets go leaves the hips more room than any leg lacks reach.
+                self.assertGreater(animate.SLACK, 0.2)
+
+    def test_the_hips_jolt_is_how_far_a_frame_lies_from_the_line_between_its_neighbours(self):
+        self.assertEqual(checks.hips_jolt([0.8, 0.8, 0.8], False), 0.0)
+        self.assertAlmostEqual(checks.hips_jolt([0.80, 0.81, 0.82, 0.83], False), 0.0)
+        # The Jog of 2026-11-20: one frame 57 mm below the one before and 75 mm below the next.
+        dip = [0.8154, 0.7584, 0.8330]
+        self.assertAlmostEqual(checks.hips_jolt(dip, False), 0.1316)
+        self.assertGreater(checks.hips_jolt(dip, False), checks.JOLT_TOLERANCE)
+        # A looping clip ends with its first frame again: the step into it is followed by the first.
+        self.assertAlmostEqual(checks.hips_jolt([0.80, 0.85, 0.80], True), 0.10)
+        self.assertAlmostEqual(checks.hips_jolt([0.80, 0.80, 0.85, 0.80], True), 0.10)
+        self.assertEqual(checks.hips_jolt([0.8], True), 0.0)
+        self.assertEqual(checks.hips_jolt([], False), 0.0)
 
     def test_the_lift_is_zero_at_both_ends_and_one_at_its_peak(self):
         for peak in (0.4, 0.45, 0.5):

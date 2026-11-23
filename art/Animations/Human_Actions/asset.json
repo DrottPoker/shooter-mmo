@@ -11,9 +11,9 @@
     "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop", "HoldStaff", "Cast", "HoldGreataxe", "GreataxeSwing", "HoldBow", "BowShot", "SwordSlash", "OneHandStrike"],
     "content": {
         "version": 1,
-        "sourceSha256": "484e8966b76cdc4bacfc468404e0cf257eaf6886812bc527b4f97873cdf7982f",
+        "sourceSha256": "d648a6aac9abe76989aaaf0e40ca3e769794b1deb845b530da4fa8bf5409636e",
         "stages": {
-            "animation": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c"
+            "animation": "8ba95f5371e5dfa9f159f1a99881f62257982b763b471243a64028ff77c38ae3"
         },
         "parts": {
             "clip:BowShot": "6348e463831fc2f9c12d103dc739401762a12dfd7b7023bc04954d677d255704",
@@ -26,7 +26,7 @@
             "clip:HoldGreataxe": "76f135b1705456487b772620e89a8645d483a43c666d4bc693231cf0cfdd8cec",
             "clip:HoldStaff": "dfbab6ea8e15b61cd58c54c136939413b045fbcb0f01bfdc9ff4546c52365dea",
             "clip:Idle": "ff7c25a20101c2f7664567341fba460453fc9e8be59c6bc3a802a6713ded7bab",
-            "clip:Jog": "1d09c5ae1c0ae728ca368a40055ae7921a169720395a9f82dd13e09785cb4738",
+            "clip:Jog": "862efe6cffc3b577e85f74673a4ffd2c17ae636ffb137cb09378393e581dad55",
             "clip:Mine": "16b295e34976707c66fc034fd74e1f511a05f4ea83522906df77f896ed97ade5",
             "clip:OneHandStrike": "b17735e280ae5ce22a499932fe54eba24a1ba21733815e510ecd7ff734848ffd",
             "clip:SwordSlash": "377da87ba5671ce14f634f6d09c3ee285dfc7c838f9fcca3db02f2f94360911f",
@@ -36,13 +36,13 @@
     },
     "approvals": {
         "animation": {
-            "date": "2026-11-20",
-            "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c"
+            "date": "2026-11-23",
+            "contentSha256": "8ba95f5371e5dfa9f159f1a99881f62257982b763b471243a64028ff77c38ae3"
         }
     },
     "export": {
-        "contentSha256": "38f8327e7086f9f35c9d9144b03d4da6f74b41aded1276a67da94600f889223c",
-        "targetSha256": "6eb43c267da9ecaeaf98808d1f3898272b09e713fd616b965c9d020956148543",
+        "contentSha256": "8ba95f5371e5dfa9f159f1a99881f62257982b763b471243a64028ff77c38ae3",
+        "targetSha256": "8c48aeb9e694536384d6ca0575ee82504459974181a5a0c04e6f9ee196147956",
         "rigContentSha256": "9c3833a85407ac8e5e687c8059c596039a29964f5f3dcf44e848e84679fb571b",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },

@@ -48,6 +48,9 @@ REST_POSITION_TOLERANCE = 1e-6  # m, the rigged mesh at rest against the model
 # The heel point sits this far behind the ankle.
 GROUND = 0.004
 SLIP_TOLERANCE = 0.015
+# From one frame to the next the hips' height may change its step by at most this much (m). A
+# smooth gait stays below 6 mm; a single frame that dips shows as a bounce in the game.
+JOLT_TOLERANCE = 0.015
 HEEL_BEHIND = 0.045
 # Closed, the lids' inner edges meet: at each place across the eye they lie at most LID_SLIT apart
 # around the eyeball, and one lies at most LID_STEP nearer to the eye's axis than the other, which
@@ -547,10 +550,20 @@ def _grip(arm):
     return grip.report(measured), grip.problems(measured)
 
 
+def hips_jolt(heights, loop):
+    """The largest change of the hips' step from one frame to the next, in the unit of heights:
+    how far a frame's height lies from the line between its neighbours, twice. The heights of a
+    looping clip end with the first frame again, and its last step is followed by its first."""
+    steps = [b - a for a, b in zip(heights, heights[1:])]
+    if loop and steps:
+        steps.append(steps[0])
+    return max((abs(b - a) for a, b in zip(steps, steps[1:])), default=0.0)
+
+
 def clips(path, label):
     """Checks that a foot on the ground keeps its place in the Idle, Walk and Jog clips of an
-    animation library on the armature label, when the character moves at the clip's speed, and
-    that the fingers of its hand pose Grip lie on the handle and not in it. The art pipeline checks
+    animation library on the armature label, when the character moves at the clip's speed, that
+    the hips' height has no jolt from one frame to the next in them, and that the fingers of its hand pose Grip lie on the handle and not in it. The art pipeline checks
     the rules of every clip at its approval."""
     from mathutils import Vector
 
@@ -599,10 +612,15 @@ def clips(path, label):
                 if len(run) > 2:
                     slip = max(slip, max(run) - min(run))
                 run = []
+        jolt = hips_jolt(hips, bool(action.get("loop", True)))
         lines.append(f"{label} {name}: {frames} frames, {speed:.1f} m/s, hips {min(hips):.3f} to {max(hips):.3f} m, "
-                     f"largest slip of a foot on the ground {slip * 1000:.1f} mm")
+                     f"largest slip of a foot on the ground {slip * 1000:.1f} mm, "
+                     f"largest jolt of the hips {jolt * 1000:.1f} mm")
         if slip > SLIP_TOLERANCE:
             failures.append(f"{label} {name}: a foot slides {slip * 1000:.1f} mm on the ground")
+        if jolt > JOLT_TOLERANCE:
+            failures.append(f"{label} {name}: the hips' height jolts {jolt * 1000:.1f} mm from one frame to the next, "
+                            f"which shows as a bounce in the game")
     arm.animation_data.action = None
     return lines, failures
 

@@ -9,7 +9,8 @@
 # they did, and keeps the library as it was below artifacts/animation-libraries. -Generate adds
 # clips of the human gait model, and the hand pose Grip fitted to the body's hand, that the library
 # lacks, as starting points to edit by hand, and never replaces a clip; with -Refit they are made
-# again on the new rig. A library on the Humanoid skeleton then gets a report of how far a foot on
+# again on the new rig, and with -Replace they are made again in place of the clips the library
+# has, as after a change of the gait model. A library on the Humanoid skeleton then gets a report of how far a foot on
 # the ground slides in its Idle, Walk, and Jog clips and of how its Grip lies on the handle. See
 # docs/ART_PIPELINE.md.
 param(
@@ -23,6 +24,9 @@ param(
     # Clips of the gait model to add when the library lacks them, Idle, Walk, and Jog, and the hand
     # pose Grip, fitted to the hand of the library's body.
     [string[]]$Generate = @(),
+    # Makes the clips named in -Generate again when the library has them, which loses every edit
+    # made to them by hand.
+    [switch]$Replace,
     [string]$BlenderPath
 )
 
@@ -31,6 +35,9 @@ $ErrorActionPreference = "Stop"
 
 # A clip asked for twice is added once.
 $Generate = @($Generate | Select-Object -Unique)
+if ($Replace -and $Generate.Count -eq 0) {
+    throw "-Replace makes the clips named in -Generate again; name them."
+}
 
 $manifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Asset) -AllowMissingSource
 if ($manifest.Kind -ne "animations") {
@@ -132,9 +139,14 @@ else {
 
     $generated = @()
     if ($Generate.Count -gt 0) {
-        $stepOutput = Invoke-HumanBaseLibraryStep @("generate-clips", $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","), $manifest.SkeletonPath)
+        $step = if ($Replace) { "remake-clips" } else { "generate-clips" }
+        $stepOutput = Invoke-HumanBaseLibraryStep @($step, $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","), $manifest.SkeletonPath)
         foreach ($line in @($stepOutput | Where-Object { $_ -like "KEPT *" })) {
             Write-Host $line.Substring("KEPT ".Length)
+        }
+
+        foreach ($line in @($stepOutput | Where-Object { $_ -like "REMADE *" })) {
+            Write-Host $line.Substring("REMADE ".Length)
         }
 
         foreach ($line in @($stepOutput | Where-Object { $_ -like "HUMAN_BASE_REPORT *" })) {
