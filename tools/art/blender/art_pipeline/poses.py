@@ -125,3 +125,15 @@ def apply(arm, pose):
 
 def rest(arm):
     apply(arm, {})
+
+
+def exact_rest(arm):
+    """Every bone exactly at rest, its scale too, which rest leaves as it is: laying a cloth chain leaves
+    the float rounding of its turn in its bones' scale. The export of a garment writes the bones so."""
+    for bone in arm.pose.bones:
+        bone.rotation_mode = "QUATERNION"
+        bone.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+        bone.rotation_euler = (0.0, 0.0, 0.0)
+        bone.rotation_axis_angle = (0.0, 0.0, 1.0, 0.0)
+        bone.location = (0.0, 0.0, 0.0)
+        bone.scale = (1.0, 1.0, 1.0)

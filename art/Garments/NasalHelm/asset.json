@@ -45,7 +45,7 @@
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/NasalHelm_Male.fbx",
-                "sha256": "95fb67ff6bc5066fea8959ced29cc0d80216f93da6fc97808280da2c7aba6bcb",
+                "sha256": "6a2bdfc33aae7044ec83f531a1cefc5f6dbe137e64b08407f8c88defc08e20d9",
                 "data": "src/Client/Assets/Art/Models/Garments/NasalHelm_Male.json",
                 "dataSha256": "d8d6e67a15dd7ed7df8c63a15b98f305692e7c9f7cf1f1b3c808f258586ccd71"
             },
@@ -53,7 +53,7 @@
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/NasalHelm_Female.fbx",
-                "sha256": "bdd5a293a1b40728486c6117c1ad8eb9eabe0d46d83518c923d08796d63642f1",
+                "sha256": "4ba35a043f04b05887995fca9f93e6e4e8d9249613805ff42bf89ede206c967d",
                 "data": "src/Client/Assets/Art/Models/Garments/NasalHelm_Female.json",
                 "dataSha256": "a7217164d33d0798813268d7f9b4bf9e746c32c52575a0bce5707831f293731c"
             }

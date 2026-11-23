@@ -32,7 +32,7 @@ import numpy as np
 from . import manifest_io
 
 # The version of the keys and entries; a change misses every older entry.
-SCHEMA = 1
+SCHEMA = 2
 ROOT = pathlib.Path(__file__).resolve().parents[4] / "artifacts" / "art-cache" / "checks"
 # The fields of a template's asset.json that the checks read, or that choose what they read.
 FIELDS = ("band", "covers", "hair", "hides", "layer", "recipe", "slot")

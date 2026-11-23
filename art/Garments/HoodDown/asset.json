@@ -45,7 +45,7 @@
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodDown_Male.fbx",
-                "sha256": "cb119d2eaaebc40d636f572b6d94135f0f35428365146a61684a6ba15757897b",
+                "sha256": "d468bf0cad235d23cdff87602fece5cd65c1733cf8443fd8e33c715e6032cbdb",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodDown_Male.json",
                 "dataSha256": "d4d366d5f4c9c69588eabe808bd1468e52943578ec4978a56da7ac18016f8306"
             },
@@ -53,7 +53,7 @@
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodDown_Female.fbx",
-                "sha256": "34c92a7c9dbd89285409b03f24529912530927777c92047bd47c02a95b73e7c5",
+                "sha256": "9c20314a7975d465678cdc2f693f3db1c4d823d08601bad6bd30ba264c003527",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodDown_Female.json",
                 "dataSha256": "2de00c4cb08cacd923b4471b63b2f3717322f143ff2c9819555508f7ceee8a5d"
             }

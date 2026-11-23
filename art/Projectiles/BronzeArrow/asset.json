@@ -26,7 +26,7 @@
     },
     "export": {
         "contentSha256": "b56d0b636b12788943f2b4fe6c470f52f0871da20ff9a1e5ba529fc9a66939bc",
-        "targetSha256": "8d0034ba201d3f523d86623b2aaf42f982e4af6b695cef2ee6e54661b97f6f17",
+        "targetSha256": "21f1fb0807e965a3170dcc95b99edde38baf5ee9d157df0fa08125b703c13d65",
         "materials": [
             {
                 "name": "M_BronzeArrow",

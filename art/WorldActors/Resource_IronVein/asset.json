@@ -27,7 +27,7 @@
     },
     "export": {
         "contentSha256": "d9bad6195128ec9e470b37dad052b76696884b69e8d4b9e0b9c734c7809e13c3",
-        "targetSha256": "9c6db133abd97cf11e6ae4e99028c625d460e15d08fbe043daf5b8e4773051c1",
+        "targetSha256": "b82d3d14ee3030880c64f5a3315f67111bd6f5d6761d273d49f5f45dfc0a2c13",
         "materials": [
             {
                 "name": "M_Resource_IronVeinOre",
