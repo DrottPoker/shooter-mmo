@@ -871,18 +871,14 @@ def _clear_stiff(co: np.ndarray, polygons: list[tuple[int, ...]], members: np.nd
         close_now, far_now, _normals = outside(direction * distance)
         return not close_now.any() and not far_now.any()
 
-    if not clear(STIFF_REACH):
+    # A part that nearly fills a band with two ends clears only in a narrow range, which the far end of
+    # the reach may lie beyond, so the smallest shift that clears is searched for from the near end.
+    shift = stiff.smallest_clear(clear, STIFF_REACH)
+    if shift is None:
         raise stuck
-    lowest, highest = 0.0, STIFF_REACH
-    for _ in range(30):
-        middle = (lowest + highest) / 2.0
-        if clear(middle):
-            highest = middle
-        else:
-            lowest = middle
     moved = co.copy()
-    moved[members] += direction * highest
-    return moved, highest
+    moved[members] += direction * shift
+    return moved, shift
 
 
 def _follow_modeled(version: str, label: str, positions: np.ndarray, polygons: list[tuple[int, ...]],

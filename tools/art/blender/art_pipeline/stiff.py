@@ -105,6 +105,24 @@ def carry(transform: tuple[np.ndarray, float, np.ndarray], points) -> np.ndarray
     return scale * np.asarray(points, float) @ rotation.T + translation
 
 
+def smallest_clear(clear, reach: float, steps: int = 50, halvings: int = 20) -> float | None:
+    """The smallest distance up to reach at which clear holds: the first of steps equal steps that
+    clears, then halved between it and the step before. None when no step clears. A part that nearly
+    fills its band clears only in a narrow range of shifts, so the far end is not what decides."""
+    step = reach / steps
+    for index in range(1, steps + 1):
+        if clear(step * index):
+            lowest, highest = step * (index - 1), step * index
+            for _ in range(halvings):
+                middle = (lowest + highest) / 2.0
+                if clear(middle):
+                    highest = middle
+                else:
+                    lowest = middle
+            return highest
+    return None
+
+
 def measures(transform: tuple[np.ndarray, float, np.ndarray], points) -> tuple[float, float, float, float]:
     """What a similarity does to a part at points: how far it moves the part's centre and its farthest
     vertex, in meters, how far it turns it, in degrees, and its scale."""

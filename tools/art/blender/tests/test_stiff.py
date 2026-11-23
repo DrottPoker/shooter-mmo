@@ -14,7 +14,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from blender_source import REPOSITORY_ROOT, load  # noqa: E402
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError")
-stiff = load("art_pipeline/stiff.py", "FIELD", "entries", "islands", "parts", "similarity", "carry", "measures", numpy=True,
+stiff = load("art_pipeline/stiff.py", "FIELD", "entries", "islands", "parts", "similarity", "carry", "measures", "smallest_clear",
+             numpy=True,
              ArtPipelineError=scene.ArtPipelineError)
 
 import numpy as np  # noqa: E402  (load() skips the file without numpy)
@@ -156,6 +157,19 @@ class SimilarityTests(unittest.TestCase):
         rotation, scale, translation = stiff.similarity(BAR[:1], BAR[:1] + 0.002)
         self.assertEqual((rotation.tolist(), scale), (np.eye(3).tolist(), 1.0))
         self.assertLess(np.abs(translation - 0.002).max(), 1e-12)
+
+
+class SmallestClearTests(unittest.TestCase):
+    def test_the_smallest_shift_that_clears_is_found(self):
+        self.assertAlmostEqual(stiff.smallest_clear(lambda distance: distance >= 0.0031, 0.005), 0.0031, places=7)
+
+    def test_a_narrow_range_is_found_though_the_far_end_does_not_clear(self):
+        # A part that nearly fills its band: 1 mm out clears, 5 mm out crosses the other end.
+        found = stiff.smallest_clear(lambda distance: 0.001 <= distance <= 0.0015, 0.005)
+        self.assertAlmostEqual(found, 0.001, places=7)
+
+    def test_no_shift_within_reach_is_none(self):
+        self.assertIsNone(stiff.smallest_clear(lambda distance: distance >= 0.006, 0.005))
 
 
 if __name__ == "__main__":
