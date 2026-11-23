@@ -45,7 +45,7 @@
                 "body": "Male",
                 "bodyFitSha256": "76a90acc2816fde084c2c5ff83b7dfc95ecfaec2f199195039b4e2b6771627d9",
                 "target": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Male.fbx",
-                "sha256": "14f310581be6b952fc9becf357f6ba0ae8c836bcca5acaec6734a22b7727be38",
+                "sha256": "ff6c64a9fb20f421f13624733f562a5da9f22eae317ca2d44067b668df373222",
                 "data": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Male.json",
                 "dataSha256": "045f161bdb7a25eedca39c8ac7d52a37eb23fc4d88aaba262a916526d1aeadc9"
             },
@@ -53,7 +53,7 @@
                 "body": "Female",
                 "bodyFitSha256": "ab158f1ae1f785e52b7ea1f9a95839ccae30b2f287e35422437a3ffd43081819",
                 "target": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Female.fbx",
-                "sha256": "8ec8e67e4519b57089719979cd277667f3c37fae9c13d5187c069c6400bf7940",
+                "sha256": "e6ab09d7178a8e85047537484682ac4a2fe27e17efaf70b18f3e2d9a89373322",
                 "data": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Female.json",
                 "dataSha256": "0b39d15fe1a039902ae227391d8b62880687f576c5fe3c83094efc2878f3b407"
             }

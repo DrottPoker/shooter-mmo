@@ -18,7 +18,8 @@ validate = load("art_pipeline/validate.py", "STAGES", "OBJECT_TYPES", "RIGGED_OB
                 "TEXTURED_KINDS", "NAME_PATTERN", "MATERIAL_PATTERN", "GRIP_ROOT", "TOLERANCE", "EMISSION_INPUTS",
                 "_is_identity_scale", "_is_at_origin")
 export = load("art_pipeline/export.py", "OBJECT_TYPES", "ANIMATED_KINDS", "PNG_SIGNATURE", "FBX_TIME", "parse_variants",
-              "_linear_to_srgb", "_emission")
+              "_linear_to_srgb", "_emission", "_image_file_name")
+poses = load("art_pipeline/poses.py", "exact_rest")
 ART = REPOSITORY_ROOT / "art"
 
 
@@ -145,6 +146,32 @@ class KindAndStageTests(unittest.TestCase):
         self.assertEqual(export.PNG_SIGNATURE[1:4], b"PNG")
         # Every FBX header records this time, so the same file gives the same bytes.
         self.assertEqual((export.FBX_TIME.year, export.FBX_TIME.month, export.FBX_TIME.day), (2000, 1, 1))
+
+
+class CheckoutFreeExportTests(unittest.TestCase):
+    """What makes the FBX of the same content the same bytes in every checkout and after every check."""
+
+    def test_an_image_is_named_by_its_file_name_alone_in_both_of_its_fields(self):
+        cases = {("D:\\any\\checkout\\Models\\T_Axe.png", "T_Axe.png"): "T_Axe.png",
+                 ("/home/a/Models/textures/packed/T_Wolf", "textures\\packed\\T_Wolf"): "T_Wolf",
+                 ("C:\\x\\T_Body.png", "../Textures/T_Body.png"): "T_Body.png"}
+        for (absolute, relative), name in cases.items():
+            with self.subTest(relative=relative):
+                named = export._image_file_name(lambda image, scene_data, found=(absolute, relative): found)
+                self.assertEqual(named(None, None), (name, name))
+
+    def test_every_bone_goes_exactly_to_rest_also_its_scale(self):
+        def bone():
+            return types.SimpleNamespace(rotation_mode="XYZ", rotation_quaternion=(0.7, 0.7, 0.0, 0.0),
+                                         rotation_euler=(0.1, 0.0, 0.0), rotation_axis_angle=(0.2, 1.0, 0.0, 0.0),
+                                         location=(0.0, 0.01, 0.0), scale=(1.0, 0.9999998807907104, 1.0000001192092896))
+        arm = types.SimpleNamespace(pose=types.SimpleNamespace(bones=[bone(), bone()]))
+        poses.exact_rest(arm)
+        for pose_bone in arm.pose.bones:
+            self.assertEqual((pose_bone.rotation_mode, pose_bone.rotation_quaternion, pose_bone.rotation_euler,
+                              pose_bone.rotation_axis_angle, pose_bone.location, pose_bone.scale),
+                             ("QUATERNION", (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0),
+                              (1.0, 1.0, 1.0)))
 
 
 class NameRuleTests(unittest.TestCase):

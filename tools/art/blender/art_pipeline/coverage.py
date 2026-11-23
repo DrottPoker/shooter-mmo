@@ -60,7 +60,7 @@ from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
 
 from . import bodies, garment, hang, poses
-from .cloth import _chains, capsules, follow, worn
+from .cloth import capsules, follow, worn
 from .scene import ArtPipelineError
 
 # How far rays look for the garment from the skin, per band, in meters.
@@ -631,7 +631,6 @@ class Motion:
     faces: int = 0  # drawn body faces under the garment at rest, at a corner or inside
     rest: int = 0  # drawn body faces that lie through it already at rest
     worst: dict = field(default_factory=dict)  # per phase, the rest pose, the test poses, and each clip: the deepest and where
-    end: dict = field(default_factory=dict)  # per bone of the chains it laid, its scale as the check left it
 
     def rest_error(self, version: str, what: str) -> str | None:
         """The rule broken when something lies through the garment at rest, where it shows in every
@@ -683,42 +682,6 @@ def skipped_frames(worst: dict, actions, test_poses: bool = True) -> int:
     for name_of_frame in names:
         worst.setdefault(phase_of(name_of_frame), (0.0, ""))
     return len(names)
-
-
-def _last_frame(arm: bpy.types.Object, actions: list[bpy.types.Action], kinds: list[str], found: list, reach: dict | None,
-                test_poses: bool = True) -> None:
-    """Leaves the armature as stepping through _frames leaves it, without stepping: the chains laid in
-    its last frame, with the clips' channels as the last frame of each clip sets them, or else in the
-    last test pose. Laying a chain leaves its bones with the float rounding of their turn in their
-    scale, which poses.rest keeps and the FBX export writes, so a check that follows nothing leaves the
-    bones as one that steps through every frame."""
-    if not kinds:
-        return
-    scene = bpy.context.scene
-    clips = [action for action in actions if len(_clip_frames(action))]
-    if clips:
-        poses.rest(arm)
-        arm.animation_data_create()
-        for action in clips:
-            arm.animation_data.action = action
-            arm.animation_data.action_slot = action.slots[0]
-            scene.frame_set(_clip_frames(action)[-1])
-        follow(arm, kinds, found, reach)
-    elif test_poses and poses.POSES:
-        poses.apply(arm, poses.POSES[-1][2])
-        follow(arm, kinds, found, reach)
-
-
-def end_scales(arm: bpy.types.Object, kinds: list[str]) -> dict[str, tuple[float, float, float]]:
-    """The scale of every bone of the chains of the kinds, as their last laying left it."""
-    return {name: tuple(float(s) for s in arm.pose.bones[name].scale)
-            for kind in kinds for names in _chains(arm, kind) for name in names}
-
-
-def set_end_scales(arm: bpy.types.Object, scales: dict) -> None:
-    """Puts back the scales end_scales read, so the export finds the bones as the checks left them."""
-    for name, scale in scales.items():
-        arm.pose.bones[name].scale = scale
 
 
 def _chains_of(garments: list[bpy.types.Object], arm: bpy.types.Object,
@@ -829,7 +792,6 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
         if not len(deepest):
             # Nothing to follow: no pose or frame can change the result.
             checked += skipped_frames(worst, actions)
-            _last_frame(arm, actions, kinds, found, chains)
             frames = ()
         for name_of_frame in frames:
             phase = phase_of(name_of_frame)
@@ -880,7 +842,7 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     coverage.through = faces_of(through)
     result = Motion(label, vertices, int(coverage.through.sum()), 0.0, "", "", checked,
                     faces=int(faces_of(np.ones(len(deepest), bool)).sum()), rest=int(faces_of(at_rest).sum()),
-                    worst=worst, end=end_scales(arm, kinds))
+                    worst=worst)
     if through.any():
         k = int(np.argmax(deepest))
         result.depth, result.where = float(deepest[k]), where[k]
@@ -1378,7 +1340,6 @@ class Pair:
     # Per phase, the most hidden triangles that show a hole in one pose or clip
     # frame of it, the frame, and where the first of them lies on the inner garment at rest.
     shown: dict = field(default_factory=dict)
-    end: dict = field(default_factory=dict)  # per bone of the chains it laid, its scale as the check left it
 
     def rest_error(self, version: str, inner: str) -> str | None:
         """The rule broken when a drawn triangle of the inner garment lies through this one at rest,
@@ -1495,7 +1456,6 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
         if not len(deepest) and not followed.faces:
             # Nothing to follow: no pose or frame can change the result.
             result.checked += skipped_frames(worst, actions)
-            _last_frame(arm, actions, kinds, found, chains)
             frames = ()
         for name_of_frame in frames:
             phase = phase_of(name_of_frame)
@@ -1545,7 +1505,6 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
         # The body part under the deepest place, so a person knows where to look.
         nearest = garment.Surface(body, []).signed_distance(Vector(inner_weights[k] @ rest[inner_corners[k]]))[1]
         result.zone = bodies.ZONES[bodies.zones_of(body)[nearest]] if nearest >= 0 else ""
-    result.end = end_scales(arm, kinds)
     return result
 
 
@@ -1599,25 +1558,12 @@ def apart_pair(name: str, label: str, inner: bpy.types.Object, actions: list[bpy
     every body and the rest rule hides none of its faces, so check_pair would follow no place and no
     hidden face. It computes nothing of the inner template, steps through no frame, and gives what
     check_pair gives: no triangle under this one in the same count of poses and clip frames, and the
-    bones as check_pair leaves them."""
-    arm = bpy.data.objects[label]
-    version = bpy.data.objects[garment.version_name(name, label)]
-    kinds, found, chains = _chains_of([inner, version], arm, bodies.source_body(label))
+    armature at rest at frame 0, as check_pair leaves it."""
     result = Pair(label, 0, 1, {REST: (0.0, REST)})
-    had_animation = arm.animation_data is not None
-    previous = arm.animation_data.action if had_animation else None
-    try:
-        result.checked += skipped_frames(result.worst, actions)
-        _last_frame(arm, actions, kinds, found, chains)
-    finally:
-        if had_animation:
-            arm.animation_data.action = previous
-        else:
-            arm.animation_data_clear()
-        poses.rest(arm)
-        bpy.context.scene.frame_set(0)
+    result.checked += skipped_frames(result.worst, actions)
+    poses.rest(bpy.data.objects[label])
+    bpy.context.scene.frame_set(0)
     result.faces = np.zeros(len(inner.data.polygons), bool)
-    result.end = end_scales(arm, kinds)
     return result
 
 
@@ -1707,25 +1653,15 @@ def _phases_from(items: list) -> dict:
     return {phase: (depth, where) for phase, depth, where in items}
 
 
-def _scales_data(scales: dict) -> list:
-    return [[bone, [float(s) for s in scale]] for bone, scale in scales.items()]
-
-
-def _scales_from(items: list) -> dict:
-    return {bone: tuple(scale) for bone, scale in items}
-
-
 def _motion_data(motion: Motion) -> dict:
     return {"label": motion.label, "vertices": int(motion.vertices), "through": int(motion.through),
             "depth": float(motion.depth), "where": motion.where, "zone": motion.zone, "checked": int(motion.checked),
-            "faces": int(motion.faces), "rest": int(motion.rest), "worst": _phases_data(motion.worst),
-            "end": _scales_data(motion.end)}
+            "faces": int(motion.faces), "rest": int(motion.rest), "worst": _phases_data(motion.worst)}
 
 
 def _motion_from(data: dict) -> Motion:
     return Motion(data["label"], data["vertices"], data["through"], data["depth"], data["where"], data["zone"],
-                  data["checked"], faces=data["faces"], rest=data["rest"], worst=_phases_from(data["worst"]),
-                  end=_scales_from(data["end"]))
+                  data["checked"], faces=data["faces"], rest=data["rest"], worst=_phases_from(data["worst"]))
 
 
 def _pair_data(pair: Pair) -> dict:
@@ -1735,8 +1671,7 @@ def _pair_data(pair: Pair) -> dict:
             "restPlace": [float(x) for x in pair.rest_place],
             "places": [[phase, [float(x) for x in place]] for phase, place in pair.places.items()],
             "hidden": int(pair.hidden),
-            "shown": [[phase, int(count), frame, [float(x) for x in place]] for phase, (count, frame, place) in pair.shown.items()],
-            "end": _scales_data(pair.end)}
+            "shown": [[phase, int(count), frame, [float(x) for x in place]] for phase, (count, frame, place) in pair.shown.items()]}
 
 
 def _pair_from(data: dict, faces: np.ndarray) -> Pair:
@@ -1744,8 +1679,7 @@ def _pair_from(data: dict, faces: np.ndarray) -> Pair:
                 depth=data["depth"], where=data["where"], zone=data["zone"], rest=data["rest"], rest_depth=data["restDepth"],
                 rest_place=tuple(data["restPlace"]), faces=faces,
                 places={phase: tuple(place) for phase, place in data["places"]}, hidden=data["hidden"],
-                shown={phase: (count, frame, tuple(place)) for phase, count, frame, place in data["shown"]},
-                end=_scales_from(data["end"]))
+                shown={phase: (count, frame, tuple(place)) for phase, count, frame, place in data["shown"]})
 
 
 def own_entry(check: OwnCheck) -> tuple[dict, dict]:

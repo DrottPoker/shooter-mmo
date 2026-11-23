@@ -47,7 +47,7 @@
     },
     "export": {
         "contentSha256": "75a64acd9770eb1f0eb0e5fa1b483c8d7e1be0bbb4133a67ff0f5596193c2443",
-        "targetSha256": "e5c47734f1edaaf091ca232a9e190269c9f9cc2725fbb69b91a7f0fc5084aacc",
+        "targetSha256": "3716c3e232fab7bf2b6a662506b592802ae0c522b326e718ca47c2fec94d2c23",
         "materials": [
             {
                 "name": "M_TrainingShortbow",

@@ -572,7 +572,7 @@ class StageTests(unittest.TestCase):
         stage = garment[garment.index('if args.command == "stage":'):garment.index("continue", garment.index('if args.command == "stage":'))]
         self.assertIn("_write_by_rename(data, coverage.record(args.garment, own[label].coverage))", stage)
         self.assertNotIn("export_fbx", stage)
-        self.assertLess(garment.index("_leave_bones("), garment.index('if args.command == "stage":'))
+        self.assertLess(garment.index("_rest_bones(labels)"), garment.index('if args.command == "stage":'))
         self.assertIn('if args.command == "export":\n        for record in material_records', garment)
         texture_run = self._function("_texture")
         self.assertIn('texture.exported_image(args.texture) if args.command == "export" else None', texture_run)

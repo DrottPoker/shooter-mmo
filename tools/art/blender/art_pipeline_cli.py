@@ -386,17 +386,13 @@ def _sheet_check(name: str, band: str, covers: bool, clips: coverage.Clips, unit
     return checked
 
 
-def _leave_bones(labels: list[str], inners: list[str], own: dict, under: dict) -> None:
-    """Leaves every armature as the checks leave it, also when their results came from the cache: at
-    rest, with the bones of each cloth chain scaled as its last laying left them, the checks taken in
-    the order they run, and the scene at frame 0. The FBX export writes the bones as they are posed."""
-    for index, label in enumerate(labels):
-        arm = bpy.data.objects[label]
-        poses.rest(arm)
-        coverage.set_end_scales(arm, own[label].motion.end)
-        for inner in inners:
-            coverage.set_end_scales(arm, under[inner].pairs[index].end)
+def _rest_bones(labels: list[str]) -> None:
+    """Puts every armature exactly at rest with the scene at frame 0, so the FBX export, which writes the
+    bones as they are posed, writes no residue of the checks, whether they were computed or cached."""
     bpy.context.scene.frame_set(0)
+    for label in labels:
+        poses.exact_rest(bpy.data.objects[label])
+    bpy.context.view_layer.update()
 
 
 def _clip_libraries(args) -> list[tuple[str, list[str]]]:
@@ -579,7 +575,7 @@ def _garment(args, content_record: dict) -> int:
     if args.command in ("export", "stage"):
         if args.stage != "rig":
             raise ArtPipelineError("A garment is exported with its rig stage, which checks it in motion.")
-        _leave_bones(labels, [inner for inner, _band, _recipe, _objects in inners], own, under)
+        _rest_bones(labels)
         for label, target in garment.export_paths(args.garment, labels, args.target):
             data = os.path.splitext(target)[0] + ".json"
             if args.command == "stage":

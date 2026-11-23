@@ -179,20 +179,32 @@ class _BpyWithoutPath:
         return getattr(bpy, name)
 
 
+def _image_file_name(gen_vid_path):
+    """Blender's naming of an image reference, but the file name alone in place of the absolute path
+    it also writes, so no FBX holds the folder it was exported to."""
+    def named(image, scene_data) -> tuple[str, str]:
+        _absolute, relative = gen_vid_path(image, scene_data)
+        name = os.path.basename(relative.replace("\\", "/"))
+        return name, name
+    return named
+
+
 @contextlib.contextmanager
 def _reproducible_fbx():
-    """The same file gives the same FBX bytes: Blender's exporter writes the time of the export and
-    the path of the .blend file into the header, and derives object ids from Python's string
-    hashes, which tools/art/ArtPipelineCommon.ps1 fixes with PYTHONHASHSEED."""
+    """The same file gives the same FBX bytes in every checkout: Blender's exporter writes the time of
+    the export and the path of the .blend file into the header and the absolute path of every image
+    it refers to, and derives object ids from Python's string hashes, which
+    tools/art/ArtPipelineCommon.ps1 fixes with PYTHONHASHSEED."""
     if sys.flags.hash_randomization:
         raise ArtPipelineError("Export through tools/art/Export-ArtAsset.ps1, which runs Blender with fixed string hashes.")
-    header, module_bpy = export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy
+    header, module_bpy, video_path = export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy, export_fbx_bin._gen_vid_path
     export_fbx_bin.fbx_header_elements = lambda root, scene_data, time=None: header(root, scene_data, FBX_TIME)
     export_fbx_bin.bpy = _BpyWithoutPath()
+    export_fbx_bin._gen_vid_path = _image_file_name(video_path)
     try:
         yield
     finally:
-        export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy = header, module_bpy
+        export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy, export_fbx_bin._gen_vid_path = header, module_bpy, video_path
 
 
 def export_fbx(kind: str, target: str, collection: str = EXPORT_COLLECTION) -> None:
@@ -212,7 +224,8 @@ def _export_fbx(kind: str, target: str, collection: str) -> None:
     # conversion, so no object keeps a correction rotation. Blender +Y becomes Unity +Z, so an
     # asset faces +Y in Blender. Blender's Apply Transform is not used: it breaks armatures.
     # Every bone goes out, also the sockets that deform nothing, without leaf bones, and every
-    # action becomes a take sampled at each frame, without simplification.
+    # action becomes a take sampled at each frame, without simplification. An image is named by its
+    # file name alone: Unity takes the materials by name and the images from their own export.
     result = bpy.ops.export_scene.fbx(
         filepath=target,
         check_existing=False,
@@ -244,7 +257,7 @@ def _export_fbx(kind: str, target: str, collection: str) -> None:
         bake_anim_force_startend_keying=True,
         bake_anim_step=1.0,
         bake_anim_simplify_factor=0.0,
-        path_mode="AUTO",
+        path_mode="STRIP",
         embed_textures=False,
     )
     if result != {"FINISHED"} or not os.path.isfile(target):

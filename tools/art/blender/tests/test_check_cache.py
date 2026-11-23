@@ -398,13 +398,12 @@ class Stand:
         def check_motion(name, cover, actions):
             note("motion", cover.label)
             cover.through = np.zeros(6, bool)
-            return coverage.Motion(cover.label, 2, 0, 0.0, "", "", 518, faces=3, worst={coverage.REST: (0.0, coverage.REST)},
-                                   end={"Skirt1_L": (1.0, 0.9999998807907104, 1.0)})
+            return coverage.Motion(cover.label, 2, 0, 0.0, "", "", 518, faces=3, worst={coverage.REST: (0.0, coverage.REST)})
 
         def check_pair(name, cover, inner, underlay, hides, actions, recipe, inner_recipe, inner_covered):
             note("pair", inner.name, cover.label)
             return coverage.Pair(cover.label, 2, 518, {coverage.REST: (0.0, coverage.REST)}, faces=np.zeros(4, bool),
-                                 hidden=int(hides.sum()), end={"Skirt1_L": (1.0, 1.0, 1.0000001192092896)})
+                                 hidden=int(hides.sum()))
 
         def apart_pair(name, label, inner, actions):
             note("apart", inner.name, label)
@@ -507,7 +506,6 @@ class ChecksTests(unittest.TestCase):
         self.assertEqual(cached_units.report(), {"units": 4, "cached": 4, "stored": 0, "notes": []})
         for label in self.LABELS:
             self.assertEqual(coverage.motion_summary("Shirt", cached_own[label].motion), coverage.motion_summary("Shirt", own[label].motion))
-            self.assertEqual(cached_own[label].motion.end, own[label].motion.end)
             self.assertEqual(cached_own[label].coverage.through.tolist(), own[label].coverage.through.tolist())
             for inner in ("Boots", "Trousers"):
                 self.assertEqual(cached_own[label].coverage.hidden[inner].tolist(), own[label].coverage.hidden[inner].tolist())
@@ -515,7 +513,6 @@ class ChecksTests(unittest.TestCase):
             self.assertEqual([coverage.pair_summary("Shirt", inner, p) for p in cached_under[inner].pairs],
                              [coverage.pair_summary("Shirt", inner, p) for p in under[inner].pairs])
             self.assertEqual(cached_under[inner].where, under[inner].where)
-            self.assertEqual([p.end for p in cached_under[inner].pairs], [p.end for p in under[inner].pairs])
             self.assertEqual(cached_under[inner].apart, under[inner].apart)
         self.assertEqual(cached_under["Trousers"].chosen.tolist(), [True, False, False, False])
 
@@ -536,11 +533,11 @@ class EntryTests(unittest.TestCase):
                                   np.array([0.0019]), 2, 4, 2, np.array([False, True]), np.array([False, False]))
         motion = coverage.Motion("Male", 12, 1, 0.0129, "Death frame 27", "Pelvis", 518, faces=146, rest=0,
                                  worst={coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.00493, "sit"),
-                                        "Death": (0.0129, "Death frame 27")}, end={"SkirtBack1_L": (1.0, 1.0000001192092896, 1.0)})
+                                        "Death": (0.0129, "Death frame 27")})
         data, arrays = coverage.own_entry(coverage.OwnCheck(cover, motion))
         back = coverage.own_from(json.loads(json.dumps(data)), arrays)
         self.assertEqual(coverage.motion_summary("Trousers", back.motion), coverage.motion_summary("Trousers", motion))
-        self.assertEqual(back.motion.end, motion.end)
+        self.assertEqual(back.motion, motion)
         for name in ("covered", "underlay", "pull_vertices", "pull_distances", "edge", "through"):
             self.assertEqual(getattr(back.coverage, name).tolist(), getattr(cover, name).tolist(), name)
         self.assertEqual((back.coverage.body_faces, back.coverage.body_vertices, back.coverage.garment_faces), (2, 4, 2))
@@ -549,8 +546,7 @@ class EntryTests(unittest.TestCase):
         pair = coverage.Pair("Female", 162, 518, {coverage.REST: (0.0, coverage.REST), coverage.TEST_POSES: (0.02102, "arms_up"),
                                                   "Jog": (0.0479, "Jog frame 1")}, through=33, depth=0.0479, where="Jog frame 1",
                              zone="Neck", rest=0, faces=np.array([False, True]), places={"Jog": (0.1, -0.2, 1.5)}, hidden=782,
-                             shown={coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), "Jog": (3, "Jog frame 4", (0.1, 0.2, 0.3))},
-                             end={"HoodBack1": (1.0, 1.0, 0.9999998807907104)})
+                             shown={coverage.REST: (0, coverage.REST, (0.0, 0.0, 0.0)), "Jog": (3, "Jog frame 4", (0.1, 0.2, 0.3))})
         check = coverage.UnderCheck([np.array([0.0146, 0.2771]), np.empty(0)], np.array([True, False]), np.array([True, False]),
                                     [np.array([False, False]), np.array([False, True])], [{}, {1: ("Walk frame 2", (0.1, 0.2, 0.3))}],
                                     [pair, pair], False)
@@ -558,7 +554,7 @@ class EntryTests(unittest.TestCase):
         back = coverage.under_from(json.loads(json.dumps(data)), arrays)
         self.assertEqual(coverage.pair_summary("HoodUp", "Cloak", back.pairs[0]), coverage.pair_summary("HoodUp", "Cloak", pair))
         self.assertEqual(list(back.pairs[1].worst), list(pair.worst))
-        self.assertEqual((back.pairs[0].places, back.pairs[0].shown, back.pairs[0].end), (pair.places, pair.shown, pair.end))
+        self.assertEqual((back.pairs[0].places, back.pairs[0].shown), (pair.places, pair.shown))
         self.assertEqual(back.where, check.where)
         self.assertEqual([o.tolist() for o in back.over], [o.tolist() for o in check.over])
         self.assertEqual([f.tolist() for f in back.failed], [f.tolist() for f in check.failed])

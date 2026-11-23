@@ -1200,13 +1200,24 @@ exports its armature and its clips the same way, without meshes.
 
 The export is reproducible: the same `.blend` file gives the same FBX bytes in
 every checkout. Blender's exporter writes the time of the export and the path of
-the `.blend` file into the FBX header and derives its object ids from Python's
-string hashes, which Python randomizes per process. `export.py` fixes the header
-time to 2000-01-01 and leaves the path empty, and `Invoke-ArtBlender` in
-`tools/art/ArtPipelineCommon.ps1` runs Blender with `PYTHONHASHSEED=0` and
-`--python-use-system-env`, after clearing every other Python variable, so no
-Python setup of the machine reaches the pipeline. An export without the fixed
-seed stops. Exporting an unchanged asset again leaves its files unchanged.
+the `.blend` file into the FBX header, writes the absolute path of every image a
+material refers to next to its relative one, and derives its object ids from
+Python's string hashes, which Python randomizes per process. `export.py` fixes
+the header time to 2000-01-01 and leaves the path empty, names every image by
+its file name alone in both of its fields, such as `T_IronGreataxe.png`, and
+`Invoke-ArtBlender` in `tools/art/ArtPipelineCommon.ps1` runs Blender with
+`PYTHONHASHSEED=0` and `--python-use-system-env`, after clearing every other
+Python variable, so no Python setup of the machine reaches the pipeline. Unity
+takes the materials by name and the images from their own export, so it never
+reads that name. An export without the fixed seed stops. Exporting an unchanged
+asset again leaves its files unchanged, in any checkout.
+
+A garment's armature is exported exactly at rest: the checks pose its bones,
+and laying a cloth chain leaves the float rounding of its turn in its bones'
+scale, so before the models are written every bone's location, rotation, and
+scale are set to rest and the scene to frame 0. A garment exported with its
+checks computed and one exported with them from [their
+cache](#cache-of-the-garment-checks) give the same bytes.
 
 These settings were chosen with an axis probe imported into Unity. Exporting
 with Forward -Z and Up Y, the usual advice for Unity, leaves a 90 degree
@@ -3419,10 +3430,7 @@ armature, the motion check, and the pair check:
   wide, so it lies within their radius and the 30 mm reach of its `tight` band,
   although none of their triangles lies under it. The motion check and the pair
   check of any pair step through no frame either when they find nothing to
-  follow at rest, and count the poses and frames instead. They still lay the
-  cloth chains of the last frame: laying a chain leaves the float rounding of
-  its turn in its bones' scale, which `poses.rest` keeps and the export writes
-  into the FBX, so the bones end as stepping through every frame leaves them.
+  follow at rest, and count the poses and frames instead.
 - Both checks follow loose parts with their cloth chains laid in every pose and
   frame in the target pose that the game shows (`cloth.py`), so they report a leg
   that comes through a skirt or a cloak; the swing of the springs is reviewed in
@@ -3653,10 +3661,10 @@ name and moved into place, the arrays before the data, and the data names the
 hash of its arrays: a run reads a whole entry or none, and a write that another
 run holds open is left out. A cached result is the computation's own: the
 report lines are made from it as from a computed one, and the export writes the
-same data. The checks leave the
-bones of the cloth chains with the float rounding of their last laying in their
-scale, which the FBX export writes, so every unit keeps that scale too, and the
-export puts it back before it writes the models.
+same data. A unit keeps nothing of the armature: the export puts every bone
+exactly at rest before it writes the models, as [Export
+Settings](#export-settings) describes, so the models are the same bytes whether
+the checks were computed or cached.
 
 `Export-ArtAsset.ps1`, `Approve-ArtAsset.ps1`, `Sync-GarmentAsset.ps1`,
 `Sync-TextureAsset.ps1`, and `Render-ArtPreview.ps1` take `-NoCache`, which
@@ -4044,7 +4052,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid`, and the bones no clip keys. |
 | `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges and the border read from a mesh's faces, the fold rule, its message, its least fold, and the room of a hem, and that the build and every function of `hang.py` go over their elements by index, never over a set. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
-| `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, and the kinds and review stages, checked against every `asset.json`. |
+| `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, the kinds and review stages, checked against every `asset.json`, an image named by its file name alone, and a garment's bones put exactly at rest before its export. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
 | `test_coverage_records.py` | The data written next to every garment model: the committed `Models/Garments/*.json` are written again and must be the same bytes, and the faces each hides of a template worn under it are faces of that template, whose face count it records; the sentences of the motion and pair reports, each with the deepest place per phase, the pair's with the most hidden triangles that show a hole per phase, and the rules of the skin and of a pair at rest. |
 | `test_rig_tables.py` | The test poses, the rig's zone, chain, and hinge tables, and the gait model against the Humanoid skeleton, the exported clips, and the Unity locomotion speeds. |
