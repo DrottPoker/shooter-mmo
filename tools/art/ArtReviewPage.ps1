@@ -220,7 +220,7 @@ function Get-ArtRejectPaths([string[]]$StatusLines, [string[]]$AssetFolders, [st
     # What restores every art file that differs from Git, from the lines of git status --porcelain -- art:
     # Restore, the asset folders below art/ that hold a tracked file that differs from HEAD, each the
     # folder that holds its asset.json, or the file itself outside any asset folder, never below
-    # art/Views; and New, the asset folders whose files are not in Git, which the restore leaves. The
+    # art/Views; and New, the asset folders that HEAD lacks, which the restore leaves. The
     # asset folders are those there are now, AssetFolders, and those HEAD has, CommittedFolders, as
     # repository paths such as art/Garments/Shirt.
     $restore = New-Object 'System.Collections.Generic.SortedSet[string]' ([StringComparer]::Ordinal)
@@ -244,8 +244,15 @@ function Get-ArtRejectPaths([string[]]$StatusLines, [string[]]$AssetFolders, [st
                     }
                 }
             }
-            elseif ($null -ne $folder) {
+            elseif ($null -ne $folder -and @($CommittedFolders) -ccontains $folder) {
                 $null = $restore.Add($folder)
+            }
+            elseif ($null -ne $folder) {
+                # A new asset folder whose files were added to the index: HEAD has nothing to restore it from.
+                $null = $new.Add($folder)
+            }
+            elseif ($code[0] -ceq 'A') {
+                $null = $new.Add($path)
             }
             else {
                 $null = $restore.Add($path)
@@ -436,12 +443,12 @@ function Write-ArtReviewPage([string]$Folder, $Review) {
         if ($restore.Count -gt 0) {
             $lead = if ($failed) { "To give the changes up instead" } else { "If you do not accept the changes" }
             Add-Html "<p>$lead, this restores every art file that differs from Git, yours and the ones the build fitted to them; then run the build again:</p>"
-            Add-Html "<pre><code>$(ConvertTo-ArtHtml ("git checkout -- $($restore -join ' ')`n.\tools\art\Build-Art.ps1"))</code></pre>"
+            Add-Html "<pre><code>$(ConvertTo-ArtHtml ("git checkout HEAD -- $($restore -join ' ')`n.\tools\art\Build-Art.ps1"))</code></pre>"
         }
 
         $newFolders = @($Review.Reject.New | Where-Object { $_ })
         if ($newFolders.Count -gt 0) {
-            Add-Html "<p>$(ConvertTo-ArtHtml "These asset folders are new and not in Git, so the command does not restore them: $(Join-ArtReviewWords $newFolders).")</p>"
+            Add-Html "<p>$(ConvertTo-ArtHtml "These asset folders are new since the last commit, so the command does not restore them: $(Join-ArtReviewWords $newFolders).")</p>"
         }
     }
 

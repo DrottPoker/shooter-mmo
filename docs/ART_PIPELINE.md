@@ -795,11 +795,11 @@ and says "waits for your approval". In this order it shows:
    to run them and `.\tools\art\Build-Art.ps1` after them. Then the way back:
    `If you do not accept the changes, this restores every art file that differs
    from Git, yours and the ones the build fitted to them; then run the build
-   again:` with a block of `git checkout -- <folders>` and the build. The
+   again:` with a block of `git checkout HEAD -- <folders>`, which restores the
    folders come from `git status --porcelain -- art`, read without Git's
    optional locks, each file grouped to the asset folder that holds its
    `asset.json`, never `art/Views`, so the command holds also after a build
-   that synced nothing; asset folders that are new and not in Git are named
+   that synced nothing; asset folders that the last commit lacks are named
    after it as not restored by the command. Or `Nothing to approve.`. A build
    that failed says so instead, with its error, and asks to approve nothing
    until it runs through, so its page shows what changed without the approve
@@ -867,7 +867,7 @@ by this run, so their files may have changed: ...`, which names every asset it
 synced, and the
 review page gives the `git checkout` of every asset folder whose files differ
 from Git; run it, such as
-`git checkout -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, and
+`git checkout HEAD -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, and
 run the build again.
 
 Expected result on a clean checkout: the plan lists every asset with
@@ -898,7 +898,7 @@ verification lists as problems that wait for an approval, names the synced
 assets under `Synced by this run`, and ends with exit code 2 and the page's
 path, after about 20 minutes with the cache of the checks of an earlier run.
 The page lists 3 review stages of 2 assets with their commands and the way back,
-`git checkout -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, since
+`git checkout HEAD -- art/GarmentTextures/WoolTrousers art/Garments/Trousers`, since
 the syncs of the templates over it leave their files as they are; `Trousers`,
 `Changed: the UVs.`, and `WoolTrousers`, `Changed: the image. It follows the
 new UVs of Trousers.`, each with its review sheet; and `490 game view(s)

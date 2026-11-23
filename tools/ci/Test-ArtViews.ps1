@@ -367,10 +367,10 @@ try {
     # asset folders, which it does not restore.
     $statusLines = @(" M art/Garments/Shirt/Shirt.blend", " M art/Garments/Shirt/asset.json", "M  art/GarmentTextures/LinenShirt/LinenShirt.blend",
         " M art/Views/baseline.json", " D art/Skeletons/Humanoid.json", "?? art/Garments/Cape/asset.json", "?? art/Garments/Cape/Cape.blend",
-        "?? art/Garments/Shirt/Shirt.blend1", "R  art/Paint/Old/asset.json -> art/Paint/Tattoo/asset.json")
-    $reject = Get-ArtRejectPaths $statusLines @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Garments/Cape", "art/Paint/Tattoo") @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Paint/Old")
-    Assert-Equal "The folders to restore" "art/GarmentTextures/LinenShirt art/Garments/Shirt art/Paint/Old art/Paint/Tattoo art/Skeletons/Humanoid.json" ($reject.Restore -join " ")
-    Assert-Equal "The new folders" "art/Garments/Cape" ($reject.New -join " ")
+        "?? art/Garments/Shirt/Shirt.blend1", "R  art/Paint/Old/asset.json -> art/Paint/Tattoo/asset.json", "A  art/Garments/Hat/asset.json")
+    $reject = Get-ArtRejectPaths $statusLines @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Garments/Cape", "art/Garments/Hat", "art/Paint/Tattoo") @("art/Garments/Shirt", "art/GarmentTextures/LinenShirt", "art/Paint/Old")
+    Assert-Equal "The folders to restore" "art/GarmentTextures/LinenShirt art/Garments/Shirt art/Paint/Old art/Skeletons/Humanoid.json" ($reject.Restore -join " ")
+    # A folder that HEAD lacks is new also when its files are added to the index or renamed into it.
     Assert-Equal "Nothing differs" 0 @((Get-ArtRejectPaths @() @("art/Garments/Shirt") @("art/Garments/Shirt")).Restore).Count
 
     # What a measurement did to the numbers of the poses where nothing may come through.
@@ -414,7 +414,7 @@ try {
     $html = [IO.File]::ReadAllText((Write-ArtReviewPage $page $review))
     Assert-True "The page encodes every text" ($html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;") -and -not $html.Contains("<script>") -and $html.Contains("Synced &amp; exported"))
     Assert-True "The page gives the commands and the build after them" ($html.Contains(".\tools\art\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage model`n.\tools\art\Build-Art.ps1"))
-    Assert-True "The way back is a real command, with the build after it" ($html.Contains("git checkout -- art/Garments/Shirt art/GarmentTextures/LinenShirt`n.\tools\art\Build-Art.ps1") -and -not $html.Contains("the asset you changed"))
+    Assert-True "The way back is a real command, with the build after it" ($html.Contains("git checkout HEAD -- art/Garments/Shirt art/GarmentTextures/LinenShirt`n.\tools\art\Build-Art.ps1") -and -not $html.Contains("the asset you changed"))
     Assert-True "New folders are named as not restored" ($html.Contains("not restore them: art/Garments/Cape."))
     Assert-True "A body that waits says what its views show" ($html.Contains("While this body waits for your approval, the game views show it as its file is now."))
     Assert-True "The page waits for an approval and claims none" ($html.Contains("wait for your approval") -and -not ($html -match "(?i)\bapproved\b"))
