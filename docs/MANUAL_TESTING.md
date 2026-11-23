@@ -3028,6 +3028,15 @@ checkout, so the script shows that it starts and stops both.
    Rest,Jog08` while the stack runs and the Editor is open. Expected result: it
    uses both, leaves both running, and the robe's skirt and the cloak lie as in
    the Blender view at rest and swing out in `Jog08`.
+4. Run `.\tools\art\Render-ArtViews.ps1 -Outfit Linen -Body Female`, then
+   `.\tools\art\Capture-GameViews.ps1 -Outfit Linen -Body Female` and open
+   `artifacts/art-views/game/Linen_Female.png`. Expected result: the result
+   line says `0 of 14 pose(s) over the bone budget of 10 mm`, `Bones on
+   Female` gives about 5 mm on average, and on the sheet every clip frame of the
+   female stands, reaches, and leans as in the game's picture, with `bones
+   <mean>/<largest> mm` beside each overlap; `BowShot21` holds the bow arm out
+   and the string hand at the chin in both, and only the fingers differ, open in
+   the game and curled in the Blender view.
 
 ## World Builder
 

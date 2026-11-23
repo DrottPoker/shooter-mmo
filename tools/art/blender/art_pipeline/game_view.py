@@ -28,6 +28,11 @@ so the tests run it without Blender; the C# names are in the comments:
   the body's first underwear of a slot when the look names none, and no underwear of a slot whose
   drawn garment hides it; at most PlayerBodyMaterials.MaximumPaintLayers on a material.
 
+A body that is not the rig its clip library is keyed on takes the clips as the game retargets them,
+through the reference poses of the two avatars, by retarget_pose.py; the rig itself and the rest pose
+play as they are. Every view's numbers hold where the pose put each bone's head, which the capture
+from the game holds against the game's.
+
 The views count three classes of pixels, decided per drawn triangle in the pose of the view: skin over
 which the cloth of a drawn garment lies, where the cloth should cover it; a garment over which the
 cloth of a garment drawn after it lies; and contact, either of them where that garment's cloth did not
@@ -47,7 +52,7 @@ import numpy as np
 # holds and art/Views/baseline.json names: raise it, and $script:ArtViewVersion in
 # tools/art/ArtViews.ps1, when either format changes. A change of the renderer's code changes every key
 # by itself, through the fingerprint of the code that the key holds.
-VIEW_VERSION = 3
+VIEW_VERSION = 4
 
 # BodyAppearanceCatalog.Garment: the hair's slot, the headwear's hair forms, and the shape key the hair
 # takes under headwear that presses it flat; AppearanceRules: the paint category a body always shows,
@@ -498,14 +503,15 @@ def class_counts(pixels) -> dict[str, int]:
 try:
     import bmesh
     import bpy
-    from mathutils import Vector
+    from mathutils import Matrix, Vector
     from mathutils.bvhtree import BVHTree
     from mathutils.interpolate import poly_3d_calc
 except ImportError:
     bpy = None
 
 if bpy is not None:
-    from . import bodies, body_files, cloth, coverage, garment as garment_module, manifest_io, paint, poses, texture
+    from . import (bodies, body_files, cloth, coverage, garment as garment_module, manifest_io, paint, poses, retarget_pose,
+                   skeleton, texture)
     from .scene import ArtPipelineError
 
 
@@ -803,6 +809,50 @@ def _world(name: str, colour: float):
     return world
 
 
+def _append_rig(rig: dict):
+    """The armature of the library's rig alone, appended from its file without its meshes and linked to
+    the scene, so a clip poses it; it draws nothing."""
+    with bpy.data.libraries.load(rig["file"], link=False) as (source, target):
+        if rig["root"] not in source.objects:
+            raise ArtPipelineError(f'{rig["file"]} has no object "{rig["root"]}".')
+        target.objects = [rig["root"]]
+    armature = target.objects[0]
+    if armature is None or armature.type != "ARMATURE":
+        raise ArtPipelineError(f'"{rig["root"]}" in {rig["file"]} is not an armature.')
+    bpy.context.scene.collection.objects.link(armature)
+    armature.hide_render = True
+    return armature
+
+
+def _reference(path: str, armature) -> dict:
+    """The reference pose of an armature from the avatar skeleton of its model's .fbx.meta."""
+    parents = {bone.name: (bone.parent.name if bone.parent else None) for bone in armature.data.bones}
+    rest = {bone.name: np.array(bone.matrix_local) for bone in armature.data.bones}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = retarget_pose.avatar_skeleton_lines(handle.read())
+        return retarget_pose.reference_of(lines, rest, parents)
+    except OSError as error:
+        problem = f"cannot be read ({error.strerror})"
+    except ValueError as error:
+        problem = str(error)
+    model = os.path.basename(path)[:-len(".meta")] if path.endswith(".meta") else os.path.basename(path)
+    raise ArtPipelineError(f"{path} {problem}; import {model} in Unity first, so its avatar's reference pose is current, "
+                           "then render again.")
+
+
+def _retarget(arm, rig, job_rig: dict, body_reference: str):
+    """The model that poses the body after the rig, from the two avatars' reference poses."""
+    try:
+        return retarget_pose.Retarget(
+            {bone.name: (bone.parent.name if bone.parent else None) for bone in arm.data.bones},
+            {bone.name: bone.human for bone in skeleton.load(job_rig["skeleton"]).bones if bone.human},
+            {bone.name: np.array(bone.matrix_local) for bone in arm.data.bones}, _reference(body_reference, arm),
+            {bone.name: np.array(bone.matrix_local) for bone in rig.data.bones}, _reference(job_rig["reference"], rig))
+    except ValueError as error:
+        raise ArtPipelineError(f"{arm.name} cannot follow the rig {rig.name}: {error}") from error
+
+
 def _reset(arm) -> None:
     """Every bone at rest, its scale too, so a pose does not depend on the poses before it: laying the
     cloth chains leaves the float rounding of their turn in their bones' scale."""
@@ -865,6 +915,16 @@ class Outfit:
         self._pull(pull_in(self.drawn))
         clips = sorted({view["pose"]["clip"] for view in job["views"] if view["pose"].get("clip")})
         self.actions = {a.name: a for a in coverage.load_actions([(job["library"], clips)])} if clips else {}
+        # A body that is not the library's rig takes the clips as the game retargets them: they play on
+        # the rig, appended apart and never drawn, and retarget_pose poses the body after it. A reference
+        # pose that cannot be had stops the clip poses, not the rest pose.
+        self.rig, self.retarget, self.retarget_problem = None, None, None
+        if clips and job.get("rig"):
+            self.rig = _append_rig(job["rig"])
+            try:
+                self.retarget = _retarget(self.arm, self.rig, job["rig"], job["body"]["reference"])
+            except ArtPipelineError as error:
+                self.retarget_problem = str(error)
         # The drawn meshes, and the cloth of every garment for the rays with the band its template names.
         self.body_piece = _Piece(self.body, kept_body_faces(body_faces, self.covers))
         self.garments, self.bands = [], []
@@ -986,11 +1046,16 @@ class Outfit:
         laid together as the game's target pose lays them."""
         _reset(self.arm)
         if pose.get("clip"):
+            if self.retarget_problem is not None:
+                raise ArtPipelineError(self.retarget_problem)
+            played = self.rig if self.rig is not None else self.arm
             action = self.actions[pose["clip"]]
-            self.arm.animation_data_create()
-            self.arm.animation_data.action = action
-            self.arm.animation_data.action_slot = action.slots[0]
+            played.animation_data_create()
+            played.animation_data.action = action
+            played.animation_data.action_slot = action.slots[0]
             bpy.context.scene.frame_set(int(pose["frame"]))
+            if self.retarget is not None:
+                self._follow_rig()
         else:
             if self.arm.animation_data is not None:
                 self.arm.animation_data.action = None
@@ -998,6 +1063,27 @@ class Outfit:
         bpy.context.view_layer.update()
         cloth.follow(self.arm, self.kinds, self.capsules, self.reach)
         bpy.context.view_layer.update()
+
+    def _follow_rig(self) -> None:
+        """Gives every bone of the body the local pose that puts it where the retargeting of the rig's
+        evaluated pose puts it."""
+        model = self.retarget
+        posed = model.pose({bone.name: np.array(bone.matrix) for bone in self.rig.pose.bones})
+        for name, basis in retarget_pose.bases(model.parents, model.body_rest, posed).items():
+            bone = self.arm.pose.bones[name]
+            bone.rotation_mode = "QUATERNION"
+            bone.location = basis[:3, 3]
+            bone.rotation_quaternion = Matrix(basis[:3, :3].tolist()).to_quaternion()
+            bone.scale = (1.0, 1.0, 1.0)
+
+    def bone_heads(self) -> dict[str, list[float]]:
+        """Where the head of every bone lies in the current pose, in the body's own frame and the game's
+        axes, x right, y up, z front, in meters, as the capture from the game records the game's."""
+        heads = {}
+        for bone in self.arm.pose.bones:
+            head = self.arm.matrix_world @ bone.head
+            heads[bone.name] = [round(head.x, 5), round(head.z, 5), round(head.y, 5)]
+        return heads
 
     def classify(self) -> None:
         """The classes of the drawn triangles in the current pose: skin under which the cloth of a drawn
@@ -1095,8 +1181,9 @@ def render_job(job: dict):
     for views in by_pose.values():
         outfit.pose(views[0]["pose"])
         outfit.classify()
+        bones = outfit.bone_heads()
         for view in views:
             numbers = dict(outfit.shoot(view["camera"], view["look"], view["classes"]), name=view["name"], key=view["key"],
-                           committed=view.get("committed", ""))
+                           committed=view.get("committed", ""), bones=bones)
             write_numbers(view["numbers"], numbers)
             yield numbers

@@ -3753,6 +3753,58 @@ The pose is the rest pose or a frame of a clip, from frame 0 to the clip's last,
 with the cloth chains of every drawn garment laid together in the game's target
 pose by `cloth.follow`.
 
+**A body that is not the rig.** The clips of the library are keyed on its rig,
+`art/Characters/Human_Male`, which plays them as they are. The game does not
+play them on another body bone for bone: Unity turns a clip into muscle values
+of the library's avatar and gives them to the body through the body's own
+avatar. So a clip frame on any other body, the female, is not played on her
+armature: the renderer appends the rig's armature from its file, never drawn,
+plays the frame on it, and `art_pipeline/retarget_pose.py` poses her after it.
+The rest pose of every body is its rest. The model is Unity's data and a
+reconstruction, each piece with its evidence in the module's docstring:
+
+- **Unity's data, the reference poses.** A Humanoid avatar measures every turn
+  from its reference pose, the rest pose with the arms raised to a T-pose, which
+  Unity writes into `humanDescription.skeleton` of the model's `.fbx.meta` when
+  it imports the body: `src/Client/Assets/Art/Models/Characters/Human_Male.fbx.meta`
+  for the rig and `Human_Female.fbx.meta` for the female. The female's arms are
+  raised 41 to 49 degrees and her fingers straightened, the male's arms 44 to 45
+  degrees and his feet turned 7 degrees, hers not. Turned from the rest poses
+  instead, her clip frames lay 33 mm from the game's on average.
+- **Reconstructed, the turns.** Every bone takes the turn its rig bone made
+  from its reference pose, relative to its parent's, across the shortest swing
+  from the rig's reference bone direction to the body's, as Unity's muscle
+  frames follow a bone's own direction; the upper arms, forearms, and hands take
+  it without the swing.
+- **Reconstructed, the body frame.** The body turns about its hips so the frame
+  of its upper legs and upper arms, up from the middle of the upper legs to the
+  middle of the upper arms and right along the sum of their two left-to-right
+  lines, turns from its reference pose as the rig's does.
+- **Reconstructed, the centre of mass.** The hips lie where they put the centre
+  of mass of the main human bones' heads, with Unity-like masses, at the rig's
+  times the human scale, the ratio of the two reference poses' centre of mass
+  heights; the ratio of the hip heights would leave her hips 8 mm high.
+
+On the capture of 2026-11-23 the female's 13 clip frames lie 3.9 to 7.5 mm from
+the game's at the bone heads, 5.8 mm on average, where the frames played bone
+for bone lay 49 mm, and her clip views overlap the game's 0.92 on average,
+where they overlapped 0.82, against the male's 0.96. `test_retarget_pose.py` holds the model to four recorded
+frames within 10 mm each, the budget, and every capture from the game measures
+it again, see [Capturing The Views From The
+Game](#capturing-the-views-from-the-game). The reference poses come from the
+committed metas, so a clip changed in Blender shows on both bodies at once,
+without Unity. A meta without an avatar skeleton, or whose skeleton does not fit
+the armature, such as after an export of the body that Unity has not imported
+yet, stops the clip views of that body with `<meta> has no avatar skeleton
+(humanDescription.skeleton); import Human_Female.fbx in Unity first, so its
+avatar's reference pose is current, then render again.`; its rest views render.
+
+A known difference: the garment checks, whose frames `coverage._frames` sets,
+and the review renders of the clips, the library's review sheet and
+`Render-ArtClips.ps1`, still play the action on the female bone for bone, so
+what they measured and show on her is not the pose the game gives her; only
+the game views follow the game.
+
 **The two pictures.** Each view is 512 by 768 pixels, seen with the game camera's
 vertical field of view of 55 degrees, framing the whole figure, the feet whole,
 or for a close view the head or the waist at the game's least distance of 0.6 m.
@@ -3768,7 +3820,9 @@ colours without light, one sample, and no filter: red for skin through, green
 for a garment through, blue for contact, black for everything else, which still
 hides what lies behind it, and a transparent background. Its counts are exact,
 since the renderer stops when any pixel has another colour. A view's numbers are
-its red, green, and blue pixels and every pixel of the figure.
+its red, green, and blue pixels and every pixel of the figure, and where the
+pose put the head of every bone, in the body's own frame and the game's axes, as
+the capture from the game records the game's.
 
 **What the three numbers tell.** Skin and inner are show-through of cloth that
 covered that surface at rest: skin through the garment over it, or an inner
@@ -3867,7 +3921,8 @@ baseline points to through that index, however old; a note whose entry is gone
 goes with it, and a picture without its numbers and a file that an interrupted
 run left under a temporary name go after a day. The upkeep touches nothing
 outside `views`. `artifacts/art-views` gets a copy of every picture
-under the view's name, and one contact sheet per outfit and body,
+under the view's name, of its numbers with the bone heads as `<view>.json`, which
+the capture from the game reads, and one contact sheet per outfit and body,
 `<Outfit>_<Body>.png`, with each view's look beside its look with the class
 pixels over it; `keys.json` there, written by a rename and read as empty when
 it is broken, keeps the key of every copy and sheet, so a run writes again only
@@ -3891,7 +3946,11 @@ the `dataSha256` of the data the export wrote for the body, since the faces a
 template hides depend on every clip and on the templates under it, each paint
 layer the body shows with its `paint` stage and fields, and for a clip pose the
 parts `clip:<Name>` and `skeleton` of its library, so another clip leaves the
-key alone. The garment cage is not read. A Python test holds that the code's
+key alone, and on a body that is not the library's rig the rig's `skeleton`
+part and a fingerprint of the avatar skeleton of each of the two `.fbx.meta`
+files, its lines only, so an import setting that leaves the reference pose
+alone leaves the keys alone. A rest view and every view of the rig itself read
+nothing of the rig. The garment cage is not read. A Python test holds that the code's
 folders cover every module the renderer imports.
 
 To render views and see their numbers:
@@ -3953,8 +4012,9 @@ after its exports while such a problem is there, see [Build The
 Art](#build-the-art). Expected result on a clean checkout: `Verified 44 art
 asset(s).` and `The baseline of the game views holds for the committed content
 of their 560 view(s).` `tools/ci/Test-ArtViews.ps1` checks the helpers of
-`ArtViews.ps1` without Blender: the key and what changes it, the code's
-fingerprint, the paint layers, the baseline's round trip and partial write, the
+`ArtViews.ps1` without Blender: the key and what changes it, the rig a body
+follows with the avatar skeletons of the two `.fbx.meta` files and their
+fingerprint, the code's fingerprint, the paint layers, the baseline's round trip and partial write, the
 stale views and the asset that waits for them, the exit codes of `-Check` and
 the class of a change, the data lookup, the choice of views, the cache's upkeep
 with the index of the pictures by committed key, the staged data's index and
@@ -3974,13 +4034,14 @@ To see the classes, render `.\tools\art\Render-ArtViews.ps1 -Outfit Linen
 -Body Male,Female -Pose Rest,Idle30,SwordSlash16` and open the contact sheets
 `artifacts/art-views/Linen_Male.png` and `Linen_Female.png`. Expected result:
 each view's look beside its look with the class pixels over it;
-`Linen_Male_Rest_Y215` counts `contact 11`, a few blue pixels where the hair
-lies over the edge of the hood at the face, farther out than the pair check's
-depth at rest; `Linen_Male_Idle30_Y215` counts `skin 10` and `contact 27`, red
-pixels at the sleeve's hem on the inner side of the upper arm and blue ones
-where the hand rests on the thigh and at the hair; and
-`Linen_Female_SwordSlash16_Y215` counts `contact 722`, the forearm pressed into
-the shirt over the chest in blue.
+`Linen_Male_Rest_Y215` counts `inner 11` and no contact, as no rest pose has;
+`Linen_Male_Idle30_Y215` counts `skin 10`, `inner 13`, and `contact 14`, red
+pixels at the sleeve's hem on the inner side of the upper arm, green ones at the
+hood beside the face, and blue ones where the hand rests on the thigh; and
+`Linen_Female_SwordSlash16_Y215` counts `contact 0`: played on her bone for bone,
+as before the views followed the game's retargeting, the frame pressed her
+forearm into the shirt over the chest, 713 blue pixels, which the game's pose
+does not.
 
 #### Capturing The Views From The Game
 
@@ -4101,27 +4162,56 @@ runs only when it is started, does this:
   picture, every pixel that is not clear, gives the view's overlap, the pixels
   in both over the pixels in either. It catches a gross mismatch of pose or
   framing, not a difference of looks.
+- The bones hold the Blender pose to the game's: per pose of an outfit on a
+  body, the distance of every bone's head from where the Blender view put it,
+  read from the view's numbers `artifacts/art-views/<view>.json`, without the
+  cloth chains, whose cloth the game's springs move, and in a pose of the
+  `Action` layer without the fingers, which its mask leaves to `Idle`. The mean
+  and the largest per pose go beside the overlap on the sheet and into
+  `capture.json`, so a capture needs no Blender run of its own when the views
+  are rendered.
 
 The script writes `artifacts/art-views/game/<view>.png`, per outfit and body a
 sheet `artifacts/art-views/game/<Outfit>_<Body>.png` with each view's Blender
 look and the game's picture side by side under its pose, camera, and overlap,
 and `capture.json`, what the capture measured: the phases and their seconds,
 per outfit and body the garments it wears and how far its rest pose lies from
-the bind pose, per pose what the Animator shows, how the cloth settled, and how
-far the hips turned, and per view its overlap. The Blender looks come from
+the bind pose and the names of the bones its mesh is skinned to, per pose what
+the Animator shows, how the cloth settled, how far the hips turned, and where
+the head of each of those bones lies in the body's own frame, in the game's
+axes and meters (`bonePositions`, three numbers per bone in the order of
+`bones`), to hold a Blender view's pose against, and per view its overlap. The Blender looks come from
 `artifacts/art-views`, so run `Render-ArtViews.ps1` for the same views first; a
-view without one says so on the sheet and shows the game's picture alone.
+view without one says so on the sheet and shows the game's picture alone, and
+a pose without Blender bones is counted apart. Each pose in `capture.json` holds
+`boneMean`, `boneLargest`, and `boneFarthest`, the bone farthest off.
 Nothing of a capture is committed; it has no baseline. `-Overlap`, 0.85 by
-default, is the overlap below which a view is listed. `-AfterCapture <file>`
-runs a C# file through `eval_file` in the same Play Mode once the views are
-captured, for a check of one's own; `GameViewCapture.Picture(eye, target,
-path)` draws the World from a point with the capture's camera into a PNG.
+default, is the overlap below which a view is listed, and `-BoneBudget`, 10 mm
+by default, the mean bone distance above which a pose is listed; neither fails
+the capture. `-AfterCapture <file>` runs a C# file through `eval_file` in the
+same Play Mode once the views are captured, for a check of one's own;
+`GameViewCapture.Picture(eye, target, path)` draws the World from a point with
+the capture's camera into a PNG.
+
+**The bone budget.** A pose within 10 mm on average shows what the game shows
+for what the views measure, and a body that is not the rig stays within it by
+the [model of the retargeting](#game-views) (5.8 mm on the female on
+2026-11-23, the rig itself 0.4 mm). A pose over it, after a change of a clip,
+a body, or the rig, means the model no longer fits that content: first import
+the changed model in Unity, so its avatar's reference pose is current, and
+render and capture again. If the pose stays over the budget, the fallback is
+to pose such a body from poses the game writes: the capture writes every bone's
+turn per clip frame into a committed file that the renderer reads instead of
+the model, exact by construction but taken again in Unity after every change of
+a clip, a body, or the rig.
 
 Expected result: per phase a line, per outfit and body `<Outfit> on <Body>:
-<n> s, put together in <n> s.`, then `<n> of <n> view(s) captured`, the views
-whose overlap is below 0.85, the poses whose cloth came to rest beside its
-target pose, the seconds of every phase, and exit code 0; exit code 1 names
-what failed. On the machine of the Blender views' measurements, from a cold
+<n> s, put together in <n> s.`, then `<n> of <n> view(s) captured, <n> of <n>
+pose(s) over the bone budget of 10 mm; ...`, the views whose overlap is below
+0.85, per body `Bones on <Body>: <n> pose(s), <n> mm from the Blender view's on
+average; ...` with its largest pose mean and its farthest bone, the poses over
+the bone budget, the poses whose cloth came to rest beside its target pose, the
+seconds of every phase, and exit code 0; exit code 1 names what failed. On the machine of the Blender views' measurements, from a cold
 start without a stack and without an Editor, `-Outfit Linen -Body Male` took
 122 s: 55 s for the stack with its builds, 18 s to open the Editor, 6 s to
 compile, 10 s to enter Play Mode, 3 s to sign in and enter the World, 3 s for
@@ -4140,14 +4230,20 @@ views differ, on 2026-11-23:
   capture names `ThumbDistal_R`; every clip poses that bone, so only the rest
   pose shows it.
 - **Clip frames on the male** overlap 0.81 to 1.00, 0.96 on average; the hips
-  turn as far as in Blender, such as 40 degrees in `BowShot21`. **On the
-  female** they overlap 0.45 to 0.99, 0.82 on average, lowest in `BowShot21`,
-  `Death31`, `SwordSlash16`, and `GreataxeSwing12`: the arms, the legs, and the
-  torso's lean differ by a few degrees to tens of degrees. The library is keyed
-  on the male's rig; the Blender views pose the female by copying its bones'
-  turns in local space, as the library's `Reference` collection does, while
-  the game retargets the Humanoid clips through her own avatar. The Blender
-  views of the female's clip frames are therefore not what the game shows.
+  turn as far as in Blender, such as 40 degrees in `BowShot21`, and his bone
+  heads lie 0.4 mm from the Blender view's on average, at most 14 mm. **On the
+  female**, played bone for bone as the library's `Reference` collection plays
+  them, they overlapped 0.45 to 0.99, 0.82 on average, 103 views below 0.85,
+  with her bone heads 49 mm off on average: the game retargets the clips
+  through her own avatar. Posed by the [model of the
+  retargeting](#game-views), they overlap 0.78 to 1.00, 0.92 on average, 31
+  views below 0.85, with her bone heads 3.9 to 7.5 mm off per frame and at most
+  64 mm, a toe in `Walk03` and `Walk18`. The views below 0.85 are the frames
+  `Walk03`, `Walk18`, `BowShot21`, `GreataxeSwing12`, and `OneHandStrike07` of
+  the outfits without a robe: the feet of a walk differ by a few centimeters,
+  the fingers of an attack are open in the game, see below, and a small change
+  of the figure shifts the framing of the whole picture. The male's `BowShot21` from yaw 215,
+  0.81 to 0.83, is below 0.85 for the open fingers alone.
 - **The fingers** of an attack frame keep `Idle`'s pose in the game, open,
   because the `Action` layer's mask leaves out the fingers; the Blender view
   curls them as the clip does. In play a weapon is held and the grip layers
@@ -4253,6 +4349,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_check_cache.py` | The [cache of the garment checks](#cache-of-the-garment-checks): keys that change with the content of the template and of a template of a lower layer, a body's fit, a clip, `band`, `recipe`, the cage, a texture, the stage, and a source file of the pipeline, and none when a fingerprint is missing; entries that read back as exactly what was written and none when broken, also while several runs write and read one entry at once; the count of poses and clip frames, 518 with the human library's clips, that a check with nothing to follow reports without stepping; and `coverage.checks` with stand-ins for Blender: the order of the checks, a pair that cannot meet, which computes no cover of the inner template and follows nothing, and a second run that takes every unit from the cache. It needs numpy. |
 | `test_manifest_io.py` | `manifest_io.read_json`, which every reader of an `asset.json` in the pipeline uses: it reads the file again while Windows refuses it during a replace, for a few seconds, then raises, and raises any other error at once. |
 | `test_game_view.py` | The [game views](#game-views): what a body draws of the garments it wears, rule for rule as the client's `PlayerBodyMeshPlan`, the hidden slots, the hair under headwear and its shape key, the order, the cover layers, the pull-in, the faces left out, the paint layers a body shows with the underwear it always wears, the category without case, at most four on a material, and the split of a face from its first corner, and every committed garment data read as the catalog reads it; the rule of the classes against hand-made cloth and skin, a quad that pokes through, one a millimeter under, one beside the cloth's edge, one beyond the reach or behind the body's own surface, a transparent place, contact with cloth of another part of the body against through with its own, and a garment's turned edges, which can be marked and are no cloth; the camera that frames a figure, and the exact counts of a class picture; the standard set, which shows every template and texture in outfits a player wears, every pair of templates that can meet together, and frames of the clips with their phases, below 600 views; the baseline, one line per view of the set; the code of the key, which covers every module the renderer runs; and how the scripts run the renderer, its job file, the shared cache root, the committed key, the gate of the baseline, one rule for the class of a change in `-Check` and on the review page, the hook in `Verify-ArtAssets.ps1`, the measurement in `Build-Art.ps1`, and its drawing of the changed views with staged data before its exports, with the index of pictures only from the exported data and the page after the verification. It needs numpy. |
+| `test_retarget_pose.py` | How a body that is not the rig takes a clip in the [game views](#game-views): a body equal to the rig gets the rig's pose exactly, a scaled one the scaled pose with the centre of mass where the scaled rig's lies, a body whose reference pose differs keeps the turn from its own reference, across the swing between the reference directions on a leg and without it on an arm, the local poses that give the posed bones back, the avatar skeleton of a `.fbx.meta` read in Blender's axes and refused where it does not fit the armature, and on `fixtures/retarget_game_poses.json`, four clip frames recorded from the game on 2026-11-23, the female within 10 mm of the game's bone heads in each. The fixture stays a recording of that day: after a change of a body, the rig, or one of its clips, the capture from the game holds the model to the new content. It needs numpy. |
 | `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, what a refit reads from a clip and which bones it aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
 | `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
 | `test_human_build.py` | The human build's net, its subdivision, mirror image, islands, seams, slivers, and folds, the hand's and the ear's islands, the cutting of faces on both bodies, and the layout of the UV map. It needs numpy. |

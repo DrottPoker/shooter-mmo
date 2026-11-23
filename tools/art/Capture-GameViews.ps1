@@ -10,7 +10,8 @@
 # started. It writes artifacts/art-views/game/<view>.png, one sheet per outfit and body,
 # artifacts/art-views/game/<Outfit>_<Body>.png, with each view's Blender look beside the game's picture,
 # and capture.json with what the capture measured, and lists the views whose silhouettes overlap the
-# Blender view's less than -Overlap. -AfterCapture names a C# file that eval_file runs in the same Play
+# Blender view's less than -Overlap and the poses whose bone heads lie farther from the Blender view's
+# than -BoneBudget millimeters on average. -AfterCapture names a C# file that eval_file runs in the same Play
 # Mode once the views are captured, such as pictures of one's own with GameViewCapture.Picture. A
 # worktree without .env gets a copy of the main checkout's for the run, which the script deletes again.
 # Nothing is committed from a capture. See docs/ART_PIPELINE.md, Capturing The Views From The Game.
@@ -26,6 +27,9 @@ param(
     [string]$AfterCapture,
     # The overlap below which a view is listed.
     [double]$Overlap = 0.85,
+    # The mean distance of a pose's bone heads from the Blender view's, in millimeters, above which the
+    # pose is listed.
+    [double]$BoneBudget = 10.0,
     # The longest a pose waits for its cloth to sleep, in seconds of play.
     [double]$SettleSeconds = 3.0,
     # The longest each wait takes: the stack, the Editor, Play Mode, a step of the capture.
@@ -404,6 +408,10 @@ function Write-GameViewSheet([string]$Path, $Entries) {
             $blender = Join-Path $blenderFolder "$($entry.Name).png"
             $has = Test-Path -LiteralPath $blender
             $measure = if ([double]$entry.Overlap -ge 0) { "overlap " + ([double]$entry.Overlap).ToString("0.000", $culture) } else { "no overlap" }
+            if ($null -ne $entry.Bones) {
+                $measure += [string]::Format($culture, "   bones {0:0.0}/{1:0} mm", [double]$entry.Bones.boneMean, [double]$entry.Bones.boneLargest)
+            }
+
             $label = "$($entry.Pose) $($entry.Camera)   Blender | game   $measure" + $(if ($has) { "" } else { "   no Blender view" })
             $graphics.DrawString($label, $font, [Drawing.Brushes]::White, [float]($x + 4), [float]($y + 2))
             if ($has) {
@@ -433,6 +441,94 @@ function Write-GameViewSheet([string]$Path, $Entries) {
         $font.Dispose()
         $graphics.Dispose()
         $sheet.Dispose()
+    }
+}
+
+function Measure-GameViewBones($Views, $Status) {
+    # Per pose of an outfit on a body, how far the bone heads of the Blender view lie from the game's, in
+    # millimeters: the mean and the largest over every bone but the cloth chains, whose cloth the game's
+    # springs move, and in a pose of the Action layer the fingers, which its mask leaves to Idle. The
+    # Blender bones are the numbers tools/art/Render-ArtViews.ps1 copies beside the pictures, of any view
+    # of the pose. A pose gets boneMean, boneLargest, and boneFarthest, or none without them.
+    $byPose = @{}
+    foreach ($view in $Views) {
+        $key = "$($view.Outfit)|$($view.Label)|$($view.Pose.Name)"
+        if (-not $byPose.ContainsKey($key)) {
+            $byPose[$key] = New-Object Collections.Generic.List[object]
+        }
+
+        $byPose[$key].Add($view)
+    }
+
+    $skeletons = @{}
+    foreach ($pose in @($Status.poses)) {
+        $poseViews = $byPose["$($pose.outfit)|$($pose.label)|$($pose.pose)"]
+        $body = @($Status.bodies | Where-Object { $_.outfit -ceq $pose.outfit -and $_.label -ceq $pose.label }) | Select-Object -First 1
+        $names = @(if ($null -ne $body) { $body.bones })
+        $positions = @($pose.bonePositions)
+        if ($null -eq $poseViews -or $names.Count -eq 0 -or $positions.Count -ne 3 * $names.Count) {
+            continue
+        }
+
+        $numbers = $null
+        foreach ($view in $poseViews) {
+            $path = Join-Path $blenderFolder "$($view.Name).json"
+            $read = if (Test-Path -LiteralPath $path) { try { [IO.File]::ReadAllText($path) | ConvertFrom-Json } catch { $null } } else { $null }
+            if ($null -ne $read -and $null -ne $read.bones) {
+                $numbers = $read
+                break
+            }
+        }
+
+        if ($null -eq $numbers) {
+            continue
+        }
+
+        $skeletonPath = $poseViews[0].Body.SkeletonPath
+        if (-not $skeletons.ContainsKey($skeletonPath)) {
+            $json = Get-Content -Raw -LiteralPath $skeletonPath | ConvertFrom-Json
+            $chains = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+            $fingers = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+            foreach ($bone in @($json.bones)) {
+                if ($null -ne $bone.chain) {
+                    $null = $chains.Add([string]$bone.name)
+                }
+
+                if ([string]$bone.human -cmatch '^(Left|Right)(Thumb|Index|Middle|Ring|Little)') {
+                    $null = $fingers.Add([string]$bone.name)
+                }
+            }
+
+            $skeletons[$skeletonPath] = [pscustomobject]@{ Chains = $chains; Fingers = $fingers }
+        }
+
+        $skeleton = $skeletons[$skeletonPath]
+        $action = ([string]$pose.shown).StartsWith("Action.")
+        $sum, $count, $largest, $farthest = 0.0, 0, -1.0, ""
+        for ($index = 0; $index -lt $names.Count; $index++) {
+            $name = [string]$names[$index]
+            $property = $numbers.bones.PSObject.Properties[$name]
+            if ($skeleton.Chains.Contains($name) -or ($action -and $skeleton.Fingers.Contains($name)) -or $null -eq $property) {
+                continue
+            }
+
+            $blender = @($property.Value)
+            $dx = [double]$positions[3 * $index] - [double]$blender[0]
+            $dy = [double]$positions[3 * $index + 1] - [double]$blender[1]
+            $dz = [double]$positions[3 * $index + 2] - [double]$blender[2]
+            $distance = [Math]::Sqrt($dx * $dx + $dy * $dy + $dz * $dz) * 1000.0
+            $sum += $distance
+            $count++
+            if ($distance -gt $largest) {
+                $largest, $farthest = $distance, $name
+            }
+        }
+
+        if ($count -gt 0) {
+            $pose | Add-Member -NotePropertyName boneMean -NotePropertyValue ($sum / $count) -Force
+            $pose | Add-Member -NotePropertyName boneLargest -NotePropertyValue $largest -Force
+            $pose | Add-Member -NotePropertyName boneFarthest -NotePropertyValue $farthest -Force
+        }
     }
 }
 
@@ -547,9 +643,18 @@ function Invoke-GameViewCapture {
     $null = Invoke-EditorCommand "editor_stop"
     $null = Wait-EditorState { param($s) $s.playMode -eq "stopped" } "the end of Play Mode"
     Write-Seconds "leave play mode" $watch
+    if ($status.state -eq "done") {
+        Measure-GameViewBones $views $status
+    }
+
     [IO.File]::WriteAllText((Join-Path $outputFolder "capture.json"), ($status | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
     if ($status.state -ne "done") {
         throw "The capture failed in the phase $($status.phase): $($status.message)"
+    }
+
+    $boneOf = @{}
+    foreach ($pose in @($status.poses | Where-Object { $null -ne $_.PSObject.Properties["boneMean"] })) {
+        $boneOf["$($pose.outfit)|$($pose.label)|$($pose.pose)"] = $pose
     }
 
     # The sheets, one per outfit and body, of the views captured.
@@ -567,6 +672,7 @@ function Invoke-GameViewCapture {
                 Picture = Join-Path $outputFolder "$($_.Name).png"
                 Overlap = [double]$byName[$_.Name].overlap
                 Blocked = [bool]$byName[$_.Name].blocked
+                Bones = $boneOf["$($_.Outfit)|$($_.Label)|$($_.Pose.Name)"]
             }
         })
     foreach ($group in @($entries | Group-Object Group)) {
@@ -581,14 +687,37 @@ function Invoke-GameViewCapture {
     $undressed = @($status.bodies | Where-Object { $_.missing })
     $awake = @($status.poses | Where-Object { $_.cloth -and -not $_.still })
     $beside = @($status.poses | Where-Object { $_.cloth -and $_.still -and -not $_.slept })
-    Write-Host "$($entries.Count) of $($views.Count) view(s) captured; the pictures and sheets are in artifacts/art-views/game."
+    $measuredPoses = @($status.poses | Where-Object { $null -ne $_.PSObject.Properties["boneMean"] })
+    $unmeasured = @($status.poses).Count - $measuredPoses.Count
+    $overBudget = @($measuredPoses | Where-Object { [double]$_.boneMean -gt $BoneBudget } | Sort-Object { [double]$_.boneMean } -Descending)
+    Write-Host ([string]::Format($culture, "{0} of {1} view(s) captured, {2} of {3} pose(s) over the bone budget of {4:0.#} mm; the pictures and sheets are in artifacts/art-views/game.",
+            $entries.Count, $views.Count, $overBudget.Count, $measuredPoses.Count, $BoneBudget))
     if ($withoutBlender.Count -gt 0) {
         Write-Host "$($withoutBlender.Count) view(s) have no Blender view in artifacts/art-views to compare with; run tools/art/Render-ArtViews.ps1 for them."
+    }
+
+    if ($unmeasured -gt 0) {
+        Write-Host "$unmeasured pose(s) have no Blender bones in artifacts/art-views to compare with; run tools/art/Render-ArtViews.ps1 for their views."
     }
 
     Write-Host ("Silhouettes that overlap the Blender view's less than {0}: {1}" -f $Overlap.ToString("0.00", $culture), $low.Count)
     foreach ($entry in $low) {
         Write-Host ("  {0}: {1}" -f $entry.Name, $entry.Overlap.ToString("0.000", $culture))
+    }
+
+    # The bones per body: the mean of its poses' means, the pose with the largest mean, and the farthest bone.
+    foreach ($group in @($measuredPoses | Group-Object label)) {
+        $worst = @($group.Group | Sort-Object { [double]$_.boneMean } -Descending)[0]
+        $farthest = @($group.Group | Sort-Object { [double]$_.boneLargest } -Descending)[0]
+        Write-Host ([string]::Format($culture, "Bones on {0}: {1} pose(s), {2:0.0} mm from the Blender view's on average; the largest mean {3:0.0} mm in {4} {5}, the farthest bone {6:0.0} mm, {7} in {8} {9}.",
+                $group.Name, $group.Count, ($group.Group | ForEach-Object { [double]$_.boneMean } | Measure-Object -Average).Average,
+                [double]$worst.boneMean, $worst.outfit, $worst.pose, [double]$farthest.boneLargest, $farthest.boneFarthest, $farthest.outfit, $farthest.pose))
+    }
+
+    Write-Host ([string]::Format($culture, "Poses whose bones lie more than {0:0.#} mm from the Blender view's on average: {1}", $BoneBudget, $overBudget.Count))
+    foreach ($pose in $overBudget) {
+        Write-Host ([string]::Format($culture, "  {0} on {1}, {2}: {3:0.0} mm, the farthest bone {4:0.0} mm, {5}", $pose.outfit, $pose.label, $pose.pose,
+                [double]$pose.boneMean, [double]$pose.boneLargest, $pose.boneFarthest))
     }
 
     foreach ($entry in $blocked) {

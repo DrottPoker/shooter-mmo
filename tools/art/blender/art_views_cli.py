@@ -5,8 +5,9 @@ library, and every view to render with the files it writes:
     blender --background --factory-startup --python-use-system-env --python-exit-code 1 \
         --python tools/art/blender/art_views_cli.py -- <job.json>
 
-It prints ART_VIEW and the numbers of each view, as JSON, once its pictures and numbers are written, and
-ART_PIPELINE_ERROR with the reason when the views cannot be drawn. See docs/ART_PIPELINE.md, Game Views.
+It prints ART_VIEW and the numbers of each view, as JSON, once its pictures and numbers are written,
+without the bone heads that its numbers file holds, and ART_PIPELINE_ERROR with the reason when the views
+cannot be drawn. See docs/ART_PIPELINE.md, Game Views.
 """
 
 import json
@@ -31,7 +32,8 @@ def main(argv: list[str]) -> int:
     try:
         for numbers in game_view.render_job(job):
             seconds = round(time.perf_counter() - began, 2)
-            print(f"ART_VIEW {json.dumps(dict(numbers, seconds=seconds), sort_keys=True, separators=(',', ':'))}")
+            shown = {key: value for key, value in numbers.items() if key != "bones"}
+            print(f"ART_VIEW {json.dumps(dict(shown, seconds=seconds), sort_keys=True, separators=(',', ':'))}")
             sys.stdout.flush()
             began = time.perf_counter()
     except ArtPipelineError as error:

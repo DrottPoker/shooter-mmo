@@ -320,6 +320,36 @@ namespace Mmorpg.Client.Editor
             return body.transform.InverseTransformPoint(head.position + tail * (float)GameViewFraming.HeadShare);
         }
 
+        // The bones the body is skinned to, in the order BonePositions gives them.
+        public string[] BoneNames()
+        {
+            var bones = FigureRenderer().bones;
+            var names = new string[bones.Length];
+            for (var index = 0; index < bones.Length; index++)
+            {
+                names[index] = bones[index].name;
+            }
+
+            return names;
+        }
+
+        // Where the head of every bone the body is skinned to lies now, in the body's own frame:
+        // three numbers per bone.
+        public float[] BonePositions()
+        {
+            var bones = FigureRenderer().bones;
+            var positions = new float[bones.Length * 3];
+            for (var index = 0; index < bones.Length; index++)
+            {
+                var local = body.transform.InverseTransformPoint(bones[index].position);
+                positions[index * 3] = local.x;
+                positions[index * 3 + 1] = local.y;
+                positions[index * 3 + 2] = local.z;
+            }
+
+            return positions;
+        }
+
         // How far the hips turned about the upright from the rest pose, in degrees, positive to the
         // body's right.
         public float HipsTurn()

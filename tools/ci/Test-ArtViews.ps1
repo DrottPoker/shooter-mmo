@@ -1,6 +1,7 @@
 # Checks the helpers of tools/art/ArtViews.ps1 that decide what the game views of
 # tools/art/Render-ArtViews.ps1 key, measure, keep, and report, without Blender: the committed key and
-# what changes it, the fingerprint of the renderer's code, the paint layers a body shows, the baseline's
+# what changes it, the rig a body follows with the avatar skeletons of the two models' .fbx.meta and
+# their fingerprint, the fingerprint of the renderer's code, the paint layers a body shows, the baseline's
 # round trip and partial write, the grouping of stale views and the asset that waits for them, the exit
 # codes of the check, the order the data is looked up in, the views' choice, the upkeep of the views
 # cache with the index of the pictures by committed key, the class of a change, the data staged for the
@@ -56,6 +57,17 @@ function New-TestView([string]$Name = "Linen_Male_Walk03_Y215", [string]$Outfit 
         Pose = [pscustomobject]@{ Name = "Walk03"; Clip = "Walk"; Frame = 3; Phase = "clean" }
         Camera = [pscustomobject]@{ Name = "Y215"; Yaw = 215.0; Pitch = 20.0; Frame = "figure" }
         Assets = [string[]]@($body.RelativeDirectory, $template.RelativeDirectory, $texture.RelativeDirectory, $paint.RelativeDirectory, $library.RelativeDirectory)
+    }
+}
+
+function New-TestRig {
+    # The library's rig that a body which is not the rig follows, with the avatars of the two models.
+    $manifest = [pscustomobject]@{ RelativeDirectory = "art/Characters/Human_Male"
+        Content = (New-TestContent @{ model = "male-model"; rig = "male-rig" } @{ skeleton = "male-skeleton" }) }
+    return [pscustomobject]@{
+        Manifest = $manifest
+        Avatar = [pscustomobject]@{ Name = "src/Client/Assets/Art/Models/Characters/Human_Male.fbx.meta"; Fingerprint = "male-avatar" }
+        BodyAvatar = [pscustomobject]@{ Name = "src/Client/Assets/Art/Models/Characters/Human_Female.fbx.meta"; Fingerprint = "female-avatar" }
     }
 }
 
@@ -124,6 +136,61 @@ try {
     Assert-True "The key text names the code and the pinned Blender" ($text.Contains("`ncode code-1`n") -and $text.Contains("`nblender $script:ArtBlenderVersion`n"))
     Assert-True "The local key holds the committed text and the files" ((Get-ArtViewLocalKey (New-TestView) "code-1" "Blender 5.2.2" @("file a=1")) -cne
         (Get-ArtViewLocalKey (New-TestView) "code-1" "Blender 5.2.2" @("file a=2")))
+
+    # A body that is not the library's rig follows it in the clip poses: the rig's skeleton and the
+    # reference poses of the two avatars key its clip views, and nothing of the rig keys a view of the rig
+    # itself or a rest view.
+    $female = New-TestView "Linen_Female_Walk03_Y215" "Linen" "Female"
+    $alone = Get-TestKey $female
+    $female | Add-Member -NotePropertyName Rig -NotePropertyValue (New-TestRig)
+    $followed = Get-TestKey $female
+    Assert-True "Following the rig changes the key of a clip view" ($followed -cne $alone)
+    $female.Rig.BodyAvatar.Fingerprint = "female-avatar-2"
+    Assert-True "The body's reference pose changes the key" ((Get-TestKey $female) -cne $followed)
+    $female.Rig = New-TestRig
+    $female.Rig.Avatar.Fingerprint = "male-avatar-2"
+    Assert-True "The rig's reference pose changes the key" ((Get-TestKey $female) -cne $followed)
+    $female.Rig = New-TestRig
+    $female.Rig.Manifest.Content.parts["skeleton"] = "male-skeleton-2"
+    Assert-True "The rig's skeleton changes the key" ((Get-TestKey $female) -cne $followed)
+    $female.Rig = New-TestRig
+    $female.Rig.Manifest.Content.stages["rig"] = "male-rig-2"
+    Assert-Equal "The rig's other content leaves the key alone" $followed (Get-TestKey $female)
+    $female.Rig = New-TestRig
+    $text = Get-ArtViewKeyText $female "code-1"
+    Assert-True "The key text names the rig and both avatars" $text.Contains("`nrig art/Characters/Human_Male skeleton=male-skeleton avatars " +
+        "src/Client/Assets/Art/Models/Characters/Human_Male.fbx.meta=male-avatar src/Client/Assets/Art/Models/Characters/Human_Female.fbx.meta=female-avatar`n")
+    Assert-Equal "The manifests of a view hold the rig it follows" "art/Characters/Human_Male" (@(Get-ArtViewManifestsOf $female)[-1].RelativeDirectory)
+    $rest = New-TestView "Linen_Female_Rest_Y215" "Linen" "Female"
+    $rest.Pose = [pscustomobject]@{ Name = "Rest"; Clip = $null; Frame = $null; Phase = "clean" }
+    $restKey = Get-TestKey $rest
+    $rest | Add-Member -NotePropertyName Rig -NotePropertyValue (New-TestRig)
+    Assert-Equal "A rest view keys no rig" $restKey (Get-TestKey $rest)
+    $male = New-TestView
+    $male | Add-Member -NotePropertyName Rig -NotePropertyValue $null
+    Assert-Equal "A view of the rig itself keys no rig" $base (Get-TestKey $male)
+
+    # The avatar skeleton of a model's .fbx.meta: the lines under humanDescription's skeleton, whatever
+    # the line ends, and a fingerprint that only they change.
+    $metaText = @(
+        "ModelImporter:", "  humanDescription:", "    serializedVersion: 3", "    human: []", "    skeleton:",
+        "    - name: Model(Clone)", "      parentName: ", "      position: {x: 0, y: 0, z: 0}", "      rotation: {x: 0, y: 0, z: 0, w: 1}",
+        "    - name: Root", "      parentName: Model(Clone)", "      position: {x: 0, y: 1, z: 0.5}", "      rotation: {x: 0, y: 0, z: 0, w: 1}",
+        "    armTwist: 0.5", "  globalScale: 1", "") -join "`n"
+    $avatarLines = @(Get-ArtViewAvatarLines $metaText)
+    Assert-Equal "The avatar skeleton's lines" "8 |    - name: Model(Clone)|      rotation: {x: 0, y: 0, z: 0, w: 1}" "$($avatarLines.Count) |$($avatarLines[0])|$($avatarLines[-1])"
+    Assert-Equal "A meta without an avatar has no lines" 0 @(Get-ArtViewAvatarLines "ModelImporter:`n  globalScale: 1`n    skeleton:`n    - name: A`n").Count
+    $metaPath = Join-Path $root "meta/Human_Test.fbx.meta"
+    New-TestFile $metaPath $metaText
+    $fingerprint = Get-ArtViewAvatarFingerprint $metaPath
+    Assert-True "An avatar has a fingerprint" ($fingerprint -cmatch '^[0-9a-f]{64}$')
+    New-TestFile $metaPath $metaText.Replace("`n", "`r`n")
+    Assert-Equal "Line ends leave the avatar's fingerprint" $fingerprint (Get-ArtViewAvatarFingerprint $metaPath)
+    New-TestFile $metaPath $metaText.Replace("globalScale: 1", "globalScale: 2")
+    Assert-Equal "An import setting outside the avatar leaves its fingerprint" $fingerprint (Get-ArtViewAvatarFingerprint $metaPath)
+    New-TestFile $metaPath $metaText.Replace("y: 1, z: 0.5", "y: 1, z: 0.6")
+    Assert-True "The reference pose changes the avatar's fingerprint" ((Get-ArtViewAvatarFingerprint $metaPath) -cne $fingerprint)
+    Assert-Equal "A missing meta has no avatar" "none" (Get-ArtViewAvatarFingerprint (Join-Path $root "meta/missing.fbx.meta"))
 
     # The fingerprint of the code: every file below the paths by its path and its text with LF line ends.
     $code = Join-Path $root "code"
