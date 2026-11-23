@@ -6,8 +6,8 @@
 # codes of the check, the order the data is looked up in, the views' choice, the upkeep of the views
 # cache with the index of the pictures by committed key, the class of a change, the data staged for the
 # views by tools/art/Build-Art.ps1 with its index and key, which no animation library enters, an export
-# record that still names clipSources, the review page of tools/art/ArtReviewPage.ps1, the keys of the
-# readable copies, and the root of the shared cache.
+# record that still names clipSources, the stiff parts of a modeled template's asset.json, the review page
+# of tools/art/ArtReviewPage.ps1, the keys of the readable copies, and the root of the shared cache.
 #
 # Exit codes: 0 every case holds, 1 a case failed.
 $ErrorActionPreference = "Stop"
@@ -448,6 +448,47 @@ try {
         $written = Get-Content -Raw -LiteralPath $read.ManifestPath
         Assert-True "$($older.Folder) writes no clipSources" ($written -cnotmatch 'clipSources' -and $null -ne ($written | ConvertFrom-Json).export)
     }
+
+    # A modeled template's stiff parts: read in their order and written back as they were, an empty list
+    # read as none and left out, and a list of another form, or one on a template with a recipe, refused.
+    $helmDirectory = Join-Path $script:ArtRepositoryRoot "art/Garments/NasalHelm"
+    $helmText = [IO.File]::ReadAllText((Join-Path $helmDirectory "asset.json"))
+    $helm = Read-ArtAssetManifest $helmDirectory
+    Assert-Equal "The helmet's stiff part" "nasal=1009" (@($helm.Stiff | ForEach-Object { "$($_.name)=$($_.vertex)" }) -join ",")
+    $helm.ManifestPath = Join-Path $root "NasalHelm.json"
+    Write-ArtGarmentManifest $helm
+    Assert-Equal "The stiff parts are written as they were" $helmText ([IO.File]::ReadAllText($helm.ManifestPath))
+    $stiffPattern = '"stiff": \[[^\]]*\]'
+    $empty = Read-ArtGarmentManifest $helmDirectory ([regex]::Replace($helmText, $stiffPattern, '"stiff": []') | ConvertFrom-Json) "NasalHelm"
+    $empty.ManifestPath = Join-Path $root "NasalHelmEmpty.json"
+    Write-ArtGarmentManifest $empty
+    Assert-True "An empty list is none and is left out" (@($empty.Stiff).Count -eq 0 -and [IO.File]::ReadAllText($empty.ManifestPath) -cnotmatch '"stiff"')
+    foreach ($wrong in @('{ "name": "nasal", "vertex": 1009 }', '[{ "name": "nasal" }]', '[{ "name": "nasal", "vertex": -1 }]',
+            '[{ "name": "nasal", "vertex": 1.5 }]', '[{ "name": "1nasal", "vertex": 1009 }]', '[{ "name": "nasal", "vertex": 1009, "side": "L" }]',
+            '[{ "name": "nasal", "vertex": 1009 }, { "name": "nasal", "vertex": 3 }]')) {
+        $message = ""
+        try {
+            $null = Read-ArtGarmentManifest $helmDirectory ([regex]::Replace($helmText, $stiffPattern, "`"stiff`": $wrong") | ConvertFrom-Json) "NasalHelm"
+        }
+        catch {
+            $message = $_.Exception.Message
+        }
+
+        Assert-True "A wrong stiff list is refused: $wrong" ($message -cmatch 'stiff must list the stiff parts of a modeled template')
+    }
+
+    $robeDirectory = Join-Path $script:ArtRepositoryRoot "art/Garments/Robe"
+    $robeJson = Get-Content -Raw -LiteralPath (Join-Path $robeDirectory "asset.json") | ConvertFrom-Json
+    $robeJson | Add-Member -NotePropertyName stiff -NotePropertyValue @([pscustomobject]@{ name = "hem"; vertex = 3 })
+    $message = ""
+    try {
+        $null = Read-ArtGarmentManifest $robeDirectory $robeJson "Robe"
+    }
+    catch {
+        $message = $_.Exception.Message
+    }
+
+    Assert-True "A template with a recipe has no stiff parts" ($message -cmatch 'stiff must list the stiff parts of a modeled template')
 
     # The review page: what changed in words, the views that changed with their class, and a page that
     # encodes every text, shows only what changed, and approves nothing.

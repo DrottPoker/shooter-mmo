@@ -6,6 +6,9 @@
     "layer": 600,
     "band": "outer",
     "recipe": "modeled",
+    "stiff": [
+        { "name": "nasal", "vertex": 1009 }
+    ],
     "hides": [],
     "hidesUnderwear": false,
     "covers": true,

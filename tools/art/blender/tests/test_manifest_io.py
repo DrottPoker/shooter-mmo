@@ -97,7 +97,8 @@ class ReadJsonTests(unittest.TestCase):
                 self.assertNotIn('/ "asset.json").read_text', text)
         self.assertIn('recipe = manifest_io.read_json(args.manifest)["recipe"]', source_text("art_pipeline_cli.py"))
         for relative, reader in (("art_pipeline/cage.py", "def read_manifest"), ("art_pipeline/garment.py", "def read_wearing"),
-                                 ("art_pipeline/garment.py", "def read_manifests"), ("art_pipeline/check_cache.py", "def manifest_fields"),
+                                 ("art_pipeline/garment.py", "def read_manifests"), ("art_pipeline/garment.py", "def read_stiff"),
+                                 ("art_pipeline/check_cache.py", "def manifest_fields"),
                                  ("art_pipeline/check_cache.py", "def source_problem"), ("art_pipeline_cli.py", "def _recipe_next_to")):
             text = source_text(relative)
             body = text[text.index(reader):]

@@ -206,7 +206,7 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/Test-PaintProjection.ps1` | Checks the move that a body of another topology than a paint layer's canvas gets, through the garment cage, on subdivided copies of the bodies. It changes no file. |
 | `tools/art/Sync-CageAsset.ps1`, `tools/art/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
 | `tools/art/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
-| `tools/art/Sync-GarmentAsset.ps1`, `tools/art/blender/art_pipeline/garment.py`, `hang.py`, `coverage.py` | Builds a garment template from its recipe on the cage, with its loose parts on their scaffolds (`hang.py`), fits it to every body through the cage, gives every version the weights of its body, computes what it covers on every body (`coverage.py`), writes its review sheet and review file, and checks it. |
+| `tools/art/Sync-GarmentAsset.ps1`, `tools/art/blender/art_pipeline/garment.py`, `hang.py`, `coverage.py`, `stiff.py` | Builds a garment template from its recipe on the cage, with its loose parts on their scaffolds (`hang.py`), fits it to every body through the cage, a modeled template's stiff parts as one piece (`stiff.py`, without Blender), gives every version the weights of its body, computes what it covers on every body (`coverage.py`), writes its review sheet and review file, and checks it. |
 | `tools/art/Sync-TextureAsset.ps1`, `tools/art/blender/art_pipeline/texture.py` | Moves a garment texture to its template when the template's faces or UVs changed, by correspondence, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
 | `tools/art/Set-TextureDyes.ps1` | Makes a garment texture dyeable: its dye mask and the natural color of each channel, with its image divided so that it looks undyed as it was painted. |
 | `tools/art/Sync-HumanBase.ps1`, `tools/art/blender/human_base`, `tools/art/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
@@ -233,7 +233,8 @@ only you run Claude Code, and save your work before a live session.
 
 `asset.json` sits next to the `.blend` file. The scripts write it; only `kind`,
 `target`, `rootObjects`, `triangleBudget`, and for a skinned asset `skeleton` and
-any `clips` of its own are written by hand when an asset is created.
+any `clips` of its own are written by hand when an asset is created, and a
+modeled garment template's `stiff` once its stiff parts are modeled.
 
 | Field | Meaning |
 | --- | --- |
@@ -258,6 +259,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `bodies` | Paint layers: the skinned assets the paint fits, the one a new layer's canvas is copied from first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They may have any topology; a body of another topology than the canvas gets the paint through the garment cage, whose bodies it must be among. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
 | `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
 | `recipe` | Garment templates only: its `regions`, `cuts`, `over`, `hang`, `ease`, and `hem`, as [Recipes](#recipes) describes, or `"modeled"`. |
+| `stiff` | Modeled garment templates only, optional: the parts of the template that are stiff in the world, each an island of its mesh, joined to the rest by no edge, named by its `name`, a letter and then letters and digits, and the index of one of its vertices, `vertex`, such as `[{ "name": "nasal", "vertex": 1009 }]` for the helmet's nasal. Such a part follows a changed cage or a new body as one piece, as [Building A Template](#building-a-template) describes. It is no content: adding or changing it changes no stage and no export. |
 | `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Shirt`. |
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
 | `lines` | The cage only: the [standard lines](EQUIPMENT_VISUALS_DESIGN.md#standard-lines), each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1; a line of the neck may also have a `rise`, from above 0 to 20 per meter, by which it climbs toward the sides, the rise times the square of the distance to the side. |
@@ -3177,7 +3179,10 @@ models by hand over the cage, such as a hairstyle or a helmet. A hair template's
 first version also has the shape key `UnderHeadwear`, the hair pressed flat under
 headwear, shaped by hand like the hair; every other version gets it fitted the
 same way as its basis, and a hand correction of it is kept the same way too, in
-the point attribute `fitted_under_headwear`.
+the point attribute `fitted_under_headwear`. A modeled template may name the
+parts of it that are stiff in the world in `stiff`, such as the helmet's nasal,
+which then follow as one piece, as [Building A Template](#building-a-template)
+describes.
 
 ### Building A Template
 
@@ -3187,7 +3192,37 @@ the point attribute `fitted_under_headwear`.
   versions when the cage's content changed. The first version is bound to the
   old cage and placed on the new one, so it follows; where its cage did not
   move, such as when only other regions were added to the cage, it stays exactly where it was, so every other version is
-  fitted as before.
+  fitted as before. A modeled template's first version moves with the smooth
+  field of the cage's moves instead, from the old cage to the new one, the same
+  field that fits it to the other bodies, and where it moved, every vertex and
+  face centre that then left its band is settled back into it, as the other
+  versions' are, but those of its stiff parts.
+- A stiff part, an island of a modeled template's mesh that `stiff` in
+  `asset.json` names, such as the helmet's nasal, follows as one piece, since
+  the field bends a thin part that stands off the cage: by the similarity, a
+  rotation, one scale, and a translation, that carries its vertices most closely,
+  in the least squares, from where the field had them to where the field puts
+  them now. The first version's part is carried from its place before the
+  cage's change to where the field moves it; another body's version's part from
+  its `fitted` attribute to its new `fitted`, applied to the part as it is
+  shaped now, so a shaping of it by hand on that body is kept exactly, turned and
+  scaled with the field's move; and a version made for the first time, as for a
+  new body, takes the first version's part, carried from there to where the field
+  alone places it on that body, so a new body gets a straight copy, not a bent
+  one. A part that the similarity moves by no more than 0.01 mm stays exactly
+  where it is. A carried part that then leaves its band, measured as the checks
+  measure it, moves as a whole along the mean of the cage's normals at its points
+  out of the band, by the smallest distance that brings it back, at most 5 mm;
+  beyond that the sync stops and names the part. `fitted` keeps where the field
+  alone puts each vertex, so the files of a template whose cage and bodies did
+  not change stay as they are. A vertex out of range, an island that is the
+  whole mesh, and two parts on one island stop the sync with a message that
+  names the field. The report says what happened: `NasalHelm_Female: its stiff
+  part nasal followed as one piece: it moved <c> mm at its centre and at most
+  <m> mm, turned <t> degrees, and scaled by <s>`, with `; then it moved <d> mm as
+  a whole back into its band` when it did, and for the points settled back
+  `HoodUp_Male: <n> vertices left the loose band and were settled back into it,
+  by at most <d> mm.`
 - A new template, or one synced with `-Rebuild` after its recipe changed, gets
   its first version built from the first body's cage: the cage's faces of its
   regions, cut at its lines, every cage vertex within 8 mm of a line first moved
@@ -3248,7 +3283,11 @@ the point attribute `fitted_under_headwear`.
   are laid again from the cloth where it now lies, also from a cloth corrected
   by hand. A version corrected by hand keeps its corrections, because the point
   attribute `fitted` holds the shape the last fitting gave, and the difference
-  to it is applied again.
+  to it is applied again. Of a modeled template, a corrected version that
+  followed a change of the cage or of its body in this sync then has every
+  vertex and face centre that its correction put out of the band settled back
+  into it, its stiff parts as a whole as above; when neither changed, nothing is
+  settled, so a version shaped by hand stays as it is.
 - The first version's turned edges are laid again from its cloth where it lies,
   in place, after the cloth vertices they are turned from keep their room off
   the cage: only positions change, never the order of the vertices, faces, or
@@ -4062,7 +4101,9 @@ the class of a change, the data lookup, the choice of views, the cache's upkeep
 with the index of the pictures by committed key, the staged data's index and
 key, which no animation library enters, an export record of a template and of a
 texture that still names `clipSources`, which reads and is written without
-them, the review page of `ArtReviewPage.ps1`, which encodes every text, shows
+them, the `stiff` parts of a modeled template's `asset.json`, which read and are
+written as they were, with a wrong list or one on a template with a recipe
+refused, the review page of `ArtReviewPage.ps1`, which encodes every text, shows
 only what changed, and approves nothing, and the shared cache's root. Expected
 result: `Result: the game view helpers hold in every case`.
 
@@ -4380,7 +4421,8 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_cloth_core.py` | The kinematic cloth against the Unity fixtures; see [Cloth Parity](#cloth-parity). |
 | `test_blender_source.py` | The loader itself. |
 | `test_skeleton.py` | The reading and rules of `art/Skeletons/*.json`, the Humanoid's avatar bones, sockets, and chains, the eyelids of `Humanoid`, and the bones no clip keys. |
-| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates, checked against every `art/Garments/*/asset.json`; the turned edges and the border read from a mesh's faces, the fold rule, its message, its least fold, and the room of a hem, and that the build and every function of `hang.py` go over their elements by index, never over a set. |
+| `test_garment.py` | The bands, offsets, slots, names, recipe text, recipe regions, and manifest reading of garment templates with their stiff parts, checked against every `art/Garments/*/asset.json`; the turned edges and the border read from a mesh's faces, the fold rule, its message, its least fold, and the room of a hem, and that the build and every function of `hang.py` go over their elements by index, never over a set. |
+| `test_stiff.py` | The stiff parts of a modeled template, `stiff.py`: the islands of a mesh, the parts an `asset.json` names, checked against every `art/Garments/*/asset.json`, with a vertex out of range, an island that is the whole mesh, and two parts on one island refused, and the similarity a part follows a move with, for a part that stays, a pure turn, a scale, points with noise, and a mirror image, which it never takes for a turn. It needs numpy. |
 | `test_cage.py` | The cage's regions, stages, zones, rings, digits, names, and manifest reading, checked against `art/Cages` and the exported body topologies, and the order of the fitting's rounds and reaches. |
 | `test_export_validate.py` | The variants argument, the sRGB conversion, the name and transform rules, the kinds and review stages, checked against every `asset.json`, an image named by its file name alone, and a garment's bones put exactly at rest before its export. |
 | `test_texture_paint.py` | Dye colors, texture and paint image names, which faces serve a point, and the recorded crops. |
@@ -4401,7 +4443,7 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_skin.py` | The plain skin of the bodies: its flat images, the inside of the mouth, the eyes' iris and pupil, and that its faces and eye colours are the ones the game offers. It needs numpy. |
 | `test_grip.py` | The hand pose `Grip`: its distances to a handle and to a finger, its searches, a hand posed by its bones, and its fit on a small hand whose fingers must close onto the handle and lie against each other. It needs numpy. |
 | `test_inner_garments.py` | What keeps a garment worn under another from showing through it: the split of a quad across the diagonal it folds outward across, alike for a quad and its mirror image, and the rule that finds mirrored quads split differently, which leaves out a quad that is its own mirror image; the recipes' splits just beyond the hide margin inside where an outer template ends; the hide margin of a place, four times its gap and at least 10 mm, and how far a face lies beyond the margins of the open edges, a face under a hem, at the margin, and near a place with a wider margin; the faces of a turned edge that go with their cloth, also in the rest rule's list, which every body hides; the body faces the game removes under a pair, which do not block a look; where the pair check follows a drawn triangle; the body's drawn faces split as the game splits them, which the pull-in and the motion check follow inside; and a texture whose template only turned the corners of its faces or cut its UV faces into smaller ones, each inside one old face. It needs numpy. |
-| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the ten files that need it are skipped and the run says `skipped=10`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_numeric_logic.py` | The cage's net and polygons, the fitting's middle plane, mirror images, and draw of a whole net, the weights of garments and bodies, the cloth's crotch rule with the skin's distances, its band and fades, the crotch it is measured from, the shares it moves to the pelvis, and the hold evened over the cloth's edges, the cloth's normals and the direction into it across a turned edge, the band of turned edges taken where their cloth lies, the room of a hem, the weights a turned edge takes from its cloth, the rule of the normals at a hem, a rebuild's carry-over that reads no turned vertex, dyes, the paint crop, the coverage report, and the move of a texture: its feature curves, the even spread of their move, and how a texel reads and grows its paint. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the thirteen files that need it are skipped and the run says `skipped=13`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,
@@ -4497,7 +4539,13 @@ slot, so a shirt and a jerkin replace each other.
    paint its weights by hand if it needs it. Shape the cloth, not the rims and
    flaps of its turned edges: the sync lays them again from the cloth. Correct
    `Tunic_Female` only where the fitting needs help, as the helmet's nasal over
-   the woman's smaller nose.
+   the woman's smaller nose. A modeled template names a part that is stiff in
+   the world, a separate island of its mesh such as a helmet's nasal or a
+   visor, in `stiff` in `asset.json`, by its name and one of its vertices, so it
+   reaches the other bodies and follows a changed cage as one piece. Where that
+   straight copy does not suit a body, shape the part on that body's version by
+   hand, as the female's longer, steeper nasal is; the sync keeps that shape and
+   turns and scales it with the cage's later moves.
    A hairstyle, a template of `-Slot hair -Band hair -Modeled`, also has the
    shape key `UnderHeadwear` on its first version, the hair pressed flat under
    hoods and helmets, shaped in Edit Mode with that key active. Save, then fit
@@ -5209,7 +5257,7 @@ passes.
 | `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). One dye channel. |
 | `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the pressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. One dye channel. |
 | `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,468 triangles per body. |
-| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh and stays stiff: the fitting's smooth field bends a thin bar that stands off the face, so the female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage. |
+| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body within a budget of 2,500, all on `Head`: a pointed spangenhelm over the head and the pressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge to 2 mm below the tip of the nose. The nasal is its own island of the mesh, 74 of its 1,083 vertices, and the stiff part `nasal` in `asset.json` (`"stiff": [{ "name": "nasal", "vertex": 1009 }]`), so the sync carries it as one piece where the smooth field would bend the thin bar that stands off the face. The female version's nasal is shaped by hand, a rigid copy of the male's laid on her brow band, with its shaft as long as her nose asks for and leaning 8 degrees more forward from the bend, because the rings of the cage's head stand up to 15 mm off the bridge of her nose and the band holds from the cage; the sync keeps that shape and turns and scales it with later moves of her cage. |
 | `art/Garments/Robe` | `garment` | none | An ankle-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `SkirtWaist`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top down to just below the navel with a loose skirt hanging all around from `SkirtWaist` on the `skirt` chains down to `SkirtHem`, just above the ankle: it leaves the body evenly from the waist down to the hip joints, where it lies 30 mm off the hips and the legs, and falls straight from there with a flare of 0.04, so it does not puff out at the waist, 2,980 triangles per body, 384 vertices of them on the chains, 320 of its cloth and 64 of the turned edge of its hem. It hides the `legs` slot, so the boots show below it. One dye channel. |
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,704 triangles per body. |
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. |

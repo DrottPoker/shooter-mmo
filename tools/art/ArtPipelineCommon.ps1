@@ -1367,6 +1367,34 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
     return $result
 }
 
+function ConvertTo-ArtGarmentStiff($Stiff) {
+    # The stiff parts of a modeled template's asset.json, each with its name and the index of one of its
+    # vertices, in their order, or $null when the field is not a list of such parts, each name once.
+    if ($Stiff -isnot [System.Array]) {
+        return $null
+    }
+
+    $parts = New-Object System.Collections.Generic.List[object]
+    $names = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($entry in $Stiff) {
+        if ($entry -isnot [System.Management.Automation.PSCustomObject]) {
+            return $null
+        }
+
+        $keys = @($entry.PSObject.Properties.Name)
+        $vertex = $entry.vertex
+        if ($keys.Count -ne 2 -or $keys -cnotcontains "name" -or $keys -cnotcontains "vertex" -or $entry.name -isnot [string] -or
+            $entry.name -cnotmatch '^[A-Za-z][A-Za-z0-9]*$' -or -not ($vertex -is [int] -or $vertex -is [long]) -or $vertex -lt 0 -or
+            -not $names.Add($entry.name)) {
+            return $null
+        }
+
+        $parts.Add([ordered]@{ name = [string]$entry.name; vertex = [long]$vertex })
+    }
+
+    return , $parts.ToArray()
+}
+
 function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
     # A garment template: the form of a garment kind, made on the garment cage of its skeleton from a
     # recipe or by hand, fitted to every body of the cage, and exported as one model per body,
@@ -1492,6 +1520,20 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
     }
 
+    # A modeled template may name its stiff parts, each an island of its mesh by one of its vertices,
+    # such as a helmet's nasal, which follow a move of the cage or a new body as one piece. The sync
+    # finds the islands and refuses a vertex whose island is not a part of its own.
+    $stiff = @()
+    if ($null -ne $Json.PSObject.Properties["stiff"]) {
+        $converted = ConvertTo-ArtGarmentStiff $Json.stiff
+        if ($null -eq $converted -or ($converted.Count -gt 0 -and $Json.recipe -cne "modeled")) {
+            $problems.Add("stiff must list the stiff parts of a modeled template, each once, by its name (a letter, then letters and digits) and the index of one of its vertices from 0, such as [{ ""name"": ""nasal"", ""vertex"": 1009 }]")
+        }
+        else {
+            $stiff = $converted
+        }
+    }
+
     $stages = $script:ArtReviewStages["garment"]
     $relativeDirectory = Get-ArtRelativePath $AssetDirectory
     $content = $null
@@ -1609,6 +1651,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         ImplementedStages = $script:ArtImplementedStages["garment"]
         Cage = $cage
         Recipe = $recipe
+        Stiff = [object[]]$stiff
         Target = $null
         TargetPath = $null
         RootObjects = [string[]]@($bodies | ForEach-Object { $_.Root })
@@ -1708,6 +1751,16 @@ function Write-ArtGarmentManifest($Manifest) {
     $lines.Add("    `"layer`": $($Manifest.Layer),")
     $lines.Add("    `"band`": `"$($Manifest.Band)`",")
     Add-ArtRecipeLines $lines $Manifest.Recipe
+    $stiff = @($Manifest.Stiff | Where-Object { $null -ne $_ })
+    if ($stiff.Count -gt 0) {
+        $lines.Add('    "stiff": [')
+        for ($i = 0; $i -lt $stiff.Count; $i++) {
+            $comma = if ($i -lt $stiff.Count - 1) { "," } else { "" }
+            $lines.Add("        { `"name`": `"$($stiff[$i].name)`", `"vertex`": $($stiff[$i].vertex) }$comma")
+        }
+        $lines.Add('    ],')
+    }
+
     $hides = (@($Manifest.Hides) | ForEach-Object { '"' + $_ + '"' }) -join ", "
     $lines.Add("    `"hides`": [$hides],")
     $lines.Add("    `"hidesUnderwear`": $(if ($Manifest.HidesUnderwear) { 'true' } else { 'false' }),")

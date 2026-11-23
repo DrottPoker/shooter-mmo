@@ -25,6 +25,7 @@ validate = load("art_pipeline/validate.py", "STAGES", "NAME_PATTERN", "OBJECT_TY
 export = load("art_pipeline/export.py", "ANIMATED_KINDS", "OBJECT_TYPES")
 paint = load("art_pipeline/paint.py", "CROP_BLOCK", bodies=bodies, cage=cage)
 texture = load("art_pipeline/texture.py", "SIZES", "MAX_DYES", garment=garment)
+stiff = load("art_pipeline/stiff.py", "FIELD", ArtPipelineError=scene.ArtPipelineError)
 content = load("art_pipeline/content_core.py", "VERSION", "STAGES", "PARTS", "PART_PATTERN")
 
 
@@ -82,6 +83,11 @@ class PowerShellTablesAgreeTests(unittest.TestCase):
 
     def test_the_dye_channels_a_template_may_ask_for(self):
         self.assertRegex(repository_text("tools/art/" + COMMON), rf"\$Json\.dyes -gt {texture.MAX_DYES}\b")
+
+    def test_the_field_of_a_modeled_template_s_stiff_parts_is_read_and_written_by_its_name(self):
+        text = repository_text("tools/art/" + COMMON)
+        self.assertIn(f'$Json.PSObject.Properties["{stiff.FIELD}"]', text)
+        self.assertIn(f"$lines.Add('    \"{stiff.FIELD}\": [')", text)
 
     def test_every_asset_is_of_a_kind_with_review_stages(self):
         stages = review_stages()
