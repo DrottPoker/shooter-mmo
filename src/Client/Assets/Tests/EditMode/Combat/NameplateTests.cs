@@ -106,6 +106,68 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(Mathf.Abs(grey.g - grey.b), Is.LessThan(0.05f));
         }
 
+        // A Mob at or below the highest level that gives the character no experience shows its
+        // level muted; before any progression none does, and at the highest level every Mob does.
+        [Test]
+        public void TheLevelOfAMobThatGivesNoExperienceIsMuted()
+        {
+            var progression = Progression(highestMobLevelWithoutExperience: 5);
+            Assert.That(NameplatePresentation.GivesNoExperience(5, progression), Is.True);
+            Assert.That(NameplatePresentation.GivesNoExperience(3, progression), Is.True);
+            Assert.That(NameplatePresentation.GivesNoExperience(6, progression), Is.False);
+            Assert.That(NameplatePresentation.GivesNoExperience(6, null), Is.False, "Before any progression nothing is grey.");
+            Assert.That(NameplatePresentation.GivesNoExperience(1, Progression(0)), Is.False, "Every Mob gives some.");
+            Assert.That(NameplatePresentation.GivesNoExperience(10000, Progression(int.MaxValue)), Is.True, "None does at the highest level.");
+
+            var theme = ScriptableObject.CreateInstance<UiTheme>();
+            var host = new GameObject("WorldNameplates");
+            try
+            {
+                var state = new Mmorpg.Client.Networking.ProgressionClientState();
+                var nameplates = host.AddComponent<WorldNameplates>();
+                nameplates.Initialize(null, null, null, null, null, state, theme);
+                nameplates.BuildCanvas();
+
+                void Frame()
+                {
+                    nameplates.BeginFrame();
+                    nameplates.Show(1, "Feral Wolf", 4, RealtimeWorldActorAggression.Aggressive, Vector2.zero, 100f, false, 40, 50, 10f);
+                    nameplates.EndFrame();
+                }
+
+                Frame();
+                Assert.That(nameplates.TryGetNameplate(1, out var before), Is.True);
+                Assert.That(before.LevelColor, Is.Not.EqualTo(theme.MutedTextColor));
+
+                state.Apply(Progression(highestMobLevelWithoutExperience: 4));
+                Frame();
+                Assert.That(nameplates.TryGetNameplate(1, out var after), Is.True);
+                Assert.That(after.LevelColor, Is.EqualTo(theme.MutedTextColor), "It follows a progression change at once.");
+
+                state.Apply(Progression(highestMobLevelWithoutExperience: 3));
+                Frame();
+                Assert.That(nameplates.TryGetNameplate(1, out var again), Is.True);
+                Assert.That(again.LevelColor, Is.EqualTo(before.LevelColor));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(theme);
+            }
+        }
+
+        private static RealtimeOwnerProgressionChanged Progression(int highestMobLevelWithoutExperience)
+        {
+            return new RealtimeOwnerProgressionChanged(
+                12,
+                340,
+                910,
+                highestMobLevelWithoutExperience,
+                0,
+                0,
+                RealtimeProgressionChangeReason.Snapshot);
+        }
+
         [Test]
         public void TextsShowCurrentAndMaximumHealthAndTheLevel()
         {

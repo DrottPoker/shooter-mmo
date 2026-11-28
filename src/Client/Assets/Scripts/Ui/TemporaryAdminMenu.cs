@@ -18,8 +18,9 @@ namespace Mmorpg.Client.Ui
     // The Admin menu (F3): development tools for playing and testing. Look steps the stored body
     // model and look; Movement sets the walk speed and teleports; Combat fills health and mana and makes
     // the character invulnerable; Storage opens the Bank or Recovery Storage without an NPC; Quests
-    // accepts, completes, and resets quests. Only a worker in the Development environment allows them, which
-    // it says by sending the admin state after the join; without it the menu explains that the
+    // accepts, completes, and resets quests; Level, the progression tab, sets the level and grants
+    // experience. Only a worker in the Development environment allows them, which it says by
+    // sending the admin state after the join; without it the menu explains that the
     // tools are off. While the menu is open, the world menu offers Teleport here on the ground,
     // and after Pick a spot a left click on the ground teleports; Escape cancels the pick before
     // it closes anything else.
@@ -50,6 +51,8 @@ namespace Mmorpg.Client.Ui
         private QuestClientController quests;
         private TemporaryAdminQuestTab questTab;
         private int questTabIndex = -1;
+        private ProgressionClientState progression;
+        private TemporaryAdminProgressionTab progressionTab;
         private LocalPlayerSource localPlayers;
         // The local player of this frame.
         private LocalPlayerController localPlayer;
@@ -98,7 +101,8 @@ namespace Mmorpg.Client.Ui
             WorldMenuController menu,
             CombatClientController combatController,
             InventoryWindowRequests windowRequests = null,
-            QuestClientController questController = null)
+            QuestClientController questController = null,
+            ProgressionClientState progressionState = null)
         {
             windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             adminChannel = admin;
@@ -110,6 +114,7 @@ namespace Mmorpg.Client.Ui
             combat = combatController;
             inventoryWindowRequests = windowRequests;
             quests = questController;
+            progression = progressionState;
         }
 
         public void SetOpen(bool open)
@@ -226,6 +231,7 @@ namespace Mmorpg.Client.Ui
             }
 
             questTab?.Dispose();
+            progressionTab?.Dispose();
             window?.Destroy();
         }
 
@@ -266,7 +272,7 @@ namespace Mmorpg.Client.Ui
                 "F3  Development only",
                 new Vector2(0f, 1f),
                 new Vector2(16f, -136f),
-                new Vector2(430f, 500f),
+                new Vector2(500f, 500f),
                 false,
                 () => SetOpen(false));
 
@@ -290,6 +296,11 @@ namespace Mmorpg.Client.Ui
             questTab = new TemporaryAdminQuestTab(questPage, quests, ShowResult);
             questTabIndex = window.TabCount - 1;
             window.TabSelected += _ => ShowQuestTabWhenSelected();
+
+            // The progression tab is named Level, which fits the tab row at full size.
+            var progressionPage = window.AddTab("Level");
+            toolPages.Add(progressionPage.gameObject.AddComponent<CanvasGroup>());
+            progressionTab = new TemporaryAdminProgressionTab(progressionPage, progression, Send);
         }
 
         // The Quests tab rebuilds from the quest state only while the menu shows it.
@@ -414,6 +425,7 @@ namespace Mmorpg.Client.Ui
 
         private void OnAdminIntentCompleted(RealtimeAdminIntentResult result)
         {
+            progressionTab?.OnIntentCompleted(result);
             if (!pendingDescriptions.TryGetValue(result.OperationId, out var description))
             {
                 return;
@@ -456,6 +468,7 @@ namespace Mmorpg.Client.Ui
             {
                 SetPicking(false);
                 pendingDescriptions.Clear();
+                progressionTab?.ForgetPending();
                 window.SetStatus(
                     realtimeSession != null && realtimeSession.IsJoined
                         ? "The admin tools are off: only a SimulationWorker in the Development environment allows them."

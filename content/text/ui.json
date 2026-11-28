@@ -16,7 +16,7 @@
     },
     {
       "key": "ui/characters/character-detail",
-      "text": "{body}  ·  {gold} gold"
+      "text": "Level {level}  ·  {body}  ·  {gold} gold"
     },
     {
       "key": "ui/characters/choose-character",
@@ -301,6 +301,10 @@
     {
       "key": "ui/common/item-stack",
       "text": "{item} x{quantity}"
+    },
+    {
+      "key": "ui/common/level",
+      "text": "Level {level}"
     },
     {
       "key": "ui/common/ok",
@@ -1321,6 +1325,22 @@
     {
       "key": "ui/login/username-hint",
       "text": "3 to 32 letters, numbers, or underscores."
+    },
+    {
+      "key": "ui/progression/experience",
+      "text": "{experience} / {needed} XP"
+    },
+    {
+      "key": "ui/progression/experience-gained",
+      "text": "+{xp} XP"
+    },
+    {
+      "key": "ui/progression/highest-level",
+      "text": "Highest level"
+    },
+    {
+      "key": "ui/progression/level-up",
+      "text": "Level up"
     },
     {
       "key": "ui/quests/abandon",

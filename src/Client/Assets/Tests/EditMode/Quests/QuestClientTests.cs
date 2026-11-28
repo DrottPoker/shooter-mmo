@@ -203,6 +203,42 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.Available));
         }
 
+        // A level-up sets the level without a new log: the log, its revision, and its loads stay,
+        // and the quests that the level allows follow at once.
+        [Test]
+        public void ALevelUpKeepsTheQuestLogAndChangesWhatIsAvailable()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            foreach (var quest in catalog.Quests)
+            {
+                quest.MinimumLevel = 5;
+            }
+
+            var state = new QuestClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(CharacterId, 4);
+            Assert.That(state.TryApplyLog(Log(3), out var error), Is.True, error);
+            var active = state.ActiveQuests.Keys.ToArray();
+            var completions = state.CompletionCounts.ToArray();
+            Assert.That(completions, Is.Not.Empty);
+            var loads = state.LoadCount;
+            var changed = 0;
+            state.Changed += () => changed++;
+
+            state.SetCharacterLevel(5);
+            state.SetCharacterLevel(5);
+
+            Assert.That(changed, Is.EqualTo(1), "An unchanged level raises nothing.");
+            Assert.That(state.CharacterLevel, Is.EqualTo(5));
+            Assert.That((state.IsReady, state.Revision, state.LoadCount), Is.EqualTo((true, 3L, loads)));
+            Assert.That(state.ActiveQuests.Keys, Is.EquivalentTo(active));
+            Assert.That(state.CompletionCounts, Is.EquivalentTo(completions));
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.Available));
+
+            state.SetCharacterLevel(0);
+            Assert.That(state.CharacterLevel, Is.EqualTo(1));
+        }
+
         [Test]
         public void AQuestDropInACorpseNamesTheMobTheItemAndTheQuest()
         {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 
@@ -25,6 +26,7 @@ namespace Mmorpg.Client.Items
         private RecoveryStorageInventory recoveryOverride;
         // Operations a newer confirmed state undid, announced with the next Changed.
         private InventoryPredictionRollback pendingRollback;
+        private ProgressionClientState progression;
 
         public event Action Changed;
 
@@ -39,6 +41,18 @@ namespace Mmorpg.Client.Items
         public ClientItemCatalog Catalog { get; private set; }
 
         public Guid CharacterId { get; private set; }
+
+        // The character's level from the progression state, or 1 without one.
+        public int CharacterLevel
+        {
+            get { return progression != null ? progression.Level : 1; }
+        }
+
+        // The progression state that the predictions read the character's level from.
+        public void UseProgression(ProgressionClientState progressionState)
+        {
+            progression = progressionState;
+        }
 
         // The shown snapshot: the confirmed one with the pending predictions applied.
         public CharacterInventorySnapshot FullSnapshot
@@ -653,7 +667,7 @@ namespace Mmorpg.Client.Items
         {
             return confirmedSnapshot == null
                 ? null
-                : new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot));
+                : new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot), CharacterLevel);
         }
 
         private static bool TryFindItem(
@@ -766,7 +780,7 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
-            var view = new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot));
+            var view = new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot), CharacterLevel);
             var changed = false;
             for (var index = 0; index < pendingOperations.Count; index++)
             {
@@ -803,7 +817,7 @@ namespace Mmorpg.Client.Items
                     break;
                 }
 
-                view = new InventorySnapshotView(Catalog, next);
+                view = new InventorySnapshotView(Catalog, next, CharacterLevel);
                 changed = true;
                 RememberPredictedIds(operation, next);
             }

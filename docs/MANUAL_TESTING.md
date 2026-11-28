@@ -1764,8 +1764,10 @@ The worker must log `Development admin tools are enabled`.
    Expected result: the storage window opens beside the Inventory window on the
    Bank with `Bank` and `Recovery` tabs, then switches to Recovery Storage.
 6. The `Look` tab is checked in
-   [The Look Tab Of The Admin Menu](#the-look-tab-of-the-admin-menu), and the
-   `Quests` tab in [The Quests Tab Of The Admin Menu](#the-quests-tab-of-the-admin-menu).
+   [The Look Tab Of The Admin Menu](#the-look-tab-of-the-admin-menu), the
+   `Quests` tab in [The Quests Tab Of The Admin Menu](#the-quests-tab-of-the-admin-menu),
+   and the `Level` tab in
+   [The Level Tab Of The Admin Menu](#the-level-tab-of-the-admin-menu).
 7. Stop SimulationWorker and start it again with
    `$env:DevelopmentAdmin__Enabled = "false"`, join, and press F3. Expected
    result: the tabs are greyed out, and the footer says `The admin tools are
@@ -1800,6 +1802,31 @@ Join Development World 2 with a new character, press F3, and choose `Quests`.
 The GameService tests `QuestAdminIntegrationTests` and the worker tests
 `RealtimeQuestTests` cover the same tools, also the refusal outside
 Development.
+
+### The Level Tab Of The Admin Menu
+
+Join Development World 2 with a new character, press F3, and choose
+`Level`, the progression tools. Expected result: the tab label `Level` shows at
+the size of the other tab labels.
+
+1. Expected result: `Now` reads `Level 1, 0 / 100 XP`.
+2. Type `0` into the field beside `Set level` and press it, then type `0` beside
+   `Grant experience` and press it. Expected result: nothing is sent, and the
+   tab says `Enter a level from 1 to 10,000.` and then
+   `Enter an amount of experience from 1 to 1,000,000,000.`
+3. Type `5` beside `Set level` and press it. Expected result: the footer says
+   `Set level 5: done.`, the tab `Done.`, `Now` reads `Level 5, 0 / 360 XP`, and
+   the experience bar, the banner, and the golden motes show the level-up to 5.
+4. Type `1500` beside `Grant experience` and press it. Expected result: `Done.`,
+   `+1,500 XP` rises over the bar, the bar runs over the top once, and `Now`
+   reads `Level 8, 140 / 660 XP`, with one banner for `Level 8`.
+5. Set level `2`. Expected result: `Now` and the bar read `Level 2` with no
+   experience, and neither a banner nor motes show.
+6. Set level `10000`. Expected result: the tab shows GameService's refusal,
+   because the progression rules' highest level is lower, and the level stays.
+7. Set level `200`, the highest level of the progression rules. Expected
+   result: the bar is full and says `Highest level`, `Now` reads
+   `Level 200, highest level`, and every Mob's level on its nameplate is grey.
 
 ## Inventory And Equipment
 
@@ -2440,8 +2467,9 @@ Arrows, and walk both to the Feral Wolves in the wolf woods of Development World
 
 ### Experience For Kills And Quests
 
-GameService grants experience on the server; the client shows nothing of it
-yet, so the check reads the database. A Feral Wolf is level 2 with
+GameService grants experience on the server, and the client shows what the
+worker sends, as [Level And Experience](GAME_FEATURES.md#level-and-experience)
+describes; the check compares both with the database. A Feral Wolf is level 2 with
 `experiencePercent` 100 in `content/actors/definitions/mob.feral_wolf.json`, so
 by the [progression rules](../content/README.md#progression-rules) it gives a
 level 1 or 2 character `20 + 5 * (2 - 1)` = 25 experience, and level 1 needs 100
@@ -2455,16 +2483,41 @@ take its id from `--dev-items-list` as
 [Look Into The Database](#look-into-the-database) shows, with the query
 `select level, experience from characters where id = '<characterId>';`.
 
-1. Before any kill. Expected result: `1 | 0`.
+1. Before any kill. Expected result: `1 | 0`. CharacterSelect shows
+   `Level 1  ·  Human Male  ·  ...` for the character, and in the World the
+   experience bar at the bottom centre says `Level 1`, is empty, and shows
+   `0 / 100 XP`, without a `+` text. The Equipment window (`C`) shows `LEVEL 1`
+   over the paper doll. The Feral Wolves' level `2` on their nameplates is white.
 2. Accept `Wolves at the Gate` at Mira and kill one Feral Wolf in the wolf woods
    of Development World 2. Expected result: `1 | 25`, and the quest tracker
-   counts one wolf of five.
+   counts one wolf of five. The bar slides to a quarter, shows `25 / 100 XP`,
+   and `+25 XP` rises in violet with a dark outline above its right end and
+   fades. The level, the bar, and the numbers stand on one dark plate that ends
+   a little past the level on the left and the numbers on the right, and the
+   numbers read clearly over green ground.
 3. Kill three more Feral Wolves. Expected result: `2 | 0`: the fourth kill
-   brings the experience to 100, which makes level 2 with nothing left over.
+   brings the experience to 100, which makes level 2 with nothing left over. On
+   the fourth kill the bar runs to full and starts again from empty, it says
+   `Level 2` and `0 / 150 XP`, the banner `Level up` over `Level 2` shows in the
+   upper third of the screen for about three seconds, outlined and readable
+   over the sky, a burst of bright golden motes rises from the feet to above the
+   head and is easy to see at 1080p, and the Equipment window shows `LEVEL 2`
+   at once. A second
+   client that sees the character sees the motes too, without a banner.
 4. Kill the fifth Feral Wolf and turn the quest in at Mira. Expected result:
    `2 | 25` after the kill, and `2 | 145` after the turn-in, which adds the
    quest's `rewardExperience` of 120 in
-   `content/quests/definitions/quest.wolves_at_the_gate.json`.
+   `content/quests/definitions/quest.wolves_at_the_gate.json`. The bar shows
+   `25 / 150 XP` and then `145 / 150 XP`, with `+25 XP` and `+120 XP`.
+5. Leave the shard. Expected result: CharacterSelect shows `Level 2` for the
+   character. Join again. Expected result: the bar shows `Level 2` and
+   `145 / 150 XP` at once, without a `+` text or a banner.
+6. Set the level to 7 on the Admin menu's `Level` tab, as
+   [The Level Tab Of The Admin Menu](#the-level-tab-of-the-admin-menu)
+   shows. Expected result: the level of the Grey Wolves (1) and the Feral Wolves
+   (2) on their nameplates turns grey at once, because a level 7 character gets
+   no experience from Mobs 5 or more levels below it, and the Feral Alpha's 5
+   stays white. Set level 2 again. Expected result: every level is white.
 
 ### Loot All
 

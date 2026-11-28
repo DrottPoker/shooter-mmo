@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Text;
 using Mmorpg.Client.Api;
@@ -54,7 +55,7 @@ namespace Mmorpg.Client.Ui
             return Words(kind) + (string.IsNullOrEmpty(slot) ? string.Empty : " (" + slot + ")");
         }
 
-        // Such as "Human Male  ·  100 gold".
+        // Such as "Level 12  ·  Human Male  ·  100 gold".
         public static string CharacterDetail(CharacterResponse character, TextCatalog texts)
         {
             if (character == null)
@@ -67,6 +68,7 @@ namespace Mmorpg.Client.Ui
                 : MessageArgument.Text("body", Words(character.bodyModel));
             return texts.Format(
                 "ui/characters/character-detail",
+                MessageArgument.Text("level", Math.Max(1, character.level).ToString(CultureInfo.InvariantCulture)),
                 body,
                 MessageArgument.Text("gold", character.currency.ToString(CultureInfo.InvariantCulture)));
         }

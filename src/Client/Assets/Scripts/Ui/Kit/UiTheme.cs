@@ -60,6 +60,10 @@ namespace Mmorpg.Client.Ui
         public Color MeterNormalColor = new Color(0.27f, 0.85f, 0.86f, 1f);
         public Color MeterSlowedColor = new Color(0.98f, 0.76f, 0.30f, 1f);
         public Color MeterHardCapColor = new Color(0.95f, 0.38f, 0.32f, 1f);
+        [Tooltip("The fill of the experience bar and the text of gained experience.")]
+        public Color ExperienceColor = new Color(0.66f, 0.52f, 0.95f, 1f);
+        [Tooltip("The dark plate behind HUD texts that stand over the world, such as the experience bar's row.")]
+        public Color HudPlateColor = new Color(0.04f, 0.05f, 0.07f, 0.78f);
         [Range(0f, 1f)]
         [Tooltip("How visible a slot stays that the search does not match.")]
         public float SearchDimAlpha = 0.25f;
@@ -86,6 +90,11 @@ namespace Mmorpg.Client.Ui
         public float MeterHeight = 12f;
         [Tooltip("Width of the Equipment window's middle, where the character stands between the slot columns.")]
         public float EquipmentCenterWidth = 180f;
+        [Tooltip("The experience bar at the bottom of the screen, between its level and its numbers.")]
+        public float ExperienceBarWidth = 520f;
+        public float ExperienceBarHeight = 14f;
+        [Tooltip("The size of the level beside the experience bar, in the title font.")]
+        public float ExperienceLevelSize = 18f;
 
         [Header("Window Sprites")]
         [Tooltip("Nine-sliced window background with its frame.")]

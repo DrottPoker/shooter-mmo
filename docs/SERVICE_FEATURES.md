@@ -2135,7 +2135,8 @@ startup outside the Development environment, is on in the worker's
 - `SetLevel` and `GrantExperience` set the character's level or grant it
   experience through GameService, as the quest route's
   `admin_set_character_level` and `admin_grant_experience`, under the same
-  rule; no menu sends them yet. Unlike the other kinds they queue on the
+  rule; the Admin menu's Level tab sends them. Unlike the other kinds they
+  queue on the
   character's authority lane like the quest tools, after the spent arrows, and
   work on a dead character too. A worker without the quest executor answers
   `admin_progression_unavailable`, one whose GameService does not answer

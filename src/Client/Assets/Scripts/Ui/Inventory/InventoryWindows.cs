@@ -5,6 +5,7 @@ using Mmorpg.Client.Combat;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.Networking;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Text;
@@ -66,6 +67,7 @@ namespace Mmorpg.Client.Ui
         private GameMessageLog gameMessages;
         private InventoryWindowRequests requests;
         private PlayerBodyLookSetting bodyLook;
+        private ProgressionClientState progression;
         private CharacterPreview characterPreview;
         private WorldInputFocus inputFocus;
         private Func<bool> pointerCapture;
@@ -183,6 +185,12 @@ namespace Mmorpg.Client.Ui
             get { return bodyLook; }
         }
 
+        // The character's level that the Equipment window shows.
+        internal int CharacterLevel
+        {
+            get { return progression != null ? progression.Level : State != null ? State.CharacterLevel : 1; }
+        }
+
         // The copy of the character that the Equipment window shows, or null without one.
         public CharacterPreview CharacterPreview
         {
@@ -202,7 +210,8 @@ namespace Mmorpg.Client.Ui
             TextCatalog uiTexts,
             PlayerBodyLookSetting lookSetting = null,
             CharacterPreview preview = null,
-            WorldInputFocus focus = null)
+            WorldInputFocus focus = null,
+            ProgressionClientState progressionState = null)
         {
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
@@ -216,6 +225,7 @@ namespace Mmorpg.Client.Ui
             gameMessages = messages;
             requests = windowRequests;
             bodyLook = lookSetting;
+            progression = progressionState;
             interactions = new InventoryInteractions(inventoryController, corpses, worldInteraction);
         }
 
@@ -476,6 +486,11 @@ namespace Mmorpg.Client.Ui
                 bodyLook.Changed += Refresh;
             }
 
+            if (progression != null)
+            {
+                progression.Changed += OnProgressionChanged;
+            }
+
             if (requests != null)
             {
                 requests.StorageRequested += OnStorageRequested;
@@ -499,6 +514,13 @@ namespace Mmorpg.Client.Ui
             {
                 Refresh();
             }
+        }
+
+        // A level-up changes the Equipment window's level line in place, so it never redraws the
+        // window or cancels a drag.
+        private void OnProgressionChanged(RealtimeOwnerProgressionChanged change)
+        {
+            equipment?.RefreshLevel();
         }
 
         // B and I.
@@ -561,6 +583,11 @@ namespace Mmorpg.Client.Ui
             if (bodyLook != null)
             {
                 bodyLook.Changed -= Refresh;
+            }
+
+            if (progression != null)
+            {
+                progression.Changed -= OnProgressionChanged;
             }
 
             if (requests != null)

@@ -83,13 +83,16 @@ namespace Mmorpg.Client.Items
             IClientSession accountSession,
             ClientSessionRecovery sessionRecovery,
             string gameplayCatalogJson,
-            TextCatalog texts)
+            TextCatalog texts,
+            ProgressionClientState progression = null)
         {
             if (initialized)
             {
                 return;
             }
 
+            // The predictions judge equipment with a level requirement by the character's level.
+            State.UseProgression(progression);
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             itemChannel = items ?? throw new ArgumentNullException(nameof(items));
             realtimeSession = session ?? throw new ArgumentNullException(nameof(session));

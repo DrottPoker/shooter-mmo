@@ -13,7 +13,8 @@ namespace Mmorpg.Client.Ui
     // The nameplates over the Mobs near the local character: the Mob's name over a health bar,
     // red for an aggressive Mob, yellow for a defensive one, and grey for one another player
     // tagged, with its health as numbers in the bar and its level, as tall as the bar, to the
-    // right of it. The bar and the numbers slide to every new health value, and a farther
+    // right of it, in the theme's muted color for a Mob that gives the character no experience.
+    // The bar and the numbers slide to every new health value, and a farther
     // nameplate is smaller. It reads the combat
     // state and the actor views and decides nothing. Its texts are TextMesh Pro world labels.
     // Nameplates have a canvas of their own in the WorldNameplates layer, below the combat HUD,
@@ -55,6 +56,8 @@ namespace Mmorpg.Client.Ui
         private PresentationBudget presentationBudget;
         private IRealtimeMovementChannel realtimeMovement;
         private IRealtimeDiagnostics realtimeDiagnostics;
+        private ProgressionClientState progression;
+        private Color noExperienceLevelColor = new Color(0.58f, 0.63f, 0.64f, 1f);
         private RectTransform layer;
         private bool subscribed;
 
@@ -67,19 +70,28 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated. The movement session
         // and the diagnostics give the server clock that a regenerating health follows.
         // The frame's presentation budget is charged with the nameplates of the Mobs that came
-        // into view, which it shares with their views and the players' bodies.
+        // into view, which it shares with their views and the players' bodies. The progression
+        // state tells which Mobs give the character no experience, and the theme the muted color
+        // their level shows in.
         public void Initialize(
             CombatClientController combat,
             CombatantViewLocator combatantViews,
             IRealtimeMovementChannel movement,
             IRealtimeDiagnostics diagnostics,
-            PresentationBudget budget = null)
+            PresentationBudget budget = null,
+            ProgressionClientState progressionState = null,
+            UiTheme theme = null)
         {
             combatController = combat;
             views = combatantViews;
             realtimeMovement = movement;
             realtimeDiagnostics = diagnostics;
             presentationBudget = budget;
+            progression = progressionState;
+            if (theme != null)
+            {
+                noExperienceLevelColor = theme.MutedTextColor;
+            }
         }
 
         // The nameplate of a Mob, while it shows.
@@ -95,6 +107,7 @@ namespace Mmorpg.Client.Ui
                 nameplate.Name.text,
                 nameplate.Health.text,
                 nameplate.Level.text,
+                nameplate.Level.color,
                 nameplate.Fill.color,
                 nameplate.Fill.rectTransform.anchorMax.x,
                 nameplate.Root.anchoredPosition,
@@ -258,6 +271,10 @@ namespace Mmorpg.Client.Ui
             nameplate.Root.anchoredPosition = local;
             nameplate.Scale(NameplatePresentation.MobNameplateScale(Mathf.Sqrt(sqrDistance)));
             nameplate.Tint(taggedByOther);
+            nameplate.ShowLevelColor(
+                NameplatePresentation.GivesNoExperience(level, progression != null ? progression.Progression : null)
+                    ? noExperienceLevelColor
+                    : TextColor);
             nameplate.Show(health, maximumHealth, now);
             nameplate.SqrDistance = sqrDistance;
             nameplate.ShownThisFrame = true;
@@ -437,6 +454,16 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
+            // The level shows muted for a Mob that gives no experience; the color changes only
+            // when it does.
+            public void ShowLevelColor(Color color)
+            {
+                if (Level.color != color)
+                {
+                    Level.color = color;
+                }
+            }
+
             // The scale changes only when it does, so a resting nameplate dirties nothing.
             public void Scale(float scale)
             {
@@ -484,6 +511,7 @@ namespace Mmorpg.Client.Ui
             string name,
             string health,
             string level,
+            Color levelColor,
             Color barColor,
             float barFraction,
             Vector2 position,
@@ -492,6 +520,7 @@ namespace Mmorpg.Client.Ui
             Name = name;
             Health = health;
             Level = level;
+            LevelColor = levelColor;
             BarColor = barColor;
             BarFraction = barFraction;
             Position = position;
@@ -503,6 +532,8 @@ namespace Mmorpg.Client.Ui
         public string Health { get; }
 
         public string Level { get; }
+
+        public Color LevelColor { get; }
 
         public Color BarColor { get; }
 

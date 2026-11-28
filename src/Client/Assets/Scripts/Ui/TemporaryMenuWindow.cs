@@ -131,6 +131,12 @@ namespace Mmorpg.Client.Ui
                 () => SelectTab(index),
                 true,
                 TemporaryButtonTone.Quiet);
+            // A long label shrinks to fit its tab instead of breaking inside the word.
+            var labelText = button.GetComponentInChildren<TextMeshProUGUI>();
+            labelText.textWrappingMode = TextWrappingModes.NoWrap;
+            labelText.enableAutoSizing = true;
+            labelText.fontSizeMin = 10;
+            labelText.fontSizeMax = 14;
             tabButtons.Add(button);
 
             var page = TemporaryUiKit.CreateUiObject(label + "Page", scroll.viewport).GetComponent<RectTransform>();

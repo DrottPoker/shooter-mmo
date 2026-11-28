@@ -13,8 +13,9 @@ namespace Mmorpg.Client.Ui
 {
     // The Equipment window: the character in the middle on a pedestal, the equipment slots in a
     // column on each side, as far from the window's edge on both sides, and the hand,
-    // ammunition, and tool slots close together in a row below. A slot shows no name; its
-    // tooltip names it. EquipmentPaperDollLayout decides where each slot goes.
+    // ammunition, and tool slots close together in a row below, under the character's level. A
+    // slot shows no name; its tooltip names it. EquipmentPaperDollLayout decides where each slot
+    // goes.
     internal sealed class EquipmentWindow
     {
         // Between two slots in a column or a row.
@@ -34,6 +35,7 @@ namespace Mmorpg.Client.Ui
         private readonly InventoryWindows owner;
         private readonly UiTheme theme;
         private readonly TextMeshProUGUI message;
+        private readonly TextMeshProUGUI levelHeading;
         private readonly RectTransform doll;
         private readonly LayoutElement dollLayout;
         private readonly Dictionary<string, ItemSlotView> slots = new Dictionary<string, ItemSlotView>(StringComparer.Ordinal);
@@ -55,6 +57,8 @@ namespace Mmorpg.Client.Ui
                 InnerWidth + 2f * theme.WindowPadding);
             message = UiFactory.BodyText(theme, Window.Body, "Message", theme.BodySize, theme.TextColor, TextAlignmentOptions.TopLeft);
             message.textWrappingMode = TextWrappingModes.Normal;
+            levelHeading = UiFactory.SectionHeading(theme, Window.Body, string.Empty, null, out _);
+            levelHeading.transform.parent.name = "Section Level";
             doll = UiFactory.Create("PaperDoll", Window.Body);
             dollLayout = UiFactory.Layout(doll, InnerWidth);
             PreviewArea = UiFactory.Create("CharacterPreview", doll);
@@ -107,6 +111,18 @@ namespace Mmorpg.Client.Ui
             get { return headwearToggle; }
         }
 
+        // The level line over the paper doll, such as "LEVEL 12".
+        public string LevelText
+        {
+            get { return levelHeading.text; }
+        }
+
+        // The level follows every progression change at once.
+        public void RefreshLevel()
+        {
+            UiFactory.SetHeading(levelHeading, ExperienceBarPresentation.LevelText(owner.Texts, owner.CharacterLevel));
+        }
+
         private float InnerWidth
         {
             get { return 2f * (theme.SlotSize + ColumnGap) + theme.EquipmentCenterWidth; }
@@ -120,6 +136,7 @@ namespace Mmorpg.Client.Ui
             {
                 message.gameObject.SetActive(true);
                 message.text = state?.Error?.ToDisplayMessage(owner.Texts) ?? CharacterInventoryWindow.StatusText(owner.Texts, state);
+                levelHeading.transform.parent.gameObject.SetActive(false);
                 doll.gameObject.SetActive(false);
                 Window.FitBody();
                 return;
@@ -128,6 +145,8 @@ namespace Mmorpg.Client.Ui
             var snapshot = state.FullSnapshot;
             message.gameObject.SetActive(state.Error != null);
             message.text = state.Error?.ToDisplayMessage(owner.Texts) ?? string.Empty;
+            levelHeading.transform.parent.gameObject.SetActive(true);
+            RefreshLevel();
             doll.gameObject.SetActive(true);
             var equipment = new Dictionary<string, InventoryEquipmentSlot>(StringComparer.Ordinal);
             foreach (var equipmentSlot in snapshot.Equipment)

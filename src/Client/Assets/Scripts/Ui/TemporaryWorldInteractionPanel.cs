@@ -169,7 +169,8 @@ namespace Mmorpg.Client.Ui
             panel.anchorMin = new Vector2(0.5f, 0f);
             panel.anchorMax = new Vector2(0.5f, 0f);
             panel.pivot = new Vector2(0.5f, 0f);
-            panel.anchoredPosition = new Vector2(0f, 28f);
+            // The panel stands above the experience bar at the bottom centre.
+            panel.anchoredPosition = new Vector2(0f, ExperienceBar.ReservedBottom);
             panel.sizeDelta = new Vector2(PanelWidth, 0f);
             var background = panelObject.AddComponent<Image>();
             background.color = TemporaryUiKit.PanelColor;
