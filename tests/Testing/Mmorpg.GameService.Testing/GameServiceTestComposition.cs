@@ -100,7 +100,11 @@ internal static class GameServiceTestComposition
                 5,
                 TimeSpan.FromSeconds(60),
                 new SimulationWorkerCredentials([], null)),
-            new CharactersModuleOptions(5) { AppearancePath = RepositoryPaths.CharacterAppearancePath },
+            new CharactersModuleOptions(5)
+            {
+                AppearancePath = RepositoryPaths.CharacterAppearancePath,
+                ProgressionRulesPath = RepositoryPaths.ProgressionRulesPath
+            },
             new PlacementModuleOptions(30, 60, TimeSpan.FromSeconds(30), topology)
             {
                 Worlds = WorldManifestCatalog.FromManifests(

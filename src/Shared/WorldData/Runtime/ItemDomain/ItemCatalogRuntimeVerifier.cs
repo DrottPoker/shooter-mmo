@@ -79,12 +79,6 @@ namespace Mmorpg.WorldData.Items
                         CurrencyDisplayName = runtime.Economy.CurrencyDisplayName,
                         StartingBalance = runtime.Economy.StartingBalance
                     },
-                Progression = runtime.Progression == null
-                    ? null
-                    : new ItemProgressionSettingsEntry
-                    {
-                        MaximumCharacterLevel = runtime.Progression.MaximumCharacterLevel
-                    },
                 Categories = runtime.Categories?.Select(CloneIdentity).ToArray(),
                 Tags = runtime.Tags?.Select(CloneIdentity).ToArray(),
                 ToolKinds = runtime.ToolKinds?.Select(CloneIdentity).ToArray(),

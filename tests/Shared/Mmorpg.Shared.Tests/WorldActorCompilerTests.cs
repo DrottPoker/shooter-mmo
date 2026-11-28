@@ -3,6 +3,7 @@ using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Progression;
 
 namespace Mmorpg.Shared.Tests;
 
@@ -327,6 +328,74 @@ public sealed class WorldActorCompilerTests
         Assert.Contains(
             exception.Errors,
             value => value.Contains(".level must be zero for an NPC", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MobExperiencePercentsAreContentControlledPerDefinition()
+    {
+        var runtime = WorldActorTestData.Compile();
+
+        Assert.Equal(500, runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_alpha").ExperiencePercent);
+        Assert.Equal(
+            ProgressionRulesFormat.DefaultMobExperiencePercent,
+            runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").ExperiencePercent);
+        Assert.All(
+            runtime.Catalog.Actors.Where(value => value.Kind != WorldActorKindIds.Mob),
+            value => Assert.Equal(0, value.ExperiencePercent));
+    }
+
+    [Fact]
+    public void MobExperiencePercentOutsideItsBoundsAndNpcExperiencePercentFailValidation()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        actors.Actors.Single(value => value.Id == "mob.feral_wolf").ExperiencePercent = -1;
+        actors.Actors.Single(value => value.Id == "mob.feral_alpha").ExperiencePercent =
+            ProgressionRulesFormat.MaximumMobExperiencePercent + 1;
+        actors.Actors.Single(value => value.Id == "mob.grey_wolf").ExperiencePercent = 0;
+        actors.Actors.Single(value => value.Id == "npc.city_guard").ExperiencePercent = 100;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Equal(
+            2,
+            exception.Errors.Count(value => value.Contains(".experiencePercent must be between", StringComparison.Ordinal)));
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains(".experiencePercent must be zero for an NPC", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnExperiencePercentChangeChangesTheActorFingerprint()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var before = WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns());
+
+        actors.Actors.Single(value => value.Id == "mob.feral_wolf").ExperiencePercent++;
+        var after = WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns());
+
+        Assert.NotEqual(
+            before.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").StructuralFingerprint,
+            after.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").StructuralFingerprint);
+        Assert.NotEqual(before.Catalog.Revision, after.Catalog.Revision);
+    }
+
+    [Fact]
+    public void RuntimeValidationRejectsATamperedMobExperiencePercent()
+    {
+        var runtime = WorldActorTestData.Compile();
+        runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").ExperiencePercent = -1;
+        runtime.Catalog.Actors.Single(value => value.Id == "npc.city_guard").ExperiencePercent = 100;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.ValidateRuntime(runtime));
+
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains("has an invalid experience percent", StringComparison.Ordinal));
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains("must not define an experience percent", StringComparison.Ordinal));
     }
 
     [Fact]

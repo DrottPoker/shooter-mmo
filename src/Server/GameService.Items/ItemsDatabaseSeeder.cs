@@ -1,3 +1,5 @@
+using System.Globalization;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Platform.Database;
@@ -9,14 +11,19 @@ namespace Mmorpg.GameService.Items;
 // The current item catalog is mirrored first, because the carry recompute needs it. Content
 // that names items of this catalog checks it first, so a catalog that would break that content
 // stops the start before anything is mirrored. The recompute runs only for a catalog revision
-// that it has not completed for, so a start with unchanged content reads no character.
+// that it has not completed for, so a start with unchanged content reads no character. A
+// definition that requires a level above the highest character level could never be used, so
+// it stops the start too.
 internal sealed class ItemsDatabaseSeeder(
     NpgsqlDataSource dataSource,
     ItemCatalogSeeder itemCatalogSeeder,
     CharacterItemStateBootstrapper characterItemStateBootstrapper,
     ItemCatalogSource catalogSource,
-    IItemCatalogReferences catalogReferences) : IDatabaseSeeder
+    IItemCatalogReferences catalogReferences,
+    ICharacterProgression characterProgression) : IDatabaseSeeder
 {
+    private const int ReportedDefinitions = 5;
+
     public async Task<IReadOnlyList<string>> PlanAsync(CancellationToken cancellationToken)
     {
         // The canonical form verifies the revision, as a seed does.
@@ -72,6 +79,28 @@ internal sealed class ItemsDatabaseSeeder(
     {
         var catalog = await ItemCatalogRuntimeLoader.LoadAsync(catalogSource.RuntimeCatalogPath, cancellationToken);
         catalogReferences.Validate(catalog);
+        EnsureLevelsWithinMaximum(catalog, characterProgression.MaximumLevel);
         return catalog;
+    }
+
+    private static void EnsureLevelsWithinMaximum(ItemCatalogRuntimeDocument catalog, int maximumLevel)
+    {
+        var aboveMaximum = (catalog.Definitions ?? [])
+            .Where(definition => definition.RequiredCharacterLevel > maximumLevel)
+            .ToArray();
+        if (aboveMaximum.Length == 0)
+        {
+            return;
+        }
+
+        throw new ItemCatalogCompatibilityException(
+            $"Item catalog {catalog.CatalogId} requires a character level above the highest level "
+            + $"{maximumLevel.ToString(CultureInfo.InvariantCulture)} of the progression rules for "
+            + $"{aboveMaximum.Length.ToString(CultureInfo.InvariantCulture)} item definitions: "
+            + string.Join(
+                "; ",
+                aboveMaximum.Take(ReportedDefinitions).Select(definition =>
+                    $"{definition.Id} requires level {definition.RequiredCharacterLevel.ToString(CultureInfo.InvariantCulture)}"))
+            + ". Lower the requirement or raise maximumCharacterLevel.");
     }
 }

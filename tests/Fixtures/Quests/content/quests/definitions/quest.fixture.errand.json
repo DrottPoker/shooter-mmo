@@ -83,6 +83,7 @@
         }
     ],
     "rewardGold": 5,
+    "rewardExperience": 50,
     "rewardItems": [],
     "rewardChoiceItems": []
 }

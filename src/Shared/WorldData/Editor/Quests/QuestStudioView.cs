@@ -1232,6 +1232,9 @@ namespace Mmorpg.WorldData.Editor.Quests
             var gold = form.Long("Reward Gold", "rewardGold", entry => entry.rewardGold, (entry, value) => entry.rewardGold = value);
             gold.tooltip = "Between 0 and " + QuestContentRules.MaximumRewardGold + ".";
             section.Add(gold);
+            var experience = form.Long("Reward Experience", "rewardExperience", entry => entry.rewardExperience, (entry, value) => entry.rewardExperience = value);
+            experience.tooltip = "Experience that the character gets at the turn-in.";
+            section.Add(experience);
             if (quest != null)
             {
                 section.Add(BuildItemList("Reward Items", RewardItems, quest, "Ordinary items that the player gets at the turn-in."));

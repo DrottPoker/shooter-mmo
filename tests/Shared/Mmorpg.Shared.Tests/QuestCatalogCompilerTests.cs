@@ -37,11 +37,16 @@ public sealed class QuestCatalogCompilerTests
         retold.OfferText = "The wolves came back.";
         retold.Steps[0].Objectives[0].Count = 5;
         var retoldCatalog = Compile(retold);
+        var rewarded = KillQuest();
+        rewarded.RewardExperience++;
+        var rewardedCatalog = Compile(rewarded);
         var restructured = KillQuest();
         restructured.Steps[0].Objectives[0].Id = "more_wolves";
 
         Assert.NotEqual(Compile(KillQuest()).Revision, retoldCatalog.Revision);
         Assert.Equal(baseline.StructuralFingerprint, Assert.Single(retoldCatalog.Quests).StructuralFingerprint);
+        Assert.NotEqual(Compile(KillQuest()).Revision, rewardedCatalog.Revision);
+        Assert.Equal(baseline.StructuralFingerprint, Assert.Single(rewardedCatalog.Quests).StructuralFingerprint);
         Assert.NotEqual(baseline.StructuralFingerprint, Assert.Single(Compile(restructured).Quests).StructuralFingerprint);
     }
 
@@ -408,6 +413,10 @@ public sealed class QuestCatalogCompilerTests
         controlText.OfferText = "First line.\nSecond line.";
         var richReward = KillQuest();
         richReward.RewardGold = QuestContentRules.MaximumRewardGold + 1;
+        var richExperience = KillQuest();
+        richExperience.RewardExperience = QuestContentRules.MaximumRewardExperience + 1;
+        var negativeExperience = KillQuest();
+        negativeExperience.RewardExperience = -1;
         var lowLevel = KillQuest();
         lowLevel.MinimumLevel = 0;
         var manySteps = KillQuest();
@@ -420,6 +429,8 @@ public sealed class QuestCatalogCompilerTests
         Assert.Contains(Errors(longTitle), error => error.StartsWith("quests[0].title must be one trimmed line", StringComparison.Ordinal));
         Assert.Contains(Errors(controlText), error => error.StartsWith("quests[0].offerText must be one trimmed line", StringComparison.Ordinal));
         Assert.Contains(Errors(richReward), error => error.StartsWith("quests[0].rewardGold must be between", StringComparison.Ordinal));
+        Assert.Contains(Errors(richExperience), error => error.StartsWith("quests[0].rewardExperience must be between", StringComparison.Ordinal));
+        Assert.Contains(Errors(negativeExperience), error => error.StartsWith("quests[0].rewardExperience must be between", StringComparison.Ordinal));
         Assert.Contains(Errors(lowLevel), error => error.StartsWith("quests[0].minimumLevel must be between 1", StringComparison.Ordinal));
         Assert.Contains(Errors(manySteps), error => error.StartsWith("quests[0].steps must hold between 1 and 8", StringComparison.Ordinal));
         Assert.Contains(Errors(badKind), error => error.EndsWith(".kind has unsupported value 'escort'.", StringComparison.Ordinal));
@@ -444,6 +455,8 @@ public sealed class QuestCatalogCompilerTests
         runtime.Quests[0].Steps[0].Objectives[0].Kind = QuestObjectiveKindIds.Gather;
         var repriced = Compile(KillQuest());
         repriced.Quests[0].RewardGold++;
+        var moreExperience = Compile(KillQuest());
+        moreExperience.Quests[0].RewardExperience++;
         var titled = Compile(KillQuest());
         titled.Quests[0].Title = "A Smuggled Title";
         var worded = Compile(KillQuest());
@@ -454,6 +467,9 @@ public sealed class QuestCatalogCompilerTests
             error => error.Contains("stale structural fingerprint", StringComparison.Ordinal));
         Assert.Contains(
             Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(repriced)).Errors,
+            error => error.Contains("revision does not match", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(moreExperience)).Errors,
             error => error.Contains("revision does not match", StringComparison.Ordinal));
 
         // A compiled catalog carries no text, so one that holds a text is refused.
@@ -526,6 +542,8 @@ public sealed class QuestCatalogCompilerTests
     {
         var negativeGold = Compile(KillQuest());
         negativeGold.Quests[0].RewardGold = -1;
+        var negativeExperience = Compile(KillQuest());
+        negativeExperience.Quests[0].RewardExperience = -1;
         var emptyReward = Compile(KillQuest());
         emptyReward.Quests[0].RewardItems = [new QuestItemQuantityDefinition { DefinitionId = "weapon.iron_sword", Quantity = 0 }];
         var killWithItem = Compile(KillQuest());
@@ -548,6 +566,9 @@ public sealed class QuestCatalogCompilerTests
         Assert.Contains(
             Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(negativeGold)).Errors,
             error => error.Contains("a Gold reward out of range", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(negativeExperience)).Errors,
+            error => error.Contains("an experience reward out of range", StringComparison.Ordinal));
         Assert.Contains(
             Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(emptyReward)).Errors,
             error => error.Contains("an item without an id or a quantity", StringComparison.Ordinal));
@@ -643,6 +664,7 @@ public sealed class QuestCatalogCompilerTests
             StartItems = [],
             Steps = [Step("hunt", Objective("wolves", QuestObjectiveKindIds.Kill, 3, actorIds: ["mob.feral_wolf"]))],
             RewardGold = 10,
+            RewardExperience = 20,
             RewardItems = [],
             RewardChoiceItems = []
         };

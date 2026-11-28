@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Editor.ContentTools;
+using Mmorpg.WorldData.Progression;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -657,6 +658,9 @@ namespace Mmorpg.WorldData.Editor.Actors
             var level = form.Integer("Level", "level", actor => actor.level, (actor, value) => actor.level = value, isMob);
             level.tooltip = "Shown on the Mob's nameplate. Between " + WorldActorCombatRules.MinimumLevel + " and " + WorldActorCombatRules.MaximumLevel + ".";
             section.Add(level);
+            var experiencePercent = form.Integer("Experience Percent", "experiencePercent", actor => actor.experiencePercent, (actor, value) => actor.experiencePercent = value, isMob);
+            experiencePercent.tooltip = "The share of the experience that a Mob of this level gives, in percent. 100 is the plain value, 0 gives none.";
+            section.Add(experiencePercent);
             section.Add(form.Choice("Combat Profile", "combatProfileId", CombatProfileOptions, actor => actor.combatProfileId, (actor, value) => actor.combatProfileId = value, isMob));
             section.Add(form.Choice("Brain Profile", "brainProfileId", BrainProfileOptions, actor => actor.brainProfileId, (actor, value) => actor.brainProfileId = value, isMob));
             section.Add(form.Choice("Locomotion Profile", "locomotionProfileId", LocomotionProfileOptions, actor => actor.locomotionProfileId, (actor, value) => actor.locomotionProfileId = value, isMob));
@@ -891,6 +895,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.corpsePersistenceMode = string.Empty;
                 actor.corpseLifetimeSeconds = 0f;
                 actor.level = 0;
+                actor.experiencePercent = 0;
                 actor.combatProfileId = string.Empty;
                 actor.brainProfileId = string.Empty;
                 actor.locomotionProfileId = string.Empty;
@@ -923,6 +928,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                     ? actor.corpseLifetimeSeconds
                     : WorldActorCorpseRules.DefaultLiveLifetimeSeconds;
                 actor.level = actor.level > 0 ? actor.level : WorldActorCombatRules.MinimumLevel;
+                actor.experiencePercent = ProgressionRulesFormat.DefaultMobExperiencePercent;
                 actor.combatProfileId = string.IsNullOrEmpty(actor.combatProfileId)
                     ? workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty
                     : actor.combatProfileId;
@@ -1029,6 +1035,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 corpsePersistenceMode = npc ? string.Empty : WorldActorCorpsePersistenceModeIds.Live,
                 corpseLifetimeSeconds = npc ? 0f : WorldActorCorpseRules.DefaultLiveLifetimeSeconds,
                 level = npc ? 0 : WorldActorCombatRules.MinimumLevel,
+                experiencePercent = npc ? 0 : ProgressionRulesFormat.DefaultMobExperiencePercent,
                 combatProfileId = npc ? string.Empty : workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 brainProfileId = npc ? string.Empty : workspace.Catalog.brainProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 locomotionProfileId = npc ? string.Empty : workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty,
@@ -1067,6 +1074,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 corpsePersistenceMode = string.Empty,
                 corpseLifetimeSeconds = 0f,
                 level = 0,
+                experiencePercent = 0,
                 combatProfileId = string.Empty,
                 brainProfileId = string.Empty,
                 locomotionProfileId = string.Empty,

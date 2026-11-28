@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Server.Common.Quests;
@@ -224,6 +225,7 @@ public sealed class QuestCatalogSeederIntegrationTests
             context.DataSource,
             new QuestDefinitions(catalog),
             new CharacterQuestLog(),
+            context.Services.GetRequiredService<ICharacterProgression>(),
             NullLogger<QuestCatalogSeeder>.Instance).SeedAsync(None);
     }
 

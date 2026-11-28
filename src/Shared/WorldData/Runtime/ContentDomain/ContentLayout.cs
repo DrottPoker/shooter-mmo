@@ -134,6 +134,17 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(contentRoot, "characters", "appearance.json");
         }
 
+        // The progression rules: the level curve, Mob experience, and the level difference rails.
+        public static string ProgressionDirectory(string contentRoot)
+        {
+            return Path.Combine(contentRoot, Progression.ProgressionRulesFormat.DirectoryName);
+        }
+
+        public static string ProgressionRulesPath(string contentRoot)
+        {
+            return Path.Combine(ProgressionDirectory(contentRoot), Progression.ProgressionRulesFormat.FileName);
+        }
+
         // Development-only data, such as the item packages of the development item tool.
         public static string DevelopmentDirectory(string contentRoot)
         {

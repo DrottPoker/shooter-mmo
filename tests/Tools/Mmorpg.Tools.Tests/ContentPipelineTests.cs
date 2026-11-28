@@ -98,13 +98,13 @@ public sealed class ContentPipelineTests
             path,
             File.ReadAllText(path).Replace(
                 "\"rewardGold\": 50,",
-                "\"rewardGold\": 50,\n    \"rewardExperience\": 100,",
+                "\"rewardGold\": 50,\n    \"rewardReputation\": 100,",
                 StringComparison.Ordinal));
 
         var exception = Assert.Throws<InvalidDataException>(
             () => QuestContent.LoadCatalog(content.Path));
 
-        Assert.Contains("rewardExperience", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("rewardReputation", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

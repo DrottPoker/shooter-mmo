@@ -41,6 +41,7 @@
     "corpsePersistenceMode": "",
     "corpseLifetimeSeconds": 0.0,
     "level": 0,
+    "experiencePercent": 0,
     "combatProfileId": "",
     "brainProfileId": "",
     "locomotionProfileId": "",

@@ -56,6 +56,7 @@
         }
     ],
     "rewardGold": 50,
+    "rewardExperience": 300,
     "rewardItems": [],
     "rewardChoiceItems": [
         {

@@ -1,4 +1,6 @@
+using System.Globalization;
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.WorldData.Quests;
@@ -11,19 +13,24 @@ namespace Mmorpg.GameService.Quests;
 // listed as retired, and a retired id never returns. A structural change, or a retirement,
 // of a quest that characters have active stops startup until an explicit data migration
 // makes the stored progress fit, because the progress names steps and objectives. A changed
-// catalog may also lower a count, which moves the quests whose step it completes on.
+// catalog may also lower a count, which moves the quests whose step it completes on. A quest
+// whose minimum level is above the highest character level could never be accepted, so it
+// stops the start before the database is read.
 internal sealed class QuestCatalogSeeder(
     NpgsqlDataSource dataSource,
     QuestDefinitions catalog,
     ICharacterQuestLog questLog,
+    ICharacterProgression characterProgression,
     ILogger<QuestCatalogSeeder> logger) : IDatabaseSeeder
 {
     private const long CatalogLockId = 7_104_202_611_042_200;
+    private const int ReportedQuests = 5;
     private const string MigrationAdvice =
         "Apply an explicit data migration, or reset a local development database.";
 
     public async Task<IReadOnlyList<string>> PlanAsync(CancellationToken cancellationToken)
     {
+        EnsureLevelsWithinMaximum();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var mirrored = await PostgresCatalog.TableExistsAsync(connection, "quest_catalogs", cancellationToken)
             ? await ReadRevisionAsync(connection, null, cancellationToken)
@@ -37,6 +44,7 @@ internal sealed class QuestCatalogSeeder(
     // has nothing to check or write, and the start reads no quest log.
     public async Task<IReadOnlyList<string>> SeedAsync(CancellationToken cancellationToken)
     {
+        EnsureLevelsWithinMaximum();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         string? previousRevision;
@@ -93,6 +101,26 @@ internal sealed class QuestCatalogSeeder(
             $"Quest catalog {catalog.CatalogId}: mirrored revision {catalog.Revision}; was {previousRevision ?? "none"}; "
             + $"moved {advanced} active quests past a step that it completes."
         ];
+    }
+
+    private void EnsureLevelsWithinMaximum()
+    {
+        var maximumLevel = characterProgression.MaximumLevel;
+        var aboveMaximum = catalog.Quests.Where(quest => quest.MinimumLevel > maximumLevel).ToArray();
+        if (aboveMaximum.Length == 0)
+        {
+            return;
+        }
+
+        throw new QuestCatalogCompatibilityException(
+            $"Quest catalog {catalog.CatalogId} requires a character level above the highest level "
+            + $"{maximumLevel.ToString(CultureInfo.InvariantCulture)} of the progression rules for "
+            + $"{aboveMaximum.Length.ToString(CultureInfo.InvariantCulture)} quests: "
+            + string.Join(
+                "; ",
+                aboveMaximum.Take(ReportedQuests).Select(quest =>
+                    $"{quest.Id} requires level {quest.MinimumLevel.ToString(CultureInfo.InvariantCulture)}"))
+            + ". Lower the minimum level or raise maximumCharacterLevel.");
     }
 
     private Task<string?> ReadRevisionAsync(

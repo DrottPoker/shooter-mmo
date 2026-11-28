@@ -1,11 +1,14 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
+using Mmorpg.WorldData.Progression;
 
 namespace Mmorpg.GameService.Characters;
 
-internal sealed class CharacterProgression : ICharacterProgression
+internal sealed class CharacterProgression(ProgressionRules rules) : ICharacterProgression
 {
+    public int MaximumLevel => rules.MaximumCharacterLevel;
+
     public async Task<bool> SetLevelAsync(
         PostgresTransactionScope scope,
         Guid characterId,
@@ -14,6 +17,7 @@ internal sealed class CharacterProgression : ICharacterProgression
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentOutOfRangeException.ThrowIfLessThan(level, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(level, MaximumLevel);
 
         var locked = await scope.Connection.QuerySingleOrDefaultAsync<Guid?>(
             new CommandDefinition(

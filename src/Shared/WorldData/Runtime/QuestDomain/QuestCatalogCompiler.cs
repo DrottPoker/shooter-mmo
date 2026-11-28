@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
@@ -241,6 +242,11 @@ namespace Mmorpg.WorldData.Quests
                 errors.Add(path + " has an invalid NPC, a level below 1, or a Gold reward out of range.");
             }
 
+            if (quest.RewardExperience < 0 || quest.RewardExperience > QuestContentRules.MaximumRewardExperience)
+            {
+                errors.Add(path + " has an experience reward out of range.");
+            }
+
             if (quest.StartItems.Length > QuestContentRules.MaximumStartItems
                 || quest.RewardItems.Length > QuestContentRules.MaximumRewardItems
                 || quest.RewardChoiceItems.Length > QuestContentRules.MaximumRewardChoices
@@ -436,9 +442,14 @@ namespace Mmorpg.WorldData.Quests
             ValidateText(quest.Title, QuestContentRules.MaximumTitleLength, path + ".title", errors);
             references.ValidateQuestNpc(quest.GiverActorId, path + ".giverActorId", errors);
             references.ValidateQuestNpc(quest.TurnInActorId, path + ".turnInActorId", errors);
-            if (quest.MinimumLevel < 1 || quest.MinimumLevel > references.MaximumCharacterLevel)
+            // The highest level of the progression rules is not quest content: a test over the
+            // checked-in content and GameService at startup hold every minimum level to it.
+            if (quest.MinimumLevel < 1 || quest.MinimumLevel > CombatContentRules.MaximumCharacterLevel)
             {
-                errors.Add(path + ".minimumLevel must be between 1 and " + references.MaximumCharacterLevel + ".");
+                errors.Add(
+                    path + ".minimumLevel must be between 1 and "
+                    + CombatContentRules.MaximumCharacterLevel.ToString(CultureInfo.InvariantCulture)
+                    + ".");
             }
 
             ValidateRequiredQuests(quest, path, ids, retired, errors);
@@ -457,6 +468,11 @@ namespace Mmorpg.WorldData.Quests
             if (quest.RewardGold < 0 || quest.RewardGold > QuestContentRules.MaximumRewardGold)
             {
                 errors.Add(path + ".rewardGold must be between 0 and " + QuestContentRules.MaximumRewardGold + ".");
+            }
+
+            if (quest.RewardExperience < 0 || quest.RewardExperience > QuestContentRules.MaximumRewardExperience)
+            {
+                errors.Add(path + ".rewardExperience must be between 0 and " + QuestContentRules.MaximumRewardExperience + ".");
             }
 
             ValidateItemList(
@@ -1109,6 +1125,7 @@ namespace Mmorpg.WorldData.Quests
                     Objectives = step.Objectives.Select(CompileObjective).ToArray()
                 }).ToArray(),
                 RewardGold = quest.RewardGold,
+                RewardExperience = quest.RewardExperience,
                 RewardItems = CompileItems(quest.RewardItems),
                 RewardChoiceItems = CompileItems(quest.RewardChoiceItems)
             };
@@ -1197,6 +1214,7 @@ namespace Mmorpg.WorldData.Quests
                 }
 
                 values.Add(quest.RewardGold.ToString(CultureInfo.InvariantCulture));
+                values.Add(quest.RewardExperience.ToString(CultureInfo.InvariantCulture));
                 values.Add(ItemsFingerprint(quest.RewardItems));
                 values.Add(ItemsFingerprint(quest.RewardChoiceItems));
             }
@@ -1333,7 +1351,6 @@ namespace Mmorpg.WorldData.Quests
             {
                 this.items = (items.Definitions ?? Array.Empty<ItemDefinition>())
                     .ToDictionary(item => item.Id, StringComparer.Ordinal);
-                MaximumCharacterLevel = items.Progression?.MaximumCharacterLevel ?? 1;
                 foreach (var actor in actorCatalog.Actors ?? Array.Empty<WorldActorDefinition>())
                 {
                     actors[actor.Id] = actor;
@@ -1347,8 +1364,6 @@ namespace Mmorpg.WorldData.Quests
                     }
                 }
             }
-
-            public int MaximumCharacterLevel { get; }
 
             public static bool IsQuestItem(ItemDefinition item)
             {

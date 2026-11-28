@@ -33,6 +33,7 @@
     "corpsePersistenceMode": "live",
     "corpseLifetimeSeconds": 120.0,
     "level": 1,
+    "experiencePercent": 100,
     "combatProfileId": "mob.feral_wolf",
     "brainProfileId": "mob.defensive",
     "locomotionProfileId": "mob.quadruped",

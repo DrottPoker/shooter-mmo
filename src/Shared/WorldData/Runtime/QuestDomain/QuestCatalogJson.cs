@@ -50,6 +50,7 @@ namespace Mmorpg.WorldData.Quests
         public QuestJsonItemQuantity[] startItems;
         public QuestJsonStep[] steps;
         public long rewardGold;
+        public long rewardExperience;
         public QuestJsonItemQuantity[] rewardItems;
         public QuestJsonItemQuantity[] rewardChoiceItems;
         public string structuralFingerprint;
@@ -72,6 +73,7 @@ namespace Mmorpg.WorldData.Quests
                 StartItems = QuestJsonItemQuantity.ToRuntime(startItems),
                 Steps = (steps ?? Array.Empty<QuestJsonStep>()).Select(step => step?.ToRuntime()).ToArray(),
                 RewardGold = rewardGold,
+                RewardExperience = rewardExperience,
                 RewardItems = QuestJsonItemQuantity.ToRuntime(rewardItems),
                 RewardChoiceItems = QuestJsonItemQuantity.ToRuntime(rewardChoiceItems),
                 StructuralFingerprint = structuralFingerprint

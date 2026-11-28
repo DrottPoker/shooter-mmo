@@ -3,6 +3,7 @@ using System.Linq;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Editor.Actors;
 using Mmorpg.WorldData.Editor.ContentTools;
+using Mmorpg.WorldData.Progression;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -96,6 +97,36 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A Mob's experience percent is edited next to its level and checked live.
+        [Test]
+        public void MobExperiencePercentIsEditableAndOutOfBoundsPercentsAreFindings()
+        {
+            var view = CreateView();
+            try
+            {
+                view.Load(false);
+                var alpha = view.Workspace.Catalog.actors.Single(actor => actor.id == "mob.feral_alpha");
+                Assert.That(alpha.experiencePercent, Is.EqualTo(500));
+                view.List.Select(new[] { WorldActorStudioView.Key(alpha) });
+
+                Assert.That(view.Form.TrySetValue("experiencePercent", 0), Is.True);
+                alpha = view.Workspace.Catalog.actors.Single(actor => actor.id == "mob.feral_alpha");
+                Assert.That(alpha.experiencePercent, Is.Zero);
+                Assert.That(WorldActorEditorIssues.Collect(view.Workspace), Is.Empty);
+
+                Assert.That(view.Form.TrySetValue("experiencePercent", ProgressionRulesFormat.MaximumMobExperiencePercent + 1), Is.True);
+                Assert.That(
+                    WorldActorEditorIssues.Collect(view.Workspace)
+                        .Where(issue => issue.Field == "experiencePercent")
+                        .Select(issue => issue.EntityKey),
+                    Is.EquivalentTo(new[] { WorldActorStudioView.Key(alpha) }));
+            }
+            finally
+            {
+                view.Dispose();
+            }
+        }
+
         [Test]
         public void ChangingKindKeepsTheActorValidAndReportsSpawnsItBreaks()
         {
@@ -113,6 +144,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(wolf.activityProfileId, Is.Empty);
                 Assert.That(wolf.corpseLifetimeSeconds, Is.Zero);
                 Assert.That(wolf.level, Is.Zero);
+                Assert.That(wolf.experiencePercent, Is.Zero);
                 var presentation = view.Workspace.Catalog.presentationArchetypes.Single(value => value.id == wolf.presentationArchetypeId);
                 Assert.That(presentation.actorKind, Is.EqualTo(WorldActorKindIds.Npc));
 

@@ -215,8 +215,9 @@ describes.
   build copies it from `content` and `src/Shared/WorldData/Generated`: the World
   manifests, the actor catalog, the World spawns and collision chunks, the
   compiled item catalog,
-  the combat rules, the character appearance content, and the development item
-  packages. [Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults)
+  the combat rules, the character appearance content, the progression rules,
+  and the development item packages.
+  [Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults)
   describes the options that point a deployment at other copies.
 - Startup validates all of it and stops before any player is admitted when
   something is wrong.
@@ -234,6 +235,10 @@ describes.
   [Reset The Local Development Database](#reset-the-local-development-database).
 - A worker stops with `shard_rule_set_unknown` when the rule set that
   GameService names for its shard is not in `content/combat/combat-rules.json`.
+- After a change of `content/progression/progression-rules.json`, restart
+  GameService; it needs no compile, and the worker does not read it. GameService
+  stops when an item or quest requires a level above its
+  `maximumCharacterLevel`.
 - GameService also serves the compiled item catalog, quest catalog, and the
   text tables of `src/Shared/WorldData/Generated/Text/en` from its output at
   `/api/content`, as [Content Files](SERVICE_FEATURES.md#content-files)

@@ -234,7 +234,9 @@ dotnet run --project src/Server/GameService --configuration Release -- --dev-ite
 does not exist yet: every character starts at level 1, and GameService refuses
 to equip an item whose `requiredCharacterLevel` is higher with
 `equipment_level_requirement_not_met`. Every shipped item requires level 1, and
-the highest level is the catalog's `progression.maximumCharacterLevel`.
+the highest level is `maximumCharacterLevel` in
+[Progression Rules](../content/README.md#progression-rules); a level above it
+fails with "The level must be between 1 and the highest level 200".
 
 ### Development Worker Settings
 

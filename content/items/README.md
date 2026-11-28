@@ -33,8 +33,6 @@ together. The format contains these separate concepts:
   set the `startingBalance` every new character receives, from 0 to
   1,000,000,000,000. They are content, not code. The balance itself is
   character state that GameService owns.
-- **Progression** in `progression` sets `maximumCharacterLevel`, the temporary
-  level cap of 200. Every level requirement must fit it.
 - **Categories** define one primary classification per item.
 - **Tags** provide many-to-many Bag slot compatibility.
 - **Equipment slots** have stable ids and are listed in display order. Each slot
@@ -80,7 +78,10 @@ together. The format contains these separate concepts:
   definition has exactly this block, and no other definition has it.
 - **Level requirements** in `requiredCharacterLevel` are at least 1 on every
   definition. GameService refuses to equip an item into any equipment slot while
-  the character's level is lower.
+  the character's level is lower. The compiler accepts up to the absolute limit
+  of 10,000; the highest level a character reaches is `maximumCharacterLevel`
+  in the [progression rules](../README.md#progression-rules), and GameService
+  refuses to start with an item that requires more.
 - **Item value** in a definition's `value` is its base price in whole currency
   units, from 0 to 1,000,000,000. Vendors sell and buy at a share of it, and `0`
   means vendors never trade the item.

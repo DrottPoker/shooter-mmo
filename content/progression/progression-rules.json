@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "maximumCharacterLevel": 200,
+  "levelCurve": {
+    "killsAtLevelOne": 5,
+    "additionalKillsPerLevel": 1,
+    "roundExperienceTo": 10
+  },
+  "mobExperience": {
+    "atLevelOne": 20,
+    "perLevel": 5
+  },
+  "levelDifference": {
+    "minimumLevels": 5,
+    "higherLevelsCountedPercent": 25,
+    "fullExperienceBelowPercent": 25,
+    "noExperienceBelowPercent": 50
+  }
+}

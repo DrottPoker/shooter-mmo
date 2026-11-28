@@ -5,7 +5,7 @@ namespace Mmorpg.WorldData.Quests
 {
     public static class QuestCatalogFormat
     {
-        public const int Version = 2;
+        public const int Version = 3;
         public const string QuestsDirectoryName = "quests";
         public const string CatalogFileName = "core.quest-catalog.json";
     }
@@ -29,6 +29,7 @@ namespace Mmorpg.WorldData.Quests
         public const int MinimumRewardChoices = 2;
         public const int MaximumRewardChoices = 6;
         public const long MaximumRewardGold = 1_000_000L;
+        public const long MaximumRewardExperience = 1_000_000_000L;
         public const int MaximumRequiredQuests = 8;
         public const int MaximumTags = 16;
         public const int MaximumObjectiveTargets = 8;
@@ -87,6 +88,9 @@ namespace Mmorpg.WorldData.Quests
         public QuestItemQuantityAuthoringEntry[] StartItems;
         public QuestStepAuthoringEntry[] Steps;
         public long RewardGold;
+
+        // Experience that the character gets at the turn-in.
+        public long RewardExperience;
         public QuestItemQuantityAuthoringEntry[] RewardItems;
         public QuestItemQuantityAuthoringEntry[] RewardChoiceItems;
     }
@@ -171,6 +175,7 @@ namespace Mmorpg.WorldData.Quests
         public QuestItemQuantityDefinition[] StartItems;
         public QuestStepDefinition[] Steps;
         public long RewardGold;
+        public long RewardExperience;
         public QuestItemQuantityDefinition[] RewardItems;
         public QuestItemQuantityDefinition[] RewardChoiceItems;
 

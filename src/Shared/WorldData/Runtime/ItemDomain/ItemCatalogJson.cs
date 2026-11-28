@@ -37,12 +37,6 @@ namespace Mmorpg.WorldData.Items
     }
 
     [Serializable]
-    public sealed class ItemCatalogJsonProgression
-    {
-        public int maximumCharacterLevel;
-    }
-
-    [Serializable]
     public sealed class ItemCatalogJsonWeaponFamily
     {
         public string id;
@@ -239,7 +233,6 @@ namespace Mmorpg.WorldData.Items
         public string catalogId;
         public ItemCatalogJsonCharacter character;
         public ItemCatalogJsonEconomy economy;
-        public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
         public ItemCatalogJsonIdentity[] toolKinds;
@@ -270,12 +263,6 @@ namespace Mmorpg.WorldData.Items
                     {
                         CurrencyDisplayName = economy.currencyDisplayName,
                         StartingBalance = economy.startingBalance
-                    },
-                Progression = progression == null
-                    ? null
-                    : new ItemProgressionSettingsEntry
-                    {
-                        MaximumCharacterLevel = progression.maximumCharacterLevel
                     },
                 Categories = ConvertIdentities(categories),
                 Tags = ConvertIdentities(tags),

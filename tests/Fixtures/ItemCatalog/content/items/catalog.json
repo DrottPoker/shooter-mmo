@@ -100,10 +100,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 9,
-  "progression": {
-    "maximumCharacterLevel": 200
-  },
+  "formatVersion": 10,
   "retired": {
     "categories": [ ],
     "definitions": [ ],

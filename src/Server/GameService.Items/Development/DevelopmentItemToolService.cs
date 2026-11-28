@@ -16,7 +16,6 @@ internal sealed class DevelopmentItemToolService(
     CorpseService corpseService,
     ICharacterWallet characterWallet,
     ICharacterProgression characterProgression,
-    ItemCatalogSource catalogSource,
     IHostEnvironment environment)
 {
     private const string ToolName = "development item tool";
@@ -60,14 +59,11 @@ internal sealed class DevelopmentItemToolService(
         DevelopmentItemPackageDocument packages,
         CancellationToken cancellationToken)
     {
-        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
-            catalogSource.RuntimeCatalogPath,
-            cancellationToken);
-        var maximumLevel = catalog.Progression.MaximumCharacterLevel;
+        var maximumLevel = characterProgression.MaximumLevel;
         if (command.Level > maximumLevel)
         {
             throw new InvalidOperationException(
-                $"The level must be between 1 and the catalog's maximum level {maximumLevel}.");
+                $"The level must be between 1 and the highest level {maximumLevel}.");
         }
 
         var target = await LoadTargetAsync(command.CharacterId, cancellationToken);

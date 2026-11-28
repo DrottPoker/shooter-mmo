@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Mmorpg.WorldData.Combat;
+using Mmorpg.WorldData.Progression;
 
 namespace Mmorpg.WorldData.Actors
 {
@@ -1099,6 +1100,14 @@ namespace Mmorpg.WorldData.Actors
                             + WorldActorCombatRules.MaximumLevel.ToString(CultureInfo.InvariantCulture)
                             + " for a Mob.");
                     }
+
+                    if (actor.ExperiencePercent < 0
+                        || actor.ExperiencePercent > ProgressionRulesFormat.MaximumMobExperiencePercent)
+                    {
+                        errors.Add(path + ".experiencePercent must be between 0 and "
+                            + ProgressionRulesFormat.MaximumMobExperiencePercent.ToString(CultureInfo.InvariantCulture)
+                            + " for a Mob.");
+                    }
                 }
                 else
                 {
@@ -1124,6 +1133,11 @@ namespace Mmorpg.WorldData.Actors
                     if (actor.Level != 0)
                     {
                         errors.Add(path + ".level must be zero for an NPC or resource node.");
+                    }
+
+                    if (actor.ExperiencePercent != 0)
+                    {
+                        errors.Add(path + ".experiencePercent must be zero for an NPC or resource node.");
                     }
                 }
 
@@ -1834,6 +1848,7 @@ namespace Mmorpg.WorldData.Actors
                 CorpsePersistenceMode = value.CorpsePersistenceMode ?? string.Empty,
                 CorpseLifetimeSeconds = value.CorpseLifetimeSeconds,
                 Level = value.Level,
+                ExperiencePercent = value.ExperiencePercent,
                 CombatProfileId = value.CombatProfileId ?? string.Empty,
                 BrainProfileId = value.BrainProfileId ?? string.Empty,
                 LocomotionProfileId = value.LocomotionProfileId ?? string.Empty,
@@ -1888,6 +1903,7 @@ namespace Mmorpg.WorldData.Actors
                 value.CorpsePersistenceMode,
                 Float(value.CorpseLifetimeSeconds),
                 value.Level.ToString(CultureInfo.InvariantCulture),
+                value.ExperiencePercent.ToString(CultureInfo.InvariantCulture),
                 string.Join(",", capabilityFingerprints),
                 value.CombatProfileId,
                 value.BrainProfileId,

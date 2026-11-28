@@ -78,6 +78,23 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(view.Workspace.Catalog.quests.Select(quest => quest.minimumLevel), Is.All.EqualTo(1));
         }
 
+        // The experience reward is edited next to the Gold reward and checked live.
+        [Test]
+        public void RewardExperienceIsEditableAndOutOfRangeValuesAreFindings()
+        {
+            Assert.That(Quest(Alpha).rewardExperience, Is.EqualTo(300));
+            Select(Alpha);
+
+            Assert.That(view.Form.TrySetValue("rewardExperience", 0L), Is.True);
+            Assert.That(Quest(Alpha).rewardExperience, Is.Zero);
+            Assert.That(Problems(), Is.Empty);
+
+            Assert.That(view.Form.TrySetValue("rewardExperience", QuestContentRules.MaximumRewardExperience + 1), Is.True);
+            Assert.That(
+                Problems().Where(issue => issue.Field == "rewardExperience").Select(issue => issue.EntityKey),
+                Is.EquivalentTo(new[] { Alpha }));
+        }
+
         [Test]
         public void EveryTemplateCreatesAValidQuestWithAUniqueId()
         {

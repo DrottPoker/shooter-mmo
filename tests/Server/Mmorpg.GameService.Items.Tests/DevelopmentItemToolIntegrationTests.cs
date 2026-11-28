@@ -186,7 +186,7 @@ public sealed class DevelopmentItemToolIntegrationTests
                 new { CharacterId = player.Character.Id }));
         var aboveCap = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(LevelCommand(player.Character.Id, 201), CancellationToken.None));
-        Assert.Contains("maximum level 200", aboveCap.Message, StringComparison.Ordinal);
+        Assert.Contains("the highest level 200", aboveCap.Message, StringComparison.Ordinal);
 
         await EconomyAudit.AssertCleanAsync(context);
     }
@@ -309,7 +309,6 @@ public sealed class DevelopmentItemToolIntegrationTests
             context.CorpseService,
             context.Services.GetRequiredService<ICharacterWallet>(),
             context.Services.GetRequiredService<ICharacterProgression>(),
-            context.CatalogSource,
             new DevelopmentHostEnvironment());
     }
 

@@ -299,6 +299,9 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         // The level a Mob's nameplate shows; NPCs and resource nodes leave it at zero.
         public int level;
+
+        // The share of the experience that a Mob of its level gives, in percent; zero for others.
+        public int experiencePercent;
         public string combatProfileId;
         public string brainProfileId;
         public string locomotionProfileId;
@@ -330,6 +333,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 CorpsePersistenceMode = corpsePersistenceMode,
                 CorpseLifetimeSeconds = corpseLifetimeSeconds,
                 Level = level,
+                ExperiencePercent = experiencePercent,
                 CombatProfileId = combatProfileId,
                 BrainProfileId = brainProfileId,
                 LocomotionProfileId = locomotionProfileId,

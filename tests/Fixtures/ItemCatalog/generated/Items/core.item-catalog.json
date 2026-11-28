@@ -1,7 +1,7 @@
 {
-  "formatVersion": 9,
+  "formatVersion": 10,
   "catalogId": "core",
-  "revision": "9a838d23e3b7ad69303afd606ab685c846899d35512ebe85e12260c68b2104e8",
+  "revision": "b36678bfab54b1df8aad27ed3046701ef7110a70af0d16e969b3cfc29cdbc532",
   "character": {
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20,
@@ -9,9 +9,6 @@
   },
   "economy": {
     "startingBalance": 0
-  },
-  "progression": {
-    "maximumCharacterLevel": 200
   },
   "categories": [
     {

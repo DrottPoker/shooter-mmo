@@ -370,6 +370,10 @@ The lane's meter and its warning are in [Monitoring](MONITORING.md#gameservice).
 ## Character Access
 
 - Character names are validated and normalized.
+- A character's level is at most the highest level of the
+  [progression rules](../content/README.md#progression-rules), which
+  GameService loads from `Characters:ProgressionRulesPath` and refuses to start
+  without. Experience is not granted yet.
 - The character list and a newly created character name each character's id,
   name, balance, creation time, body model, and level, which the client reads
   for quest availability.
@@ -2230,7 +2234,11 @@ This section describes the implemented behavior around them.
   PostgreSQL transaction before accepting traffic. It refuses to start when the
   new catalog would invalidate live state, as
   [Revisions And Structural Changes](../content/items/README.md#revisions-and-structural-changes)
-  describes; such a change needs an explicit data migration.
+  describes; such a change needs an explicit data migration. It also refuses to
+  start, before it reads the database, when an item requires a character level
+  above the highest level of the
+  [progression rules](../content/README.md#progression-rules), and names the
+  item, its level, and the highest level.
 - GameService serves the compiled catalog file itself, byte for byte, by its
   revision, as [Content Files](#content-files) describes. The catalog holds ids
   and rules and no names: GameService stores no text of the catalog, and a
@@ -2510,7 +2518,7 @@ how to run them.
 | `--dev-items-grant <characterId> <definitionId> <quantity> <permanent\|bank>` | Grant one stack into the permanent inventory or the bank |
 | `--dev-items-package <characterId> <packageId>` | Apply one package from `content/development/item-packages.json` to a new empty character. It refuses a replay once an item or Recovery delivery exists, and rejects a package that misses its exact expected load |
 | `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` | Apply the corpse seed package to an empty source when necessary, then run the normal durable death transaction at that Shard position. The corpse keeps its database deadline across a worker restart |
-| `--dev-items-level <characterId> <level>` | Set the character's level, because no experience exists yet |
+| `--dev-items-level <characterId> <level>` | Set the character's level, from 1 to the highest level of the [progression rules](../content/README.md#progression-rules), because no experience exists yet |
 | `--dev-items-currency <characterId> <amount>` | Credit a positive whole amount through the wallet with a `development` ledger row |
 
 ## Quests
@@ -2525,8 +2533,10 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   before it accepts traffic. It refuses to start when a quest left the catalog without
   being listed as retired, a retired id returns, or a quest that characters have
   active was retired or changed its steps or objectives; such a change needs an
-  explicit data migration. An unchanged revision is neither checked nor
-  written. When the revision changed, the same transaction moves
+  explicit data migration. It also refuses to start, before it reads the
+  database, when a quest's minimum level is above the highest level of the
+  [progression rules](../content/README.md#progression-rules). An unchanged
+  revision is neither checked nor written. When the revision changed, the same transaction moves
   every active quest whose current step, not the last, the changed counts
   complete on to its next step and raises its quest log revision.
 - `GET /api/characters/{characterId}/quests` verifies exact account and
@@ -2959,6 +2969,7 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, which only the Development environment accepts, or one secret per worker id |
 | `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |
 | `Characters:AppearancePath` | `WorldData/Characters/appearance.json` in the output | The character appearance content |
+| `Characters:ProgressionRulesPath` | `WorldData/Progression/progression-rules.json` in the output | The [progression rules](../content/README.md#progression-rules), loaded strictly at startup |
 | `Simulation:JoinTicketLifetimeSeconds` | `30` | Join ticket lifetime |
 | `Simulation:SessionLeaseLifetimeSeconds` | `150` | Simulation session lease that each heartbeat renews, which every registry answer reports to the worker. It must be at least the sum of every worker's `GameServiceOutageToleranceSeconds`, the one second poll of its outage monitor, its `RegistryHeartbeatRetryMilliseconds`, `GameServiceTimeoutSeconds`, `SimulationSessionHeartbeatSeconds`, and `SimulationSessionHeartbeatRetryMilliseconds`, 140 seconds with the defaults, so a worker that comes back within its tolerance still holds its sessions; a worker refuses to start with a shorter lease and refuses a join whose lease is shorter, as [GameService Outage](#gameservice-outage) describes |
 | `Simulation:WorkerHeartbeatTimeoutSeconds` | `30` | Time after the last heartbeat until a worker counts as gone and another runtime may take its worker id over |

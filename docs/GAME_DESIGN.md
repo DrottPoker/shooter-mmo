@@ -198,9 +198,12 @@ and one active session per character.
 ## Progression And Roles
 
 Implemented: the durable character level, which gates equipment through item
-level requirements. Every character stays at level 1 until experience exists;
-a Development tool sets the level for testing. Everything else in this section
-is planned.
+level requirements, and the levelling rules as tunable content, with every
+value and formula in
+[Progression Rules](../content/README.md#progression-rules). Every Mob carries
+an experience percent and every quest an experience reward. Nothing grants
+experience yet, so every character stays at level 1; a Development tool sets
+the level for testing. Everything else in this section is planned.
 
 ### Decided
 
@@ -231,7 +234,35 @@ is planned.
 - There is no intended long-term level cap, and each level needs more
   experience than the one before. The first release uses a temporary cap of
   200, set as content, to observe how progression plays out before the cap is
-  raised or removed.
+  raised or removed. Experience stops at the cap: a character at the highest
+  level gains none, and when the cap is raised everyone continues from the old
+  cap with no stored experience.
+- The time a level takes grows in a straight line, as in World of Warcraft
+  Classic, instead of bending upward toward the end. A level needs as much
+  experience as a number of Mobs of that level give, and that number grows by
+  the same amount every level. The first values aim at about 170 hours of Mob
+  kills alone to level 200. Every number is a first draft that is tuned in
+  content, without a code change.
+- A character keeps its level and the experience it has gathered inside that
+  level, never a total. A change of the curve therefore never moves a level
+  that a character already has.
+- A Mob gives experience by its own level, times its own percent, which makes a
+  boss worth more. The difference to the character's level does not decide the
+  experience, because strength sits in gear: a character in strong gear fights
+  Mobs above its level for more experience, and a character in weak gear
+  fights Mobs below it and levels more slowly, but not for nothing.
+- Wide rails around the character's level only stop abuse. A Mob far above the
+  character counts as a Mob a fixed share of the character's level above it, so
+  a low character cannot be carried through the levels. A Mob far below gives
+  less and then nothing, so a high character cannot farm Mobs that cannot hurt
+  it.
+- Nothing scales with a character's strength: not Mobs, not quests, not loot.
+  A Mob's level and values are fixed for every player.
+- Gear is not made for a level. An item has its values and a level that a
+  character needs to use it, and players choose what to invest in: after a
+  loss, a high character may only afford weak gear. Rarity says how hard an
+  item is to get and how sought-after it is, not how strong it is; a rare
+  weapon can be weak and still valuable to collectors.
 - A higher level gives a slight advantage through more talent points, as a
   reward for progress. Because a level gives no direct strength and talent ranks
   get more expensive, a well-played lower-level character, for example level 60,
@@ -240,6 +271,32 @@ is planned.
   character level and of other professions. The maximum profession level is
   100. Every character can learn and level every profession, with no limit on
   how many.
+
+### Gear Power
+
+Planned. Because strength sits in gear, a level says little about what a
+character can beat, so content recommends a Gear Power instead of a level.
+
+- Gear Power is one number on the same scale as a Mob's level: a character with
+  Gear Power 87 is an even fight for a level 87 Mob.
+- It is measured from the values that the equipped gear actually has, never
+  authored and never derived from rarity. An auto attack fight is decided by
+  damage per second times the damage a character can take, so that product,
+  compared with the same product of a Mob of each level, gives the number. An
+  item shows the Gear Power of its own slot, measured the same way.
+- Only gear counts. Talents and level points never change it, so nobody is
+  pushed to spend points on raw strength for a better number.
+- A Mob's level is measured quickly from its auto attack values with the same
+  ruler, and its author has the last word. Abilities and mechanics on either
+  side are outside the number, so a fight can go differently from what it says.
+- It guides the player: on items, in the character window, as the recommended
+  Gear Power of a quest, and as a hint on a Mob's level. The server never
+  blocks or scales anything by it, and the experience rails use the character's
+  level, because gear changes in a second.
+- An item's values may exceed what its required level allows only up to a
+  ceiling that the tools warn about. There is no floor: an item may be as weak
+  as its author likes.
+- Armor has no defensive values yet, so Gear Power arrives together with them.
 
 ### Proposed
 
@@ -730,8 +787,10 @@ the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 - An aggressive Mob, such as a wolf, attacks a living player it can see within
   its detection range. A defensive Mob fights only once it is damaged. Damage
   always starts a fight.
-- Every Mob has a level. For now the level only tells players how strong a Mob
-  is meant to be; it changes no combat value.
+- Every Mob has a level, which says how strong the Mob is: an even fight for a
+  character in ordinary gear for that level. The level changes no combat value;
+  the Mob's author sets both. The level decides the experience the Mob is worth,
+  as [Progression And Roles](#progression-and-roles) describes.
 - A nameplate over every living Mob near the player shows its name, its level,
   and its health as a bar with the numbers in it. The bar is red for an
   aggressive Mob and yellow for a defensive one, so players see which Mobs

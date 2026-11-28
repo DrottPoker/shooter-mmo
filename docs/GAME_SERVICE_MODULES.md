@@ -114,9 +114,12 @@ order. Startup runs in this order:
    [Request Limits](SERVICE_FEATURES.md#request-limits) and
    [Orderly Shutdown](SERVICE_FEATURES.md#orderly-shutdown) describe.
 3. Register Platform, the host services, and each module, then check that every
-   single-implementation SPI has exactly one implementation. Content reads every
-   file it serves here and refuses to start on a missing or invalid file, as
-   [Content Files](SERVICE_FEATURES.md#content-files) describes.
+   single-implementation SPI has exactly one implementation. Characters loads
+   the appearance content and the
+   [progression rules](../content/README.md#progression-rules) here, and
+   Content reads every file it serves; each refuses to start on a missing or
+   invalid file, as [Content Files](SERVICE_FEATURES.md#content-files)
+   describes for Content.
 4. Build the pipeline: the forwarded headers of trusted proxies, when any are
    configured, the API pipeline (response headers, correlation id with the
    client's address, exception handler, status pages, no-store responses), the
@@ -142,10 +145,13 @@ order. Startup runs in this order:
      that differs from the configuration.
    - Items' `ItemsDatabaseSeeder` has Quests check the item references of the
      quest catalog through `IItemCatalogReferences`, which needs only the quest
-     catalog that Quests loaded at registration, then mirrors the item catalog
+     catalog that Quests loaded at registration, refuses an item that requires a
+     level above `ICharacterProgression.MaximumLevel` (S68), then mirrors the item catalog
      and recomputes the carry state of every character when the catalog
      revision changed, as a data step.
-   - Quests' `QuestCatalogSeeder` mirrors the quest catalog's revision and
+   - Quests' `QuestCatalogSeeder` refuses a quest whose minimum level is above
+     `ICharacterProgression.MaximumLevel` (S69), before it reads the database,
+     then mirrors the quest catalog's revision and
      quest ids and refuses to start when a quest left the catalog without being
      retired, a retired id returns, or a quest that characters have active was
      retired or changed its steps or objectives. The revision covers every
@@ -272,7 +278,7 @@ caller keeps its own check order, error codes, and messages.
 | `IAccountSessionActivity` | Accounts | Placement | Move the ends of the account sessions that live simulation sessions hold, as their activity, at most once an hour |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order, the lock of one character also as a statement of the caller's batch |
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
-| `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
+| `ICharacterProgression` | Characters | Items, Quests | The highest character level from the [progression rules](../content/README.md#progression-rules), which the item and quest catalogs must fit at startup, and set a character's level for the Development item tool |
 | `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
 | `ICharacterSimulationStates` | Characters | Placement | Read a character's saved place and vitals, lock characters `FOR KEY SHARE` in ascending id order before a save, and save many states in one statement, as [Character Simulation States](#character-simulation-states) describes |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
@@ -1599,7 +1605,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | `Retention:*` | `RetentionOptions` of Platform, which `PlatformOptions` carries |
 | `Audit:*` | `AuditOptions` of Platform, which `PlatformOptions` carries; the host reads it with the default of its environment |
 | `Auth:SessionIdleLifetimeDays`, `Auth:SessionMaximumLifetimeDays`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `RateLimiting:AccountActions:*`, `RateLimiting:AccountReads:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
-| `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
+| `Game:MaxCharactersPerAccount`, `Characters:AppearancePath`, `Characters:ProgressionRulesPath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Quests:CatalogPath` | `QuestsModuleOptions` |
 | `Items:*`, `StackStressFixtures:*`, `STACK_STRESS_FIXTURE_SECRET` | `ItemsModuleOptions` |
@@ -1698,6 +1704,8 @@ the statement ids.
 | S65 | Items' seeder has the quest catalog's item references checked before it mirrors the item catalog | Qst R | `IItemCatalogReferences` in `ItemsDatabaseSeeder`, implemented by Quests' `QuestItemCatalogReferences` on the loaded quest catalog |
 | S66 | Vendor trades and gathering yields run in the item transaction kernel: they change items, read vendor profiles and tool kinds of the mirrored catalog, and report the acting character's state | Itm R, W | `EconomyCommandSource` registers them through `IItemCommandSource`; Items' worker item route hands their kinds to Economy's `ISimulationItemOperationHandler` implementations, which run them through `SimulationItemOperation.RunAsync`; `VendorCommandHandler` and `GatherResourceCommandHandler` use `ItemTransactionContext` and the item primitives |
 | S67 | Ticket consume reads the character's saved place and vitals | Chr R | `ICharacterSimulationStates.ReadAsync` in `ShardService` |
+| S68 | Items' seeder refuses an item that requires a level above the highest character level | Chr R | `ICharacterProgression.MaximumLevel` in `ItemsDatabaseSeeder`, before the database is read |
+| S69 | Quests' seeder refuses a quest whose minimum level is above the highest character level | Chr R | `ICharacterProgression.MaximumLevel` in `QuestCatalogSeeder`, before the database is read |
 | S68 | A session release with a final state locks the character and saves the state in the release's transaction | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 | S69 | A checkpoint locks the characters of the worker runtime's active sessions and saves their states in one statement | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 | S70 | The retention of account sessions keeps every account session that a simulation session or join ticket names | Plc R | `IAccountSessionReferences.IsUnreferenced`, the condition that Placement's `SimulationAccountSessionReferences` gives, in Accounts' `AccountSessionRetentionTask`, because Accounts lies below Placement and cannot reference `PlacementSql` |
