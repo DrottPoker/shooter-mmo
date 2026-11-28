@@ -171,6 +171,13 @@ Every actor definition contains at least:
   respawn, combat, brain, locomotion, and loot profile references, and its
   corpse persistence and lifetime. NPCs and resource nodes leave every Mob field
   empty and the level at 0.
+- For a Mob: its `experiencePercent`, the share of the experience of its level
+  that it gives, from 0 to 100,000 (`ProgressionRulesFormat.MaximumMobExperiencePercent`).
+  100 is the plain value of its level, 0 gives none, and a boss gives more:
+  `mob.feral_alpha` has 500 and every other shipped Mob 100. Actor Studio sets
+  100 for a new Mob. The value of a level is in
+  [Progression Rules](../content/README.md#progression-rules). NPCs and
+  resource nodes leave it at 0. Nothing grants experience yet.
 - For a Mob: its kill credit, as
   [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides: `tag`, by
   which the first player who damages it gets the credit and the loot, or

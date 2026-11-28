@@ -1,7 +1,7 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "catalogId": "core",
-  "revision": "9747300fc6572da76272cc0bd308f42219b02d5fe6bdb838f7cc1fe886d06e09",
+  "revision": "1d5637fd40bdd492aca3f46508626df7819e9f6bff859965e83da0fe4ac93b40",
   "maximumActiveQuests": 25,
   "retiredQuestIds": [],
   "quests": [
@@ -78,6 +78,7 @@
         }
       ],
       "rewardGold": 5,
+      "rewardExperience": 50,
       "rewardItems": [],
       "rewardChoiceItems": [],
       "structuralFingerprint": "d670e102c9c9a59db57a9c09bd6daec8e78f7c5e379fa29f8b369d3102471615"
@@ -111,6 +112,7 @@
         }
       ],
       "rewardGold": 1,
+      "rewardExperience": 10,
       "rewardItems": [],
       "rewardChoiceItems": [],
       "structuralFingerprint": "d3ffea602a925024bd6875861ca4edd8c3a3b01196a0f49f5e556ed737e2959e"
@@ -150,6 +152,7 @@
         }
       ],
       "rewardGold": 2,
+      "rewardExperience": 20,
       "rewardItems": [],
       "rewardChoiceItems": [],
       "structuralFingerprint": "cdf3afe642341783f08e52e81679a878eb91aa247a7801f65a8d932cef51dee3"
@@ -185,6 +188,7 @@
         }
       ],
       "rewardGold": 10,
+      "rewardExperience": 100,
       "rewardItems": [
         {
           "definitionId": "fixture.potion",

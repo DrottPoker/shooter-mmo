@@ -1309,6 +1309,7 @@ internal static class BenchmarkMob
                 CorpsePersistenceMode = "live",
                 CorpseLifetimeSeconds = 120f,
                 Level = 1,
+                ExperiencePercent = 100,
                 CombatProfileId = "mob.feral_wolf",
                 BrainProfileId = "mob.defensive",
                 LocomotionProfileId = "mob.quadruped",

@@ -1,8 +1,8 @@
 {
-  "formatVersion": 10,
+  "formatVersion": 11,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "8b90a39ec9b52a30b1f04bcfceedf2cdab536aacfe194e95a4f90fe855ef5c26",
+  "revision": "3cd638e9641828b34a388bdf788787dd7747bc6d351329e533696112c09897f4",
   "spawnSources": [
     {
       "id": "development_world_1.feral_wolves",

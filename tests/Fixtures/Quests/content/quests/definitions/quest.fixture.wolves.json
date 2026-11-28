@@ -35,6 +35,7 @@
         }
     ],
     "rewardGold": 10,
+    "rewardExperience": 100,
     "rewardItems": [
         {
             "definitionId": "fixture.potion",

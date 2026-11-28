@@ -34,6 +34,7 @@
     "corpsePersistenceMode": "durable",
     "corpseLifetimeSeconds": 600.0,
     "level": 5,
+    "experiencePercent": 500,
     "combatProfileId": "mob.feral_alpha",
     "brainProfileId": "mob.aggressive_boss",
     "locomotionProfileId": "mob.large_quadruped",

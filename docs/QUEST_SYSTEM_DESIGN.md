@@ -86,7 +86,7 @@ Planned: everything else in this document.
 | Where quests are made | One content file per quest, edited in Quest Studio or by hand and checked by one compiler. |
 | Who gets credit for a kill | The player who tagged the Mob, or, for a Mob with contributor credit, every player it credits, as [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides. |
 | How quest drops reach a player | As a personal entry in the Mob's corpse that only that player sees and loots. |
-| What a quest rewards | Gold, items, and one item of the player's choice. Experience joins once it exists. |
+| What a quest rewards | Gold, items, and one item of the player's choice. Every quest also has an authored experience reward, which the experience system will grant. |
 | Who owns quest state | GameService, in the same transactions as items and Gold. |
 | How players see quests | Markers over NPCs, a quest dialog at the NPC, a quest log, a tracker, and notices. |
 
@@ -105,7 +105,8 @@ Every quest definition has:
   level.
 - One or more steps with their objectives.
 - Start items, granted when the quest is accepted.
-- Rewards: Gold, items, and a list of items of which the player chooses one.
+- Rewards: Gold, experience, items, and a list of items of which the player
+  chooses one.
 - Texts: the offer, the progress text that the turn-in NPC says while the quest
   is not ready, the completion text, and one line per objective, such as
   `Feral Wolves slain`.
@@ -178,8 +179,9 @@ reputation, and item requirements are planned.
 - When the reward items do not fit carried storage, the turn-in is refused with
   a clear message and nothing changes, so no reward is ever lost. The quest
   dialog tells it ahead and holds the turn-in back when the client can see it.
-- Experience rewards join once experience exists, with no change to the quest
-  model beyond a reward field.
+- The experience reward, `rewardExperience`, is authored for every quest and
+  compiled into the quest catalog. Nothing grants it yet: the turn-in pays it
+  once the experience system exists, with no further change to the quest model.
 
 ### Repeatable Quests
 
@@ -206,6 +208,7 @@ tracker, and keep every quest message within the realtime packet limit:
 | Start items and reward items | Up to 4 each |
 | Reward choices | None, or 2 to 6 |
 | Gold reward | 0 to 1,000,000 |
+| Experience reward | 0 to 1,000,000,000 |
 | Required quests | Up to 8 |
 | Content tags | Up to 16 |
 | Active quests per character | 25, a setting of the quest catalog from 1 to 100 |
@@ -442,6 +445,8 @@ tool foundation of [Unity Content Tools](../content/README.md#unity-content-tool
   needed and never another quest's quest item, and quests for the requirements,
   without the quests that would form a cycle.
 - Steps and objectives that are added, removed, and moved with buttons.
+- A `Rewards` section with `Reward Gold`, `Reward Experience`, the reward items,
+  and the reward choice.
 - A chain view of the selected quest's chain in rows, each row needing quests
   from the rows above it, and an NPC view of every quest an NPC gives, receives,
   or appears in. Clicking an entry selects it.
@@ -596,8 +601,8 @@ as [UI And UX Principles](GAME_DESIGN.md#ui-and-ux-principles) describes:
 
 ## Deferred Work
 
-- Experience rewards, together with the experience system, which also gives Mob
-  kills experience by the same credit rules.
+- Granting the authored experience rewards, together with the experience
+  system, which also gives Mob kills experience by the same credit rules.
 - Reputation and profession requirements and rewards.
 - Groups: tags owned by a group and quests shared within it.
 - Daily and weekly quests.

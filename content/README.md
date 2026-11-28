@@ -197,7 +197,7 @@ edits them, as [Quest Studio](#quest-studio) describes:
 | `offerText`, `progressText`, `completionText` | What the giver says to offer the quest, what the turn-in NPC says while it is not ready, and what it says at the turn-in |
 | `startItems` | Quest items granted at acceptance, each a `definitionId` and a `quantity` |
 | `steps` | The steps in order, each an `id` and its `objectives` |
-| `rewardGold`, `rewardItems`, `rewardChoiceItems` | The rewards; the player picks one of the choice items |
+| `rewardGold`, `rewardExperience`, `rewardItems`, `rewardChoiceItems` | The rewards; the player picks one of the choice items. `rewardExperience` is 0 to 1,000,000,000 and is authored for every quest, but nothing grants it yet |
 
 Every objective has an `id`, a `kind`, its line of `text`, a `count`, and the
 fields of its kind, and leaves every other field empty:
@@ -319,7 +319,9 @@ decimal arithmetic throughout, so every machine gets the same result:
   where `full` and `none` are the two distances, rounded down. A level 87
   character gets 324 of the 340 a level 65 Mob gives.
 - **A Mob's own percent** multiplies its experience: 100 gives the plain value
-  and 0 gives nothing. Mob definitions carry no percent yet.
+  and 0 gives nothing. Each Mob definition sets it in `experiencePercent`, as
+  [NPC And Mob System Design](../docs/NPC_AND_MOB_SYSTEM_DESIGN.md#actor-definitions)
+  describes.
 - **At least one point** comes from a kill that counts at all.
 - **Experience stops at the highest level:** a character at
   `maximumCharacterLevel` gets nothing for any kill and holds no experience.
@@ -770,8 +772,10 @@ for a `gathering` capability.
 2. Fill in the `Actor Definition` section: kind, faction, disposition,
    `Stable Actor Id`, `Display Name`, and `Examine Text`. Choose the
    `Presentation Archetype` and add tags with `Add Tag`.
-3. For a Mob, set its `Level`, which its nameplate shows, and choose the
-   profiles under `Combat And Lifecycle`: damage policy, activity, respawn,
+3. For a Mob, set its `Level`, which its nameplate shows, its
+   `Experience Percent`, the share of the experience of its level that it
+   gives, 100 for a new Mob, and choose the profiles under
+   `Combat And Lifecycle`: damage policy, activity, respawn,
    combat, brain, locomotion, and loot profile, corpse persistence (`Live` or
    `Durable`), corpse lifetime, and `Kill Credit`: `Tagger`, whose first
    attacker alone gets the credit and the loot, or `Contributors` for a world
@@ -859,8 +863,8 @@ How to check the result in the running game is in
 Quest Studio edits the files in `quests` and writes the compiled quest catalog,
 `src/Shared/WorldData/Generated/Quests/core.quest-catalog.json`. Its list
 filters by giver, turn-in NPC, objective kind, tag, and problems. With several
-quests selected, giver, turn-in NPC, minimum level, repeatable, tags, and reward
-Gold edit every selected quest at once; id, title, texts, requirements, items,
+quests selected, giver, turn-in NPC, minimum level, repeatable, tags, reward
+Gold, and reward experience edit every selected quest at once; id, title, texts, requirements, items,
 and steps are edited one quest at a time. With no quest selected, the editor
 shows the quest catalog's `Maximum Active Quests` and its retired ids.
 
@@ -908,8 +912,9 @@ like the Unity tests, besides the compiler's verify mode.
    kind clears the fields the new kind does not use and fills the ones it needs.
    `Add Objective`, `Add Step`, `Move Up`, `Move Down`, `Move Step Up`,
    `Move Step Down`, `Remove`, and `Remove Step` change the order.
-6. Under `Rewards`, set the `Reward Gold`, and add `Reward Items` and the
-   `Reward Choice`, none or two to six items of which the player picks one.
+6. Under `Rewards`, set the `Reward Gold` and the `Reward Experience`, 0 for a
+   new quest, and add `Reward Items` and the `Reward Choice`, none or two to
+   six items of which the player picks one.
 7. `Quest Chain` shows the selected quest's chain in rows, each row needing
    quests from the rows above it, and `NPC View` lists every quest the chosen
    NPC gives, receives, or appears in. Clicking a quest in either selects it.

@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 10;
+        public const int Version = 11;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -372,6 +372,9 @@ namespace Mmorpg.WorldData.Actors
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
         public int Level;
+
+        // The share of the experience that a Mob of its level gives, in percent; zero for others.
+        public int ExperiencePercent;
         public string CombatProfileId;
         public string BrainProfileId;
         public string LocomotionProfileId;
@@ -632,6 +635,9 @@ namespace Mmorpg.WorldData.Actors
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
         public int Level;
+
+        // The share of the experience that a Mob of its level gives, in percent; zero for others.
+        public int ExperiencePercent;
         public string CombatProfileId;
         public string BrainProfileId;
         public string LocomotionProfileId;

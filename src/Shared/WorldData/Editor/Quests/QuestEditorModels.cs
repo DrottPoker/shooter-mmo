@@ -59,6 +59,7 @@ namespace Mmorpg.WorldData.Editor.Quests
         public QuestEditorItemQuantity[] startItems;
         public QuestEditorStep[] steps;
         public long rewardGold;
+        public long rewardExperience;
         public QuestEditorItemQuantity[] rewardItems;
         public QuestEditorItemQuantity[] rewardChoiceItems;
 
@@ -80,6 +81,7 @@ namespace Mmorpg.WorldData.Editor.Quests
                 StartItems = QuestEditorItemQuantity.ToDomain(startItems),
                 Steps = (steps ?? Array.Empty<QuestEditorStep>()).Select(step => step.ToDomain()).ToArray(),
                 RewardGold = rewardGold,
+                RewardExperience = rewardExperience,
                 RewardItems = QuestEditorItemQuantity.ToDomain(rewardItems),
                 RewardChoiceItems = QuestEditorItemQuantity.ToDomain(rewardChoiceItems)
             };

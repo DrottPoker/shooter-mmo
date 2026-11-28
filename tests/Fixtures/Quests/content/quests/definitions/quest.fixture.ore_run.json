@@ -33,6 +33,7 @@
         }
     ],
     "rewardGold": 1,
+    "rewardExperience": 10,
     "rewardItems": [],
     "rewardChoiceItems": []
 }

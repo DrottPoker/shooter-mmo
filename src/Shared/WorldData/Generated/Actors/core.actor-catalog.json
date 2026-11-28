@@ -1,7 +1,7 @@
 {
-  "formatVersion": 10,
+  "formatVersion": 11,
   "catalogId": "core",
-  "revision": "5336ec8396deb13365ebf02e187039735755e4e580d8a3c1569c8da61f4d0dd0",
+  "revision": "a5dd1a8a090fc3d80fa37ab28eab6edd81b8a3a9b6989661fffef7be71f6d025",
   "factions": [
     {
       "id": "city",
@@ -238,12 +238,13 @@
       "corpsePersistenceMode": "durable",
       "corpseLifetimeSeconds": 600,
       "level": 5,
+      "experiencePercent": 500,
       "combatProfileId": "mob.feral_alpha",
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
       "killCredit": "contributors",
-      "structuralFingerprint": "f73264395e1fc18e008bd310f8f6af72b5a2627689f18db1d8b321191feaa0c8"
+      "structuralFingerprint": "bff025a61e00f999c2d0650508d906686e30b819585ec1b53080df8f1b0fef0e"
     },
     {
       "id": "mob.feral_wolf",
@@ -278,12 +279,13 @@
       "corpsePersistenceMode": "live",
       "corpseLifetimeSeconds": 120,
       "level": 2,
+      "experiencePercent": 100,
       "combatProfileId": "mob.feral_wolf",
       "brainProfileId": "mob.aggressive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
       "killCredit": "tag",
-      "structuralFingerprint": "d3f573fb5dcd02939432f38930bdda6e4c2a44549b2de49fb6f0258ae4b41c54"
+      "structuralFingerprint": "65ab8ea537d931a44992c0b38f96ef4087db376b60d6e67b12f172dfb11f63f8"
     },
     {
       "id": "mob.grey_wolf",
@@ -318,12 +320,13 @@
       "corpsePersistenceMode": "live",
       "corpseLifetimeSeconds": 120,
       "level": 1,
+      "experiencePercent": 100,
       "combatProfileId": "mob.feral_wolf",
       "brainProfileId": "mob.defensive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
       "killCredit": "tag",
-      "structuralFingerprint": "cdb0ddca1adb76e24c247363fdee337703b771fa0053b2f66a625ceb862fe804"
+      "structuralFingerprint": "1b8740e36bf9f720ec55170b9186188f1bbf3c99001194b30eb881d61518deb5"
     },
     {
       "id": "npc.city_guard",
@@ -371,12 +374,13 @@
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
       "level": 0,
+      "experiencePercent": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "fc8b60a3f44c9fc45d23aa64d0565a0d4d595d925c8aa6b0b7e572b8399959ea"
+      "structuralFingerprint": "992c986150edfdc38e9bda4dd4335df8b7170a9719d45b9a29ff58879a501f72"
     },
     {
       "id": "npc.city_services",
@@ -454,12 +458,13 @@
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
       "level": 0,
+      "experiencePercent": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "c6e5b1071e63492b1ee5b584d660babdaa2648cfcf0841f0b9f600330969fa99"
+      "structuralFingerprint": "e621e0b4d11545f92193f9d25bbfe3ba096933e2893ec9f1bb4732e532a547e3"
     },
     {
       "id": "npc.outpost_sergeant",
@@ -501,12 +506,13 @@
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
       "level": 0,
+      "experiencePercent": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "28d030a7cb68443af26179c9be0a5558aaae29bda9ae052b593ab3e5527048b0"
+      "structuralFingerprint": "c3f45d9f5d8682c01dd91a629ad0c87ee2565fac38586eedc4e5501cc5609013"
     },
     {
       "id": "resource.iron_vein",
@@ -548,12 +554,13 @@
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
       "level": 0,
+      "experiencePercent": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "0c0bb28a32c790a156826d797de595286468c123be4e0f760ad18daf49eed2ed"
+      "structuralFingerprint": "1e34e275477ba83d56ba07910c3dc59e971d5328fab591df6b2ff8b702835d25"
     },
     {
       "id": "resource.oak_tree",
@@ -595,12 +602,13 @@
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
       "level": 0,
+      "experiencePercent": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "400a5ebe60b9670595d2f2de29d720f1b1111b77cb579122d6cebda732982f3e"
+      "structuralFingerprint": "9b70a4a23eaabac9bc01e561e1342f411798775b8e53b7b9a103f31469a817d3"
     }
   ]
 }

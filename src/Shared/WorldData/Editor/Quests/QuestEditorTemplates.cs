@@ -72,6 +72,7 @@ namespace Mmorpg.WorldData.Editor.Quests
                 completionText = "Thank you.",
                 startItems = Array.Empty<QuestEditorItemQuantity>(),
                 rewardGold = 10,
+                rewardExperience = 0,
                 rewardItems = Array.Empty<QuestEditorItemQuantity>(),
                 rewardChoiceItems = Array.Empty<QuestEditorItemQuantity>()
             };

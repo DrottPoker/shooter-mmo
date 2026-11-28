@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Mmorpg.WorldData.Progression;
 
 namespace Mmorpg.WorldData.Actors
 {
@@ -745,6 +746,12 @@ namespace Mmorpg.WorldData.Actors
                     {
                         errors.Add("runtime actor " + value.Id + " has an invalid level.");
                     }
+
+                    if (value.ExperiencePercent < 0
+                        || value.ExperiencePercent > ProgressionRulesFormat.MaximumMobExperiencePercent)
+                    {
+                        errors.Add("runtime actor " + value.Id + " has an invalid experience percent.");
+                    }
                 }
                 else
                 {
@@ -789,6 +796,11 @@ namespace Mmorpg.WorldData.Actors
                     if (value.Level != 0)
                     {
                         errors.Add("runtime actor " + value.Id + " must not define a level.");
+                    }
+
+                    if (value.ExperiencePercent != 0)
+                    {
+                        errors.Add("runtime actor " + value.Id + " must not define an experience percent.");
                     }
                 }
 

@@ -242,6 +242,11 @@ namespace Mmorpg.WorldData.Quests
                 errors.Add(path + " has an invalid NPC, a level below 1, or a Gold reward out of range.");
             }
 
+            if (quest.RewardExperience < 0 || quest.RewardExperience > QuestContentRules.MaximumRewardExperience)
+            {
+                errors.Add(path + " has an experience reward out of range.");
+            }
+
             if (quest.StartItems.Length > QuestContentRules.MaximumStartItems
                 || quest.RewardItems.Length > QuestContentRules.MaximumRewardItems
                 || quest.RewardChoiceItems.Length > QuestContentRules.MaximumRewardChoices
@@ -463,6 +468,11 @@ namespace Mmorpg.WorldData.Quests
             if (quest.RewardGold < 0 || quest.RewardGold > QuestContentRules.MaximumRewardGold)
             {
                 errors.Add(path + ".rewardGold must be between 0 and " + QuestContentRules.MaximumRewardGold + ".");
+            }
+
+            if (quest.RewardExperience < 0 || quest.RewardExperience > QuestContentRules.MaximumRewardExperience)
+            {
+                errors.Add(path + ".rewardExperience must be between 0 and " + QuestContentRules.MaximumRewardExperience + ".");
             }
 
             ValidateItemList(
@@ -1115,6 +1125,7 @@ namespace Mmorpg.WorldData.Quests
                     Objectives = step.Objectives.Select(CompileObjective).ToArray()
                 }).ToArray(),
                 RewardGold = quest.RewardGold,
+                RewardExperience = quest.RewardExperience,
                 RewardItems = CompileItems(quest.RewardItems),
                 RewardChoiceItems = CompileItems(quest.RewardChoiceItems)
             };
@@ -1203,6 +1214,7 @@ namespace Mmorpg.WorldData.Quests
                 }
 
                 values.Add(quest.RewardGold.ToString(CultureInfo.InvariantCulture));
+                values.Add(quest.RewardExperience.ToString(CultureInfo.InvariantCulture));
                 values.Add(ItemsFingerprint(quest.RewardItems));
                 values.Add(ItemsFingerprint(quest.RewardChoiceItems));
             }
