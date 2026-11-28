@@ -201,9 +201,12 @@ Implemented: the durable character level, which gates equipment through item
 level requirements, and the levelling rules as tunable content, with every
 value and formula in
 [Progression Rules](../content/README.md#progression-rules). Every Mob carries
-an experience percent and every quest an experience reward. Nothing grants
-experience yet, so every character stays at level 1; a Development tool sets
-the level for testing. Everything else in this section is planned.
+an experience percent and every quest an experience reward. GameService grants
+experience for every credited Mob kill and for a quest turn-in, and levels the
+character up, as
+[Character Progression](GAME_SERVICE_MODULES.md#character-progression)
+describes. The client does not show experience or a level-up yet. Everything
+else in this section is planned.
 
 ### Decided
 

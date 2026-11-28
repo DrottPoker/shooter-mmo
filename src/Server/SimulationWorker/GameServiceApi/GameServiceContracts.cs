@@ -51,6 +51,9 @@ public sealed record ConsumedSimulationJoinTicketResponse(
     // The character's saved place and vitals, or null when it has none, as a development bot.
     public SimulationSavedCharacterState? SavedState { get; init; }
 
+    // The character's level and experience at the consume; null for a development bot.
+    public SimulationProgression? Progression { get; init; }
+
     // The ticket's transport key, from which the worker derives the keys of the peer's sealed
     // datagrams. The join zeroes it once it derived them.
     public byte[] TransportKey { get; init; } = [];
@@ -67,6 +70,15 @@ public sealed record SimulationSavedCharacterState(
     float YawDegrees,
     int Health,
     int Mana);
+
+// A character's level, the experience it gathered inside that level, what the level needs, and the
+// highest Mob level that gives it no experience, as GameService computed them. That level is
+// int.MaxValue at the highest level, where no Mob gives any.
+public sealed record SimulationProgression(
+    int Level,
+    long Experience,
+    long ExperienceToNextLevel,
+    int HighestMobLevelWithoutExperience);
 
 // A character's place and vitals as the worker sends them, numbered within its simulation session.
 public sealed record SimulationCharacterStateRequest(
@@ -372,7 +384,21 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterState? CharacterState = null,
     IReadOnlyList<SimulationItemChange>? ItemChanges = null,
-    SimulationQuestLogChange? QuestLog = null);
+    SimulationQuestLogChange? QuestLog = null,
+    SimulationProgressionChange? Progression = null);
+
+// The character's progression after a committed transaction that granted experience or set its
+// level, with the experience that counted and the levels it gained, which a set level may make
+// negative. HighestMobLevelWithoutExperience is int.MaxValue at the highest level, where no Mob
+// gives any. A transaction without one has no progression key.
+public sealed record SimulationProgressionChange(
+    Guid CharacterId,
+    int Level,
+    long Experience,
+    long ExperienceToNextLevel,
+    int HighestMobLevelWithoutExperience,
+    long ExperienceGained,
+    int LevelsGained);
 
 // The quests a committed transaction changed, as the quest log holds them after it, with the
 // quest log revision after it. A quest without a step is no longer active.
@@ -391,7 +417,8 @@ public sealed record SimulationQuestObjectiveProgress(string ObjectiveId, int Pr
 
 // A quest action of a live character on GameService's quest route, which answers like the
 // item route. QuestNpcActorId is the actor definition of the NPC whose quests capability the
-// worker validated; abandoning needs none, and a kill credit names the Mob instead. Every quest
+// worker validated; abandoning needs none, and a Mob kill credit names the Mob with its level and
+// experience percent instead. Every quest
 // request names the revision of the quest catalog the worker runs, which GameService refuses
 // with simulation_worker_quest_catalog_mismatch when it runs another.
 public sealed record SimulationQuestOperationRequest(
@@ -409,7 +436,9 @@ public sealed record SimulationQuestOperationRequest(
     string? ObjectiveId = null,
     string? RewardChoiceDefinitionId = null,
     string? MobActorId = null,
-    IReadOnlyList<string>? MobTags = null);
+    IReadOnlyList<string>? MobTags = null,
+    int? MobLevel = null,
+    int? MobExperiencePercent = null);
 
 public sealed record SimulationQuestLogRequest(
     Guid AccountId,

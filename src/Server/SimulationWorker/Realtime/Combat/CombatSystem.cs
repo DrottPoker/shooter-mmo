@@ -780,7 +780,7 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
             else
             {
                 var credits = MobKillCredits.Resolve(dead, entityRegistry, rules.KillCreditRangeMeters);
-                authority.CreditQuestKills(dead.Actor!, credits);
+                authority.CreditMobKills(dead.Actor!, credits);
                 mobDeaths.Begin(dead, credits);
             }
         }

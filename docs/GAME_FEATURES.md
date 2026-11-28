@@ -593,8 +593,7 @@ Items move by drag and drop:
 - An item cannot be equipped into a slot that an equipped item blocks, such as
   the off hand next to a two-handed bow, or while it would block an occupied
   slot. An item whose level requirement is above the character's level cannot be
-  equipped either; every character is level 1, and every item requires level 1
-  until experience exists.
+  equipped either; every item requires level 1 for now.
 - Dropping any item of a Recovery delivery claims the whole delivery.
 
 A right-click moves an item to where it belongs, as a shortcut for a drag:

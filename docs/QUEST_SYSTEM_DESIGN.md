@@ -86,7 +86,7 @@ Planned: everything else in this document.
 | Where quests are made | One content file per quest, edited in Quest Studio or by hand and checked by one compiler. |
 | Who gets credit for a kill | The player who tagged the Mob, or, for a Mob with contributor credit, every player it credits, as [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides. |
 | How quest drops reach a player | As a personal entry in the Mob's corpse that only that player sees and loots. |
-| What a quest rewards | Gold, items, and one item of the player's choice. Every quest also has an authored experience reward, which the experience system will grant. |
+| What a quest rewards | Gold, experience, items, and one item of the player's choice. |
 | Who owns quest state | GameService, in the same transactions as items and Gold. |
 | How players see quests | Markers over NPCs, a quest dialog at the NPC, a quest log, a tracker, and notices. |
 
@@ -180,8 +180,11 @@ reputation, and item requirements are planned.
   a clear message and nothing changes, so no reward is ever lost. The quest
   dialog tells it ahead and holds the turn-in back when the client can see it.
 - The experience reward, `rewardExperience`, is authored for every quest and
-  compiled into the quest catalog. Nothing grants it yet: the turn-in pays it
-  once the experience system exists, with no further change to the quest model.
+  compiled into the quest catalog. The turn-in grants it in its transaction
+  through Characters, which levels the character up as far as it reaches and
+  grants nothing at the highest level, as
+  [Character Progression](GAME_SERVICE_MODULES.md#character-progression)
+  describes.
 
 ### Repeatable Quests
 
@@ -521,13 +524,15 @@ GameService would refuse too.
 
 - It keeps the active quests of every character in its sessions, loaded when the
   character joins and updated from committed results.
-- It commits every credited kill that a current step asks for to GameService as
-  a kill credit, which counts for the kill objectives of current steps, with one
-  operation id per credited character that it keeps for retries, so a retry
-  never counts twice. A credit keeps the place in the character's lane that it
-  took at the kill, and whether a step asks for it is decided when its turn
-  comes. Pending credits commit before a leave and retry until they commit,
-  like a death. A gathering yield that a current step asks for names the
+- It commits every credited kill of a Mob that gives experience, and every
+  credited kill that a current step asks for, to GameService as a Mob kill
+  credit with the Mob's level and experience percent, which grants the kill's
+  experience and counts for the kill objectives of current steps in one
+  transaction, with one operation id per credited character that it keeps for
+  retries, so a retry never grants or counts twice. A credit keeps the place in
+  the character's lane that it took at the kill, and whether a step asks for a
+  kill of a Mob without experience is decided when its turn comes. Pending
+  credits commit before a leave and retry until they commit, like a death. A gathering yield that a current step asks for names the
   node's actor definition, and GameService counts it for gather objectives in
   the same transaction that places the yield. While the worker's quest log may
   miss a change, it sends every credited kill and names every node, and
@@ -601,8 +606,6 @@ as [UI And UX Principles](GAME_DESIGN.md#ui-and-ux-principles) describes:
 
 ## Deferred Work
 
-- Granting the authored experience rewards, together with the experience
-  system, which also gives Mob kills experience by the same credit rules.
 - Reputation and profession requirements and rewards.
 - Groups: tags owned by a group and quests shared within it.
 - Daily and weekly quests.

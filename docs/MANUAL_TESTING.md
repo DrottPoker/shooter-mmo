@@ -230,9 +230,10 @@ dotnet run --project src/Server/GameService --configuration Release -- --dev-ite
 ```
 
 `--dev-items-list` prints the character ids that the other commands take.
-`--dev-items-level` is how a level requirement is tested, because experience
-does not exist yet: every character starts at level 1, and GameService refuses
-to equip an item whose `requiredCharacterLevel` is higher with
+`--dev-items-level` is how a level requirement is tested: it sets a level
+without playing for it and resets the experience inside the level to 0. Every
+character starts at level 1, and GameService refuses to equip an item whose
+`requiredCharacterLevel` is higher with
 `equipment_level_requirement_not_met`. Every shipped item requires level 1, and
 the highest level is `maximumCharacterLevel` in
 [Progression Rules](../content/README.md#progression-rules); a level above it
@@ -628,7 +629,7 @@ up to 120 seconds without GameService, so everything below takes less than that.
 Expected result: the character enters alive where the checkpoint of step 1 left
 it, with the health it had then and the item in its bag, and no corpse lies
 where it died. The worker logged `GameService does not answer, so the uncommitted
-shots and quest kill credits of <n> sessions are not committed at shutdown` and
+shots and Mob kill credits of <n> sessions are not committed at shutdown` and
 no death was committed, as
 [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
 describes.
@@ -1633,9 +1634,11 @@ dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release -
 ```
 
 Expected result: every test passes. An archer on the wolves hunt kills a Feral
-Wolf, and the worker sends one `credit_quest_kill` for `mob.feral_wolf` with its
-tags; the player gets a `QuestLogChanged` without an operation id that moves
-`wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
+Wolf, and the worker sends one `credit_mob_kill` for `mob.feral_wolf` with its
+tags, level, and experience percent; the player gets a `QuestLogChanged` without
+an operation id that moves `wolves` to 1. A kill that no quest asks for still
+sends one credit, for the experience, and changes no quest log; only a kill of
+a Mob with experience percent 0 that no quest asks for sends nothing. A credit whose
 answers are lost, or whose transaction the database rolled back with
 `item_transaction_timeout`, asks again with the same operation id until it
 commits, and an
@@ -2434,6 +2437,34 @@ Arrows, and walk both to the Feral Wolves in the wolf woods of Development World
    own loot. A third character that did not fight sees one corpse that offers
    only `Examine`. After a SimulationWorker restart, each character still finds
    its own corpse.
+
+### Experience For Kills And Quests
+
+GameService grants experience on the server; the client shows nothing of it
+yet, so the check reads the database. A Feral Wolf is level 2 with
+`experiencePercent` 100 in `content/actors/definitions/mob.feral_wolf.json`, so
+by the [progression rules](../content/README.md#progression-rules) it gives a
+level 1 or 2 character `20 + 5 * (2 - 1)` = 25 experience, and level 1 needs 100
+to reach level 2, which needs 150.
+`dotnet run --project tools/ProgressionTable --configuration Release -- --every 1`
+prints both: the experience each level needs, and what a Mob of each level
+gives, 25 in the row of level 2. Create a new character with the local stack running,
+take its id from `--dev-items-list` as
+[Development Item Commands](#development-item-commands) shows, give it the
+[Equipment Test Pack](#test-packages), and after each step read its progression as
+[Look Into The Database](#look-into-the-database) shows, with the query
+`select level, experience from characters where id = '<characterId>';`.
+
+1. Before any kill. Expected result: `1 | 0`.
+2. Accept `Wolves at the Gate` at Mira and kill one Feral Wolf in the wolf woods
+   of Development World 2. Expected result: `1 | 25`, and the quest tracker
+   counts one wolf of five.
+3. Kill three more Feral Wolves. Expected result: `2 | 0`: the fourth kill
+   brings the experience to 100, which makes level 2 with nothing left over.
+4. Kill the fifth Feral Wolf and turn the quest in at Mira. Expected result:
+   `2 | 25` after the kill, and `2 | 145` after the turn-in, which adds the
+   quest's `rewardExperience` of 120 in
+   `content/quests/definitions/quest.wolves_at_the_gate.json`.
 
 ### Loot All
 

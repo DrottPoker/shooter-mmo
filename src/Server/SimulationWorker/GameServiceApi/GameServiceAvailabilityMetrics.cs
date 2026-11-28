@@ -46,7 +46,7 @@ public sealed class GameServiceAvailabilityMetrics : IDisposable
         refusedIntents.Add(1, new KeyValuePair<string, object?>("kind", kind));
     }
 
-    // Kind is player_death, quest_kill_credit, or mob_corpse.
+    // Kind is player_death, mob_kill_credit, or mob_corpse.
     public void RecordAbandonedOperation(string kind)
     {
         abandonedOperations.Add(1, new KeyValuePair<string, object?>("kind", kind));

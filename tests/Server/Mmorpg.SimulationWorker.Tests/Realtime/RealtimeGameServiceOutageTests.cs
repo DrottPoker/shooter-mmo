@@ -469,7 +469,7 @@ public sealed class RealtimeGameServiceOutageTests
         var archer = RealtimeQuestCreditTests.AddArcher(harness, "Unlucky Hunter");
         harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
             ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, RealtimeQuestCreditTests.Hunting(0)));
-        harness.GameService.OnQuestOperation = (_, request, _) => request.OperationKind == "credit_quest_kill"
+        harness.GameService.OnQuestOperation = (_, request, _) => request.OperationKind == "credit_mob_kill"
             ? throw new HttpRequestException("The answer was lost.")
             : Task.FromResult(ScriptedGameServiceHandler.CommittedQuestOperation(
                 request,
@@ -488,7 +488,7 @@ public sealed class RealtimeGameServiceOutageTests
             "the credit to be given up");
 
         var given = Assert.Single(harness.Logger.Entries, entry => entry.Level == LogLevel.Error);
-        Assert.Contains("quest_kill_credit", given.Message, StringComparison.Ordinal);
+        Assert.Contains("mob_kill_credit", given.Message, StringComparison.Ordinal);
         Assert.Contains(harness.GameService.QuestOperations[0].OperationId.ToString(), given.Message, StringComparison.Ordinal);
         // The lane goes on: an abandon runs after the dropped credit.
         client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));

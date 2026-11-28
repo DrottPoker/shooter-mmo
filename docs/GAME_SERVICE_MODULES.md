@@ -28,7 +28,7 @@ Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Economy <-
 | --- | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, `IGameServiceModule`, the retention host with its `IRetentionTask` contract and its settings, and the economy audit's host, runner, and report with its `IAuditCheck` contract and its settings. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger and the audit checks of the ledger, character level, character looks, and every character's saved place and vitals |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger and the audit checks of the ledger, character level and experience with the progression metrics, character looks, and every character's saved place and vitals |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData`, `Mmorpg.GameProtocol` for the join proof and the transport key schedule | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery with its expiry, policies, the retention tasks of item history, the audit checks of item custody and history, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, Items, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, every character's quest log with its owner and worker reads, and the quest commands with their worker routes, which run in Items' item transaction kernel |
@@ -181,7 +181,7 @@ inside the modules.
 | --- | --- |
 | Platform | `schema_migrations`; advisory locks `7104202607071600` (one migration) and `7104202611180900` (one whole migrate-and-seed) |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, `character_simulation_states`, and `character_data_steps` |
+| Characters | `characters`, including `currency`, `level`, and `experience`, `character_currency_ledger`, `character_appearances`, `character_simulation_states`, and `character_data_steps` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Quests | `quest_catalogs`, `quest_definitions`, `character_quest_logs`, `character_active_quests`, `character_quest_progress`, and `character_completed_quests`; the quest catalog advisory lock `7104202611042200` |
 | Economy | none; the vendor profiles and tool kinds that it reads are Items' catalog tables |
@@ -278,7 +278,7 @@ caller keeps its own check order, error codes, and messages.
 | `IAccountSessionActivity` | Accounts | Placement | Move the ends of the account sessions that live simulation sessions hold, as their activity, at most once an hour |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order, the lock of one character also as a statement of the caller's batch |
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
-| `ICharacterProgression` | Characters | Items, Quests | The highest character level from the [progression rules](../content/README.md#progression-rules), which the item and quest catalogs must fit at startup, and set a character's level for the Development item tool |
+| `ICharacterProgression` | Characters | Items, Quests, Placement | The highest character level from the [progression rules](../content/README.md#progression-rules), which the item and quest catalogs must fit at startup; read a character's progression for the join ticket consume; grant experience for a Mob kill, a quest reward, or the Admin menu; and set a character's level for the Development item tool and the Admin menu, as [Character Progression](#character-progression) describes |
 | `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
 | `ICharacterSimulationStates` | Characters | Placement | Read a character's saved place and vitals, lock characters `FOR KEY SHARE` in ascending id order before a save, and save many states in one statement, as [Character Simulation States](#character-simulation-states) describes |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
@@ -350,6 +350,41 @@ Development item tool's character list.
 then credits `item_system_settings.starting_currency_balance` with a
 `starting_balance` ledger row in the character creation transaction. A zero
 starting balance writes nothing. Existing characters keep their balance.
+
+### Character Progression
+
+`characters.level` is the character's level and `characters.experience`, at
+least 0, the experience it gathered inside that level, never a total, so a
+change of the level curve never changes a stored level.
+`ICharacterProgression` is the only writer of both and does every sum through
+the shared `ProgressionRules`:
+
+- `ReadAsync` reads a character without a lock and returns a
+  `CharacterProgressionSnapshot`: the level, the experience, what the level
+  needs (`ExperienceToNextLevel`), and the highest Mob level that gives the
+  character no experience. At the highest level the experience and what the
+  level needs are 0, and that Mob level is `int.MaxValue`, because no Mob gives
+  any experience there. A lowered curve can leave more stored than the level
+  needs; the snapshot then shows one less than the level needs, and the next
+  grant levels up through the rules, which keep the surplus.
+- `GrantExperienceAsync` takes an amount of 0 or more and a source, `quest` or
+  `admin`, and `GrantKillExperienceAsync` the Mob's level and experience
+  percent, from which the rules decide the experience for the level that the
+  character has under the lock. Both lock the active character
+  `FOR NO KEY UPDATE`, level up as far as the experience reaches, write the
+  level and the experience in one update, which they skip when nothing
+  changed, and return a `CharacterExperienceChange` with the snapshots before
+  and after and the experience that counted: 0 at the highest level, and up to
+  what reaching the highest level took when a grant reaches it. A character at
+  or above the highest level stays as stored.
+- `SetLevelAsync` locks the character the same way and sets the level and an
+  experience of 0.
+
+Each returns null or false for a character that does not exist or is deleted.
+No ledger records experience: it is not tradeable, and the item transaction
+that grants it is journaled. `CharacterProgressionMetrics` counts the granted
+experience and the levels it gained by source, `kill`, `quest`, or `admin`, as
+[Monitoring](MONITORING.md#gameservice) describes; a set level counts nothing.
 
 ### Character Simulation States
 
@@ -441,7 +476,7 @@ another area:
 | `CoreItemCommandSource` | Items | Grant, relocate, swap container items, equip, unequip, split, merge, consume quantity, consume equipped ammunition, destroy, and swap Bag aggregates |
 | `RecoveryAndPolicyCommandSource` | Items | Add, claim, and expire Recovery deliveries, apply an item policy, and remove insurance |
 | `CorpseCommandSource` | Items | Player death, corpse expiry, the player corpse loot, deposit, move, Bag swap, and Loot all, durable Mob corpses, and the live Mob loot grants. It also builds the `CorpseQuestDrops` rules that five of its handlers take, on `IQuestDropDemand`. |
-| `QuestCommandSource` | Quests | The quest commands and the Admin menu's quest tools of `QuestCommandHandler`, and `AbandonQuestItemsCommand` |
+| `QuestCommandSource` | Quests | The quest commands with the Mob kill credit, the Admin menu's quest and progression tools of `QuestCommandHandler`, and `AbandonQuestItemsCommand` |
 | `EconomyCommandSource` | Economy | Vendor purchases and sales, and gathering yields, which credit quests through Quests' `IQuestGatherCredit` |
 
 `ItemCommandCatalog` collects the registrations of every source of every module
@@ -540,10 +575,12 @@ The kernel stores and replays sections without reading them; the code that
 writes a section reads it with `ItemTransactionResult.Section(name)`, which
 treats a stored `null` as no section, or with
 `ItemTransactionResult.ReadSection<TValue>(name)`, which reads it back with the
-persisted JSON options. Two sections exist: `questLog`, the quests that a quest
-command or a counted gathering yield changed, which Quests' `QuestLogSection`
-writes and reads, and `questDrops`, the quest drops that a durable Mob corpse
-kept, which `QuestDropSection` writes and reads. Results stored before the
+persisted JSON options. Three sections exist: `questLog`, the quests that a
+quest command or a counted gathering yield changed, which Quests'
+`QuestLogSection` writes and reads, `progression`, the character's progression
+after a quest command that granted experience or set its level, which Quests'
+`ProgressionSection` writes and reads, and `questDrops`, the quest drops that a
+durable Mob corpse kept, which `QuestDropSection` writes and reads. Results stored before the
 sections hold the same keys with the same shapes, and every other stored result
 holds `"questLog": null`, so all of them replay their quest parts. A result
 written now has no key for a section it does not hold.
@@ -553,7 +590,8 @@ response, passes every section that holds a value through as a top-level key
 after its own properties, as written, so `questLog` keeps its place and shape.
 It writes no key for a section that the result does not hold or holds as `null`,
 and never one named like one of its own properties. The worker reads a missing
-`questLog` as no quest log change and ignores a section it does not read.
+`questLog` as no quest log change, reads `progression` into its response type
+without using it yet, and ignores a section it does not read.
 
 `ItemTransactionKernelBoundaryTests` pins the boundary: only `Kernel/` begins,
 commits, or rolls back a transaction, uses the savepoint or `set_config`, or
@@ -639,7 +677,8 @@ system services.
 | `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` in Quests | System test tools |
 | `accept_quest`, `abandon_quest`, `regrant_quest_items` | `AcceptQuestCommand`, `AbandonQuestCommand`, `RegrantQuestItemsCommand` | `QuestCommandHandler` in Quests | Worker quest route |
 | `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest` | `TalkToQuestNpcCommand`, `DeliverQuestItemsCommand`, `TurnInQuestCommand` | `QuestCommandHandler` in Quests | Worker quest route |
-| `credit_quest_kill` | `CreditQuestKillCommand` | `QuestCommandHandler` in Quests | Worker quest route, for every character a Mob's death credits |
+| `credit_mob_kill` | `CreditMobKillCommand` | `QuestCommandHandler` in Quests | Worker quest route, for every character a Mob's death credits when the Mob gives experience or a quest may count it |
+| `admin_set_character_level`, `admin_grant_experience` | `AdminSetCharacterLevelCommand`, `AdminGrantExperienceCommand` | `QuestCommandHandler` in Quests | Worker quest route, for the Admin menu in the Development environment |
 | `process_player_death` | `ProcessPlayerDeathCommand` | `PlayerDeathCommandHandler` | Worker player death route and the Development corpse fixture |
 | `expire_corpse` | `ExpireCorpseCommand` | `CorpseExpiryCommandHandler` | `CorpseExpiryHostedService` |
 | `loot_corpse_item`, `loot_corpse_partial_stack`, `loot_corpse_item_to_equipment` | `LootCorpseItemCommand`, `LootCorpsePartialStackCommand`, `LootCorpseItemToEquipmentCommand` | `CorpseLootCommandHandler` | Worker corpse route |
@@ -664,7 +703,7 @@ Those of `apply_item_policy`, `remove_insurance_policy`, `abandon_quest_items`,
 and `process_player_death` mark them as policy actions: each of their
 transactions, committed or rejected, counts in the policy actions metric.
 Those of `process_player_death`, `consume_equipped_ammunition`, and
-`credit_quest_kill` set `MayRunAfterAccountSessionEnd`: they are the work of a
+`credit_mob_kill` set `MayRunAfterAccountSessionEnd`: they are the work of a
 character's body that stays in the world after its account session ended, as
 [Account Session End](SERVICE_FEATURES.md#account-session-end) describes, so
 they run for a simulation session whose account session ended. For such a
@@ -801,7 +840,7 @@ transaction, and take their quest definitions from `IQuestDefinitions`:
   `RegrantQuestItemsCommand`, the objective's NPC for `TalkToQuestNpcCommand`
   and `DeliverQuestItemsCommand`, and the turn-in NPC for `TurnInQuestCommand`.
   The worker sets it from the quest capability it validated, never from a
-  client value. `AbandonQuestCommand` and `CreditQuestKillCommand` need only the
+  client value. `AbandonQuestCommand` and `CreditMobKillCommand` need only the
   live session.
 - Quest commands lock the character with
   `LockCharacterStateForIdempotentEventAsync`, without an expected character
@@ -823,14 +862,19 @@ transaction, and take their quest definitions from `IQuestDefinitions`:
 - `QuestProgression` counts progress for the counted objectives of the current
   steps, up to each objective's count, and moves a quest whose current step is
   complete to its next step with zero progress. A complete last step waits for
-  the turn-in. `CreditQuestKillCommand` counts one kill for every kill objective
-  that names the Mob's actor definition or one of its tags, as the shared
-  `QuestRules.CountsKill` decides, and `GatherResourceCommand` counts the yield
+  the turn-in. `CreditMobKillCommand` first grants the kill's experience
+  through `ICharacterProgression.GrantKillExperienceAsync` with the Mob's level,
+  1 to 10,000, and experience percent, 0 to 100,000, which it checks first, and
+  then counts one kill for every kill objective that names the Mob's actor
+  definition or one of its tags, as the shared `QuestRules.CountsKill` decides,
+  with one `mob_kill_credited` audit entry that names the Mob, its level, the
+  experience that counted, the level after, and the changed quests. It always
+  sets the `progression` section. `GatherResourceCommand` counts the yield
   for every gather objective of the node's actor definition,
   `QuestRules.CountsGather`, in the gathering transaction when the worker names
   the node's `ResourceActorId`, through Quests' `IQuestGatherCredit`, which
   Economy's gathering command calls and `QuestGatherCredit` implements. A credit
-  that no current step asks for changes nothing.
+  that no current step asks for changes no quest.
 - `TalkToQuestNpcCommand` completes a talk-to objective of the current step, and
   `DeliverQuestItemsCommand` takes the objective's count from carried storage
   and completes a deliver objective. `QuestLineage` counts and takes carried
@@ -842,9 +886,13 @@ transaction, and take their quest definitions from `IQuestDefinitions`:
   one of the reward choices when the quest offers them. It takes the collected
   items, removes what is left with the quest's lineage with the
   `quest_completed` destruction reason, places the rewards through carried
-  acquisition, credits the Gold reward with a `quest_reward` ledger row, and
-  counts the completion. Missing room for a reward rejects the whole turn-in
-  with `inventory_full`.
+  acquisition, credits the Gold reward with a `quest_reward` ledger row, grants
+  the experience reward through `ICharacterProgression.GrantExperienceAsync`
+  when the quest has one, and counts the completion. Its `quest_turned_in`
+  audit entry names the Gold, the experience reward and the experience that
+  counted, and the reward items, and a turn-in with an experience reward sets
+  the `progression` section. Missing room for a reward rejects the whole
+  turn-in with `inventory_full`.
 - The Admin menu's quest tools are `QuestCommandHandler` commands too, in
   `QuestCommandHandler.Admin.cs`: `AdminAcceptQuestCommand`,
   `AdminCompleteQuestObjectiveCommand`, `AdminCompleteQuestStepCommand`,
@@ -854,7 +902,12 @@ transaction, and take their quest definitions from `IQuestDefinitions`:
   acquisition, ordinary items in stack-sized parts with
   `CarriedAcquisition.AcquireStacksAsync`, and reset through
   `ICharacterQuestLog.ForgetAsync` and
-  `QuestLineage` with the `quest_reset` destruction reason.
+  `QuestLineage` with the `quest_reset` destruction reason. The progression
+  tools `AdminSetCharacterLevelCommand` and `AdminGrantExperienceCommand` set a
+  level from 1 to `ICharacterProgression.MaximumLevel` or grant 1 to
+  1,000,000,000,000 experience with the `admin` source, each with an audit
+  entry, `character_admin_level_set` or `character_admin_experience_granted`,
+  and the `progression` section.
   `SimulationQuestMutationService` routes them only while
   `QuestsModuleOptions.DevelopmentQuestTools` is on, which only the Development
   environment sets.
@@ -862,7 +915,11 @@ transaction, and take their quest definitions from `IQuestDefinitions`:
   `QuestLogSection` writes and reads: the quest log revision afterwards and each
   quest's step, the progress of its counted objectives, and its completion
   count. A stored result replays it, and the worker item response passes it
-  through as its `questLog`.
+  through as its `questLog`. The `progression` section, which
+  `ProgressionSection` writes and reads, names the character's level,
+  experience, what the level needs, the highest Mob level without experience,
+  the experience that counted, and the levels gained, which a set level may
+  make negative. A replay returns the stored section and grants nothing again.
 - The quest commands reject with Items' codes and their own,
   `QuestTransactionErrorCodes`. Codes that the item commands also use, such as
   `quest_grant_invalid`, `quest_item_not_needed`, and `inventory_full`, are
@@ -1105,6 +1162,7 @@ topology names.
 | 48 | `202611141420_character_item_state_backfill` | Items |
 | 49 | `202611171400_join_ticket_transport_key` | Placement |
 | 50 | `202611181200_simulation_session_generation` | Placement |
+| 51 | `202611281200_character_experience` | Characters |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -1712,12 +1770,17 @@ the statement ids.
 | S71 | The rule of an active account session reads whether a live simulation session holds it, in the token resolve and the extension of Accounts and in every Placement statement of S13 | Plc R | `IAccountSessionReferences.IsHeld`, given to `AccountsSql.IsActiveSession` |
 | S72 | The session heartbeat extends the account sessions of the renewed sessions after its renewal committed | Acc L, W | `IAccountSessionActivity.ExtendAsync` in `SimulationSessionService` |
 | S73 | The economy audit reads the gold ledger rows that name an item operation, to check that each belongs to a committed operation of the same character | Chr R | `CharactersSql.CurrencyLedgerItemOperations` in Items' `ItemHistoryAuditChecks` |
+| S74 | A Mob kill credit grants the kill's experience | Chr L, W | `ICharacterProgression.GrantKillExperienceAsync` in `QuestCommandHandler` |
+| S75 | A quest turn-in grants its experience reward | Chr L, W | `ICharacterProgression.GrantExperienceAsync` in `QuestCommandHandler` |
+| S76 | The Admin menu's progression tools read and set a character's level or grant experience | Chr R, L, W | `ICharacterProgression.ReadAsync`, `SetLevelAsync`, and `GrantExperienceAsync` in `QuestCommandHandler.Admin.cs`; the route checks a level against `MaximumLevel` |
+| S77 | Ticket consume reads the character's progression | Chr R | `ICharacterProgression.ReadAsync` in `ShardService` |
 
 Notes on specific statements:
 
-- The wallet's `FOR NO KEY UPDATE` lock in S30, S45, S46, and S59 falls on a character
-  row that the item transaction already locked through `ICharacterLocks`, so it
-  adds no lock and keeps the lock order.
+- The wallet's `FOR NO KEY UPDATE` lock in S30, S45, S46, and S59, and the
+  progression's in S74 to S76, falls on a character row that the item
+  transaction already locked through `ICharacterLocks`, so it adds no lock and
+  keeps the lock order.
 - S12 and S14 read the carry state through `ISimulationCharacterStateProvider`
   on the same connection right after the lease update commits, so the worker may
   see an item revision that committed in between, which is newer, never older. A
@@ -1747,7 +1810,7 @@ boundary test checks the item command handlers of every module.
 | `MigrationHistoryTests` | Migration ids, order, SQL hashes, which migrations run outside a transaction with their index, the merge rules, the ids recorded by a fresh database, that every registered migration is in the frozen history, and that the three lists of that history agree |
 | `ExpandContractTests` | The expand and contract rule of [Compatible Migrations](#compatible-migrations): a drop, rename, `not null`, or type change belongs to a listed contract or to a migration from before the rule, and the owed contracts are well formed |
 | `TableLifecycleTests` | That every table has a class, from reference data to history trimmed by a registered retention task, as [Retention](#retention) describes |
-| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, `Mmorpg.GameService.Placement`, and `Mmorpg.GameService.Retention` meters and every `game_service.*` instrument that the dashboards and alerts read |
+| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Characters`, `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, `Mmorpg.GameService.Placement`, and `Mmorpg.GameService.Retention` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `ForeignKeyIndexTests` | In a migrated database, every foreign key has an index that leads with its columns or a reason in the allow-list, no allow-listed key is stale, and the log columns of [Foreign Keys](#foreign-keys) have no foreign key |
 | `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |

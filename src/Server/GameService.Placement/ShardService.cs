@@ -23,6 +23,7 @@ internal sealed class ShardService(
     IQuestCatalogRevisionProvider questCatalogRevisionProvider,
     ICharacterAppearances characterAppearances,
     ICharacterSimulationStates characterSimulationStates,
+    ICharacterProgression characterProgression,
     PlacementMetrics metrics,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
@@ -423,6 +424,10 @@ internal sealed class ShardService(
             new PostgresTransactionScope(connection, transaction),
             joinTicket.CharacterId,
             cancellationToken);
+        var progression = await characterProgression.ReadAsync(
+            new PostgresTransactionScope(connection, transaction),
+            joinTicket.CharacterId,
+            cancellationToken);
 
         await ReleaseExpiredSimulationSessionsForAccountAsync(
             connection,
@@ -533,6 +538,7 @@ internal sealed class ShardService(
                 Equipment = carryState.Equipment,
                 Appearance = appearance is null ? null : SimulationAppearance.From(appearance),
                 SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState),
+                Progression = progression is null ? null : SimulationProgression.From(progression),
                 TransportKey = joinTicket.TransportKey
             });
     }

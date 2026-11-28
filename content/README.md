@@ -197,7 +197,7 @@ edits them, as [Quest Studio](#quest-studio) describes:
 | `offerText`, `progressText`, `completionText` | What the giver says to offer the quest, what the turn-in NPC says while it is not ready, and what it says at the turn-in |
 | `startItems` | Quest items granted at acceptance, each a `definitionId` and a `quantity` |
 | `steps` | The steps in order, each an `id` and its `objectives` |
-| `rewardGold`, `rewardExperience`, `rewardItems`, `rewardChoiceItems` | The rewards; the player picks one of the choice items. `rewardExperience` is 0 to 1,000,000,000 and is authored for every quest, but nothing grants it yet |
+| `rewardGold`, `rewardExperience`, `rewardItems`, `rewardChoiceItems` | The rewards; the player picks one of the choice items. `rewardExperience` is 0 to 1,000,000,000, is authored for every quest, and is granted at the turn-in |
 
 Every objective has an `id`, a `kind`, its line of `text`, a `count`, and the
 fields of its kind, and leaves every other field empty:
@@ -272,8 +272,10 @@ levelling: the highest level, the experience each level needs, the experience a
 Mob of each level gives, and the rails that a level difference between a
 character and a Mob puts on that. It has no compiler: the GameService build
 copies it to `WorldData/Progression/progression-rules.json` in its output, and
-GameService validates it strictly at startup and owns every result. GameService
-takes the highest character level from it today; it grants no experience yet.
+GameService validates it strictly at startup and owns every result: the highest
+character level, what each level needs, and the experience of every Mob kill, as
+[Character Progression](../docs/GAME_SERVICE_MODULES.md#character-progression)
+describes.
 
 | Field | Shipped value | Allowed |
 | --- | --- | --- |

@@ -266,7 +266,7 @@ The instruments of `Mmorpg.SimulationWorker.GameService`, which
 | `simulation_worker.game_service.availability_changes` | counter | Changes of that state, labeled `state`: `unavailable` when an outage began, `available` when it ended. |
 | `simulation_worker.game_service.heartbeat_age` | gauge, s | Seconds since the last successful registry heartbeat; nothing before the first one. The worker stops in order once it passes `GameServiceOutageToleranceSeconds`, 120 by default. |
 | `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
-| `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `quest_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
+| `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `mob_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
 The instruments of `Mmorpg.SimulationWorker.Presence`, which
 [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) and
@@ -307,6 +307,7 @@ own in `PlatformMeters.Names`:
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
+| `Mmorpg.GameService.Characters` | The experience that grants counted and the levels they gained, by source. |
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`; the joins that a version mismatch refused; the character states that workers save, by source and outcome; and the sessions past their lease that a live worker left unreleased. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, the failed passes by reason, and the lag. |
@@ -333,6 +334,8 @@ own in `PlatformMeters.Names`:
 | `game_service.accounts.password_hashing.wait.duration` | histogram, ms | How long a hash waited in the queue before a lane thread took it. |
 | `game_service.accounts.password_hashing.duration` | histogram, ms | How long one hash or check took on its lane thread; the lane's queue limit follows it. |
 | `game_service.accounts.password_hashing.refusals` | counter | Requests refused with `auth_busy` because they would have waited longer than `Auth:PasswordHashing:MaxWaitSeconds`, labeled `operation`: `hash` for a registration or `verify` for a login. |
+| `game_service.characters.experience.granted` | counter | Experience that counted for characters, labeled `source`: `kill` for a Mob kill credit, `quest` for a quest's experience reward, or `admin` for the Admin menu's grant. A grant counts in the transaction that makes it, so one whose transaction rolls back afterwards still counts. |
+| `game_service.characters.level_ups` | counter | Levels that experience grants gained, labeled `source` as above. Setting a level counts nothing. |
 | `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, `invalidation`, or `revocation_refused` for a login or logout that found every slot of the revocation bulkhead taken and was refused with `auth_busy`. |
 | `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`, such as `session_cache_revoke` for revocation tombstones that could not be stored and `session_cache_revoke_retry` for a first attempt that failed for a transient reason and was sent again. |
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
@@ -350,7 +353,7 @@ Vendor trades and gathering yields show in the transaction instruments by their
 operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`, and
 quest actions by `accept_quest`, `abandon_quest`, `regrant_quest_items`,
 `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest`, and
-`credit_quest_kill`.
+`credit_mob_kill`, the Admin menu's tools by their `admin_` kinds.
 GameService has no instrument of single currency changes; the economy audit
 judges the balances and the ledger as a whole.
 

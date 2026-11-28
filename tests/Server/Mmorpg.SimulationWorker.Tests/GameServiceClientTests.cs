@@ -396,6 +396,61 @@ public sealed class GameServiceClientTests
         Assert.Equal("invalid_auth_response", result.Error!.Code);
     }
 
+    // A Mob kill credit names the Mob's level and experience percent, and its answer keeps the
+    // progression section that GameService passes through, which nothing in the worker reads yet.
+    [Fact]
+    public async Task AMobKillCreditSendsTheMobsLevelAndPercentAndKeepsTheProgression()
+    {
+        var characterId = Guid.NewGuid();
+        var requestBody = QuestOperation(characterId) with
+        {
+            OperationKind = "credit_mob_kill",
+            QuestId = null,
+            QuestNpcActorId = null,
+            ObjectiveId = null,
+            MobActorId = "mob.feral_wolf",
+            MobTags = ["wolf"],
+            MobLevel = 3,
+            MobExperiencePercent = 150
+        };
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            operationId = requestBody.OperationId,
+            operationKind = requestBody.OperationKind,
+            succeeded = true,
+            error = (object?)null,
+            characterRevisions = Array.Empty<object>(),
+            containerRevisions = Array.Empty<object>(),
+            itemRevisions = Array.Empty<object>(),
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            characterState = CharacterStateTestData.Create(characterId, 7),
+            questLog = new { characterId, revision = 0, quests = Array.Empty<object>() },
+            progression = new
+            {
+                characterId,
+                level = 2,
+                experience = 5,
+                experienceToNextLevel = 150,
+                highestMobLevelWithoutExperience = -4,
+                experienceGained = 45,
+                levelsGained = 1
+            }
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.MutateSimulationQuestsAsync(Guid.NewGuid(), requestBody, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(
+            new SimulationProgressionChange(characterId, 2, 5, 150, -4, 45, 1),
+            result.Value!.Progression);
+        Assert.Empty(result.Value.QuestLog!.Quests);
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body);
+        Assert.Equal("credit_mob_kill", body.RootElement.GetProperty("operationKind").GetString());
+        Assert.Equal(3, body.RootElement.GetProperty("mobLevel").GetInt32());
+        Assert.Equal(150, body.RootElement.GetProperty("mobExperiencePercent").GetInt32());
+    }
+
     [Fact]
     public async Task TheQuestLogReadUsesTheSessionRouteAndRejectsAQuestListedTwice()
     {

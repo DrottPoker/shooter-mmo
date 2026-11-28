@@ -16,11 +16,12 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Commits a character's spent arrows, its death, and the kills that count for its quests through
-// the character's authority lane, so they never race its item, corpse, and quest operations. A
-// batch starts 5 s after the first uncommitted shot, before any other client operation, and
-// before the session ends; a death carries the shots that are still uncommitted. A credited kill
-// that the character's quest log asks for commits in kill order. All of them retry with backoff
+// Commits a character's spent arrows, its death, and the kills credited to it, for its experience
+// and its quests, through the character's authority lane, so they never race its item, corpse,
+// and quest operations. A batch starts 5 s after the first uncommitted shot, before any other
+// client operation, and before the session ends; a death carries the shots that are still
+// uncommitted. A credited kill of a Mob that gives experience, or that the character's quest log
+// asks for, commits in kill order. All of them retry with backoff
 // after an uncertain answer and outlive the connection: the character's lingering body commits
 // them, and what it gathers until it goes, one operation per tick without a peer, and a session
 // whose entity went is released only after they committed. A body's committed death ends the
@@ -62,7 +63,7 @@ internal sealed class PlayerCombatAuthority(
 
     // The kinds of the operations that the retry horizon gives up, as logs and metrics name them.
     public const string PlayerDeathOperationKind = "player_death";
-    public const string QuestKillCreditOperationKind = "quest_kill_credit";
+    public const string MobKillCreditOperationKind = "mob_kill_credit";
 
     // An uncertain batch gives up after this many attempts; its arrows stay with the player.
     private const int MaximumBatchAttempts = 8;
@@ -193,20 +194,22 @@ internal sealed class PlayerCombatAuthority(
         return true;
     }
 
-    // A dying Mob that a quest asks for credited these players. Each gets a credit that takes
-    // its place in the player's lane at the kill, so no operation that the player sends after the
-    // kill, such as abandoning and accepting the quest again, overtakes it. Whether the kill
-    // counts is decided once the credit's turn comes, by the quest log that every operation
-    // before it left, so a kill during an accept still counts for the accepted quest. A lingering
-    // body is still in the world, so a kill credits it too; its credits wait in its list, which
-    // the combat phase commits in order.
-    public void CreditQuestKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
+    // A dying Mob that gives experience, or that a quest asks for, credited these players. Each
+    // gets a credit with the Mob's level and experience percent that takes its place in the
+    // player's lane at the kill, so no operation that the player sends after the kill, such as
+    // abandoning and accepting the quest again, overtakes it. Whether a kill of a Mob that gives no
+    // experience counts is decided once the credit's turn comes, by the quest log that every
+    // operation before it left, so a kill during an accept still counts for the accepted quest. A
+    // lingering body is still in the world, so a kill credits it too; its credits wait in its
+    // list, which the combat phase commits in order.
+    public void CreditMobKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
     {
         ArgumentNullException.ThrowIfNull(mob);
         ArgumentNullException.ThrowIfNull(credits);
         if (questOperations is null
             || questProgress is null
-            || !questProgress.MayCountKill(mob.Definition.Id, mob.Definition.Tags))
+            || (mob.Definition.ExperiencePercent <= 0
+                && !questProgress.MayCountKill(mob.Definition.Id, mob.Definition.Tags)))
         {
             return;
         }
@@ -221,14 +224,19 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            var questCredit = new QuestKillCredit(Guid.NewGuid(), mob.Definition.Id, mob.Definition.Tags.ToArray())
+            var killCredit = new PendingMobKillCredit(
+                Guid.NewGuid(),
+                mob.Definition.Id,
+                mob.Definition.Tags.ToArray(),
+                mob.Definition.Level,
+                mob.Definition.ExperiencePercent)
             {
                 StartedAt = availability.AvailableTime
             };
-            combatSession.QuestCredits.Add(questCredit);
+            combatSession.KillCredits.Add(killCredit);
             if (!combatSession.Detached)
             {
-                scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, questCredit));
+                scheduler.Enqueue(combatSession.Context, new QueuedMobKillCredit(this, combatSession, killCredit));
             }
         }
     }
@@ -271,7 +279,7 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            if (waiting is QueuedQuestKillCredit)
+            if (waiting is QueuedMobKillCredit)
             {
                 kept.Add(waiting);
                 continue;
@@ -332,11 +340,11 @@ internal sealed class PlayerCombatAuthority(
             }
 
             if (gameServiceAvailable
-                && combatSession.InFlightQuestCredit is { RetryAtTick: { } creditRetry } credit
+                && combatSession.InFlightKillCredit is { RetryAtTick: { } creditRetry } credit
                 && CombatTicks.IsReached(serverTick, creditRetry))
             {
                 credit.RetryAtTick = null;
-                SendQuestCredit(combatSession, credit);
+                SendKillCredit(combatSession, credit);
             }
 
             if (combatSession.Detached)
@@ -450,8 +458,8 @@ internal sealed class PlayerCombatAuthority(
             case PlayerDeathCompleted death:
                 CompleteDeath(death);
                 break;
-            case QuestKillCreditCompleted credit:
-                CompleteQuestCredit(credit);
+            case MobKillCreditCompleted credit:
+                CompleteKillCredit(credit);
                 break;
         }
     }
@@ -460,7 +468,7 @@ internal sealed class PlayerCombatAuthority(
     // that has not committed one more attempt, with the operation id of every retry. A batch whose
     // answer arrived but was never finalized is settled first, so the shots behind a committed
     // batch commit on top of its state. A batch without a committed answer is left alone, and its
-    // arrows stay with the player. The quest kill credits that have not committed get one more
+    // arrows stay with the player. The Mob kill credits that have not committed get one more
     // attempt each. While GameService does not answer, nothing is sent, since every attempt would
     // only spend its timeout, and the shots, credits, and deaths are lost: a character whose death
     // was lost returns alive where it last was saved alive.
@@ -472,7 +480,7 @@ internal sealed class PlayerCombatAuthority(
             if (sessions.Count > 0)
             {
                 logger.LogWarning(
-                    "[SIMULATION] GameService does not answer, so the uncommitted shots and quest kill credits of {Count} sessions are not committed at shutdown.",
+                    "[SIMULATION] GameService does not answer, so the uncommitted shots and Mob kill credits of {Count} sessions are not committed at shutdown.",
                     sessions.Count);
             }
 
@@ -528,17 +536,17 @@ internal sealed class PlayerCombatAuthority(
         {
             foreach (var combatSession in sessions.Values)
             {
-                var credits = new List<QuestKillCredit>();
-                if (combatSession.InFlightQuestCredit is { } inFlight && !IsSettled(inFlight, unfinalized))
+                var credits = new List<PendingMobKillCredit>();
+                if (combatSession.InFlightKillCredit is { } inFlight && !IsSettled(inFlight, unfinalized))
                 {
                     credits.Add(inFlight);
                 }
 
-                credits.AddRange(combatSession.QuestCredits);
-                combatSession.QuestCredits.Clear();
+                credits.AddRange(combatSession.KillCredits);
+                combatSession.KillCredits.Clear();
                 if (credits.Count > 0)
                 {
-                    flushes.Add(FlushQuestCreditsAsync(combatSession, credits, questOperations));
+                    flushes.Add(FlushKillCreditsAsync(combatSession, credits, questOperations));
                 }
             }
         }
@@ -580,25 +588,25 @@ internal sealed class PlayerCombatAuthority(
     }
 
     // A credit whose answer arrived committed or rejected needs no further attempt.
-    private static bool IsSettled(QuestKillCredit credit, IReadOnlyList<RealtimeOperationResult> unfinalized)
+    private static bool IsSettled(PendingMobKillCredit credit, IReadOnlyList<RealtimeOperationResult> unfinalized)
     {
         return unfinalized
-            .OfType<QuestKillCreditCompleted>()
+            .OfType<MobKillCreditCompleted>()
             .Any(completed => ReferenceEquals(completed.Credit, credit) && !completed.Outcome.Uncertain);
     }
 
-    // A worker that stops counts the kills that it credited and that have not committed, in kill
+    // A worker that stops sends the kills that it credited and that have not committed, in kill
     // order, with the operation id of each, so a credit that did commit replays its result. Each
-    // credit is decided right before it goes, by the quest log that the credits before it left,
-    // as in the lane.
-    private async Task FlushQuestCreditsAsync(
+    // credit of a Mob that gives no experience is decided right before it goes, by the quest log
+    // that the credits before it left, as in the lane.
+    private async Task FlushKillCreditsAsync(
         PlayerCombatSession combatSession,
-        IReadOnlyList<QuestKillCredit> credits,
+        IReadOnlyList<PendingMobKillCredit> credits,
         QuestOperationExecutor executor)
     {
         foreach (var credit in credits)
         {
-            if (!Counts(combatSession, credit))
+            if (!ShouldSend(combatSession, credit))
             {
                 continue;
             }
@@ -618,7 +626,7 @@ internal sealed class PlayerCombatAuthority(
             {
                 logger.LogError(
                     exception,
-                    "[SIMULATION] Unhandled error while crediting a quest kill of simulation session {SimulationSessionId} on shutdown.",
+                    "[SIMULATION] Unhandled error while crediting a Mob kill of simulation session {SimulationSessionId} on shutdown.",
                     combatSession.Session.SimulationSessionId);
             }
         }
@@ -652,29 +660,31 @@ internal sealed class PlayerCombatAuthority(
         scheduler.Enqueue(combatSession.Context, new QueuedAmmunitionBatch(this, combatSession));
     }
 
-    // A credit that a disconnect already sent has left the session's credits, and one that the
-    // quest log does not ask for costs no GameService call.
-    private void StartQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
+    // A credit that a disconnect already sent has left the session's credits, and one of a Mob
+    // that gives no experience and that the quest log does not ask for costs no GameService call.
+    private void StartKillCredit(PlayerCombatSession combatSession, PendingMobKillCredit credit)
     {
-        if (!combatSession.QuestCredits.Remove(credit) || !Counts(combatSession, credit))
+        if (!combatSession.KillCredits.Remove(credit) || !ShouldSend(combatSession, credit))
         {
             ReleaseLane(combatSession);
             return;
         }
 
-        combatSession.InFlightQuestCredit = credit;
-        SendQuestCredit(combatSession, credit);
+        combatSession.InFlightKillCredit = credit;
+        SendKillCredit(combatSession, credit);
     }
 
-    // A session whose entity went left its quest log with it, so GameService decides its credits.
-    private bool Counts(PlayerCombatSession combatSession, QuestKillCredit credit)
+    // A kill of a Mob that gives experience always goes. A session whose entity went left its quest
+    // log with it, so GameService decides its credits.
+    private bool ShouldSend(PlayerCombatSession combatSession, PendingMobKillCredit credit)
     {
-        return combatSession.AwaitingRelease
+        return credit.MobExperiencePercent > 0
+            || combatSession.AwaitingRelease
             || questProgress!.CountsKill(combatSession.Session, credit.MobActorId, credit.MobTags);
     }
 
     // While GameService does not answer, the credit holds its place, due at once.
-    private void SendQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
+    private void SendKillCredit(PlayerCombatSession combatSession, PendingMobKillCredit credit)
     {
         if (!availability.IsAvailable)
         {
@@ -684,7 +694,7 @@ internal sealed class PlayerCombatAuthority(
 
         credit.Attempts++;
         credit.SentWith = combatSession.Session;
-        operationTracker.Track(operations.CreditQuestKillAsync(
+        operationTracker.Track(operations.CreditMobKillAsync(
             this,
             combatSession.Context,
             combatSession,
@@ -692,14 +702,15 @@ internal sealed class PlayerCombatAuthority(
             questOperations!));
     }
 
-    // A committed credit patches the client's quest log. An uncertain one keeps the lane and
-    // asks again with the same operation id until it commits, like a death, so no progress is
-    // lost and no later quest change overtakes it. A rejection can never commit and is dropped.
-    private void CompleteQuestCredit(QuestKillCreditCompleted completed)
+    // A committed credit patches the client's quest log when it changed a quest. An uncertain one
+    // keeps the lane and asks again with the same operation id until it commits, like a death, so
+    // no experience or progress is lost and no later quest change overtakes it. A rejection can
+    // never commit and is dropped.
+    private void CompleteKillCredit(MobKillCreditCompleted completed)
     {
         var combatSession = completed.CombatSession;
         var credit = completed.Credit;
-        if (!ReferenceEquals(combatSession.InFlightQuestCredit, credit))
+        if (!ReferenceEquals(combatSession.InFlightKillCredit, credit))
         {
             return;
         }
@@ -711,8 +722,8 @@ internal sealed class PlayerCombatAuthority(
             && WaitsForReconnect(credit.SentWith, outcome.Code, outcome.Message);
         if (!outcome.Succeeded && outcome.ShouldDisconnect && !waitsForReconnect)
         {
-            combatSession.InFlightQuestCredit = null;
-            combatSession.QuestCredits.Clear();
+            combatSession.InFlightKillCredit = null;
+            combatSession.KillCredits.Clear();
             EndSession(combatSession, outcome.Code, outcome.Message);
             return;
         }
@@ -720,7 +731,7 @@ internal sealed class PlayerCombatAuthority(
         if (!outcome.Succeeded)
         {
             logger.LogWarning(
-                "[SIMULATION] A {MobActorId} kill did not count for the quests of simulation session {SimulationSessionId} on attempt {Attempt} with {Code}: {Message}",
+                "[SIMULATION] A {MobActorId} kill was not credited to simulation session {SimulationSessionId} on attempt {Attempt} with {Code}: {Message}",
                 credit.MobActorId,
                 combatSession.Session.SimulationSessionId,
                 credit.Attempts,
@@ -730,7 +741,7 @@ internal sealed class PlayerCombatAuthority(
             {
                 if (IsPastRetryHorizon(credit.StartedAt))
                 {
-                    AbandonQuestCredit(combatSession, credit);
+                    AbandonKillCredit(combatSession, credit);
                     return;
                 }
 
@@ -739,7 +750,7 @@ internal sealed class PlayerCombatAuthority(
             }
         }
 
-        combatSession.InFlightQuestCredit = null;
+        combatSession.InFlightKillCredit = null;
         ReleaseLane(combatSession);
     }
 
@@ -770,7 +781,7 @@ internal sealed class PlayerCombatAuthority(
         combatSession.BatchQueued = false;
         if (combatSession.InFlightBatch is not null
             || combatSession.Death is { InFlight: true } or { RetryAtTick: not null }
-            || combatSession.InFlightQuestCredit is not null)
+            || combatSession.InFlightKillCredit is not null)
         {
             combatSession.Context.AuthorityOperationInFlight = true;
         }
@@ -785,9 +796,9 @@ internal sealed class PlayerCombatAuthority(
         }
 
         // A credit may start, and leave the list, while the next one is queued.
-        foreach (var credit in combatSession.QuestCredits.ToArray())
+        foreach (var credit in combatSession.KillCredits.ToArray())
         {
-            scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, credit));
+            scheduler.Enqueue(combatSession.Context, new QueuedMobKillCredit(this, combatSession, credit));
         }
     }
 
@@ -1118,7 +1129,7 @@ internal sealed class PlayerCombatAuthority(
             || combatSession.InFlightBatch is not null
             || combatSession.Death is { InFlight: true }
             || combatSession.Death is { RetryAtTick: not null }
-            || combatSession.InFlightQuestCredit is not null)
+            || combatSession.InFlightKillCredit is not null)
         {
             return;
         }
@@ -1145,19 +1156,20 @@ internal sealed class PlayerCombatAuthority(
             DropPendingShots(combatSession, "ammunition_missing");
         }
 
-        // A credit that the quest log does not ask for costs no GameService call, as in the lane.
-        while (combatSession.QuestCredits.Count > 0)
+        // A credit of a Mob that gives no experience and that the quest log does not ask for costs
+        // no GameService call, as in the lane.
+        while (combatSession.KillCredits.Count > 0)
         {
-            var credit = combatSession.QuestCredits[0];
-            combatSession.QuestCredits.RemoveAt(0);
-            if (!Counts(combatSession, credit))
+            var credit = combatSession.KillCredits[0];
+            combatSession.KillCredits.RemoveAt(0);
+            if (!ShouldSend(combatSession, credit))
             {
                 continue;
             }
 
             context.AuthorityOperationInFlight = true;
-            combatSession.InFlightQuestCredit = credit;
-            SendQuestCredit(combatSession, credit);
+            combatSession.InFlightKillCredit = credit;
+            SendKillCredit(combatSession, credit);
             return;
         }
 
@@ -1319,19 +1331,19 @@ internal sealed class PlayerCombatAuthority(
         return availability.AvailableTime - startedAt >= config.UncertainOperationRetryHorizon;
     }
 
-    // The kill does not count; the credits behind it go on.
-    private void AbandonQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
+    // The kill grants nothing and counts for no quest; the credits behind it go on.
+    private void AbandonKillCredit(PlayerCombatSession combatSession, PendingMobKillCredit credit)
     {
-        availability.RecordAbandonedOperation(QuestKillCreditOperationKind);
+        availability.RecordAbandonedOperation(MobKillCreditOperationKind);
         logger.LogError(
-            "[SIMULATION] Gave up the {OperationKind} operation {OperationId} of simulation session {SimulationSessionId} after {Attempts} attempts: its outcome stayed uncertain for the retry horizon of {Horizon} while GameService answered, so the {MobActorId} kill does not count.",
-            QuestKillCreditOperationKind,
+            "[SIMULATION] Gave up the {OperationKind} operation {OperationId} of simulation session {SimulationSessionId} after {Attempts} attempts: its outcome stayed uncertain for the retry horizon of {Horizon} while GameService answered, so the {MobActorId} kill is not credited.",
+            MobKillCreditOperationKind,
             credit.OperationId,
             combatSession.Session.SimulationSessionId,
             credit.Attempts,
             config.UncertainOperationRetryHorizon,
             credit.MobActorId);
-        combatSession.InFlightQuestCredit = null;
+        combatSession.InFlightKillCredit = null;
         ReleaseLane(combatSession);
     }
 
@@ -1388,14 +1400,14 @@ internal sealed class PlayerCombatAuthority(
         }
     }
 
-    private sealed record QueuedQuestKillCredit(
+    private sealed record QueuedMobKillCredit(
         PlayerCombatAuthority Owner,
         PlayerCombatSession CombatSession,
-        QuestKillCredit Credit) : IRealtimeAuthorityOperation
+        PendingMobKillCredit Credit) : IRealtimeAuthorityOperation
     {
         public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
         {
-            Owner.StartQuestCredit(CombatSession, Credit);
+            Owner.StartKillCredit(CombatSession, Credit);
         }
     }
 }

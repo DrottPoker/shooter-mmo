@@ -51,6 +51,34 @@ public sealed class ItemCatalogLevelStartupTests
     {
         public int MaximumLevel => maximumLevel;
 
+        public Task<CharacterProgressionSnapshot?> ReadAsync(
+            PostgresTransactionScope scope,
+            Guid characterId,
+            CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<CharacterExperienceChange?> GrantExperienceAsync(
+            PostgresTransactionScope scope,
+            Guid characterId,
+            long experience,
+            string source,
+            CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<CharacterExperienceChange?> GrantKillExperienceAsync(
+            PostgresTransactionScope scope,
+            Guid characterId,
+            int mobLevel,
+            int mobExperiencePercent,
+            CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<bool> SetLevelAsync(
             PostgresTransactionScope scope,
             Guid characterId,

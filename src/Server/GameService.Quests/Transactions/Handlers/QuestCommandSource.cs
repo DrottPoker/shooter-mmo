@@ -4,15 +4,17 @@ using Mmorpg.GameService.Quests.Contracts;
 
 namespace Mmorpg.GameService.Quests.Transactions.Handlers;
 
-// The quest commands, the Admin menu's quest tools, and the removal of a quest grant's items.
+// The quest commands with the Mob kill credit, the Admin menu's quest and progression tools, and
+// the removal of a quest grant's items.
 internal sealed class QuestCommandSource : IItemCommandSource
 {
     public QuestCommandSource(
         IQuestDefinitions questDefinitions,
         ICharacterQuestLog questLog,
-        ICharacterWallet characterWallet)
+        ICharacterWallet characterWallet,
+        ICharacterProgression characterProgression)
     {
-        var quest = new QuestCommandHandler(questDefinitions, questLog, characterWallet);
+        var quest = new QuestCommandHandler(questDefinitions, questLog, characterWallet, characterProgression);
         Registrations =
         [
             new ItemCommandRegistration<AbandonQuestItemsCommand>(
@@ -43,8 +45,8 @@ internal sealed class QuestCommandSource : IItemCommandSource
                 QuestOperationKinds.DeliverQuestItems,
                 static command => command.CharacterId,
                 quest),
-            new ItemCommandRegistration<CreditQuestKillCommand>(
-                QuestOperationKinds.CreditQuestKill,
+            new ItemCommandRegistration<CreditMobKillCommand>(
+                QuestOperationKinds.CreditMobKill,
                 static command => command.CharacterId,
                 quest)
             {
@@ -80,6 +82,14 @@ internal sealed class QuestCommandSource : IItemCommandSource
                 quest),
             new ItemCommandRegistration<AdminResetQuestsCommand>(
                 QuestOperationKinds.AdminResetQuests,
+                static command => command.CharacterId,
+                quest),
+            new ItemCommandRegistration<AdminSetCharacterLevelCommand>(
+                QuestOperationKinds.AdminSetCharacterLevel,
+                static command => command.CharacterId,
+                quest),
+            new ItemCommandRegistration<AdminGrantExperienceCommand>(
+                QuestOperationKinds.AdminGrantExperience,
                 static command => command.CharacterId,
                 quest)
         ];

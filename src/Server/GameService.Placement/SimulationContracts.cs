@@ -146,6 +146,9 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
     // The character's saved place and vitals, or null when it has none, as for a development bot.
     public SimulationSavedCharacterState? SavedState { get; init; }
 
+    // The character's level and experience at the consume; null for a development bot.
+    public SimulationProgression? Progression { get; init; }
+
     // The ticket's transport key, from which the worker derives the keys of the sealed datagrams.
     public byte[] TransportKey { get; init; } = [];
 }
@@ -171,6 +174,22 @@ internal sealed record SimulationSavedCharacterState(
         state.YawDegrees,
         state.Health,
         state.Mana);
+}
+
+// A character's level, the experience it gathered inside that level, what the level needs, and
+// the highest Mob level that gives it no experience: int.MaxValue at the highest level, where no
+// Mob gives any.
+internal sealed record SimulationProgression(
+    int Level,
+    long Experience,
+    long ExperienceToNextLevel,
+    int HighestMobLevelWithoutExperience)
+{
+    public static SimulationProgression From(CharacterProgressionSnapshot snapshot) => new(
+        snapshot.Level,
+        snapshot.Experience,
+        snapshot.ExperienceToNextLevel,
+        snapshot.HighestMobLevelWithoutExperience);
 }
 
 // A character's place and vitals as the worker sends them, numbered within its simulation

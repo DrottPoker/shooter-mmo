@@ -9,14 +9,14 @@ using Mmorpg.Server.Common.Progression;
 namespace Mmorpg.GameService.Characters;
 
 // Characters: characters, ownership, character currency with the audit of its ledger, character
-// level, character looks, and every character's saved place and vitals.
+// level and experience, character looks, and every character's saved place and vitals.
 public sealed class CharactersModule(CharactersModuleOptions options) : IGameServiceModule
 {
     public string Name => "Characters";
 
     public IReadOnlyList<DatabaseMigration> Migrations => CharactersSchemaMigrations.All;
 
-    public IReadOnlyList<string> MeterNames { get; } = [];
+    public IReadOnlyList<string> MeterNames { get; } = [CharacterProgressionMetrics.MeterName];
 
     public void AddServices(IServiceCollection services)
     {
@@ -35,6 +35,7 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
         services.AddSingleton<IDatabaseSeeder, CharacterAppearanceVerifier>();
         services.AddSingleton<ICharacterLocks, CharacterLocks>();
         services.AddSingleton<ICharacterWallet, CharacterWallet>();
+        services.AddSingleton<CharacterProgressionMetrics>();
         services.AddSingleton<ICharacterProgression, CharacterProgression>();
         services.AddSingleton<ICharacterSimulationStates, CharacterSimulationStates>();
         services.AddScoped<CharacterService>();

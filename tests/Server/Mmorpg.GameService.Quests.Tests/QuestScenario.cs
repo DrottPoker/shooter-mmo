@@ -51,7 +51,9 @@ internal static class QuestScenario
             ItemTransactionRequest<RegrantQuestItemsCommand> regrant => service.ExecuteAsync(regrant, none),
             ItemTransactionRequest<TalkToQuestNpcCommand> talk => service.ExecuteAsync(talk, none),
             ItemTransactionRequest<DeliverQuestItemsCommand> deliver => service.ExecuteAsync(deliver, none),
-            ItemTransactionRequest<CreditQuestKillCommand> kill => service.ExecuteAsync(kill, none),
+            ItemTransactionRequest<CreditMobKillCommand> kill => service.ExecuteAsync(kill, none),
+            ItemTransactionRequest<AdminSetCharacterLevelCommand> setLevel => service.ExecuteAsync(setLevel, none),
+            ItemTransactionRequest<AdminGrantExperienceCommand> grant => service.ExecuteAsync(grant, none),
             ItemTransactionRequest<TurnInQuestCommand> turnIn => service.ExecuteAsync(turnIn, none),
             _ => throw new ArgumentException("Not a quest scenario command.", nameof(command))
         };
@@ -67,14 +69,19 @@ internal static class QuestScenario
         string? rewardChoiceDefinitionId = null,
         string? mobActorId = null,
         IReadOnlyList<string>? mobTags = null,
-        string? questCatalogRevision = null)
+        string? questCatalogRevision = null,
+        int? mobLevel = null,
+        int? mobExperiencePercent = null,
+        int? level = null,
+        long? experience = null,
+        Guid? operationId = null)
     {
         await using var scope = context.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<SimulationQuestMutationService>().ExecuteAsync(
             session.WorkerId,
             session.SimulationSessionId,
             new SimulationQuestOperationRequest(
-                Guid.NewGuid(),
+                operationId ?? Guid.NewGuid(),
                 session.AccountId,
                 session.CharacterId,
                 session.WorkerId,
@@ -88,7 +95,11 @@ internal static class QuestScenario
                 rewardChoiceDefinitionId,
                 mobActorId,
                 mobTags,
-                questCatalogRevision ?? PostgresIntegrationTestContext.FixtureQuestCatalogRevision),
+                questCatalogRevision ?? PostgresIntegrationTestContext.FixtureQuestCatalogRevision,
+                mobLevel,
+                mobExperiencePercent,
+                level,
+                experience),
             CancellationToken.None);
     }
 

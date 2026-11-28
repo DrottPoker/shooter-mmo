@@ -1,20 +1,25 @@
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Combat;
+using Mmorpg.WorldData.Progression;
 
 namespace Mmorpg.GameService.Quests;
 
-// Quest actions and kill credits of live characters through the item transaction kernel. The
+// Quest actions and Mob kill credits of live characters through the item transaction kernel. The
 // worker validated the interaction with the quest's NPC and names that NPC; the kernel checks
-// it against the quest. The Admin menu's quest tools run only in the Development environment.
+// it against the quest. The Admin menu's quest and progression tools run only in the Development
+// environment.
 internal sealed class SimulationQuestMutationService(
     IItemTransactions transactionService,
     SimulationCharacterStates characterStates,
     QuestsModuleOptions options,
-    IQuestDefinitions questDefinitions)
+    IQuestDefinitions questDefinitions,
+    ICharacterProgression characterProgression)
 {
     public async Task<ServiceResult<SimulationItemOperationResponse>> ExecuteAsync(
         string authenticatedWorkerId,
@@ -45,7 +50,12 @@ internal sealed class SimulationQuestMutationService(
             || !IsOptionalContentIdentifier(request.RewardChoiceDefinitionId)
             || !IsOptionalContentIdentifier(request.MobActorId)
             || request.MobTags is { Count: > WorldActorCompiler.MaximumTagsPerActor }
-            || request.MobTags?.Any(tag => !Identifiers.IsContentIdentifier(tag)) == true)
+            || request.MobTags?.Any(tag => !Identifiers.IsContentIdentifier(tag)) == true
+            || request.MobLevel is < 1 or > CombatContentRules.MaximumCharacterLevel
+            || request.MobExperiencePercent is < 0 or > ProgressionRulesFormat.MaximumMobExperiencePercent
+            || request.Level < 1
+            || request.Level > characterProgression.MaximumLevel
+            || request.Experience is < 1 or > AdminExperienceRules.MaximumGrant)
         {
             return Invalid("The simulation quest operation is incomplete or invalid.");
         }
@@ -78,12 +88,17 @@ internal sealed class SimulationQuestMutationService(
 
         var named = operationKind switch
         {
-            QuestOperationKinds.CreditQuestKill => request.MobActorId is not null && request.MobTags is not null,
+            QuestOperationKinds.CreditMobKill => request.MobActorId is not null
+                && request.MobTags is not null
+                && request.MobLevel is not null
+                && request.MobExperiencePercent is not null,
             QuestOperationKinds.TalkToQuestNpc
                 or QuestOperationKinds.DeliverQuestItems
                 or QuestOperationKinds.AdminCompleteQuestObjective =>
                 questId.Length > 0 && objectiveId.Length > 0,
             QuestOperationKinds.AdminResetQuests => questId.Length == 0,
+            QuestOperationKinds.AdminSetCharacterLevel => questId.Length == 0 && request.Level is not null,
+            QuestOperationKinds.AdminGrantExperience => questId.Length == 0 && request.Experience is not null,
             _ => questId.Length > 0
         };
         if (!named)
@@ -123,14 +138,16 @@ internal sealed class SimulationQuestMutationService(
                     actor,
                     new DeliverQuestItemsCommand(request.CharacterId, questId, objectiveId)),
                 cancellationToken),
-            QuestOperationKinds.CreditQuestKill => transactionService.ExecuteAsync(
-                new ItemTransactionRequest<CreditQuestKillCommand>(
+            QuestOperationKinds.CreditMobKill => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<CreditMobKillCommand>(
                     request.OperationId,
                     actor,
-                    new CreditQuestKillCommand(
+                    new CreditMobKillCommand(
                         request.CharacterId,
                         request.MobActorId!.Trim(),
-                        request.MobTags!.Select(tag => tag?.Trim() ?? string.Empty).ToArray())),
+                        request.MobTags!.Select(tag => tag?.Trim() ?? string.Empty).ToArray(),
+                        request.MobLevel!.Value,
+                        request.MobExperiencePercent!.Value)),
                 cancellationToken),
             QuestOperationKinds.TurnInQuest => transactionService.ExecuteAsync(
                 new ItemTransactionRequest<TurnInQuestCommand>(
@@ -180,6 +197,18 @@ internal sealed class SimulationQuestMutationService(
                     actor,
                     new AdminResetQuestsCommand(request.CharacterId)),
                 cancellationToken),
+            QuestOperationKinds.AdminSetCharacterLevel => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<AdminSetCharacterLevelCommand>(
+                    request.OperationId,
+                    actor,
+                    new AdminSetCharacterLevelCommand(request.CharacterId, request.Level!.Value)),
+                cancellationToken),
+            QuestOperationKinds.AdminGrantExperience => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<AdminGrantExperienceCommand>(
+                    request.OperationId,
+                    actor,
+                    new AdminGrantExperienceCommand(request.CharacterId, request.Experience!.Value)),
+                cancellationToken),
             _ => null
         };
         if (operation is null)
@@ -211,7 +240,9 @@ internal sealed class SimulationQuestMutationService(
             or QuestOperationKinds.AdminMakeQuestReady
             or QuestOperationKinds.AdminResetQuest
             or QuestOperationKinds.AdminResetQuestChain
-            or QuestOperationKinds.AdminResetQuests;
+            or QuestOperationKinds.AdminResetQuests
+            or QuestOperationKinds.AdminSetCharacterLevel
+            or QuestOperationKinds.AdminGrantExperience;
     }
 
     private static ServiceResult<SimulationItemOperationResponse> Invalid(string message)

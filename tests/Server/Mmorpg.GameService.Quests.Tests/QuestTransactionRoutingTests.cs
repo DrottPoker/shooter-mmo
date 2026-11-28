@@ -44,9 +44,9 @@ public sealed class QuestTransactionRoutingTests
         await using var composition = new OfflineItemComposition();
         var registrations = composition.RegistrationsOf(GameServiceAssemblies.Quests);
 
-        Assert.Equal(15, registrations.Count);
-        Assert.Equal(15, registrations.Select(registration => registration.CommandType).Distinct().Count());
-        Assert.Equal(15, Routes.Count);
+        Assert.Equal(17, registrations.Count);
+        Assert.Equal(17, registrations.Select(registration => registration.CommandType).Distinct().Count());
+        Assert.Equal(17, Routes.Count);
         Assert.Equal(
             registrations.Select(registration => registration.OperationKind).Order(StringComparer.Ordinal),
             Routes.Keys.Order(StringComparer.Ordinal));
@@ -98,10 +98,10 @@ public sealed class QuestTransactionRoutingTests
                 actor,
                 new DeliverQuestItemsCommand(Id, "quest.fixture.errand", "hand_over"),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [QuestOperationKinds.CreditQuestKill] = (service, actor) => Run(
+            [QuestOperationKinds.CreditMobKill] = (service, actor) => Run(
                 service,
                 actor,
-                new CreditQuestKillCommand(Id, "mob.feral_wolf", []),
+                new CreditMobKillCommand(Id, "mob.feral_wolf", [], 1, 100),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [QuestOperationKinds.TurnInQuest] = (service, actor) => Run(
                 service,
@@ -142,6 +142,16 @@ public sealed class QuestTransactionRoutingTests
                 service,
                 actor,
                 new AdminResetQuestsCommand(Id),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [QuestOperationKinds.AdminSetCharacterLevel] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminSetCharacterLevelCommand(Id, 2),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [QuestOperationKinds.AdminGrantExperience] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminGrantExperienceCommand(Id, 10),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None))
         };
 }

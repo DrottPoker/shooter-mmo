@@ -33,6 +33,10 @@ public sealed record ActiveSimulationSession(
     // The character's saved place and vitals when this session started, or null when it has none.
     public SimulationSavedCharacterState? SavedState { get; init; }
 
+    // The character's level and experience when this session started, or null when GameService
+    // gave none, as for a development bot. Nothing reads it yet.
+    public SimulationProgression? Progression { get; init; }
+
     // The order in which GameService issued the session's tokens, which grows with every rotation:
     // of two generations of one session the higher is the newer, whichever registered here first.
     // 0 when GameService gives none, as for a development bot, and then nothing is ordered.
@@ -72,6 +76,7 @@ public sealed record ActiveSimulationSession(
         {
             IsSyntheticBot = ticket.IsSyntheticBot,
             SavedState = ticket.SavedState,
+            Progression = ticket.Progression,
             Generation = ticket.SessionGeneration,
             Lease = new SessionLease(requestedTimestamp ?? TimeProvider.System.GetTimestamp(), duration)
         };

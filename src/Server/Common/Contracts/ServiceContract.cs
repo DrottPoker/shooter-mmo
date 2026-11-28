@@ -17,7 +17,7 @@ namespace Mmorpg.Server.Common.Contracts;
 // start the workers of the new version.
 public static class ServiceContract
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     // The code of the refusal, a 409, so neither side mistakes it for a credential failure.
     public const string MismatchCode = "service_contract_mismatch";

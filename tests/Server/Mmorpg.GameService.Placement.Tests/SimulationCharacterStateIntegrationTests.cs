@@ -355,6 +355,7 @@ public sealed class SimulationCharacterStateIntegrationTests
             out var consumed));
         Assert.True(consumed.Value!.IsSyntheticBot);
         Assert.Null(consumed.Value.SavedState);
+        Assert.Null(consumed.Value.Progression);
         return consumed.Value;
     }
 

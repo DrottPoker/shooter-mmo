@@ -42,7 +42,7 @@ public sealed class EconomyCommandCatalogTests
         Assert.Equal(
             new[] { GameServiceAssemblies.Items, GameServiceAssemblies.Quests, GameServiceAssemblies.Economy },
             sourceModules);
-        Assert.Equal(48, kinds.Length);
+        Assert.Equal(50, kinds.Length);
         Assert.Equal(
             Constants(typeof(ItemOperationKinds))
                 .Concat(Constants(typeof(QuestOperationKinds)))

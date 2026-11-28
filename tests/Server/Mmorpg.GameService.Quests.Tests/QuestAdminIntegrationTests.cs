@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Quests.Contracts;
@@ -155,7 +156,8 @@ public sealed class QuestAdminIntegrationTests
             provider.GetRequiredService<IItemTransactions>(),
             provider.GetRequiredService<SimulationCharacterStates>(),
             provider.GetRequiredService<QuestsModuleOptions>() with { DevelopmentQuestTools = false },
-            provider.GetRequiredService<IQuestDefinitions>());
+            provider.GetRequiredService<IQuestDefinitions>(),
+            provider.GetRequiredService<ICharacterProgression>());
 
         var refused = await release.ExecuteAsync(
             session.WorkerId,

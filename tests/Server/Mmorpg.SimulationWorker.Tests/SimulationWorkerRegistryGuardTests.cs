@@ -97,8 +97,8 @@ public sealed class SimulationWorkerRegistryGuardTests
     // which is no credential failure: the worker logs one error line that says which side is older,
     // plays nobody, and tries again at its normal pace until the older side is updated.
     [Theory]
-    [InlineData(2, "This worker is the older side")]
-    [InlineData(0, "GameService is the older side")]
+    [InlineData(ServiceContract.Version + 1, "This worker is the older side")]
+    [InlineData(ServiceContract.Version - 1, "GameService is the older side")]
     public async Task AContractMismatchIsAnErrorThatNamesTheOlderSideAndEndsNothing(
         int gameServiceVersion,
         string expected)

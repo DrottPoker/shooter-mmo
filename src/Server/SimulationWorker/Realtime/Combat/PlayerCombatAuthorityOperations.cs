@@ -19,14 +19,14 @@ internal sealed record PlayerDeathCompleted(
     GameServiceResult<PlayerDeathPartitionResponse> Result)
     : RealtimeOperationResult(PeerContext);
 
-internal sealed record QuestKillCreditCompleted(
+internal sealed record MobKillCreditCompleted(
     RealtimePeerContext PeerContext,
     PlayerCombatSession CombatSession,
-    QuestKillCredit Credit,
+    PendingMobKillCredit Credit,
     QuestOperationOutcome Outcome)
     : RealtimeOperationResult(PeerContext);
 
-// Ammunition batches, player deaths, and quest kill credits that continue off the realtime
+// Ammunition batches, player deaths, and Mob kill credits that continue off the realtime
 // loop. It calls GameService and posts the completion; it never reads loop-confined state.
 internal sealed class PlayerCombatAuthorityOperations(
     GameServiceClient? gameServiceClient,
@@ -113,11 +113,11 @@ internal sealed class PlayerCombatAuthorityOperations(
         }
     }
 
-    public async Task CreditQuestKillAsync(
+    public async Task CreditMobKillAsync(
         IRealtimeCompletionHandler handler,
         RealtimePeerContext context,
         PlayerCombatSession combatSession,
-        QuestKillCredit credit,
+        PendingMobKillCredit credit,
         QuestOperationExecutor executor)
     {
         QuestOperationOutcome outcome;
@@ -129,17 +129,17 @@ internal sealed class PlayerCombatAuthorityOperations(
         {
             logger.LogError(
                 exception,
-                "[SIMULATION] Unhandled error while crediting a quest kill of simulation session {SimulationSessionId}.",
+                "[SIMULATION] Unhandled error while crediting a Mob kill of simulation session {SimulationSessionId}.",
                 combatSession.Session.SimulationSessionId);
             outcome = QuestOperationOutcome.Rejected(
                 "quest_credit_failed",
-                "SimulationWorker could not complete the quest kill credit.") with
+                "SimulationWorker could not complete the Mob kill credit.") with
             {
                 Uncertain = true
             };
         }
 
-        completions.Post(handler, new QuestKillCreditCompleted(context, combatSession, credit, outcome));
+        completions.Post(handler, new MobKillCreditCompleted(context, combatSession, credit, outcome));
     }
 
     private static GameServiceResult<T> Unavailable<T>()

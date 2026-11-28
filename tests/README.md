@@ -22,7 +22,7 @@ and the check before every push in
 | `Mmorpg.Server.Telemetry.Tests` | `Server/Mmorpg.Server.Telemetry.Tests` | `Mmorpg.Server.Telemetry`: export options, metric views, resource, sampling, and provider registration |
 | `Mmorpg.GameService.Platform.Tests` | `Server/Mmorpg.GameService.Platform.Tests` | GameService Platform |
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including PostgreSQL and Redis tests |
-| `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks and saved character states |
+| `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks, saved character states, and experience grants |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement, including PostgreSQL tests of the session heartbeat, of the character states that the simulation session API reads and saves, and of what the end of an account session does to its simulation session |
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel and corpse area boundary tests under `ItemTransactions`; the worker item route and its operation handler SPI |
 | `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares; the quest commands with their worker routes, quest drops, goldens, routing, catalog, and HTTP statuses |

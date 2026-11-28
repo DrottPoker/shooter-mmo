@@ -73,15 +73,26 @@ internal sealed class PlayerDeathAttempt(
     public TimeSpan StartedAt { get; init; }
 }
 
-// A credited Mob kill on its way to GameService for the character's quests. A retry reuses
-// its operation id, so a lost answer replays the stored result instead of counting twice.
-internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IReadOnlyList<string> mobTags)
+// A credited Mob kill on its way to GameService, for the character's experience and quests. It
+// carries the Mob's level and experience percent from the Mob's actor definition, from which
+// GameService decides the experience. A retry reuses its operation id, so a lost answer replays
+// the stored result instead of granting and counting twice.
+internal sealed class PendingMobKillCredit(
+    Guid operationId,
+    string mobActorId,
+    IReadOnlyList<string> mobTags,
+    int mobLevel,
+    int mobExperiencePercent)
 {
     public Guid OperationId { get; } = operationId;
 
     public string MobActorId { get; } = mobActorId;
 
     public IReadOnlyList<string> MobTags { get; } = mobTags;
+
+    public int MobLevel { get; } = mobLevel;
+
+    public int MobExperiencePercent { get; } = mobExperiencePercent;
 
     public int Attempts { get; set; }
 
@@ -98,16 +109,18 @@ internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IRead
     {
         return new QuestOperation(
             OperationId,
-            QuestOperationKinds.CreditKill,
+            QuestOperationKinds.CreditMobKill,
             null,
             MobActorId: MobActorId,
             MobTags: MobTags,
+            MobLevel: MobLevel,
+            MobExperiencePercent: MobExperiencePercent,
             ClientIntent: false);
     }
 }
 
 // The durable combat work of one simulation session: uncommitted shots, the batch in
-// flight, a death that has not committed, and the quest kill credits. It outlives the
+// flight, a death that has not committed, and the Mob kill credits. It outlives the
 // peer: when the connection ends, the character's lingering body commits it without a peer,
 // and when the entity goes, the session is released only once it committed. Loop-confined.
 internal sealed class PlayerCombatSession(ActiveSimulationSession session, RealtimePeerContext context)
@@ -145,19 +158,19 @@ internal sealed class PlayerCombatSession(ActiveSimulationSession session, Realt
     // client intent computed on one of them is forwarded with the newest.
     public List<long> BatchRevisionChain { get; } = [];
 
-    // Credited kills that count for the character's quests and wait for their turn in the lane,
-    // in kill order.
-    public List<QuestKillCredit> QuestCredits { get; } = [];
+    // Credited kills that give experience or may count for the character's quests and wait for
+    // their turn in the lane, in kill order.
+    public List<PendingMobKillCredit> KillCredits { get; } = [];
 
-    public QuestKillCredit? InFlightQuestCredit { get; set; }
+    public PendingMobKillCredit? InFlightKillCredit { get; set; }
 
-    public bool HasQuestCredits => QuestCredits.Count > 0 || InFlightQuestCredit is not null;
+    public bool HasKillCredits => KillCredits.Count > 0 || InFlightKillCredit is not null;
 
     public bool HasDurableWork => PendingShots > 0
         || BatchQueued
         || InFlightBatch is not null
         || Death is { Committed: false }
-        || HasQuestCredits;
+        || HasKillCredits;
 
     public void RecordBatchRevision(long previousRevision, long committedRevision)
     {

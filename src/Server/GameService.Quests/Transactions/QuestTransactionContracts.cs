@@ -1,9 +1,10 @@
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Quests;
 
-// The quest commands with their operation kinds, the quest log change that their results carry,
-// and the quest NPC capability that the worker claims for them.
+// The quest commands with their operation kinds, the quest log and progression changes that
+// their results carry, and the quest NPC capability that the worker claims for them.
 
 // Removes every protected item of an abandoned quest grant.
 internal sealed record AbandonQuestItemsCommand(
@@ -41,12 +42,14 @@ internal sealed record DeliverQuestItemsCommand(
     string QuestId,
     string ObjectiveId);
 
-// Counts one credited kill of a Mob for every matching kill objective of the character's
-// current quest steps.
-internal sealed record CreditQuestKillCommand(
+// Credits one kill of a Mob to a character: the experience for it, and one count for every
+// matching kill objective of the character's current quest steps.
+internal sealed record CreditMobKillCommand(
     Guid CharacterId,
     string MobActorId,
-    IReadOnlyList<string> MobTags);
+    IReadOnlyList<string> MobTags,
+    int MobLevel,
+    int MobExperiencePercent);
 
 // Completes a ready quest at its turn-in NPC: takes the collected items, removes what is left
 // with the quest's lineage, and grants the rewards with the chosen one.
@@ -91,6 +94,16 @@ internal sealed record AdminResetQuestChainCommand(
 // Forgets every quest of the character.
 internal sealed record AdminResetQuestsCommand(Guid CharacterId);
 
+// Sets the character's level, from 1 to the highest level, with no experience inside it.
+internal sealed record AdminSetCharacterLevelCommand(
+    Guid CharacterId,
+    int Level);
+
+// Grants the character experience, as a quest reward does, and levels up as far as it reaches.
+internal sealed record AdminGrantExperienceCommand(
+    Guid CharacterId,
+    long Experience);
+
 // The persisted operation kinds of the quest commands.
 internal static class QuestOperationKinds
 {
@@ -100,7 +113,7 @@ internal static class QuestOperationKinds
     public const string RegrantQuestItems = "regrant_quest_items";
     public const string TalkToQuestNpc = "talk_to_quest_npc";
     public const string DeliverQuestItems = "deliver_quest_items";
-    public const string CreditQuestKill = "credit_quest_kill";
+    public const string CreditMobKill = "credit_mob_kill";
     public const string TurnInQuest = "turn_in_quest";
     public const string AdminAcceptQuest = "admin_accept_quest";
     public const string AdminCompleteQuestObjective = "admin_complete_quest_objective";
@@ -109,6 +122,14 @@ internal static class QuestOperationKinds
     public const string AdminResetQuest = "admin_reset_quest";
     public const string AdminResetQuestChain = "admin_reset_quest_chain";
     public const string AdminResetQuests = "admin_reset_quests";
+    public const string AdminSetCharacterLevel = "admin_set_character_level";
+    public const string AdminGrantExperience = "admin_grant_experience";
+}
+
+// The highest experience that the Admin menu's experience tool grants at once.
+internal static class AdminExperienceRules
+{
+    public const long MaximumGrant = 1_000_000_000_000L;
 }
 
 // The quests a transaction changed, with the quest log revision after it. A quest without a
@@ -145,6 +166,57 @@ internal static class QuestLogSection
     {
         ArgumentNullException.ThrowIfNull(result);
         return result.ReadSection<ItemTransactionQuestLogChange>(Name);
+    }
+}
+
+// The character's progression after a transaction that granted experience or set its level, with
+// the experience that counted and the levels it gained, which a set level may make negative.
+// HighestMobLevelWithoutExperience is int.MaxValue at the highest level, where no Mob gives any.
+internal sealed record ItemTransactionProgressionChange(
+    Guid CharacterId,
+    int Level,
+    long Experience,
+    long ExperienceToNextLevel,
+    int HighestMobLevelWithoutExperience,
+    long ExperienceGained,
+    int LevelsGained);
+
+// The progression change of a result, in the section that the worker item response passes
+// through as its progression. A result without one has no such key.
+internal static class ProgressionSection
+{
+    public const string Name = "progression";
+
+    public static void Set(
+        ItemChangeJournal journal,
+        Guid characterId,
+        CharacterProgressionSnapshot before,
+        CharacterProgressionSnapshot after,
+        long experienceGained)
+    {
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        journal.SetSection(Name, new ItemTransactionProgressionChange(
+            characterId,
+            after.Level,
+            after.Experience,
+            after.ExperienceToNextLevel,
+            after.HighestMobLevelWithoutExperience,
+            experienceGained,
+            after.Level - before.Level));
+    }
+
+    public static void Set(ItemChangeJournal journal, Guid characterId, CharacterExperienceChange change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        Set(journal, characterId, change.Before, change.After, change.Gained);
+    }
+
+    public static ItemTransactionProgressionChange? Read(ItemTransactionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.ReadSection<ItemTransactionProgressionChange>(Name);
     }
 }
 
