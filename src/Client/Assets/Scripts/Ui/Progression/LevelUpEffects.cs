@@ -15,6 +15,9 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class LevelUpEffects : MonoBehaviour
     {
+        // Where a character the client shows stands, or false for one it does not show.
+        internal delegate bool CharacterFinder(ulong entityId, out Vector3 position);
+
         public const int Motes = 90;
 
         // The motes leave the ring over the burst, and each rises for the rise.
@@ -33,8 +36,10 @@ namespace Mmorpg.Client.Ui
         private readonly List<ulong> finished = new List<ulong>();
         private ProgressionClientState progression;
         private IRealtimeProgressionChannel progressionChannel;
-        private CombatantViewLocator views;
+        private CharacterFinder findCharacter;
+        private System.Func<ulong> controlledEntityId;
         private Material material;
+        private bool subscribed;
 
         // How many characters play the effect now.
         public int PlayingCount
@@ -68,15 +73,33 @@ namespace Mmorpg.Client.Ui
         {
             progression = progressionState;
             progressionChannel = channel;
-            views = combatantViews;
             material = moteMaterial;
+            if (combatantViews != null)
+            {
+                UseCharacters(
+                    (ulong entityId, out Vector3 position) =>
+                    {
+                        var shown = combatantViews.TryGetView(entityId, out var view);
+                        position = shown ? view.Position : Vector3.zero;
+                        return shown;
+                    },
+                    () => combatantViews.ControlledEntityId);
+            }
+        }
+
+        // The characters the effect plays on: the composition root's combatant views, or a
+        // test's.
+        internal void UseCharacters(CharacterFinder finder, System.Func<ulong> controlledEntity)
+        {
+            findCharacter = finder;
+            controlledEntityId = controlledEntity;
         }
 
         // Plays the effect on a character the client shows; false for one it does not. A
         // character that already plays one starts it over.
         public bool Play(ulong entityId)
         {
-            if (material == null || views == null || !views.TryGetView(entityId, out var view))
+            if (material == null || findCharacter == null || !findCharacter(entityId, out var position))
             {
                 return false;
             }
@@ -89,7 +112,7 @@ namespace Mmorpg.Client.Ui
             effect.StartedAt = Time.time;
             effect.Emitted = 0;
             effect.System.gameObject.SetActive(true);
-            effect.System.transform.position = view.Position;
+            effect.System.transform.position = position;
             effect.System.Clear();
             // A system that its pool deactivated plays again.
             effect.System.Play();
@@ -97,8 +120,21 @@ namespace Mmorpg.Client.Ui
             return true;
         }
 
-        private void OnEnable()
+        private void Start()
         {
+            Begin();
+        }
+
+        // Start follows the state and the channel; a test that runs the component by hand calls
+        // it itself.
+        internal void Begin()
+        {
+            if (subscribed)
+            {
+                return;
+            }
+
+            subscribed = true;
             if (progression != null)
             {
                 progression.Changed += OnProgressionChanged;
@@ -110,8 +146,14 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void OnDisable()
+        private void OnDestroy()
         {
+            if (!subscribed)
+            {
+                return;
+            }
+
+            subscribed = false;
             if (progression != null)
             {
                 progression.Changed -= OnProgressionChanged;
@@ -125,9 +167,9 @@ namespace Mmorpg.Client.Ui
 
         private void OnProgressionChanged(RealtimeOwnerProgressionChanged change)
         {
-            if (ExperienceBarPresentation.ShowsLevelUp(change) && views != null)
+            if (ExperienceBarPresentation.ShowsLevelUp(change) && controlledEntityId != null)
             {
-                Play(views.ControlledEntityId);
+                Play(controlledEntityId());
             }
         }
 
@@ -154,13 +196,13 @@ namespace Mmorpg.Client.Ui
             {
                 var effect = pair.Value;
                 var age = now - effect.StartedAt;
-                if (age >= EffectSeconds || !views.TryGetView(pair.Key, out var view))
+                if (age >= EffectSeconds || !findCharacter(pair.Key, out var position))
                 {
                     finished.Add(pair.Key);
                     continue;
                 }
 
-                effect.System.transform.position = view.Position;
+                effect.System.transform.position = position;
                 var due = MotesEmittedBy(age);
                 if (due > effect.Emitted)
                 {

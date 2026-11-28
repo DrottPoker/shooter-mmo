@@ -128,6 +128,27 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A session that ends before the answer leaves no line that waits forever, and a late
+        // answer to the forgotten intent shows nothing.
+        [Test]
+        public void ASessionEndBeforeTheAnswerSaysThatNoAnswerCame()
+        {
+            using (var tab = CreateTab())
+            {
+                tab.ForgetPending();
+                Assert.That(tab.ResultText, Is.Empty, "Nothing waited, so nothing changes.");
+
+                Assert.That(tab.RequestSetLevel("60"), Is.True);
+                Assert.That(tab.ResultText, Is.EqualTo("Set level 60..."));
+
+                tab.ForgetPending();
+                Assert.That(tab.ResultText, Is.EqualTo(TemporaryAdminProgressionTab.NoAnswerText));
+
+                tab.OnIntentCompleted(new RealtimeAdminIntentResult(sent[0].Intent.OperationId, RealtimeAdminIntentKind.SetLevel, true, null));
+                Assert.That(tab.ResultText, Is.EqualTo(TemporaryAdminProgressionTab.NoAnswerText));
+            }
+        }
+
         private TemporaryAdminProgressionTab CreateTab()
         {
             return new TemporaryAdminProgressionTab(page, progression, (intent, description) =>

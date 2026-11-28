@@ -21,8 +21,8 @@ namespace Mmorpg.Client.Ui
         public const string BarName = "ExperienceBar";
 
         // The height at the bottom of the screen that the bar keeps for itself with the default
-        // theme measures: the margin and the row on its plate. The interaction panel stands
-        // above it.
+        // theme measures: the margin and the row on its plate. The interaction panel and the
+        // game messages stand above it.
         public const float ReservedBottom = 64f;
 
         // Between a text and the bar, and the plate's padding around the row.

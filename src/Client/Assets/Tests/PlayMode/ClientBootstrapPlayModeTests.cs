@@ -79,6 +79,20 @@ namespace Mmorpg.Client.Tests.PlayMode
             var messagePanel = Object.FindAnyObjectByType<TemporaryGameMessagePanel>();
             Assert.That(messagePanel, Is.Not.Null);
             Assert.That(messagePanel.VisibleTexts(), Is.Empty);
+
+            // The experience bar shows only with a progression, and the panels at the bottom
+            // stand above its row.
+            var experienceBar = Object.FindAnyObjectByType<ExperienceBar>();
+            Assert.That(experienceBar, Is.Not.Null);
+            Assert.That(experienceBar.IsVisible, Is.False);
+            Assert.That(Object.FindAnyObjectByType<LevelUpBanner>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<LevelUpEffects>(), Is.Not.Null);
+            Assert.That(
+                BottomOf(messagePanel, TemporaryGameMessagePanel.PanelName),
+                Is.EqualTo(ExperienceBar.ReservedBottom));
+            Assert.That(
+                BottomOf(Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>(), TemporaryWorldInteractionPanel.PanelName),
+                Is.EqualTo(ExperienceBar.ReservedBottom));
             var combatTargeting = Object.FindAnyObjectByType<CombatTargetingController>();
             Assert.That(combatTargeting, Is.Not.Null);
             Assert.That(combatTargeting.TargetEntityId, Is.Zero);
@@ -231,6 +245,14 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             Assert.That(ClientSceneLoader.IsWorldSceneAvailable("NoSuchWorldScene"), Is.False);
             Assert.That(ClientSceneLoader.IsWorldSceneAvailable(SceneNames.LoginMenu), Is.False);
+        }
+
+        // The bottom edge of a bottom-anchored panel above the bottom of the screen.
+        private static float BottomOf(Component owner, string panelName)
+        {
+            var panel = owner.GetComponentsInChildren<RectTransform>(true).Single(rect => rect.name == panelName);
+            Assert.That((panel.anchorMin.y, panel.pivot.y), Is.EqualTo((0f, 0f)), panelName);
+            return panel.anchoredPosition.y;
         }
     }
 }

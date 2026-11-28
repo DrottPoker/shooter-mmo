@@ -2502,8 +2502,8 @@ take its id from `--dev-items-list` as
    upper third of the screen for about three seconds, outlined and readable
    over the sky, a burst of bright golden motes rises from the feet to above the
    head and is easy to see at 1080p, and the Equipment window shows `LEVEL 2`
-   at once. A second
-   client that sees the character sees the motes too, without a banner.
+   at once. A second client that sees the character sees the motes too, without
+   a banner.
 4. Kill the fifth Feral Wolf and turn the quest in at Mira. Expected result:
    `2 | 25` after the kill, and `2 | 145` after the turn-in, which adds the
    quest's `rewardExperience` of 120 in
@@ -2512,12 +2512,14 @@ take its id from `--dev-items-list` as
 5. Leave the shard. Expected result: CharacterSelect shows `Level 2` for the
    character. Join again. Expected result: the bar shows `Level 2` and
    `145 / 150 XP` at once, without a `+` text or a banner.
-6. Set the level to 7 on the Admin menu's `Level` tab, as
+6. Set the level to 8 on the Admin menu's `Level` tab, as
    [The Level Tab Of The Admin Menu](#the-level-tab-of-the-admin-menu)
    shows. Expected result: the level of the Grey Wolves (1) and the Feral Wolves
-   (2) on their nameplates turns grey at once, because a level 7 character gets
-   no experience from Mobs 5 or more levels below it, and the Feral Alpha's 5
-   stays white. Set level 2 again. Expected result: every level is white.
+   (2) on their nameplates turns grey at once, because a level 8 character gets
+   no experience from Mobs more than 5 levels below it, and the Feral Alpha's 5
+   stays white; the `No XP at or below` column of the progression table shows
+   2 in the row of level 8. Set level 7. Expected result: only the Grey Wolves'
+   1 is grey. Set level 2. Expected result: every level is white.
 
 ### Loot All
 

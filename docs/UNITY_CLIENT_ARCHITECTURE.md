@@ -4789,11 +4789,13 @@ never for a level that an admin tool lowered.
   `ExperienceBarFill` moves the fill to each new value over 0.4 s, easing out,
   and on a level-up first runs to full and then from empty. A gain shows a
   pooled label at `LabelSize` plus 3 over the bar's right end that rises 28 px
-  and fades over 1.4 s;
-  at most four show, and a fifth replaces the oldest. The bar shows while the
+  and fades over 1.4 s; at most four show, and a fifth replaces the oldest. The bar shows while the
   state has a progression, and nothing on it takes a raycast.
-  `TemporaryWorldInteractionPanel` stands `ExperienceBar.ReservedBottom` above
-  the bottom edge, over the bar.
+  `TemporaryWorldInteractionPanel` at the bottom centre and
+  `TemporaryGameMessagePanel` at the bottom left stand
+  `ExperienceBar.ReservedBottom` above the bottom edge, over the bar's row, so
+  neither covers its plate, also on a 4:3 screen where the plate reaches the
+  message panel's width; `ClientBootstrapPlayModeTests` pins both.
 - `LevelUpBanner` is the canvas of the `LevelUpBanner` layer: `Level up` in the
   theme's `TextColor` over the new level in the title font at 46 points, in
   the upper third of the screen, faded in over 0.2 s, held for 2.2 s, and faded
@@ -4818,8 +4820,12 @@ never for a level that an admin tool lowered.
 
 `ProgressionClientStateTests`, `ExperienceBarTests`, and
 `TemporaryAdminProgressionTabTests` in `Tests/EditMode/Progression` pin the
-state, the rules, the bar and banner over a state, the effect's unknown entity,
-and the Admin tab.
+state, also on a sign-out and a join, the rules, the bar and banner over a
+state, when the effect plays, through `LevelUpEffects.UseCharacters` in place
+of the combatant views, and the Admin tab, also a session that ends before its
+answer. `QuestClientTests` pins that the quest controller follows the level, and
+`InventoryWindowsPlayModeTests` that the Equipment window's level line follows
+a progression change in place.
 
 ## Quest Client
 

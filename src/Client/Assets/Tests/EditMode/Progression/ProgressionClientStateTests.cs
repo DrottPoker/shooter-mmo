@@ -102,6 +102,39 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(changes, Is.EqualTo(new RealtimeOwnerProgressionChanged[] { null }));
         }
 
+        // A sign-out forgets the character, so the level goes back to 1.
+        [Test]
+        public void ASignOutForgetsTheProgressionAndTheLevel()
+        {
+            harness.JoinSession();
+            harness.Deliver(RealtimeProtocol.EncodeOwnerProgressionChanged(Progression(12, 0)));
+            changes.Clear();
+
+            clientSession.SignOut();
+
+            Assert.That(state.HasProgression, Is.False);
+            Assert.That(state.Level, Is.EqualTo(1));
+            Assert.That(changes, Is.EqualTo(new RealtimeOwnerProgressionChanged[] { null }));
+        }
+
+        // A join starts the session's progression over, before its first message arrives, and
+        // keeps the level reached as the fallback.
+        [Test]
+        public void AJoinStartsTheProgressionOver()
+        {
+            state.Apply(Progression(12, 0));
+            changes.Clear();
+
+            harness.JoinSession();
+
+            Assert.That(state.HasProgression, Is.False);
+            Assert.That(state.Level, Is.EqualTo(12));
+            Assert.That(changes, Is.EqualTo(new RealtimeOwnerProgressionChanged[] { null }));
+
+            harness.Deliver(RealtimeProtocol.EncodeOwnerProgressionChanged(Progression(13, 0)));
+            Assert.That(state.Level, Is.EqualTo(13));
+        }
+
         [Test]
         public void AStateWithoutASourceAppliesAndResetsByHand()
         {

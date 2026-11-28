@@ -262,6 +262,56 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(LevelUpEffects.EffectSeconds, Is.EqualTo(2.3f).Within(1e-5f));
         }
 
+        // The world effect plays on the own character for a level-up but not for a snapshot or a
+        // lowered level, and on another character the worker names when the client shows it.
+        [Test]
+        public void TheLevelUpEffectPlaysForALevelUpAndForAShownCharacter()
+        {
+            const ulong owner = 7;
+            const ulong shown = 42;
+            var harness = new RealtimeHubHarness();
+            var host = new GameObject("LevelUpEffects");
+            host.SetActive(false);
+            var material = new Material(Shader.Find("Sprites/Default"));
+            try
+            {
+                var progression = new ProgressionClientState();
+                var effects = host.AddComponent<LevelUpEffects>();
+                effects.Initialize(progression, harness.Hub.Progression, null, material);
+                effects.UseCharacters(
+                    (ulong entityId, out Vector3 position) =>
+                    {
+                        position = Vector3.zero;
+                        return entityId == owner || entityId == shown;
+                    },
+                    () => owner);
+                effects.Begin();
+
+                progression.Apply(Change(12, 0, 0, 1, RealtimeProgressionChangeReason.Snapshot));
+                progression.Apply(Change(5, 0, 0, -7, RealtimeProgressionChangeReason.Admin));
+                Assert.That(effects.PlayingCount, Is.Zero);
+
+                progression.Apply(Change(13, 10, 900, 1, RealtimeProgressionChangeReason.MobKill));
+                Assert.That(effects.IsPlaying(owner), Is.True);
+
+                harness.JoinSession();
+                harness.Deliver(RealtimeProtocol.EncodeEntityLeveledUp(RealtimeHubMessages.LevelUp(shown, 30)));
+                harness.Deliver(RealtimeProtocol.EncodeEntityLeveledUp(RealtimeHubMessages.LevelUp(99, 30)));
+                Assert.That(effects.IsPlaying(shown), Is.True);
+                Assert.That(effects.IsPlaying(99), Is.False, "An entity the client does not show is ignored.");
+                Assert.That(effects.PlayingCount, Is.EqualTo(2));
+
+                progression.Apply(Change(14, 10, 900, 1, RealtimeProgressionChangeReason.MobKill));
+                Assert.That(effects.PlayingCount, Is.EqualTo(2), "A character plays one effect at a time.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(material);
+                harness.Dispose();
+            }
+        }
+
         // The world effect plays only on a character the client shows.
         [Test]
         public void TheLevelUpEffectIgnoresACharacterTheClientDoesNotShow()

@@ -17,6 +17,9 @@ namespace Mmorpg.Client.Ui
         // The most experience one grant may carry, as the protocol bounds it.
         public const long MaximumGrantedExperience = 1000000000;
 
+        // What the result line says when the session ended before the answer came.
+        public const string NoAnswerText = "No answer came: the session ended before the worker answered.";
+
         private readonly ProgressionClientState progression;
         private readonly Func<RealtimeAdminIntent, string, bool> send;
         private readonly HashSet<Guid> pendingIntents = new HashSet<Guid>();
@@ -181,10 +184,17 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        // The tools are off or the session ended: no answer comes for what was sent.
+        // The tools are off or the session ended: no answer comes for what was sent, and the
+        // result line says so instead of waiting.
         public void ForgetPending()
         {
+            if (pendingIntents.Count == 0)
+            {
+                return;
+            }
+
             pendingIntents.Clear();
+            ShowResult(NoAnswerText, TemporaryUiKit.WarningColor);
         }
 
         private bool Send(RealtimeAdminIntent intent, string description)

@@ -689,6 +689,34 @@ namespace Mmorpg.Client.Tests.PlayMode
             return views.Single(view => view.SlotKey == slotKey);
         }
 
+        // The Equipment window shows the character's level over the paper doll and changes it in
+        // place when the progression state does, here from a newer character list of the same
+        // character, as after leaving a World.
+        [UnityTest]
+        public IEnumerator TheEquipmentWindowShowsTheLevelAndFollowsIt()
+        {
+            using var probe = new WindowProbe();
+            yield return probe.Load("Level Probe", level: 7);
+            var windows = probe.Windows;
+            windows.SetEquipmentOpen(true);
+            yield return null;
+            Assert.That(EquipmentTexts(windows), Has.Some.EqualTo("LEVEL 7"));
+
+            PlayModeClient.Session.Select(
+                new CharacterResponse { id = probe.CharacterId.ToString(), name = "Level Probe", level = 9 },
+                null);
+            Assert.That(EquipmentTexts(windows), Has.Some.EqualTo("LEVEL 9"), "It follows at once.");
+            Assert.That(EquipmentTexts(windows), Has.None.EqualTo("LEVEL 7"));
+        }
+
+        private static string[] EquipmentTexts(InventoryWindows windows)
+        {
+            return Window(windows, InventoryWindows.EquipmentWindowName)
+                .GetComponentsInChildren<TMP_Text>()
+                .Select(text => text.text)
+                .ToArray();
+        }
+
         // Loads Development World 1 against an unreachable GameService, selects a character,
         // and applies a committed snapshot; disposing closes the windows and the session.
         private sealed class WindowProbe : IDisposable
@@ -705,11 +733,15 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             public string BlockedSlotId { get; private set; }
 
-            // The extra carried item lies at Permanent Inventory slot index 2.
+            public Guid CharacterId { get; private set; }
+
+            // The extra carried item lies at Permanent Inventory slot index 2. The level is the
+            // character list's.
             public IEnumerator Load(
                 string characterName,
                 Func<ClientItemCatalog, (string SlotId, InventoryItem Item)> extraEquipment = null,
-                Func<ClientItemCatalog, InventoryItem> extraCarried = null)
+                Func<ClientItemCatalog, InventoryItem> extraCarried = null,
+                int level = 1)
             {
                 gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
                 PlayModeClient.Session.SignOut();
@@ -726,12 +758,14 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Catalog = controller.State.Catalog;
                 Assert.That(Catalog, Is.Not.Null);
                 var characterId = Guid.NewGuid();
+                CharacterId = characterId;
                 PlayModeClient.Session.SignIn(new AuthResponse { accountId = Guid.NewGuid().ToString() });
                 PlayModeClient.Session.Select(
                     new CharacterResponse
                     {
                         id = characterId.ToString(),
-                        name = characterName
+                        name = characterName,
+                        level = level
                     },
                     null);
                 yield return null;
