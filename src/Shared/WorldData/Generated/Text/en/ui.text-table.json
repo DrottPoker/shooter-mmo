@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "898b882f41528f6db0d3dee8a877c22343bb4acb63f51a04b0328a6b1c46b58f",
+  "revision": "72c878419a5ee091fea450ccf3462e81317f2c75ce2ddc60b4ce79d88acf435c",
   "entries": [
     {
       "key": "ui/characters/body-in-world",
@@ -18,7 +18,7 @@
     },
     {
       "key": "ui/characters/character-detail",
-      "text": "{body}  \u00B7  {gold} gold"
+      "text": "Level {level}  \u00B7  {body}  \u00B7  {gold} gold"
     },
     {
       "key": "ui/characters/choose-character",
@@ -303,6 +303,10 @@
     {
       "key": "ui/common/item-stack",
       "text": "{item} x{quantity}"
+    },
+    {
+      "key": "ui/common/level",
+      "text": "Level {level}"
     },
     {
       "key": "ui/common/ok",
@@ -1323,6 +1327,22 @@
     {
       "key": "ui/login/username-hint",
       "text": "3 to 32 letters, numbers, or underscores."
+    },
+    {
+      "key": "ui/progression/experience",
+      "text": "{experience} / {needed} XP"
+    },
+    {
+      "key": "ui/progression/experience-gained",
+      "text": "\u002B{xp} XP"
+    },
+    {
+      "key": "ui/progression/highest-level",
+      "text": "Highest level"
+    },
+    {
+      "key": "ui/progression/level-up",
+      "text": "Level up"
     },
     {
       "key": "ui/quests/abandon",

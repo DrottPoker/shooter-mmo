@@ -407,8 +407,8 @@ namespace Mmorpg.Client.Items
     }
 
     // Loot all as GameService commits it: CorpseLootAllPlanner plans the steps from the shown
-    // inventory and corpse, and the prediction applies them. The client does not know the
-    // character level, so it shows equipment with a level requirement going into the inventory.
+    // inventory and corpse, and the prediction applies them. Equipment that needs a higher level
+    // than the character's goes into the inventory.
     internal static class CorpseLootAllPrediction
     {
         public static LootAllPlan Plan(IInventoryView view, CorpseLootView corpse, bool wholeItemsOnly)
@@ -453,7 +453,7 @@ namespace Mmorpg.Client.Items
 
             return CorpseLootAllPlanner.Plan(new LootAllRequest(
                 definitionId => catalog.TryGetDefinition(definitionId, out var definition) ? definition : null,
-                definition => definition.RequiredCharacterLevel <= 1,
+                definition => definition.RequiredCharacterLevel <= view.CharacterLevel,
                 snapshot.CarriedWeight,
                 snapshot.CarryCapacity,
                 equipment,

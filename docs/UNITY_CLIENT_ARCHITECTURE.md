@@ -75,6 +75,7 @@ largest, is split by area:
 | `Networking/Channels` | A channel per feature of the realtime client, each an interface with its implementation; see [Realtime Networking Layer](#realtime-networking-layer) |
 | `Ui/Kit` | The themed widgets of the permanent UI, the layer table, and the window manager; see [UI Kit And Theme](#ui-kit-and-theme) and [UI Window Manager](#ui-window-manager) |
 | `Ui/Inventory` | The inventory windows and the logic of what their actions send; see [Inventory UI](#inventory-ui) |
+| `Ui/Progression` | The experience bar, the level-up banner and world effect, and their rules; see [Progression Client](#progression-client) |
 
 ### Editor
 
@@ -98,7 +99,7 @@ in the shared WorldData package at `src/Shared/WorldData/Editor`.
 
 | Folder | Holds |
 | --- | --- |
-| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Networking`, `Protocol`, `Quests`, and `WorldActors` |
+| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Networking`, `Progression`, `Protocol`, `Quests`, and `WorldActors` |
 | `Tests/EditMode/Fixtures` | Test-owned fixtures: a collision world, an item catalog, actor content, the quest catalog, and a copy of the quest content |
 | `Tests/Shared` | The assembly `Mmorpg.SharedTests`: test sources that the .NET test projects compile too and that the EditMode and PlayMode tests run, the PlayMode tests also in a built player |
 | `Tests/PlayMode` | The PlayMode assembly; `Player` holds the goldens that run in a built player |
@@ -138,7 +139,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession` with `IClientSession` and `ClientSettings`, `ClientEnvironment`, `ClientBuildInfo` with `ClientBuildStamp`, `ClientAddressOverride`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain`, and `CameraRendering`, which makes a camera render as another does, with the pipeline's settings | Core |
-| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery`, `WorldExit` | Api, Core, Worlds |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery`, `WorldExit`, and `ProgressionClientState`, which the items, quests, and UI read the character's level from | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Quests` | The quest catalog, the joined character's quest log and its loading, quest progress, the quest dialog's entries, and quest notices, described in [Quest Client](#quest-client) | Api, Core, Networking, Items |
 | `Mmorpg.Client.Gameplay` | Local and remote players with `LocalPlayerSource`, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
@@ -272,10 +273,11 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   |   +-- RealtimeMessageTable, one entry per server message type
   |   +-- RealtimePresenceRegistry (spawned players, looks, world actors)
   |   +-- channels: movement, players, looks, items, corpses, world actors,
-  |   |   world interactions, combat, quests, admin
+  |   |   world interactions, combat, quests, progression, admin
   |   +-- RealtimeDiagnostics (IRealtimeDiagnostics) and RealtimeSender
   +-- ClientContentReport, the content set that ClientContentResolver resolved at start
   +-- created once the content is resolved:
+  +-- ProgressionClientState (the controlled character's level and experience)
   +-- InventoryClientController
   |   +-- ClientItemCatalog
   |   +-- InventoryClientState (confirmed and shown state, pending operations)
@@ -319,6 +321,8 @@ World scene
       |   CombatDeathPresentation
       +-- MovementDestinationMarker
       +-- WorldNameplates (runtime uGUI)
+      +-- ExperienceBar and LevelUpBanner (runtime uGUI of the UI kit)
+      +-- LevelUpEffects (the golden motes of a level-up)
       +-- InventoryWindows (runtime uGUI of the UI kit, themed by UiTheme)
       +-- ReconnectNotice (runtime uGUI of the UI kit) over a World whose connection is
       |   restored
@@ -389,7 +393,8 @@ Combat (World scene, created at runtime by ClientBootstrap)
 `ClientBootstrap` creates itself after the first scene loads, through
 `RuntimeInitializeOnLoadMethod` with `AfterSceneLoad`, on an object that
 survives every scene change. It owns the `ClientSession`, one
-`RealtimeSimulationClient`, one `InventoryClientController`, and the quest,
+`RealtimeSimulationClient`, the `ProgressionClientState`, one
+`InventoryClientController`, and the quest,
 corpse, world actor, world interaction, and combat controllers, observes scene
 transitions, and has `WorldExit` release the World when an active World scene is
 left outside the normal panel flow. A configuration without its runtime
@@ -414,7 +419,8 @@ that the client resolves from GameService:
    `ui/login/checking-content` from the bundled `ui` table, and resolves the
    content set as [Content Resolution At Start](#content-resolution-at-start)
    describes. Then it builds the text catalog from the resolved tables, creates
-   and initializes every controller and the look link, removes the panel, sets
+   and initializes the progression state, every controller, and the look link,
+   removes the panel, sets
    `IsContentReady`, and composes the active scene.
 
 No controller and no panel that needs content exists before the check ends. A
@@ -758,7 +764,8 @@ vendor windows, the errors of the item, corpse, and world interaction
 controllers, the login and character selection panels with
 `AccountEntryPresentation` and their notices, the reconnect notice over the
 World, the status texts of the combat HUD from
-`CombatHudPresentation`, and the world menu with its Walk here, Examine,
+`CombatHudPresentation`, the experience bar and the level-up banner from
+`ExperienceBarPresentation`, and the world menu with its Walk here, Examine,
 Attack, and Loot options, corpse names, and game messages are converted.
 `WorldMenuController`, `WorldInteractionTargetingController`, and
 `CombatTargetingController` take the text catalog from the bootstrap in
@@ -1093,7 +1100,7 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 | `IRealtimeCombatChannel` | `CombatIntentResult`, `CombatantState`, `CombatEventBatch`, `OwnerCombatState` | `CombatIntentCompleted`, `CombatantStateReceived`, `CombatEventBatchReceived`, `OwnerCombatStateReceived` | `TrySendCombatIntent` |
 | `IRealtimeQuestChannel` | `QuestIntentResult`, `QuestLogChanged`, `QuestDropInCorpse` | `QuestIntentCompleted`, `QuestLogChanged`, `QuestDropInCorpse` | `TrySendQuestIntent` |
 | `IRealtimeAdminChannel` | `AdminIntentResult`, `AdminStateChanged` | `AdminIntentCompleted`, `AdminStateChanged`, `AdminState` | `TrySendAdminIntent`, also for the `SetLevel` and `GrantExperience` kinds |
-| `IRealtimeProgressionChannel` | `OwnerProgressionChanged`, `EntityLeveledUp` | `ProgressionChanged`, `EntityLeveledUp`, `Progression`: the controlled character's latest progression as the worker sent it, null until the first one of a joined session and cleared with the session. No feature reads it yet | none |
+| `IRealtimeProgressionChannel` | `OwnerProgressionChanged`, `EntityLeveledUp` | `ProgressionChanged`, `EntityLeveledUp`, `Progression`: the controlled character's latest progression as the worker sent it, null until the first one of a joined session and cleared with the session. `ProgressionClientState` follows it, see [Progression Client](#progression-client) | none |
 
 The session owns an explicit connection state:
 
@@ -1612,12 +1619,22 @@ About 4,500 terrain triangles of the Development World 2 highlands draw in the
 Editor at well over 100 FPS.
 
 `TemporaryAdminMenu`, toggled by `ToggleAdminMenu` through the window manager,
-holds the development admin tools in three tabs, Look, Movement, and Combat.
+holds the development admin tools in six tabs, Look, Movement, Combat, Storage,
+Quests, and Level; a tab label that does not fit its tab shrinks down to 10
+points.
 They are available while `IRealtimeAdminChannel.AdminState` is set, which a
 worker that allows the tools sends after every join; otherwise the tabs are
 greyed out and the footer says why. Look steps the stored body model and look
 through `PlayerBodyLookSetting`; Movement sends `SetMovementSpeed` and
-`Teleport`; Combat sends `RestoreHealth` and `SetInvulnerable`. The menu is a
+`Teleport`; Combat sends `RestoreHealth` and `SetInvulnerable`; Storage opens
+the Bank or Recovery Storage through `InventoryWindowRequests`; Quests is
+`TemporaryAdminQuestTab`, above. Level, `TemporaryAdminProgressionTab`,
+reads out the level and experience of the `ProgressionClientState`, checks a
+level against `RealtimeProtocolLimits.MaximumAdminCharacterLevel` and an amount
+of experience against the protocol's 1 to 1,000,000,000 before it sends
+`SetLevel` or `GrantExperience` through the menu's sender, and shows the answer
+to its own last intent, the error message of a refused one; the changed
+progression arrives before the answer and moves the readout. The menu is a
 world menu provider: while it is open, the right-click menu offers `Teleport
 here` after `Walk here`, and after `Pick a spot` that option comes first, so a
 left click on the ground teleports and Escape cancels the pick before it closes
@@ -1650,6 +1667,8 @@ sets a canvas order. From the bottom up:
 | `WorldNameplates` | 200 | `WorldNameplates` |
 | `WorldQuestMarkers` | 300 | `WorldQuestMarkers` |
 | `Hud` | 400 | `TemporaryCombatHud` |
+| `ExperienceBar` | 430 | `ExperienceBar` |
+| `LevelUpBanner` | 460 | `LevelUpBanner` |
 | `QuestTracker` | 500 | The quest canvas, which draws the quest tracker |
 | `GameMessages` | 600 | `TemporaryGameMessagePanel` |
 | `Notices` | 700 | `SavingPausedNotice` |
@@ -1731,7 +1750,8 @@ log's question open. A new question replaces an open one.
 **Kits.** The permanent windows are built on the
 [UI Kit And Theme](#ui-kit-and-theme): the inventory and storage windows, the
 quest dialog, the quest log, the tracker, the dialog, the reconnect and saving
-notices, and the nameplates and quest markers with their `WorldLabels`. The
+notices, the experience bar and the level-up banner, and the nameplates and
+quest markers with their `WorldLabels`. The
 panels named `Temporary`, which are the entry screens, the combat HUD, the game
 messages, the interaction panel, the world menu, and the Debug and Admin menus,
 keep their look from `TemporaryUiKit` and take their canvas, layer, Escape, keys,
@@ -2380,9 +2400,12 @@ and corpse to the shared `CorpseLootAllPlanner` in WorldData, which GameService
 runs on the locked state, applies its steps to the inventory, and empties the
 corpse slots the plan takes. The client cannot tell a live Mob corpse from a
 durable one, so it plans whole items only for every Mob corpse presentation key,
-as a live Mob corpse requires, until the server answers. It does not know the
-character's level either, so the plan treats only a level requirement of 1 as
-met and shows equipment that requires more going into the inventory. Every item
+as a live Mob corpse requires, until the server answers. It judges a level
+requirement by `IInventoryView.CharacterLevel`, the level of the
+[Progression Client](#progression-client) that `InventoryClientState` reads,
+and shows equipment that requires more going into the inventory; the
+right-click loot of a corpse item into an equipment slot follows the same
+level. Every item
 that arrives shows under an id the operation made until the committed change
 names the server's ids.
 
@@ -4693,7 +4716,12 @@ the final interface art.
   `WorldActorSpawn` through `WorldActorClientEntry`. A Mob without a combatant
   state, a hidden Mob, and a dead one show nothing.
 - Color: `NameplatePresentation.MobHealthColor` is red for `Aggressive` and
-  yellow for `Defensive`; an unknown aggression shows red.
+  yellow for `Defensive`; an unknown aggression shows red. The level shows in
+  the theme's `MutedTextColor` when `NameplatePresentation.GivesNoExperience`
+  says the Mob is at or below the progression's
+  `HighestMobLevelWithoutExperience`, read every frame from the
+  `ProgressionClientState`, so it follows a progression at once; before the
+  first progression no level is muted.
 - Slide: every nameplate owns a `NameplateHealthSlide` that slides the shown
   health to each new value over `NameplatePresentation.HealthSlideSeconds`
   (0.3), easing out, and on from where the bar is when a value arrives mid-slide.
@@ -4714,6 +4742,90 @@ the final interface art.
 - Canvas: its own screen-space canvas in the `WorldNameplates` layer, below the
   combat HUD, so damage numbers and frames draw over it. Nothing on it takes a
   raycast.
+
+## Progression Client
+
+The client shows the character's level and experience and never computes one:
+every value is what `RealtimeOwnerProgressionChanged` carried, as
+[Progression](REALTIME_PROTOCOL.md#progression-messages) describes.
+`ProgressionClientState` in `Mmorpg.Client.Networking` holds it for the World
+session. The bootstrap creates it with the progression channel, the realtime
+session, and the client session, before the controllers, and passes it to the
+inventory and quest controllers, the inventory windows, the nameplates, the
+Admin menu, and the three progression components below.
+
+- Before the first progression of a session it holds only the level of the
+  selected character from `CharacterResponse.level`. Every `ProgressionChanged`
+  replaces it and raises `Changed` once with the message. A join and a session
+  end forget the progression and raise `Changed` with null, and the level it
+  reached stays as the fallback, so a restored connection never shows the
+  character list's older level. Another account or character starts over from
+  its own `CharacterResponse.level`, and a newer character list of the same
+  character sets it. `Level` is the progression's level, or the fallback.
+- `InventoryClientState.CharacterLevel` and `QuestClientState.CharacterLevel`
+  read it, as [Predicted Operations](#predicted-operations) and
+  [Quest Client](#quest-client) describe. The Equipment window shows it over
+  the paper doll and changes the line in place on every change, so a level-up
+  never redraws the window or cancels a drag.
+
+What the player sees is in
+[Level And Experience](GAME_FEATURES.md#level-and-experience). Three runtime
+components of `Mmorpg.Client.Ui`, in `Scripts/Ui/Progression`, show it, and
+`ExperienceBarPresentation` holds their rules as pure functions: the fraction,
+the texts with the invariant thousands separators of the gold amounts, and when
+a change shows a gain or a level-up, never for the `Snapshot` after a join and
+never for a level that an admin tool lowered.
+
+- `ExperienceBar` is the canvas of the `ExperienceBar` layer, built on the
+  [UI Kit](#ui-kit-and-theme): the bar at the bottom centre, `ScreenMargin`
+  above the edge, the theme's `ExperienceBarWidth` by `ExperienceBarHeight`
+  from its `MeterTrack` and `MeterFill` in `ExperienceColor`, the level left of
+  it in the title font at `ExperienceLevelSize`, and the numbers right of it in
+  `TextColor` at `LabelSize`, all on one plate of the theme's `HudPlateColor`
+  with 10 px of padding beside the texts and 6 px above and below the row. The
+  texts take their preferred widths and the plate hugs them, measured again
+  whenever a text changes, while the bar stays at the screen's centre; the
+  plate's top stays below `ExperienceBar.ReservedBottom`.
+  `ExperienceBarFill` moves the fill to each new value over 0.4 s, easing out,
+  and on a level-up first runs to full and then from empty. A gain shows a
+  pooled label at `LabelSize` plus 3 over the bar's right end that rises 28 px
+  and fades over 1.4 s; at most four show, and a fifth replaces the oldest. The bar shows while the
+  state has a progression, and nothing on it takes a raycast.
+  `TemporaryWorldInteractionPanel` at the bottom centre and
+  `TemporaryGameMessagePanel` at the bottom left stand
+  `ExperienceBar.ReservedBottom` above the bottom edge, over the bar's row, so
+  neither covers its plate, also on a 4:3 screen where the plate reaches the
+  message panel's width; `ClientBootstrapPlayModeTests` pins both.
+- `LevelUpBanner` is the canvas of the `LevelUpBanner` layer: `Level up` in the
+  theme's `TextColor` over the new level in the title font at 46 points, in
+  the upper third of the screen, faded in over 0.2 s, held for 2.2 s, and faded
+  out over 0.6 s through a `CanvasGroup`; a newer level-up starts it over. It
+  hides when `ExperienceBarPresentation.BannerFinished` says its whole time
+  passed, never for an opacity of 0, which it starts at.
+- The gain labels and both banner texts have a dark outline from `HudText`:
+  `outlineWidth` 0.2 and black at 0.85 alpha on each text's own material
+  instance, with the outline keyword of the mobile SDF shader on, since the
+  outlined material of the world labels belongs to the default font.
+- `LevelUpEffects` plays the world effect: 90 bright golden motes, 0.09 to
+  0.18 m, that leave a ring of 0.55 m around the feet in a burst over the
+  first 0.5 s, `MotesEmittedBy`, and each rise to about 2.4 m over 1.8 s,
+  fading out in the last third, from a code-built particle
+  system in the style of the [Water Wakes](#water-wakes) and with the water
+  spray's particle material of the configuration. It plays on the controlled
+  character for a level-up of the state, and on the character an
+  `EntityLeveledUp` names when `CombatantViewLocator` shows it; an entity it
+  does not show is ignored. Each character that plays it takes a pooled system
+  that follows the character in local space and goes back when its motes are
+  gone or the character is.
+
+`ProgressionClientStateTests`, `ExperienceBarTests`, and
+`TemporaryAdminProgressionTabTests` in `Tests/EditMode/Progression` pin the
+state, also on a sign-out and a join, the rules, the bar and banner over a
+state, when the effect plays, through `LevelUpEffects.UseCharacters` in place
+of the combatant views, and the Admin tab, also a session that ends before its
+answer. `QuestClientTests` pins that the quest controller follows the level, and
+`InventoryWindowsPlayModeTests` that the Equipment window's level line follows
+a progression change in place.
 
 ## Quest Client
 
@@ -4745,7 +4857,10 @@ windows in `Mmorpg.Client.Ui` present it.
   with the session and with a change of character.
 - `QuestClientState` keeps the active quests with their current step and the
   stored progress of the step's counted objectives, the completion counts, and
-  the character's level from the character list. It raises `QuestsChanged` with
+  the character's level, which `QuestClientController` sets from the
+  [Progression Client](#progression-client) with `SetCharacterLevel`, so a
+  level-up changes the offers and markers at once and keeps the log. It raises
+  `QuestsChanged` with
   each quest a change touched, before and after. A catalog that is
   invalid leaves it `Failed` with the reason for every character, and the quest
   windows show that reason instead of reading quests.

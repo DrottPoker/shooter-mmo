@@ -55,6 +55,8 @@ namespace Mmorpg.Client.App
         private WorldActorClientController worldActorController;
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
+        // The controlled character's level and experience, which the quest, item, and UI parts read.
+        private ProgressionClientState progression;
         private Material runtimePrimitiveMaterial;
         private Material debugLineMaterial;
         private GameObject arrowModel;
@@ -328,6 +330,7 @@ namespace Mmorpg.Client.App
         {
             texts = LoadTexts(report);
             var session = simulationClient.Session;
+            progression = new ProgressionClientState(simulationClient.Progression, session, clientSession);
             lookLink = new PlayerLookLink(
                 simulationClient.Looks,
                 simulationClient.Movement,
@@ -344,7 +347,8 @@ namespace Mmorpg.Client.App
                 clientSession,
                 sessionRecovery,
                 report.TextOf(ClientContentKinds.ItemCatalog, ClientContentKinds.CoreCatalogId),
-                texts);
+                texts,
+                progression);
             inventoryController.State.Changed += UpdatePlayerEquipment;
             UpdatePlayerEquipment();
 
@@ -357,7 +361,8 @@ namespace Mmorpg.Client.App
                 sessionRecovery,
                 report.TextOf(ClientContentKinds.QuestCatalog, ClientContentKinds.CoreCatalogId),
                 texts,
-                inventoryController);
+                inventoryController,
+                progression);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient.Corpses, session, inventoryController, texts);
@@ -436,6 +441,8 @@ namespace Mmorpg.Client.App
 
             lookLink?.Dispose();
             lookLink = null;
+            progression?.Dispose();
+            progression = null;
             contentTransport?.Dispose();
             contentTransport = null;
 
@@ -647,7 +654,8 @@ namespace Mmorpg.Client.App
                         worldMenu,
                         combatController,
                         inventoryWindowRequests,
-                        questController));
+                        questController,
+                        progression));
             }
 
             var inventoryWindows = AddSceneComponentIfMissing<InventoryWindows>(
@@ -663,7 +671,8 @@ namespace Mmorpg.Client.App
                     texts,
                     bodyLook,
                     sceneContext != null ? sceneContext.Preview : null,
-                    inputFocus));
+                    inputFocus,
+                    progression));
             AddSceneComponentIfMissing<QuestWindows>(
                 windows => windows.Initialize(
                     uiTheme,
@@ -768,7 +777,9 @@ namespace Mmorpg.Client.App
                     combatantViews,
                     realtime.Movement,
                     realtime.Diagnostics,
-                    presentationBudget));
+                    presentationBudget,
+                    progression,
+                    uiTheme));
             AddSceneComponentIfMissing<WorldQuestMarkers>(
                 markers => markers.Initialize(questController, inventoryController, actorPresentation, combatantViews, presentationBudget));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
@@ -779,6 +790,12 @@ namespace Mmorpg.Client.App
                     realtime.Diagnostics,
                     combatantViews,
                     texts));
+            AddSceneComponentIfMissing<ExperienceBar>(
+                bar => bar.Initialize(uiTheme, progression, texts));
+            AddSceneComponentIfMissing<LevelUpBanner>(
+                banner => banner.Initialize(uiTheme, progression, texts));
+            AddSceneComponentIfMissing<LevelUpEffects>(
+                effects => effects.Initialize(progression, realtime.Progression, combatantViews, waterSprayMaterial));
         }
 
         // The entry screen says when the served content is newer than this client reads.

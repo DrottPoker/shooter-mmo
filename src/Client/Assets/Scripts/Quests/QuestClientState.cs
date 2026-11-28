@@ -87,7 +87,8 @@ namespace Mmorpg.Client.Quests
     }
 
     // The quest log of the joined character as GameService last committed it, with the bundled
-    // catalog that names every quest and the character's level. It is read once per join and
+    // catalog that names every quest and the character's level, which follows the progression
+    // state. It is read once per join and
     // patched from the realtime changes in revision order; a change that does not follow the
     // log's revision asks for a reload instead. It decides no quest outcome.
     public sealed class QuestClientState
@@ -160,6 +161,20 @@ namespace Mmorpg.Client.Quests
                 ErrorMessage = string.Empty;
             }
 
+            Changed?.Invoke();
+        }
+
+        // The character's level as the worker reports it now, such as after a level-up; the log
+        // stays, and the quests the level allows follow at once.
+        public void SetCharacterLevel(int level)
+        {
+            var value = Math.Max(1, level);
+            if (value == CharacterLevel)
+            {
+                return;
+            }
+
+            CharacterLevel = value;
             Changed?.Invoke();
         }
 

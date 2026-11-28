@@ -26,13 +26,15 @@ namespace Mmorpg.Client.Tests.EditMode
         public void CharactersAndShardsReadAsOneLine()
         {
             var texts = FixtureTexts.Ui();
-            var character = new CharacterResponse { name = "Mira", bodyModel = "Human_Female", currency = 100 };
+            var character = new CharacterResponse { name = "Mira", bodyModel = "Human_Female", currency = 100, level = 12 };
             Assert.That(
                 AccountEntryPresentation.CharacterDetail(character, texts),
                 Is.EqualTo(texts.Format(
                     "ui/characters/character-detail",
+                    MessageArgument.Text("level", "12"),
                     MessageArgument.Text("body", "Human Female"),
                     MessageArgument.Text("gold", "100"))));
+            Assert.That(AccountEntryPresentation.CharacterDetail(character, texts), Does.StartWith("Level 12"));
 
             var online = Shard("local-shard-1", true);
             Assert.That(
@@ -60,6 +62,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 AccountEntryPresentation.CharacterDetail(character, texts),
                 Is.EqualTo(texts.Format(
                     "ui/characters/character-detail",
+                    MessageArgument.Text("level", "1"),
                     MessageArgument.Text("body", texts.Get("ui/characters/unknown-body")),
                     MessageArgument.Text("gold", "7"))));
             Assert.That(AccountEntryPresentation.CharacterDetail(null, texts), Is.Empty);

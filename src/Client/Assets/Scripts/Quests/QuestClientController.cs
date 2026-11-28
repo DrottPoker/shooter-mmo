@@ -32,6 +32,8 @@ namespace Mmorpg.Client.Quests
         private IClientSession clientSession;
         private ClientSessionRecovery recovery;
         private IInventoryOperationQueue inventory;
+        // The character's level as the worker reports it; null keeps the character list's.
+        private ProgressionClientState progression;
         private Guid pendingIntentId;
         // The code of the refusal that LastIntentError shows, or empty.
         private string lastIntentErrorCode = string.Empty;
@@ -79,13 +81,15 @@ namespace Mmorpg.Client.Quests
             ClientSessionRecovery sessionRecovery,
             string questCatalogJson,
             TextCatalog texts,
-            IInventoryOperationQueue inventoryQueue = null)
+            IInventoryOperationQueue inventoryQueue = null,
+            ProgressionClientState progressionState = null)
         {
             if (initialized)
             {
                 return;
             }
 
+            progression = progressionState;
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             questChannel = quests ?? throw new ArgumentNullException(nameof(quests));
             realtimeSession = session ?? throw new ArgumentNullException(nameof(session));
@@ -112,6 +116,11 @@ namespace Mmorpg.Client.Quests
             clientSession.SignedIn += OnSessionIdentityChanged;
             clientSession.SignedOut += OnSessionIdentityChanged;
             clientSession.SelectionChanged += OnSessionIdentityChanged;
+            if (progression != null)
+            {
+                progression.Changed += OnProgressionChanged;
+            }
+
             initialized = true;
             observedJoin = realtimeSession.IsJoined;
             ObserveSessionIdentity();
@@ -241,6 +250,17 @@ namespace Mmorpg.Client.Quests
                 clientSession.SignedOut -= OnSessionIdentityChanged;
                 clientSession.SelectionChanged -= OnSessionIdentityChanged;
             }
+
+            if (progression != null)
+            {
+                progression.Changed -= OnProgressionChanged;
+            }
+        }
+
+        // A level-up shows in the quest markers and the offers at once; the log stays.
+        private void OnProgressionChanged(RealtimeOwnerProgressionChanged change)
+        {
+            State.SetCharacterLevel(progression.Level);
         }
 
         private void OnQuestLogChanged(RealtimeQuestLogChanged change)
@@ -469,6 +489,11 @@ namespace Mmorpg.Client.Quests
             State.PrepareCharacter(
                 Guid.TryParse(characterId, out var parsed) ? parsed : Guid.Empty,
                 character?.level ?? 1);
+            if (progression != null)
+            {
+                State.SetCharacterLevel(progression.Level);
+            }
+
             return true;
         }
 

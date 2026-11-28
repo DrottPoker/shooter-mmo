@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.Networking;
 using Mmorpg.Client.Quests;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
@@ -201,6 +203,80 @@ namespace Mmorpg.Client.Tests.EditMode
             state.PrepareCharacter(CharacterId, 5);
             Assert.That(state.TryApplyLog(Log(3), out error), Is.True, error);
             Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.Available));
+        }
+
+        // The controller sets the quest state's level from the progression state: when the
+        // progression changes, and again after a change of character has prepared the state with
+        // the character list's level.
+        [Test]
+        public void TheControllerFollowsTheProgressionLevel()
+        {
+            var owner = new UnityEngine.GameObject("Quests");
+            var api = new ApiClient(5);
+            try
+            {
+                var settings = new ClientSettings("http://127.0.0.1:9", 10, 10, 5);
+                var realtime = owner.AddComponent<RealtimeSimulationClient>();
+                realtime.Initialize(settings);
+                var session = new ClientSession(settings);
+                var recovery = new ClientSessionRecovery(session, realtime.Session, new ClientNotices(() => 0f));
+                var progression = new ProgressionClientState();
+                progression.Apply(new RealtimeOwnerProgressionChanged(9, 0, 780, 3, 0, 0, RealtimeProgressionChangeReason.Snapshot));
+                session.SignIn(new AuthResponse { accountId = "account-1" });
+                session.Select(new CharacterResponse { id = CharacterId.ToString(), name = "Mira", level = 4 }, null);
+                var quests = owner.AddComponent<QuestClientController>();
+                quests.Initialize(api, realtime.Quests, realtime.Session, session, recovery, null, FixtureTexts.Messages(), null, progression);
+                Assert.That(quests.State.CharacterLevel, Is.EqualTo(9), "Set again after the character list's 4.");
+
+                progression.Apply(new RealtimeOwnerProgressionChanged(10, 0, 910, 4, 0, 1, RealtimeProgressionChangeReason.MobKill));
+                Assert.That(quests.State.CharacterLevel, Is.EqualTo(10));
+
+                var other = Guid.NewGuid();
+                session.Select(new CharacterResponse { id = other.ToString(), name = "Other", level = 3 }, null);
+                Assert.That(quests.State.CharacterId, Is.EqualTo(other));
+                Assert.That(quests.State.CharacterLevel, Is.EqualTo(10), "The progression's level wins over the character list's.");
+            }
+            finally
+            {
+                api.Dispose();
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        // A level-up sets the level without a new log: the log, its revision, and its loads stay,
+        // and the quests that the level allows follow at once.
+        [Test]
+        public void ALevelUpKeepsTheQuestLogAndChangesWhatIsAvailable()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            foreach (var quest in catalog.Quests)
+            {
+                quest.MinimumLevel = 5;
+            }
+
+            var state = new QuestClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(CharacterId, 4);
+            Assert.That(state.TryApplyLog(Log(3), out var error), Is.True, error);
+            var active = state.ActiveQuests.Keys.ToArray();
+            var completions = state.CompletionCounts.ToArray();
+            Assert.That(completions, Is.Not.Empty);
+            var loads = state.LoadCount;
+            var changed = 0;
+            state.Changed += () => changed++;
+
+            state.SetCharacterLevel(5);
+            state.SetCharacterLevel(5);
+
+            Assert.That(changed, Is.EqualTo(1), "An unchanged level raises nothing.");
+            Assert.That(state.CharacterLevel, Is.EqualTo(5));
+            Assert.That((state.IsReady, state.Revision, state.LoadCount), Is.EqualTo((true, 3L, loads)));
+            Assert.That(state.ActiveQuests.Keys, Is.EquivalentTo(active));
+            Assert.That(state.CompletionCounts, Is.EquivalentTo(completions));
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.Available));
+
+            state.SetCharacterLevel(0);
+            Assert.That(state.CharacterLevel, Is.EqualTo(1));
         }
 
         [Test]

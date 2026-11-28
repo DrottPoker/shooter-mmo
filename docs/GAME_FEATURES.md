@@ -79,8 +79,9 @@ bindings and player-configurable rebinding are not implemented.
 ## Character Selection
 
 CharacterSelect has a top bar with the signed-in account, `Refresh`, and
-`Log Out`; the account's characters on the left, each with its body model and
-gold; and on the right the chosen character with the shards and `Enter World`,
+`Log Out`; the account's characters on the left, each with its level, body
+model, and gold, such as `Level 12  ·  Human Male  ·  100 gold`; and on the
+right the chosen character with the shards and `Enter World`,
 or the creation of a new character. A status line at the bottom shows the
 result of the last action.
 
@@ -106,8 +107,9 @@ result of the last action.
 - While an action runs, every control is disabled.
 
 The body model and the look are stored with the character, and every client
-shows them. Changing the look in the game, such as at a barber, deleting a
-character, progression, and statistics are not implemented.
+shows them. The level is the one GameService stored when the list was read.
+Changing the look in the game, such as at a barber, deleting a character, and statistics
+are not implemented.
 
 ## Shard Entry And Exit
 
@@ -468,6 +470,15 @@ not implemented, and running with run energy is planned in
   its health as it is until the character leaves the World.
 - **Storage** opens the Bank or Recovery Storage in the storage window beside
   Inventory without an NPC, as the development worker allows.
+- **Level** shows the character's level and experience, such as
+  `Level 12, 340 / 910 XP` or `Level 200, highest level`. `Set level` sets a
+  level from 1 to 10,000, which starts with no experience inside it, and
+  `Grant experience` grants 1 to 1,000,000,000 experience, which levels up as far
+  as it reaches; GameService refuses a level above the highest level of the
+  [progression rules](../content/README.md#progression-rules). A number
+  outside these bounds sends nothing and says so, and the tab shows the answer
+  to its last request, `Done.` or the reason it was refused. A raised level
+  shows the level-up like a kill, a lowered one shows none.
 - **Quests** lists every quest by title with the character's state, such as
   `available`, `needs an earlier quest`, `active, step 1 of 2`, or `completed 2
   times, available again`. `Accept` takes a quest around its giver, level, and
@@ -992,7 +1003,9 @@ Combat is target based and server authoritative:
   `In combat` or `Returning home`. Every living Mob within 40 m of the character
   has a nameplate, also at full health: its name over a thin health bar with the
   health as numbers in it, such as `32/50`, and its level to the right of the
-  bar, as tall as the bar. The bar is red for an aggressive Mob and yellow for a
+  bar, as tall as the bar. The level is grey for a Mob that gives the character
+  no experience, as [Level And Experience](#level-and-experience) describes. The
+  bar is red for an aggressive Mob and yellow for a
   defensive one, and grey while another player has tagged the Mob. When the
   health changes, the bar and its numbers slide to the
   new value in 0.3 seconds. A nameplate is full size within 10 m and shrinks to
@@ -1028,6 +1041,40 @@ Combat is target based and server authoritative:
 
 The rules behind combat are in [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat)
 and [Mob Brains](SERVICE_FEATURES.md#mob-brains).
+
+## Level And Experience
+
+A character gains experience for the Mobs it kills and the quests it turns in,
+and levels up when the experience of its level is full. GameService computes
+every value by the [progression rules](../content/README.md#progression-rules),
+and the client shows what the worker sends; how the server grants it is in
+[Service Features](SERVICE_FEATURES.md).
+
+- The experience bar at the bottom centre of the screen shows the level left of
+  the bar, such as `Level 12`, the experience gathered inside the level in
+  violet, and its numbers right of it, such as `340 / 910 XP`, with thousands
+  separators, all on one dark plate that fits them, so they read on any ground.
+  At the highest level the bar is full and says `Highest level`. The
+  bar shows once the character is in a World and takes no click.
+- Every gain, such as a kill or a quest reward, slides the bar to its new value
+  in 0.4 seconds, and an outlined `+25 XP` rises above the bar's right end and
+  fades out
+  over 1.4 seconds; at most four show at once. The state after joining a World
+  shows no gain.
+- A level-up runs the bar to full and then from empty to the new value. A banner
+  in the upper third of the screen says `Level up` over the new level, such as
+  `Level 13`, both outlined, for about three seconds, and a burst of bright
+  golden motes rises from a ring around the character's feet to about 2.4 m
+  within two seconds. The motes rise on another character too
+  when it reaches a higher level in view. A level that an admin tool lowered
+  shows neither.
+- The Equipment window shows the level over the paper doll, and CharacterSelect
+  shows it for every character.
+- A Mob at or below the highest level that gives the character no experience
+  shows its level grey on its nameplate, and every Mob does at the highest
+  level.
+- Quests that need a level, and equipment that needs one when it is looted from
+  a corpse, follow a level-up at once.
 
 ## Not Implemented Yet
 

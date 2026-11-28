@@ -14,6 +14,9 @@ namespace Mmorpg.Client.Ui
         public const float VisibleSeconds = 12f;
         public const float FadeSeconds = 2f;
 
+        // The name of the panel that holds the lines.
+        public const string PanelName = "GameMessages";
+
         private const int VisibleMessages = 5;
 
         private readonly TextMeshProUGUI[] lines = new TextMeshProUGUI[VisibleMessages];
@@ -136,12 +139,14 @@ namespace Mmorpg.Client.Ui
         {
             var canvasObject = UiCanvas.Create(transform, "TemporaryGameMessageCanvas", UiLayer.GameMessages, false).gameObject;
 
-            var panelObject = TemporaryUiKit.CreateUiObject("GameMessages", canvasObject.transform);
+            var panelObject = TemporaryUiKit.CreateUiObject(PanelName, canvasObject.transform);
             panel = panelObject.GetComponent<RectTransform>();
             panel.anchorMin = Vector2.zero;
             panel.anchorMax = Vector2.zero;
             panel.pivot = Vector2.zero;
-            panel.anchoredPosition = new Vector2(18f, 18f);
+            // The panel stands above the experience bar's row, which reaches this far left on a
+            // narrow screen.
+            panel.anchoredPosition = new Vector2(18f, ExperienceBar.ReservedBottom);
             panel.sizeDelta = new Vector2(620f, 0f);
             var layout = panelObject.AddComponent<VerticalLayoutGroup>();
             layout.spacing = 2f;

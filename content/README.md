@@ -540,7 +540,8 @@ storage, corpse, and vendor windows with the errors of their controllers, below
 `ui/items/`, `ui/inventory/`, `ui/corpse/`, `ui/vendor/`, and `ui/common/` for
 words that several windows share, take every text from the table. So do the
 login and character screens below `ui/login/` and `ui/characters/`, the status
-texts of the combat HUD below `ui/combat/`, and the world menu, its game
+texts of the combat HUD below `ui/combat/`, the experience bar and the level-up
+banner below `ui/progression/`, and the world menu, its game
 messages, the errors of the world interaction controller, and the notice over
 a World whose connection is restored below `ui/world/`. The literals of the `Temporary` panels and of the F2 Debug and F3
 Admin menus stay English by decision. A technical failure of the API and

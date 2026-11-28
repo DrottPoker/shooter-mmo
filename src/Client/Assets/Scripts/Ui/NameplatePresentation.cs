@@ -55,6 +55,16 @@ namespace Mmorpg.Client.Ui
             return level > 0 ? level.ToString(CultureInfo.InvariantCulture) : string.Empty;
         }
 
+        // A Mob at or below the highest level that gives the character no experience, as the
+        // worker's progression names it. Before the first progression no Mob counts, and at the
+        // highest level, where the bound is the highest integer, every Mob does.
+        public static bool GivesNoExperience(int mobLevel, RealtimeOwnerProgressionChanged progression)
+        {
+            return progression != null
+                && mobLevel > 0
+                && mobLevel <= progression.HighestMobLevelWithoutExperience;
+        }
+
         // The size of a nameplate at a distance from the local character.
         public static float MobNameplateScale(float distance)
         {

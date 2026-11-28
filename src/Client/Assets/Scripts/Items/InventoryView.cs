@@ -9,14 +9,18 @@ namespace Mmorpg.Client.Items
         CharacterInventorySnapshot FullSnapshot { get; }
 
         InventoryContainer Bank { get; }
+
+        // The character's level, which equipment with a level requirement is judged by.
+        int CharacterLevel { get; }
     }
 
     public sealed class InventorySnapshotView : IInventoryView
     {
-        public InventorySnapshotView(ClientItemCatalog catalog, CharacterInventorySnapshot snapshot)
+        public InventorySnapshotView(ClientItemCatalog catalog, CharacterInventorySnapshot snapshot, int characterLevel)
         {
             Catalog = catalog;
             FullSnapshot = snapshot;
+            CharacterLevel = characterLevel;
         }
 
         public ClientItemCatalog Catalog { get; }
@@ -27,5 +31,7 @@ namespace Mmorpg.Client.Items
         {
             get { return FullSnapshot?.Bank; }
         }
+
+        public int CharacterLevel { get; }
     }
 }

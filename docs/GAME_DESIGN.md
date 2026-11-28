@@ -35,7 +35,9 @@ Implemented:
   boss. The first player who damages a Mob tags it and alone may loot it,
   while the Feral Alpha gives every player who damaged it a loot roll of their
   own.
-- A durable character level that gates equipment. Every character is level 1.
+- A durable character level that gates equipment. Characters gain experience
+  from Mob kills and quest rewards and level up, with an experience bar and a
+  level-up on screen.
 - Worn clothes, armor, weapons, and shields show on the body, and a gathering
   tool shows in the hands while it is used, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md) describes.
@@ -205,8 +207,9 @@ an experience percent and every quest an experience reward. GameService grants
 experience for every credited Mob kill and for a quest turn-in, and levels the
 character up, as
 [Character Progression](GAME_SERVICE_MODULES.md#character-progression)
-describes. The client does not show experience or a level-up yet. Everything
-else in this section is planned.
+describes. The client shows it as
+[Level And Experience](GAME_FEATURES.md#level-and-experience) describes.
+Everything else in this section is planned.
 
 ### Decided
 

@@ -208,7 +208,7 @@ namespace Mmorpg.Client.Items
             }
 
             var reason = ClientText.Of("ui/items/equipment-and-inventory-full");
-            if (definition.EquipmentSlots != null && definition.RequiredCharacterLevel <= 1)
+            if (definition.EquipmentSlots != null && definition.RequiredCharacterLevel <= state.CharacterLevel)
             {
                 foreach (var equipmentSlot in state.FullSnapshot.Equipment.Where(candidate =>
                              ItemEquipmentRules.IsCompatible(definition, candidate.SlotId)))
@@ -337,7 +337,7 @@ namespace Mmorpg.Client.Items
             var part = item.WithQuantity(quantity);
             if (state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
                 && definition.EquipmentSlots != null
-                && definition.RequiredCharacterLevel <= 1)
+                && definition.RequiredCharacterLevel <= state.CharacterLevel)
             {
                 foreach (var equipmentSlot in state.FullSnapshot.Equipment.Where(candidate =>
                              ItemEquipmentRules.IsCompatible(definition, candidate.SlotId)))
@@ -523,7 +523,7 @@ namespace Mmorpg.Client.Items
                 }
 
                 before.Add(unequip);
-                view = new InventorySnapshotView(view.Catalog, predicted);
+                view = new InventorySnapshotView(view.Catalog, predicted, view.CharacterLevel);
             }
 
             if (!InventoryOperationPredictor.TryApply(

@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
 
@@ -109,6 +110,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(carry.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), carry.Reason.ToString());
             Assert.That(carry.Container.ContainerType, Is.EqualTo("permanent_inventory"));
             Assert.That(carry.Slot.SlotIndex, Is.EqualTo(0));
+        }
+
+        // Equipment with a level requirement equips from a corpse once the character's level from
+        // the progression state reaches it, and goes into the inventory below it, by right-click
+        // and by Loot all.
+        [Test]
+        public void ACorpseItemWithALevelRequirementEquipsFromTheRealLevel()
+        {
+            var helm = CorpseItem("fixture.helm");
+            var view = CorpseView(helm);
+            var progression = new ProgressionClientState();
+            var state = CreateState(Array.Empty<InventoryItem>(), Slot("head", null));
+            state.UseProgression(progression);
+            Assert.That(catalog.TryGetDefinition("fixture.helm", out var definition) && definition.RequiredCharacterLevel == 3, Is.True);
+
+            progression.SetSelectedCharacterLevel(2);
+            var below = InventoryQuickMoves.ForCorpseItem(state, view, helm);
+            var belowPlan = CorpseLootAllPrediction.Plan(state, view, false);
+
+            progression.Apply(new RealtimeOwnerProgressionChanged(3, 0, 900, 0, 0, 1, RealtimeProgressionChangeReason.MobKill));
+            var reached = InventoryQuickMoves.ForCorpseItem(state, view, helm);
+            var reachedPlan = CorpseLootAllPrediction.Plan(state, view, false);
+
+            Assert.That(below.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), below.Reason.ToString());
+            Assert.That(reached.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), reached.Reason.ToString());
+            Assert.That(reached.EquipmentSlotId, Is.EqualTo("head"));
+            Assert.That(belowPlan.Steps.Single().EquipmentSlotId, Is.Null.Or.Empty);
+            Assert.That(reachedPlan.Steps.Single().EquipmentSlotId, Is.EqualTo("head"));
+            Assert.That(state.ConfirmedView().CharacterLevel, Is.EqualTo(3), "The confirmed view judges by the same level.");
         }
 
         // Shift+right-click sends half of a stack, rounded down, where right-click sends the
@@ -307,7 +337,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 200,
                 14_000,
                 2_000);
-            var view = new InventorySnapshotView(catalog, atCap);
+            var view = new InventorySnapshotView(catalog, atCap, 1);
             var createdIds = contents.Append(pack).ToDictionary(item => item.ItemInstanceId, _ => Guid.NewGuid());
             var edit = new InventoryPredictionEdit(view);
 
