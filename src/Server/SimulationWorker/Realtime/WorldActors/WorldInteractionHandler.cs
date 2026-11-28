@@ -234,9 +234,15 @@ internal sealed class WorldInteractionHandler(
     private void FinalizeOperation(
         WorldInteractionOperationCompleted completed)
     {
+        // The progression is kept before the lane opens, so the operation that the release starts,
+        // such as a kill credit that a reconnect moved, sees it.
+        var kept = completed.Result.Progression is { } change
+            ? progression?.Keep(completed.Session, change, completed.Result.ProgressionReason)
+            : null;
         authorityScheduler.Release(completed.Context);
         if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
+            progression?.Announce(kept, null);
             return;
         }
 
@@ -263,11 +269,7 @@ internal sealed class WorldInteractionHandler(
                 RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
         }
 
-        if (completed.Result.Progression is { } change)
-        {
-            progression?.Apply(target.Session, target.Owner, change, completed.Result.ProgressionReason);
-        }
-
+        progression?.Announce(kept, target.Owner);
         if (target.Owner is { } questLogOwner && completed.Result.QuestLogChange is not null)
         {
             sender.SendControl(

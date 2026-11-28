@@ -238,14 +238,21 @@ internal sealed class AdminIntentHandler(
     private void FinalizeProgression(AdminProgressionCompleted completed)
     {
         combatGate?.ClientOperationFinished(completed.Session);
+        var outcome = completed.Outcome;
+
+        // The progression is kept before the lane opens, so the operation that the release starts,
+        // such as a kill credit that a reconnect moved, sees it.
+        var kept = outcome.Progression is { } change
+            ? progression.Keep(completed.Session, change, outcome.ProgressionReason)
+            : null;
         authorityScheduler.Release(completed.Context);
         if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
+            progression.Announce(kept, null);
             return;
         }
 
         var requester = target.Requester;
-        var outcome = completed.Outcome;
         if (outcome.ShouldDisconnect)
         {
             if (requester is not null)
@@ -262,11 +269,7 @@ internal sealed class AdminIntentHandler(
             sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
         }
 
-        if (outcome.Progression is { } change)
-        {
-            progression.Apply(target.Session, target.Owner, change, outcome.ProgressionReason);
-        }
-
+        progression.Announce(kept, target.Owner);
         if (target.Owner is { } questLogOwner && outcome.QuestLogChange is not null)
         {
             sender.SendControl(questLogOwner, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));

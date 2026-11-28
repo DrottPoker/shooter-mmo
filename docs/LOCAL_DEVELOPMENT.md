@@ -236,9 +236,12 @@ describes.
 - A worker stops with `shard_rule_set_unknown` when the rule set that
   GameService names for its shard is not in `content/combat/combat-rules.json`.
 - After a change of `content/progression/progression-rules.json`, restart
-  GameService; it needs no compile, and the worker does not read it. GameService
-  stops when an item or quest requires a level above its
-  `maximumCharacterLevel`.
+  GameService; it needs no compile, and the worker does not read it. A running
+  worker keeps what GameService last reported of each character and follows the
+  new rules for a character at its next change, its next join with a new
+  session, or within five minutes, when its next kill credit asks GameService
+  again. GameService stops
+  when an item or quest requires a level above its `maximumCharacterLevel`.
 - GameService also serves the compiled item catalog, quest catalog, and the
   text tables of `src/Shared/WorldData/Generated/Text/en` from its output at
   `/api/content`, as [Content Files](SERVICE_FEATURES.md#content-files)

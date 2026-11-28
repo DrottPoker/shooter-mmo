@@ -17,8 +17,10 @@ public sealed class RealtimeProgressionTests
 
     private static readonly SimulationProgression Midway = new(12, 3400, 9800, 0);
 
+    // A reconnect of the same session sends what the worker kept, never older than its ticket,
+    // which may have been read before a change of the session committed.
     [Fact]
-    public async Task AJoinSendsTheProgressionAfterJoinAcceptedAndAReconnectSendsItAgain()
+    public async Task AJoinSendsTheProgressionAfterJoinAcceptedAndAReconnectSendsTheKeptOne()
     {
         await using var harness = RealtimeServerHarness.Create();
         var character = harness.AddCharacter("Growing Walker") with { Progression = Midway };
@@ -37,19 +39,19 @@ public sealed class RealtimeProgressionTests
             first.IndexOfFirst(RealtimeMessageType.JoinAccepted)
                 < first.IndexOfFirst(RealtimeMessageType.OwnerProgressionChanged));
 
-        // The reconnect's ticket read the progression again, which the snapshot carries.
+        // The reconnect's ticket says otherwise, but the session's kept progression wins.
         var reconnect = character with
         {
             Ticket = "ticket-growing-reconnect",
             SimulationSessionToken = "growing-reconnected-token",
-            Progression = new SimulationProgression(13, 10, 10400, 6)
+            Progression = new SimulationProgression(11, 10, 9000, 0)
         };
         harness.GameService.AddCharacter(reconnect);
         var second = await harness.JoinAsync(reconnect, "second");
         await harness.PollUntilAsync(() => Progressions(second).Count == 1, "the reconnected progression");
         Assert.True(second.JoinAccepted!.IsReconnect);
         Assert.Equal(
-            (13, 10L, 10400L, 6, 0L, 0, RealtimeProgressionChangeReason.Snapshot),
+            (12, 3400L, 9800L, 0, 0L, 0, RealtimeProgressionChangeReason.Snapshot),
             Describe(Progressions(second)[0]));
 
         var botClient = await harness.JoinAsync(bot);
@@ -86,6 +88,87 @@ public sealed class RealtimeProgressionTests
         Assert.True(
             owner.LastIndexOf(RealtimeMessageType.OwnerProgressionChanged)
                 < owner.IndexOf(RealtimeMessageType.QuestLogChanged));
+    }
+
+    // A reconnect whose ticket was read before the session's kill credit committed sends what the
+    // credit left, not the ticket's older value.
+    [Fact]
+    public async Task AReconnectAfterACommittedCreditSendsTheKeptProgressionAndNotItsTicket()
+    {
+        await using var harness = RealtimeQuestCreditTests.Create();
+        var archer = AddProgressingArcher(harness, "Returning Hunter", Midway);
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.CommittedProgression(
+                request,
+                0,
+                new SimulationProgressionChange(Guid.Empty, 13, 40, 10400, 1, 6440, 1)));
+        await harness.StartAsync();
+        var first = await harness.JoinAsync(archer, "first");
+        await KillTheWolfAsync(harness, first);
+        await harness.PollUntilAsync(() => Progressions(first).Count == 2, "the credit's progression");
+
+        var second = await ReconnectAsync(harness, archer);
+        await harness.PollUntilAsync(() => Progressions(second).Count == 1, "the reconnected progression");
+
+        Assert.Equal(
+            (13, 40L, 10400L, 1, 0L, 0, RealtimeProgressionChangeReason.Snapshot),
+            Describe(Progressions(second)[0]));
+    }
+
+    // An admin tool that a kill credit waits behind finishes after a reconnect moved the credit to
+    // the new client's lane, whose release starts the credit at once: the credit is judged by the
+    // level the tool set, the highest, so it costs no GameService call.
+    [Fact]
+    public async Task ACreditThatTheReleasedLaneStartsIsJudgedByTheFinishingOperationsProgression()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true,
+            EnableQuests = true,
+            EnableAdminTools = true,
+            WorldActorDocument = WolfNextToTheSpawn(respawnSeconds: 30f),
+            ItemCatalog = TestCatalog(minimumDamage: 100, maximumDamage: 100),
+            CombatRules = TestRules(respawnSeconds: 30f),
+            CombatRandom = new LowestRoll()
+        });
+        var archer = AddProgressingArcher(harness, "Capping Hunter", Midway);
+        var gate = new TestGate();
+        harness.GameService.OnQuestOperation = async (_, request, _) =>
+        {
+            if (request.OperationKind != "admin_set_character_level")
+            {
+                return KillCounted(request, 1, 1);
+            }
+
+            await gate.WaitAsync();
+            return ScriptedGameServiceHandler.CommittedProgression(
+                request,
+                0,
+                new SimulationProgressionChange(Guid.Empty, 200, 0, 0, int.MaxValue, 0, 188));
+        };
+        await harness.StartAsync();
+        try
+        {
+            var first = await harness.JoinAsync(archer, "first");
+            first.Send(RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateSetLevel(Guid.NewGuid(), 200)));
+            await harness.PollUntilAsync(() => gate.HasEntered, "the set level to reach GameService");
+            await KillTheWolfAsync(harness, first);
+            var second = await ReconnectAsync(harness, archer);
+
+            gate.Release();
+            await harness.PollUntilAsync(
+                () => Progressions(second).Any(value => value.Reason == RealtimeProgressionChangeReason.Admin),
+                "the set level on the new client");
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+
+            Assert.Equal(
+                ["admin_set_character_level"],
+                harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     // A level-up reaches the players that see the character in detail, never its owner, who learns
@@ -225,10 +308,11 @@ public sealed class RealtimeProgressionTests
         Assert.Empty(harness.GameService.QuestOperations);
     }
 
-    // A player who left stays as a body without a peer: its credit commits, and nothing reaches the
-    // connection that is gone.
+    // A player who left stays as a body without a peer: its credit commits and is kept for the
+    // body, so the player's next join of the session learns it. ProgressionReplicatorTests pins
+    // that the leaving peer itself hears nothing of it.
     [Fact]
-    public async Task ADetachedSessionHearsNothingAndItsCreditStillCommits()
+    public async Task ADetachedSessionsCreditCommitsAndItsNextJoinLearnsIt()
     {
         await using var harness = RealtimeQuestCreditTests.Create();
         var archer = AddProgressingArcher(harness, "Departing Riser", Midway);
@@ -258,7 +342,13 @@ public sealed class RealtimeProgressionTests
             await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
 
             Assert.Single(harness.GameService.QuestOperations);
-            Assert.Equal(RealtimeProgressionChangeReason.Snapshot, Assert.Single(Progressions(client)).Reason);
+
+            var returned = await ReconnectAsync(harness, archer);
+            await harness.PollUntilAsync(() => Progressions(returned).Count == 1, "the returned progression");
+            Assert.True(returned.JoinAccepted!.IsReconnect);
+            Assert.Equal(
+                (13, 5L, 10400L, 6, 0L, 0, RealtimeProgressionChangeReason.Snapshot),
+                Describe(Progressions(returned)[0]));
         }
         finally
         {
@@ -383,6 +473,19 @@ public sealed class RealtimeProgressionTests
         var archer = AddArcher(harness, name) with { Progression = progression };
         harness.GameService.AddCharacter(archer);
         return archer;
+    }
+
+    // The same session joins again from a second client, with a ticket that reads the progression
+    // the character started with.
+    private static Task<RealtimeRecordingClient> ReconnectAsync(RealtimeServerHarness harness, RealtimeTestCharacter character)
+    {
+        var reconnect = character with
+        {
+            Ticket = "ticket-progression-reconnect",
+            SimulationSessionToken = "progression-reconnected-token"
+        };
+        harness.GameService.AddCharacter(reconnect);
+        return harness.JoinAsync(reconnect, "second");
     }
 
     private static async Task KillTheWolfAsync(RealtimeServerHarness harness, RealtimeRecordingClient client)

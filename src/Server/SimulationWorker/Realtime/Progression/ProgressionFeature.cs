@@ -13,7 +13,9 @@ internal sealed class ProgressionFeature
             core.Sender,
             core.Presence,
             core.EntityRegistry,
-            core.ConnectionBindings);
+            core.ConnectionBindings,
+            core.Clock,
+            core.Config.MovementSimulation.TickRateHz);
     }
 
     public ProgressionReplicator Replicator { get; }

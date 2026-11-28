@@ -2736,9 +2736,14 @@ the quest actions of the realtime protocol through these routes:
   when its `experiencePercent` is above 0 and the progression the worker keeps
   for the character, below, neither is at the highest level nor names the Mob's
   level at or below `highestMobLevelWithoutExperience`; a character without a
-  kept progression, and a session whose entity went, are asked about. So a kill
-  that cannot give the character experience and that no quest asks for costs no
-  GameService call. The answer's `progression` reaches the player as an
+  kept progression, and a session whose entity went, are asked about. The
+  worker trusts a kept answer that a Mob gives nothing for five minutes since
+  it kept that progression, because GameService derives it from progression
+  rules that a GameService restart can change; after that one credit goes, and
+  its answer, also one that gained nothing, is kept again. So a kill that cannot
+  give the character experience and that no quest asks for costs no GameService
+  call, and a character at the highest level costs one call per five minutes of
+  killing. The answer's `progression` reaches the player as an
   `OwnerProgressionChanged` with the reason `MobKill`, and then the changed
   quests as a `QuestLogChanged` without an operation id; a credit that changed
   no quest sends none. An uncertain answer, or a transaction that
@@ -2780,16 +2785,25 @@ the quest actions of the realtime protocol through these routes:
   the progress the lost answer held.
 - The worker keeps the level and experience of every character in the world on
   its loop, as GameService last reported them, and never computes one itself.
-  The join ticket's `progression` sets it at every join, also of a reconnect,
-  and the worker sends it to the player as an `OwnerProgressionChanged` with the
-  reason `Snapshot` right after `JoinAccepted`; a development bot has none and
-  gets none. Every committed answer with a `progression`, of a kill credit, a
-  quest action such as a turn-in, or an Admin tool, replaces it while the
-  character's entity is in the world, also as a lingering body, and reaches the
-  player that plays the character now when it gained experience, changed the
-  level, or differs from what the worker kept, with the reason `MobKill`,
-  `QuestReward`, or `Admin`; a body without a peer gets nothing and learns it
-  at its next join. A higher level also reaches every player that sees the
+  The join ticket's `progression` sets it at the join of a new session. A
+  reconnect of a session the worker still holds keeps what the worker kept,
+  because every change of the session went through this worker while the
+  ticket may have been read before one committed. After every join the worker
+  sends it to the player as an `OwnerProgressionChanged` with the reason
+  `Snapshot` right after `JoinAccepted`; a development bot has none and gets
+  none. Every committed answer with a `progression`, of a kill credit, a quest
+  action such as a turn-in, or an Admin tool, replaces it while the character's
+  entity is in the world, also as a lingering body, before the operation
+  releases the character's lane, so the operation that the release starts sees
+  it. It reaches the player that plays the character now when it gained
+  experience, changed the level, or differs from what the worker kept, with the
+  reason `MobKill`, `QuestReward`, or `Admin`; a body without a peer, also one
+  whose leave is still being acknowledged, gets nothing and learns it at its
+  next join. A late answer of an older session of the character, whose body
+  went while it was on its way, counts only when it is ahead of the current
+  session's progression, a higher level or the same level with more
+  experience, since play only raises progression and the Admin tools run on the
+  current session; it then reaches the player of the current session. A higher level also reaches every player that sees the
   character in detail as an `EntityLeveledUp`, never the owner, with no
   catch-up for the others. The kept progression goes with the character's
   entity, as [Realtime Protocol](REALTIME_PROTOCOL.md#progression-messages)

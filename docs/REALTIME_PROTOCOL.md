@@ -1185,7 +1185,7 @@ them. The client never computes a level or an experience value itself.
   that lowered the level makes negative; and a `ProgressionChangeReason`:
   `Snapshot` (1), `MobKill` (2), `QuestReward` (3), or `Admin` (4). The worker
   sends a `Snapshot` with nothing gained after every `JoinAccepted`, also of a
-  reconnect, with what the join ticket read from GameService, and none to a
+  reconnect, with the progression it holds for the character, and none to a
   development bot. After an operation that GameService reports a progression
   for, it sends one when the change gained experience, changed the level, or
   differs from what it last sent, after the operation's `OwnerItemStateChanged`
