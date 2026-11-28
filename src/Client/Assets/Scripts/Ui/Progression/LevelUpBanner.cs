@@ -142,7 +142,7 @@ namespace Mmorpg.Client.Ui
 
         private void Build()
         {
-            var canvas = UiCanvas.Create(transform, "LevelUpBanner", UiLayer.Hud, false);
+            var canvas = UiCanvas.Create(transform, "LevelUpBanner", UiLayer.LevelUpBanner, false);
             root = UiFactory.Create(BannerName, canvas.transform);
             root.anchorMin = new Vector2(0.5f, CentreHeight);
             root.anchorMax = new Vector2(0.5f, CentreHeight);

@@ -1666,7 +1666,9 @@ sets a canvas order. From the bottom up:
 | `EntryScreen` | 100 | `TemporaryEntryScreen`: the content check, LoginMenu, and CharacterSelect |
 | `WorldNameplates` | 200 | `WorldNameplates` |
 | `WorldQuestMarkers` | 300 | `WorldQuestMarkers` |
-| `Hud` | 400 | `TemporaryCombatHud`, `ExperienceBar`, and `LevelUpBanner`, which never overlap |
+| `Hud` | 400 | `TemporaryCombatHud` |
+| `ExperienceBar` | 430 | `ExperienceBar` |
+| `LevelUpBanner` | 460 | `LevelUpBanner` |
 | `QuestTracker` | 500 | The quest canvas, which draws the quest tracker |
 | `GameMessages` | 600 | `TemporaryGameMessagePanel` |
 | `Notices` | 700 | `SavingPausedNotice` |
@@ -4774,7 +4776,7 @@ the texts with the invariant thousands separators of the gold amounts, and when
 a change shows a gain or a level-up, never for the `Snapshot` after a join and
 never for a level that an admin tool lowered.
 
-- `ExperienceBar` is a canvas of the `Hud` layer, built on the
+- `ExperienceBar` is the canvas of the `ExperienceBar` layer, built on the
   [UI Kit](#ui-kit-and-theme): the bar at the bottom centre, `ScreenMargin`
   above the edge, the theme's `ExperienceBarWidth` by `ExperienceBarHeight`
   from its `MeterTrack` and `MeterFill` in `ExperienceColor`, the level left of
@@ -4792,7 +4794,7 @@ never for a level that an admin tool lowered.
   state has a progression, and nothing on it takes a raycast.
   `TemporaryWorldInteractionPanel` stands `ExperienceBar.ReservedBottom` above
   the bottom edge, over the bar.
-- `LevelUpBanner` is a second canvas of the `Hud` layer: `Level up` in the
+- `LevelUpBanner` is the canvas of the `LevelUpBanner` layer: `Level up` in the
   theme's `TextColor` over the new level in the title font at 46 points, in
   the upper third of the screen, faded in over 0.2 s, held for 2.2 s, and faded
   out over 0.6 s through a `CanvasGroup`; a newer level-up starts it over. It

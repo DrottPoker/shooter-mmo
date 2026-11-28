@@ -16,6 +16,10 @@ namespace Mmorpg.Client.Ui
         WorldNameplates,
         WorldQuestMarkers,
         Hud,
+
+        // The experience bar and the level-up banner, each over the HUD on a canvas of its own.
+        ExperienceBar,
+        LevelUpBanner,
         QuestTracker,
         GameMessages,
         Notices,
@@ -49,6 +53,8 @@ namespace Mmorpg.Client.Ui
             UiLayer.WorldNameplates,
             UiLayer.WorldQuestMarkers,
             UiLayer.Hud,
+            UiLayer.ExperienceBar,
+            UiLayer.LevelUpBanner,
             UiLayer.QuestTracker,
             UiLayer.GameMessages,
             UiLayer.Notices,
@@ -74,6 +80,10 @@ namespace Mmorpg.Client.Ui
                     return 300;
                 case UiLayer.Hud:
                     return 400;
+                case UiLayer.ExperienceBar:
+                    return 430;
+                case UiLayer.LevelUpBanner:
+                    return 460;
                 case UiLayer.QuestTracker:
                     return 500;
                 case UiLayer.GameMessages:

@@ -262,7 +262,7 @@ namespace Mmorpg.Client.Ui
         private void Build()
         {
             var look = theme;
-            var canvas = UiCanvas.Create(transform, "ExperienceBar", UiLayer.Hud, false);
+            var canvas = UiCanvas.Create(transform, "ExperienceBar", UiLayer.ExperienceBar, false);
             root = UiFactory.Create(BarName, canvas.transform);
             root.anchorMin = new Vector2(0.5f, 0f);
             root.anchorMax = new Vector2(0.5f, 0f);
