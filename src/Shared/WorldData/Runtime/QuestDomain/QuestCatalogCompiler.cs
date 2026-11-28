@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
@@ -436,9 +437,14 @@ namespace Mmorpg.WorldData.Quests
             ValidateText(quest.Title, QuestContentRules.MaximumTitleLength, path + ".title", errors);
             references.ValidateQuestNpc(quest.GiverActorId, path + ".giverActorId", errors);
             references.ValidateQuestNpc(quest.TurnInActorId, path + ".turnInActorId", errors);
-            if (quest.MinimumLevel < 1 || quest.MinimumLevel > references.MaximumCharacterLevel)
+            // The highest level of the progression rules is not quest content: a test over the
+            // checked-in content and GameService at startup hold every minimum level to it.
+            if (quest.MinimumLevel < 1 || quest.MinimumLevel > CombatContentRules.MaximumCharacterLevel)
             {
-                errors.Add(path + ".minimumLevel must be between 1 and " + references.MaximumCharacterLevel + ".");
+                errors.Add(
+                    path + ".minimumLevel must be between 1 and "
+                    + CombatContentRules.MaximumCharacterLevel.ToString(CultureInfo.InvariantCulture)
+                    + ".");
             }
 
             ValidateRequiredQuests(quest, path, ids, retired, errors);
@@ -1333,7 +1339,6 @@ namespace Mmorpg.WorldData.Quests
             {
                 this.items = (items.Definitions ?? Array.Empty<ItemDefinition>())
                     .ToDictionary(item => item.Id, StringComparer.Ordinal);
-                MaximumCharacterLevel = items.Progression?.MaximumCharacterLevel ?? 1;
                 foreach (var actor in actorCatalog.Actors ?? Array.Empty<WorldActorDefinition>())
                 {
                     actors[actor.Id] = actor;
@@ -1347,8 +1352,6 @@ namespace Mmorpg.WorldData.Quests
                     }
                 }
             }
-
-            public int MaximumCharacterLevel { get; }
 
             public static bool IsQuestItem(ItemDefinition item)
             {

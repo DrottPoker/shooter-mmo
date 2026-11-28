@@ -56,6 +56,7 @@
     <Project Path="tools/DeploySmokeTest/Mmorpg.Tools.DeploySmokeTest.csproj" />
     <Project Path="tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
     <Project Path="tools/NetworkImpairmentProxy/Mmorpg.Tools.NetworkImpairmentProxy.csproj" />
+    <Project Path="tools/ProgressionTable/Mmorpg.Tools.ProgressionTable.csproj" />
     <Project Path="tools/ProtocolGenerator/Mmorpg.Tools.ProtocolGenerator.csproj" />
     <Project Path="tools/QuestCatalogCompiler/Mmorpg.Tools.QuestCatalogCompiler.csproj" />
     <Project Path="tools/TextTableCompiler/Mmorpg.Tools.TextTableCompiler.csproj" />

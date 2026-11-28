@@ -19,6 +19,8 @@ public static class RepositoryPaths
 
     public static string CharacterAppearancePath => ContentLayout.CharacterAppearancePath(Content);
 
+    public static string ProgressionRulesPath => ContentLayout.ProgressionRulesPath(Content);
+
     // The test-owned item catalog. Rule tests use it, so content and balance changes never
     // break them; content tests still read the real catalog.
     public static string ItemCatalogFixtureContent =>

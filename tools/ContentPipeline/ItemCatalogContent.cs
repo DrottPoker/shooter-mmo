@@ -10,7 +10,6 @@ public sealed class ItemCatalogHeaderDocument
     public string? CatalogId;
     public ItemCharacterSettingsEntry? Character;
     public ItemEconomySettingsEntry? Economy;
-    public ItemProgressionSettingsEntry? Progression;
     public ItemCatalogIdentityEntry[]? Categories;
     public ItemCatalogIdentityEntry[]? Tags;
     public ItemCatalogIdentityEntry[]? ToolKinds;
@@ -42,7 +41,6 @@ public static class ItemCatalogContent
             CatalogId = header.CatalogId,
             Character = header.Character,
             Economy = header.Economy,
-            Progression = header.Progression,
             Categories = header.Categories,
             Tags = header.Tags,
             ToolKinds = header.ToolKinds,

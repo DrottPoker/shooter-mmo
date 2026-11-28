@@ -18,6 +18,9 @@ content/
   characters/
     appearance.json                 the kinds of a character's look, the body models with their
                                     options, and the equipment slots other players see
+  progression/
+    progression-rules.json          the highest character level, the level curve, Mob experience,
+                                    and the level difference rails
   development/
     item-packages.json              item states for the development item tool
   actors/
@@ -64,7 +67,7 @@ development Worlds themselves, their scenes, and their layouts are described in
 - `actor-spawns.json` must declare the `worldId` of its directory, and the World
   directory name must equal the manifest `worldId`.
 - The item, actor, and quest compilers, and the services that load
-  `combat-rules.json` and `appearance.json`, parse strictly: unknown properties, duplicate
+  `combat-rules.json`, `appearance.json`, and `progression-rules.json`, parse strictly: unknown properties, duplicate
   properties, comments, trailing commas, and missing required values fail.
   `collision.json` is written only by the Unity collision bake.
 - Files are written in the canonical format of the Unity content tools, so a save
@@ -262,6 +265,86 @@ with `shard_rule_set_unknown` when its Shard names one that this file does not
 define. `EveryConfiguredShardRuleSetIsDefined` keeps the checked-in topology and
 this file in step.
 
+## Progression Rules
+
+`progression/progression-rules.json` holds the tunable rules of character
+levelling: the highest level, the experience each level needs, the experience a
+Mob of each level gives, and the rails that a level difference between a
+character and a Mob puts on that. It has no compiler: the GameService build
+copies it to `WorldData/Progression/progression-rules.json` in its output, and
+GameService validates it strictly at startup and owns every result. GameService
+takes the highest character level from it today; it grants no experience yet.
+
+| Field | Shipped value | Allowed |
+| --- | --- | --- |
+| `formatVersion` | The current format | `ProgressionRulesFormat.Version` in the WorldData runtime |
+| `maximumCharacterLevel` | 200, the highest level; experience stops there | 1 to 10,000 |
+| `levelCurve.killsAtLevelOne` | 5, the Mobs of level 1 that level 1 needs | Above 0 to 100,000, read to 4 decimals |
+| `levelCurve.additionalKillsPerLevel` | 1, how many more Mobs of its own level each level needs than the level before | 0 to 10,000, read to 4 decimals |
+| `levelCurve.roundExperienceTo` | 10, the multiple the experience of a level is rounded to | 1 to 1,000,000 |
+| `mobExperience.atLevelOne` | 20, what a level 1 Mob gives | 1 to 1,000,000 |
+| `mobExperience.perLevel` | 5, what each Mob level adds | 0 to 1,000,000 |
+| `levelDifference.minimumLevels` | 5, the smallest distance of every rail, so the rails work at low levels | 0 to 10,000 |
+| `levelDifference.higherLevelsCountedPercent` | 25, how far above the character, in percent of its level, a Mob still counts as its own level | 0 to 10,000 |
+| `levelDifference.fullExperienceBelowPercent` | 25, how far below the character, in percent of its level, a Mob still gives full experience | 0 to 10,000, at most `noExperienceBelowPercent` |
+| `levelDifference.noExperienceBelowPercent` | 50, how far below the character, in percent of its level, a Mob gives nothing | 0 to 10,000 |
+
+The level before `maximumCharacterLevel` may need at most 1,000,000,000,000
+experience, so every sum stays exact. The formulas, with whole numbers and
+decimal arithmetic throughout, so every machine gets the same result:
+
+- **Mob base experience** of a Mob of level M is
+  `atLevelOne + perLevel * (M - 1)`: 20 at level 1, 450 at 87, 1,015 at 200.
+- **Experience to the next level** from level L is
+  `(killsAtLevelOne + additionalKillsPerLevel * (L - 1))` Mobs of level L,
+  times the Mob base experience of level L, rounded to the nearest multiple of
+  `roundExperienceTo`, halves away from zero, and at least `roundExperienceTo`.
+  It is 100 at level 1, 53,560 at level 100, and 205,030 at level 199; all 199
+  levels need 13,941,940. At `maximumCharacterLevel` it is 0.
+- **A rail's distance** at character level L for a percent p is
+  `max(minimumLevels, floor(L * p / 100))` levels.
+- **Higher Mobs:** a Mob more than the distance of
+  `higherLevelsCountedPercent` above the character gives what a Mob at that
+  distance gives. A level 87 character counts Mobs up to level 108.
+- **Full experience:** a Mob at most the distance of
+  `fullExperienceBelowPercent` below the character gives its full experience.
+- **No experience:** the no experience distance is the distance of
+  `noExperienceBelowPercent`, but never less than the full distance. A Mob
+  further below than the full distance and at least the no experience distance
+  below gives nothing. A level 87 character gets nothing for Mobs of level 44
+  and below, and a level 7 character, whose two distances are both 5, nothing
+  for level 1.
+- **Between the two** the experience falls in a straight line: a Mob `b`
+  levels below gets the share `(none - b) / (none - full)` of its experience,
+  where `full` and `none` are the two distances, rounded down. A level 87
+  character gets 324 of the 340 a level 65 Mob gives.
+- **A Mob's own percent** multiplies its experience: 100 gives the plain value
+  and 0 gives nothing. Mob definitions carry no percent yet.
+- **At least one point** comes from a kill that counts at all.
+- **Experience stops at the highest level:** a character at
+  `maximumCharacterLevel` gets nothing for any kill and holds no experience.
+  Experience is kept per level, never as a total since level 1, and a gain
+  that passes a level carries the rest into the next.
+
+To change a value, edit the file and restart GameService. GameService refuses
+to start when the file is invalid, and when an item's `requiredCharacterLevel`
+or a quest's `minimumLevel` is above `maximumCharacterLevel`;
+`ProgressionContentTests` in `Mmorpg.Shared.Tests` fails on the same content
+first. `ProgressionRulesTests` pins the shipped numbers above, so a change of
+the curve updates those tests on purpose. To see what a change does before the
+game uses it, print the level table:
+
+```powershell
+dotnet run --project tools/ProgressionTable --configuration Release -- --kills-per-hour 120 --every 10
+```
+
+It reads the checked-in file and prints level 1, every tenth level, and the
+highest level with the experience to the next level, a same-level Mob's
+experience, the Mobs that takes, the minutes at the given kill rate, the hours
+to reach the level, the highest Mob level that still counts as itself, and the
+highest Mob level that gives nothing, then the total experience and hours to
+the highest level. Both options are optional, with the defaults shown.
+
 ## Character Appearance
 
 `characters/appearance.json` names what a character's look can be, as
@@ -315,7 +398,8 @@ and SimulationWorker additionally gets `combat-rules.json`, the actor catalog in
 `WorldData/Actors/`, and every World's `world-actor-spawns.json` and collision
 chunks next to its `world.json`. The actor catalog lies outside
 `WorldData/Worlds/`, where every directory is a World. GameService also copies
-`development/item-packages.json`, and ActiveSimulationBots copies the collision
+`development/item-packages.json` and `progression/progression-rules.json`,
+which the worker does not read, and ActiveSimulationBots copies the collision
 chunks to plan its walks.
 
 The actor compiler writes the shared actor catalog once and one spawn file per

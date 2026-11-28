@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 9;
+        public const int Version = 10;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
@@ -80,7 +80,6 @@ namespace Mmorpg.WorldData.Items
         public string CatalogId;
         public ItemCharacterSettingsEntry Character;
         public ItemEconomySettingsEntry Economy;
-        public ItemProgressionSettingsEntry Progression;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
         public ItemCatalogIdentityEntry[] ToolKinds;
@@ -108,13 +107,6 @@ namespace Mmorpg.WorldData.Items
     {
         public string CurrencyDisplayName;
         public long StartingBalance = -1;
-    }
-
-    // Character progression limits. Every level requirement must fit them.
-    [Serializable]
-    public sealed class ItemProgressionSettingsEntry
-    {
-        public int MaximumCharacterLevel;
     }
 
     [Serializable]
@@ -251,7 +243,6 @@ namespace Mmorpg.WorldData.Items
         public string Revision;
         public ItemCharacterSettingsEntry Character;
         public ItemEconomySettingsEntry Economy;
-        public ItemProgressionSettingsEntry Progression;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
         public ItemCatalogIdentityEntry[] ToolKinds;

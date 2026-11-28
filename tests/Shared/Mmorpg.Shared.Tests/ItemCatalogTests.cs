@@ -90,7 +90,6 @@ public sealed class ItemCatalogTests
         Assert.DoesNotContain(
             catalog.Vendors.SelectMany(vendor => vendor.Offers),
             offer => offer.DefinitionId.EndsWith("_cloak", StringComparison.Ordinal));
-        Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
         Assert.Equal(4, catalog.WeaponFamilies.Length);
         var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");
         Assert.Equal(
@@ -335,7 +334,6 @@ public sealed class ItemCatalogTests
     [InlineData("negative-bonus", ".ammunition.damageBonusPercent")]
     [InlineData("level-zero", ".requiredCharacterLevel must be between 1")]
     [InlineData("level-above-cap", ".requiredCharacterLevel must be between 1")]
-    [InlineData("missing-progression", "progression is required")]
     [InlineData("ranged-without-ammunition", "weaponFamilies[bow].ammunitionFamily references unknown ammunition family")]
     [InlineData("ranged-without-speed", "projectileSpeed must be positive for a ranged family")]
     [InlineData("melee-with-ammunition", "ammunitionFamily must be empty unless the style is ranged")]
@@ -428,10 +426,7 @@ public sealed class ItemCatalogTests
                 ore.RequiredCharacterLevel = 0;
                 break;
             case "level-above-cap":
-                shortbow.RequiredCharacterLevel = authoring.Progression.MaximumCharacterLevel + 1;
-                break;
-            case "missing-progression":
-                authoring.Progression = null;
+                shortbow.RequiredCharacterLevel = CombatContentRules.MaximumCharacterLevel + 1;
                 break;
             case "ranged-without-ammunition":
                 bow.AmmunitionFamily = "bolt";

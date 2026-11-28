@@ -99,10 +99,6 @@ namespace Mmorpg.WorldData.Items
                 {
                     StartingBalance = authoring.Economy.StartingBalance
                 },
-                Progression = new ItemProgressionSettingsEntry
-                {
-                    MaximumCharacterLevel = authoring.Progression.MaximumCharacterLevel
-                },
                 Categories = CompileIdentities(authoring.Categories),
                 Tags = CompileIdentities(authoring.Tags),
                 ToolKinds = CompileIdentities(authoring.ToolKinds),
@@ -175,7 +171,6 @@ namespace Mmorpg.WorldData.Items
             ValidateCharacterSettings(authoring.Character, errors);
             ValidateEconomySettings(authoring.Economy, errors);
             ValidateTexts(authoring, compiled, errors);
-            var maximumCharacterLevel = ValidateProgression(authoring.Progression, errors);
 
             var categoryIds = ValidateIdentities(
                 authoring.Categories,
@@ -222,8 +217,7 @@ namespace Mmorpg.WorldData.Items
                     weaponFamilyIds,
                     MagicWeaponFamilyIds(authoring.WeaponFamilies),
                     WindupSecondsByFamily(authoring.WeaponFamilies),
-                    ammunitionFamilyIds,
-                    maximumCharacterLevel),
+                    ammunitionFamilyIds),
                 errors);
             ValidateVendors(authoring.Vendors, authoring.Definitions, categoryIds, errors);
             ValidateRetiredIds(
@@ -280,29 +274,6 @@ namespace Mmorpg.WorldData.Items
                     + VendorPricing.MaximumCurrencyBalance.ToString(CultureInfo.InvariantCulture)
                     + ".");
             }
-        }
-
-        private static int ValidateProgression(
-            ItemProgressionSettingsEntry progression,
-            ICollection<string> errors)
-        {
-            if (progression == null)
-            {
-                errors.Add("progression is required.");
-                return 0;
-            }
-
-            if (progression.MaximumCharacterLevel < 1
-                || progression.MaximumCharacterLevel > CombatContentRules.MaximumCharacterLevel)
-            {
-                errors.Add(
-                    "progression.maximumCharacterLevel must be between 1 and "
-                    + CombatContentRules.MaximumCharacterLevel.ToString(CultureInfo.InvariantCulture)
-                    + ".");
-                return 0;
-            }
-
-            return progression.MaximumCharacterLevel;
         }
 
         private static HashSet<string> ValidateWeaponFamilies(
@@ -637,7 +608,7 @@ namespace Mmorpg.WorldData.Items
                 ValidateEquipmentStacking(definition, equipmentSlots, path, errors);
                 ValidateBlockedEquipmentSlots(definition, path, errors);
                 ValidateBagDefinition(definition, path, tagIds, errors);
-                ValidateRequiredCharacterLevel(definition, combat, path, errors);
+                ValidateRequiredCharacterLevel(definition, path, errors);
                 ValidateWeapon(definition, combat, path, errors);
                 ValidateAmmunition(definition, combat, path, errors);
 
@@ -665,19 +636,20 @@ namespace Mmorpg.WorldData.Items
             return definitionIds;
         }
 
+        // The highest level of the progression rules is not item content: a test over the
+        // checked-in content and GameService at startup hold every requirement to it.
         private static void ValidateRequiredCharacterLevel(
             ItemDefinitionAuthoringEntry definition,
-            CombatReferences combat,
             string path,
             ICollection<string> errors)
         {
             if (definition.RequiredCharacterLevel < 1
-                || (combat.MaximumCharacterLevel > 0
-                    && definition.RequiredCharacterLevel > combat.MaximumCharacterLevel))
+                || definition.RequiredCharacterLevel > CombatContentRules.MaximumCharacterLevel)
             {
                 errors.Add(
                     path + ".requiredCharacterLevel must be between 1 and "
-                    + "progression.maximumCharacterLevel.");
+                    + CombatContentRules.MaximumCharacterLevel.ToString(CultureInfo.InvariantCulture)
+                    + ".");
             }
         }
 
@@ -1578,7 +1550,6 @@ namespace Mmorpg.WorldData.Items
                 writer.Write(catalog.Character.InventorySlotCount);
                 writer.Write(catalog.Character.BankSlotCount);
                 writer.Write(catalog.Economy.StartingBalance);
-                writer.Write(catalog.Progression.MaximumCharacterLevel);
                 WriteIdentities(writer, catalog.Categories);
                 WriteIdentities(writer, catalog.Tags);
                 WriteIdentities(writer, catalog.ToolKinds);
@@ -1740,14 +1711,12 @@ namespace Mmorpg.WorldData.Items
                 ISet<string> weaponFamilyIds,
                 ISet<string> magicWeaponFamilyIds,
                 IReadOnlyDictionary<string, float> windupSecondsByFamily,
-                ISet<string> ammunitionFamilyIds,
-                int maximumCharacterLevel)
+                ISet<string> ammunitionFamilyIds)
             {
                 WeaponFamilyIds = weaponFamilyIds;
                 MagicWeaponFamilyIds = magicWeaponFamilyIds;
                 WindupSecondsByFamily = windupSecondsByFamily;
                 AmmunitionFamilyIds = ammunitionFamilyIds;
-                MaximumCharacterLevel = maximumCharacterLevel;
             }
 
             public ISet<string> WeaponFamilyIds { get; }
@@ -1757,9 +1726,6 @@ namespace Mmorpg.WorldData.Items
             public IReadOnlyDictionary<string, float> WindupSecondsByFamily { get; }
 
             public ISet<string> AmmunitionFamilyIds { get; }
-
-            // 0 when the progression settings are invalid, which is reported separately.
-            public int MaximumCharacterLevel { get; }
         }
 
         private static bool Contains(IEnumerable<string> values, string expected)

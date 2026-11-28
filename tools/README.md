@@ -52,6 +52,7 @@ compilers also write the [text table](../content/README.md#text-tables) of their
 | `QuestCatalogCompiler/` | Compiles the quest catalog against the compiled items, the compiled actor catalog, and the compiled spawns of every World |
 | `WorldCollisionCompiler/` | Compiles the collision chunks of every World, including the resource nodes that block movement, the water surfaces, and the deep water edges |
 | `ContentPipeline/` | The library the compilers share, also used by the Unity content tools |
+| `ProgressionTable/` | Prints the level table of `content/progression/progression-rules.json` for balancing: `dotnet run --project tools/ProgressionTable --configuration Release -- [--kills-per-hour 120] [--every 10]`. It compiles nothing. See [Progression Rules](../content/README.md#progression-rules) |
 | `ProtocolGenerator/` | Generates the realtime protocol code from its schema. See [Realtime Protocol](../docs/REALTIME_PROTOCOL.md) |
 
 ## Deployment

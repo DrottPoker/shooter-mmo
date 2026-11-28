@@ -4,6 +4,7 @@ using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.Server.Common.Characters;
+using Mmorpg.Server.Common.Progression;
 
 namespace Mmorpg.GameService.Characters;
 
@@ -23,8 +24,12 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
 
         // The appearance content is loaded once; a broken file stops the start.
         var appearanceCatalog = CharacterAppearanceFileLoader.Load(options.AppearancePath);
+
+        // So are the progression rules.
+        var progressionRules = ProgressionRulesFileLoader.Load(options.ProgressionRulesPath);
         services.AddSingleton(options);
         services.AddSingleton(appearanceCatalog);
+        services.AddSingleton(progressionRules);
         services.AddSingleton<CharacterAppearances>();
         services.AddSingleton<ICharacterAppearances>(provider => provider.GetRequiredService<CharacterAppearances>());
         services.AddSingleton<IDatabaseSeeder, CharacterAppearanceVerifier>();

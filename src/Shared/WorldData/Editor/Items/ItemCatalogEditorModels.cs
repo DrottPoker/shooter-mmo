@@ -56,7 +56,6 @@ namespace Mmorpg.WorldData.Editor.Items
         public string catalogId;
         public ItemCatalogJsonCharacter character;
         public ItemCatalogJsonEconomy economy;
-        public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
         public ItemCatalogJsonIdentity[] toolKinds;
@@ -269,7 +268,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 catalogId = header.catalogId,
                 character = header.character,
                 economy = header.economy,
-                progression = header.progression,
                 categories = header.categories,
                 tags = header.tags,
                 toolKinds = header.toolKinds,
@@ -301,7 +299,6 @@ namespace Mmorpg.WorldData.Editor.Items
                         catalogId = normalized.catalogId,
                         character = normalized.character,
                         economy = normalized.economy,
-                        progression = normalized.progression,
                         categories = normalized.categories,
                         tags = normalized.tags,
                         toolKinds = normalized.toolKinds,
@@ -547,7 +544,6 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.catalogId = authoring.catalogId;
             Authoring.character = authoring.character;
             Authoring.economy = authoring.economy;
-            Authoring.progression = authoring.progression;
             Authoring.retired = authoring.retired;
             Authoring.categories = authoring.categories;
             Authoring.tags = authoring.tags;
