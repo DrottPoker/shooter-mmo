@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Quests.Transactions.Domain;
@@ -6,10 +7,11 @@ using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Quests.Transactions.Handlers;
 
-// The development quest tools of the Admin menu, which the quest route runs only in the
-// Development environment. They go around the givers, the NPCs, the level, and the required
-// quests, but keep the quest log valid, so the normal quest actions go on from wherever they
-// leave a quest.
+// The development quest and progression tools of the Admin menu, which the quest route runs only
+// in the Development environment. The quest tools go around the givers, the NPCs, the level, and
+// the required quests, but keep the quest log valid, so the normal quest actions go on from
+// wherever they leave a quest. The progression tools set a level or grant experience through
+// Characters' rules, as play would.
 internal sealed partial class QuestCommandHandler :
     IItemCommandHandler<AdminAcceptQuestCommand>,
     IItemCommandHandler<AdminCompleteQuestObjectiveCommand>,
@@ -17,7 +19,9 @@ internal sealed partial class QuestCommandHandler :
     IItemCommandHandler<AdminMakeQuestReadyCommand>,
     IItemCommandHandler<AdminResetQuestCommand>,
     IItemCommandHandler<AdminResetQuestChainCommand>,
-    IItemCommandHandler<AdminResetQuestsCommand>
+    IItemCommandHandler<AdminResetQuestsCommand>,
+    IItemCommandHandler<AdminSetCharacterLevelCommand>,
+    IItemCommandHandler<AdminGrantExperienceCommand>
 {
     // An active quest, a completed quest that does not repeat, and a full quest log still
     // refuse, so the stored state stays one the normal rules could reach.
@@ -173,6 +177,75 @@ internal sealed partial class QuestCommandHandler :
         CancellationToken cancellationToken)
     {
         return ResetAsync(context, command.CharacterId, null, cancellationToken);
+    }
+
+    // A set level starts with no experience inside it, so a lower level loses levels too.
+    public async Task ExecuteAsync(
+        ItemTransactionContext context,
+        AdminSetCharacterLevelCommand command,
+        CancellationToken cancellationToken)
+    {
+        context.Authority.EnsureSimulationWorkerAuthority();
+        if (command.Level < 1 || command.Level > characterProgression.MaximumLevel)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.SimulationOperationInvalid,
+                "A level is from 1 to " + characterProgression.MaximumLevel + ".");
+        }
+
+        await context.Locks.LockCharacterStateForIdempotentEventAsync(command.CharacterId, cancellationToken);
+        // The character is locked as active, so it is there to read and set.
+        var before = RequireCharacter(await characterProgression.ReadAsync(
+            context.Scope,
+            command.CharacterId,
+            cancellationToken));
+        if (!await characterProgression.SetLevelAsync(context.Scope, command.CharacterId, command.Level, cancellationToken))
+        {
+            RequireCharacter<CharacterProgressionSnapshot>(null);
+        }
+
+        var after = RequireCharacter(await characterProgression.ReadAsync(
+            context.Scope,
+            command.CharacterId,
+            cancellationToken));
+        context.Journal.AddMetadataAudit(
+            "character_admin_level_set",
+            new { command.CharacterId, before.Level, before.Experience },
+            new { command.CharacterId, after.Level });
+        ProgressionSection.Set(context.Journal, command.CharacterId, before, after, 0);
+    }
+
+    public async Task ExecuteAsync(
+        ItemTransactionContext context,
+        AdminGrantExperienceCommand command,
+        CancellationToken cancellationToken)
+    {
+        context.Authority.EnsureSimulationWorkerAuthority();
+        if (command.Experience < 1 || command.Experience > AdminExperienceRules.MaximumGrant)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.SimulationOperationInvalid,
+                "An experience grant is from 1 to " + AdminExperienceRules.MaximumGrant + ".");
+        }
+
+        await context.Locks.LockCharacterStateForIdempotentEventAsync(command.CharacterId, cancellationToken);
+        var experience = RequireCharacter(await characterProgression.GrantExperienceAsync(
+            context.Scope,
+            command.CharacterId,
+            command.Experience,
+            CharacterExperienceSources.Admin,
+            cancellationToken));
+        context.Journal.AddMetadataAudit(
+            "character_admin_experience_granted",
+            null,
+            new
+            {
+                command.CharacterId,
+                command.Experience,
+                ExperienceGained = experience.Gained,
+                LevelAfter = experience.After.Level
+            });
+        ProgressionSection.Set(context.Journal, command.CharacterId, experience);
     }
 
     // Forgets the chosen quests that the log holds, or every quest it holds, with the items of

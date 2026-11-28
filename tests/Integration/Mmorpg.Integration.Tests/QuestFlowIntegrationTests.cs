@@ -116,11 +116,13 @@ public sealed class QuestFlowIntegrationTests
 
         var credit = new QuestOperation(
             Guid.NewGuid(),
-            QuestOperationKinds.CreditKill,
+            QuestOperationKinds.CreditMobKill,
             null,
             MobActorId: "mob.feral_wolf",
             MobTags: ["wolf", "beast"],
-            ClientIntent: false);
+            ClientIntent: false,
+            MobLevel: 1,
+            MobExperiencePercent: 100);
         var counted = await worker.Executor.ExecuteAsync(session, credit, cancellationToken);
 
         Assert.True(counted.Succeeded, counted.Code + ": " + counted.Message);

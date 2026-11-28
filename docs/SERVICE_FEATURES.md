@@ -47,7 +47,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-workers/{workerId}/session-heartbeat` | Worker service policy | Renew the exact simulation leases of the worker runtime's sessions in one batch, and answer each session on its own: its lease with the end of its account session and its carry state, or its refusal |
 | `POST /api/simulation-workers/{workerId}/checkpoint` | Worker service policy | Save the place and vitals of the worker runtime's characters whose state changed, in one batch |
-| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket that the client's proof proves, and return the session, the ticket's transport key, and the character's saved place and vitals |
+| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket that the client's proof proves, and return the session, the ticket's transport key, the character's saved place and vitals, and its progression |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease, with the character's final place and vitals when the worker has them |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
@@ -373,7 +373,9 @@ The lane's meter and its warning are in [Monitoring](MONITORING.md#gameservice).
 - A character's level is at most the highest level of the
   [progression rules](../content/README.md#progression-rules), which
   GameService loads from `Characters:ProgressionRulesPath` and refuses to start
-  without. Experience is not granted yet.
+  without. Mob kills, quest rewards, and the Admin menu grant experience, as
+  [Character Progression](GAME_SERVICE_MODULES.md#character-progression)
+  describes; the HTTP character routes do not show it.
 - The character list and a newly created character name each character's id,
   name, balance, creation time, body model, and level, which the client reads
   for quest availability.
@@ -572,7 +574,7 @@ replication go on; everything durable is paused.
   describes; the bots read the message and do nothing with it.
 - The work that must complete waits without spending a timeout and goes as soon
   as GameService answers again, with the operation id it had: a player death,
-  a quest kill credit, an arrow batch, the creation of a Mob corpse that needs
+  a Mob kill credit, an arrow batch, the creation of a Mob corpse that needs
   GameService, a durable one or a live one with quest drops, the release of a
   session, and the session heartbeat, whose rounds pause and one of which goes
   right after the outage when one waited for it. The checkpoint pauses too, and
@@ -585,7 +587,7 @@ replication go on; everything durable is paused.
   counts the session's time only while GameService answers and releases it
   only once that work stayed pending for the retry horizon below, when the
   work itself is given up.
-- A death, a quest kill credit, or a Mob corpse whose outcome stays uncertain
+- A death, a Mob kill credit, or a Mob corpse whose outcome stays uncertain
   for `SimulationWorker:UncertainOperationRetryHorizonSeconds`, 600 by default,
   counted only while GameService answers, is given up with one error line that
   names the operation id and kind and a count in
@@ -747,9 +749,14 @@ last, whatever order their answers reach the worker in, as
 [Reconnect Token Rotation](#reconnect-token-rotation) describes. The response includes
 the fenced item-state revision, carried weight, capacity, and equipment: every
 occupied equipment slot with its item id, definition id, quantity, and item
-revision at that item-state revision. It also carries the character's look and
+revision at that item-state revision. It also carries the character's look,
 its saved place and vitals, as [Character Place And Vitals](#character-place-and-vitals)
-describes. The session heartbeat updates the leases and then reads the current
+describes, and its `progression`: `level`, `experience` inside the level,
+`experienceToNextLevel`, and `highestMobLevelWithoutExperience`, as
+[Character Progression](GAME_SERVICE_MODULES.md#character-progression) reads
+them. A development bot's consume names no progression. The worker keeps it
+with the session and uses nothing of it yet. The session heartbeat updates the
+leases and then reads the current
 committed carry tuple and equipment, so a worker can advance active movement and
 combat state monotonically. Reconnect reads the tuple again under the admission
 lock.
@@ -1002,7 +1009,7 @@ valid, the character's entity stays in the world as a lingering body for
   saves its final state with the release of the session, and releases it as a
   disconnect did before. A body whose death committed goes with reason `died`
   and is saved as its respawn would leave it; it never respawns. The release
-  waits for the spent arrows, the death, and the quest credits that the body
+  waits for the spent arrows, the death, and the Mob kill credits that the body
   still commits.
 - The end of the account session, by a logout or a new login, does not end the
   simulation session, and the clock does not end the account session of a body
@@ -2120,7 +2127,9 @@ startup outside the Development environment, is on in the worker's
   route like abandoning, as [Quests](#quests) describes; a worker without the
   option answers them with `admin_tools_disabled`. GameService runs them only
   in the Development environment and answers every other environment with
-  `403` and `development_tools_disabled`.
+  `403` and `development_tools_disabled`. The quest route also runs the
+  progression tools `admin_set_character_level` and `admin_grant_experience`
+  under the same rule, which no menu sends yet.
 
 ## Content Files
 
@@ -2590,12 +2599,19 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
     reward items with the one that `rewardChoiceDefinitionId` names, and credits
     the Gold reward with a `quest_reward` ledger row. It rejects with
     `quest_not_ready`, `quest_reward_choice_required`,
-    `quest_reward_choice_invalid`, or `inventory_full` and changes nothing.
-  - `credit_quest_kill` counts one credited kill of the Mob that `mobActorId`
-    and at most 32 `mobTags` describe for every matching kill objective of the
-    character's current steps; a kill that no step asks for changes nothing,
-    and an active quest that the catalog does not hold gets no credit without
-    holding back the others.
+    `quest_reward_choice_invalid`, or `inventory_full` and changes nothing. A
+    quest with an experience reward also grants it, as
+    [Character Progression](GAME_SERVICE_MODULES.md#character-progression)
+    describes.
+  - `credit_mob_kill` credits one kill of the Mob that `mobActorId`, at most 32
+    `mobTags`, `mobLevel`, 1 to 10,000, and `mobExperiencePercent`, 0 to
+    100,000, describe: it grants the experience that the
+    [progression rules](../content/README.md#progression-rules) give a
+    character of its level for the Mob, and counts one kill for every matching
+    kill objective of the character's current steps. A kill that no step asks
+    for changes no quest, and an active quest that the catalog does not hold
+    gets no credit without holding back the others. A missing or out-of-range
+    field answers `400` with `item_simulation_operation_invalid`.
   - The Admin menu's quest tools, which only a Development GameService runs:
     `admin_accept_quest` accepts any quest that is not active, and not
     completed unless it repeats, around its giver, level, and required quests,
@@ -2610,7 +2626,12 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
     `admin_reset_quests`, without a quest, every quest; each removes the items
     of the forgotten quests' lineage with the `quest_reset` destruction reason.
     A tool that leaves the quest log as it was, such as filling a collect
-    objective, reports no quest change.
+    objective, reports no quest change. `admin_set_character_level` sets the
+    character's level to `level`, 1 to the highest level, with no experience
+    inside it, and `admin_grant_experience` grants `experience`, 1 to
+    1,000,000,000,000, as a quest reward does. Neither names a quest, and a
+    missing or out-of-range field, or a quest, answers `400` with
+    `item_simulation_operation_invalid`.
   - A quest that the catalog does not hold returns `404` with `quest_not_found`,
     an action at another NPC `403` with `quest_npc_access_required`, and a quest
     that is not active `409` with `quest_not_active`.
@@ -2620,7 +2641,12 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   it is no longer active, the progress of its counted objectives, and its
   completion count. An action that moves no item, such as a talk, names no
   character revision; granting start items again changes no quest and names no
-  `questLog`.
+  `questLog`. A kill credit, a turn-in with an experience reward, and the
+  progression tools carry `progression`: the character's `level`, `experience`,
+  `experienceToNextLevel`, and `highestMobLevelWithoutExperience` after it, the
+  `experienceGained` that counted, 0 at the highest level, and the
+  `levelsGained`, which a set level may make negative. A replay of the same
+  operation id returns the same `progression` and grants nothing again.
 - `POST /api/simulation-sessions/{id}/quest-drops` answers how much of the quest
   drops that a dying Mob rolled for the session's character, named by
   `sourceActorDefinitionId` and up to 64 `drops` of `questId`, `definitionId`,
@@ -2682,17 +2708,22 @@ the quest actions of the realtime protocol through these routes:
   with `quest_log_unavailable` while GameService cannot answer, so no change
   builds on a log that misses one.
 - A Mob's death credits its kill to the players that
-  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) names. When a quest
-  of the catalog asks for kills of the Mob, every credited player gets a kill
-  credit with a random operation id, which takes its place in the player's lane
-  at the kill, so an operation that the player sends after the kill, such as
-  abandoning and accepting the quest again, never overtakes it. When its turn
-  comes, the worker sends it as a `credit_quest_kill` if a current step holds an
+  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) names. When the
+  Mob's `experiencePercent` is above 0, or a quest of the catalog asks for kills
+  of the Mob, every credited player gets a kill credit with a random operation
+  id and the Mob's level and experience percent from its actor definition,
+  which takes its place in the player's lane at the kill, so an operation that
+  the player sends after the kill, such as abandoning and accepting the quest
+  again, never overtakes it. When its turn comes, the worker sends it as a
+  `credit_mob_kill` if the Mob gives experience, or if a current step holds an
   unfinished kill objective for the Mob by the quest log that every operation
   before it left, or if that log is stale, so a kill during an accept counts for
-  the accepted quest; a kill that no quest asks for costs no GameService call.
-  The changed quests reach the player as a `QuestLogChanged` without an
-  operation id. An uncertain answer, or a transaction that concurrent database
+  the accepted quest; a kill of a Mob that gives no experience and that no
+  quest asks for costs no GameService call. The changed quests reach the player
+  as a `QuestLogChanged` without an operation id; a credit that changed no
+  quest sends none. The worker keeps the answer's `progression` and sends the
+  player nothing of it yet. An uncertain answer, or a transaction that
+  concurrent database
   work rolled back, keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
   a death, or until the [retry horizon](#gameservice-outage) drops it; a
@@ -3017,8 +3048,8 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `RegistryHeartbeatRetryMilliseconds` | `2000` | How soon a worker heartbeat that timed out, could not reach GameService, or got a server error goes again, until one succeeds; shorter than the heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
 | `GameServiceOutageToleranceSeconds` | `120` | How long the worker plays on after its last successful worker heartbeat before it stops in order, 10 to 600 seconds. GameService's `Simulation:SessionLeaseLifetimeSeconds` must be at least this plus the call timeout, the heartbeat intervals, and the retries around it, as [GameService Outage](#gameservice-outage) describes |
-| `ShutdownTimeoutSeconds` | `40` | The host's shutdown timeout, which the whole orderly stop shares, at least 6 times `GameServiceTimeoutSeconds` plus 3 seconds and at most 600: the steps that call GameService, in-flight operations, the combat flush with its arrow batch and quest credits, the last checkpoint, going offline, and the session releases, may each spend a call timeout. A container's stop grace period must stay longer, as [Deployment](DEPLOYMENT.md#settings-that-must-be-set) says |
-| `UncertainOperationRetryHorizonSeconds` | `600` | How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is retried, counted only while GameService answers, at least `GameServiceOutageToleranceSeconds` plus 60 and at most 3,600 seconds. GameService's `Retention:ItemHistory` must stay far above it |
+| `ShutdownTimeoutSeconds` | `40` | The host's shutdown timeout, which the whole orderly stop shares, at least 6 times `GameServiceTimeoutSeconds` plus 3 seconds and at most 600: the steps that call GameService, in-flight operations, the combat flush with its arrow batch and Mob kill credits, the last checkpoint, going offline, and the session releases, may each spend a call timeout. A container's stop grace period must stay longer, as [Deployment](DEPLOYMENT.md#settings-that-must-be-set) says |
+| `UncertainOperationRetryHorizonSeconds` | `600` | How long a death, a Mob kill credit, or a Mob corpse whose outcome stays uncertain is retried, counted only while GameService answers, at least `GameServiceOutageToleranceSeconds` plus 60 and at most 3,600 seconds. GameService's `Retention:ItemHistory` must stay far above it |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
 | `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |
 | `HealthFilePath` | none | File that the worker writes every 5 seconds while it is ready, with its port bound, a valid lease, and a loop that ticked in the last 5 seconds, and deletes when it is not, for the container health check, as [Container Health Checks](#container-health-checks) describes; a relative path starts at the working directory |

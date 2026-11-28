@@ -27,7 +27,7 @@ public sealed class AccountSessionEndQuestIntegrationTests
             CancellationToken.None);
         Assert.True(logout.Succeeded, logout.Error?.Message);
 
-        var kill = await RouteAsync(context, session, "credit_quest_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: ["wolf"]);
+        var kill = await RouteAsync(context, session, "credit_mob_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: ["wolf"], mobLevel: 1, mobExperiencePercent: 100);
         var abandon = await RouteAsync(context, session, "abandon_quest", Wolves, Mira);
         await using var scope = context.Services.CreateAsyncScope();
         var log = await scope.ServiceProvider.GetRequiredService<SimulationQuestLogService>().ReadAsync(

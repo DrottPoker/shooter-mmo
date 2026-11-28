@@ -5,7 +5,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // The gaps leave room for a new step, which takes a new constant here with its reason.
 internal static class RealtimeShutdownOrder
 {
-    // Commits the arrow shots, the quest credits, and the deaths that wait, while the sessions, peers, and
+    // Commits the arrow shots, the Mob kill credits, and the deaths that wait, while the sessions, peers, and
     // entities they name still exist.
     public const int CombatFlush = 100;
 

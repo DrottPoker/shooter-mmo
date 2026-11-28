@@ -19,7 +19,7 @@ public sealed class QuestCommandCatalogTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(15, Constants(typeof(QuestOperationKinds)).Length);
+        Assert.Equal(17, Constants(typeof(QuestOperationKinds)).Length);
         Assert.Equal(Constants(typeof(QuestOperationKinds)), kinds);
     }
 
@@ -39,7 +39,7 @@ public sealed class QuestCommandCatalogTests
             registrations.Where(registration => registration.PolicyAction)
                 .Select(registration => registration.OperationKind));
         Assert.Equal(
-            new[] { QuestOperationKinds.CreditQuestKill },
+            new[] { QuestOperationKinds.CreditMobKill },
             registrations.Where(registration => registration.MayRunAfterAccountSessionEnd)
                 .Select(registration => registration.OperationKind));
     }

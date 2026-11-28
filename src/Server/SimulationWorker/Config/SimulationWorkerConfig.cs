@@ -76,7 +76,7 @@ public sealed record SimulationWorkerConfig(
     public const int MinimumGameServiceOutageToleranceSeconds = 10;
     public const int MaximumGameServiceOutageToleranceSeconds = 600;
 
-    // How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is
+    // How long a death, a Mob kill credit, or a Mob corpse whose outcome stays uncertain is
     // retried, counted only while GameService answers its registry heartbeat, before it is given up.
     public TimeSpan UncertainOperationRetryHorizon { get; init; } =
         TimeSpan.FromSeconds(DefaultUncertainOperationRetryHorizonSeconds);
@@ -116,7 +116,7 @@ public sealed record SimulationWorkerConfig(
 
     // The host's shutdown timeout, which the whole orderly stop shares: after the peers are told
     // and the transport stopped, the steps that call GameService, in-flight operations, the combat
-    // flush with its arrow batch and its quest credits, the last checkpoint, going offline, and the
+    // flush with its arrow batch and its Mob kill credits, the last checkpoint, going offline, and the
     // session releases, each may spend one GameServiceTimeout. A stop that outlasts it is cut off.
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(DefaultShutdownTimeoutSeconds);
 

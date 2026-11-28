@@ -7,11 +7,11 @@ using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
-// A credited Mob kill that the player's quest log asks for commits in the player's lane, at the
-// place it took at the kill, also across a reconnect and for the lingering body of a player who
-// left. It asks again with the same operation after an uncertain answer and commits before the
-// player's session or the worker ends. The quests it advanced reach the player without an
-// operation.
+// A credited kill of a Mob that gives experience, or that the player's quest log asks for, commits
+// in the player's lane, at the place it took at the kill, also across a reconnect and for the
+// lingering body of a player who left. It names the Mob's level and experience percent, asks again
+// with the same operation after an uncertain answer, and commits before the player's session or
+// the worker ends. The quests it advanced reach the player without an operation.
 public sealed class RealtimeQuestCreditTests
 {
     private const string Wolves = "quest.fixture.wolves";
@@ -32,22 +32,49 @@ public sealed class RealtimeQuestCreditTests
         await harness.PollUntilAsync(() => QuestChanges(client).Count == 1, "the counted kill");
 
         var credit = Assert.Single(harness.GameService.QuestOperations);
-        Assert.Equal(("credit_quest_kill", "mob.feral_wolf"), (credit.OperationKind, credit.MobActorId));
+        Assert.Equal(("credit_mob_kill", "mob.feral_wolf"), (credit.OperationKind, credit.MobActorId));
         Assert.Null(credit.QuestId);
         Assert.Null(credit.QuestNpcActorId);
         var definition = harness.WorldActorDocument!.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf");
         Assert.Equal(definition.Tags, credit.MobTags);
+        Assert.Equal((definition.Level, definition.ExperiencePercent), (credit.MobLevel, credit.MobExperiencePercent));
         Assert.Equal(4, credit.OperationId.Version);
         var change = QuestChanges(client)[0];
         Assert.Equal((Guid.Empty, 3L, 4L, false), (change.OperationId, change.PreviousQuestLogRevision, change.QuestLogRevision, change.ReloadRequired));
         Assert.Equal(1, change.Quests[0].Objectives[0].Progress);
     }
 
+    // GameService grants the kill's experience and changes no quest, so the quest log keeps its
+    // revision and the client hears of no quest change.
     [Fact]
-    public async Task AKillThatNoQuestAsksForSendsNoCredit()
+    public async Task AKillThatNoQuestAsksForSendsACreditForItsExperience()
     {
         await using var harness = Create();
         var archer = AddArcher(harness, "Questless Hunter");
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.CommittedQuestOperation(request, 0, 0));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(archer);
+        var wolf = await WaitForWolfAsync(harness, client);
+
+        client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+        await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 1, "the credit of the kill");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+
+        var credit = Assert.Single(harness.GameService.QuestOperations);
+        var definition = harness.WorldActorDocument!.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf");
+        Assert.True(definition.ExperiencePercent > 0);
+        Assert.Equal(
+            ("credit_mob_kill", "mob.feral_wolf", definition.Level, definition.ExperiencePercent),
+            (credit.OperationKind, credit.MobActorId, credit.MobLevel, credit.MobExperiencePercent));
+        Assert.Empty(QuestChanges(client));
+    }
+
+    [Fact]
+    public async Task AKillOfAMobWithoutExperienceThatNoQuestAsksForSendsNoCredit()
+    {
+        await using var harness = Create(wolfExperiencePercent: 0);
+        var archer = AddArcher(harness, "Questless Pacifist");
         await harness.StartAsync();
         var client = await harness.JoinAsync(archer);
         var wolf = await WaitForWolfAsync(harness, client);
@@ -60,6 +87,26 @@ public sealed class RealtimeQuestCreditTests
 
         Assert.Empty(harness.GameService.QuestOperations);
         Assert.Empty(QuestChanges(client));
+    }
+
+    // A kill of a Mob that gives no experience still counts for a quest that asks for it.
+    [Fact]
+    public async Task AKillOfAMobWithoutExperienceStillCountsForTheQuest()
+    {
+        await using var harness = Create(wolfExperiencePercent: 0);
+        var archer = AddArcher(harness, "Dutiful Pacifist");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, Hunting(0)));
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(KillCounted(request, 4, 1));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(archer);
+        var wolf = await WaitForWolfAsync(harness, client);
+
+        client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+        await harness.PollUntilAsync(() => QuestChanges(client).Count == 1, "the counted kill");
+
+        var credit = Assert.Single(harness.GameService.QuestOperations);
+        Assert.Equal(("credit_mob_kill", 0), (credit.OperationKind, credit.MobExperiencePercent));
     }
 
     [Fact]
@@ -221,7 +268,7 @@ public sealed class RealtimeQuestCreditTests
             gate.Release();
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 1, "the credit of the body");
             var credit = Assert.Single(harness.GameService.QuestOperations);
-            Assert.Equal(("credit_quest_kill", tagger.CharacterId), (credit.OperationKind, credit.CharacterId));
+            Assert.Equal(("credit_mob_kill", tagger.CharacterId), (credit.OperationKind, credit.CharacterId));
             Assert.Equal(0, harness.GameService.ReleaseCount);
         }
         finally
@@ -252,7 +299,7 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 3, "every quest operation");
 
             Assert.Equal(
-                ["credit_quest_kill", "credit_quest_kill", "abandon_quest"],
+                ["credit_mob_kill", "credit_mob_kill", "abandon_quest"],
                 harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
         }
         finally
@@ -284,7 +331,7 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 2, "the credit after the accept");
 
             Assert.Equal(
-                ["accept_quest", "credit_quest_kill"],
+                ["accept_quest", "credit_mob_kill"],
                 harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
             await harness.PollUntilAsync(
                 () => QuestChanges(client).Any(change => change.OperationId == Guid.Empty),
@@ -336,7 +383,7 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 3, "both credits");
 
             Assert.Equal(
-                ["abandon_quest", "credit_quest_kill", "credit_quest_kill"],
+                ["abandon_quest", "credit_mob_kill", "credit_mob_kill"],
                 harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
             Assert.Null(second.ServerDisconnect);
         }
@@ -371,7 +418,7 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 2, "the credit after the accept");
 
             Assert.Equal(
-                ["accept_quest", "credit_quest_kill"],
+                ["accept_quest", "credit_mob_kill"],
                 harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
             await harness.PollUntilAsync(
                 () => QuestChanges(second).Any(change => change.OperationId == Guid.Empty),
@@ -408,7 +455,7 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 3, "every quest operation");
 
             Assert.Equal(
-                ["credit_quest_kill", "credit_quest_kill", "abandon_quest"],
+                ["credit_mob_kill", "credit_mob_kill", "abandon_quest"],
                 harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
             await harness.PollUntilAsync(
                 () => QuestChanges(second).Count(change => change.OperationId == Guid.Empty) == 2,
@@ -683,13 +730,22 @@ public sealed class RealtimeQuestCreditTests
         return Spawn()!;
     }
 
-    internal static RealtimeServerHarness Create(float wolfRespawnSeconds = 30f, bool playerVersusPlayer = false)
+    internal static RealtimeServerHarness Create(
+        float wolfRespawnSeconds = 30f,
+        bool playerVersusPlayer = false,
+        int? wolfExperiencePercent = null)
     {
+        var document = WolfNextToTheSpawn(respawnSeconds: wolfRespawnSeconds);
+        if (wolfExperiencePercent is { } percent)
+        {
+            document.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf").ExperiencePercent = percent;
+        }
+
         return RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
             EnableWorldActors = true,
             EnableQuests = true,
-            WorldActorDocument = WolfNextToTheSpawn(respawnSeconds: wolfRespawnSeconds),
+            WorldActorDocument = document,
             ItemCatalog = TestCatalog(minimumDamage: 100, maximumDamage: 100),
             CombatRules = TestRules(respawnSeconds: 30f),
             PlayerVersusPlayer = playerVersusPlayer,

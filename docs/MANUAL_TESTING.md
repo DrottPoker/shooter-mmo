@@ -628,7 +628,7 @@ up to 120 seconds without GameService, so everything below takes less than that.
 Expected result: the character enters alive where the checkpoint of step 1 left
 it, with the health it had then and the item in its bag, and no corpse lies
 where it died. The worker logged `GameService does not answer, so the uncommitted
-shots and quest kill credits of <n> sessions are not committed at shutdown` and
+shots and Mob kill credits of <n> sessions are not committed at shutdown` and
 no death was committed, as
 [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
 describes.
@@ -1633,9 +1633,11 @@ dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release -
 ```
 
 Expected result: every test passes. An archer on the wolves hunt kills a Feral
-Wolf, and the worker sends one `credit_quest_kill` for `mob.feral_wolf` with its
-tags; the player gets a `QuestLogChanged` without an operation id that moves
-`wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
+Wolf, and the worker sends one `credit_mob_kill` for `mob.feral_wolf` with its
+tags, level, and experience percent; the player gets a `QuestLogChanged` without
+an operation id that moves `wolves` to 1. A kill that no quest asks for still
+sends one credit, for the experience, and changes no quest log; only a kill of
+a Mob with experience percent 0 that no quest asks for sends nothing. A credit whose
 answers are lost, or whose transaction the database rolled back with
 `item_transaction_timeout`, asks again with the same operation id until it
 commits, and an

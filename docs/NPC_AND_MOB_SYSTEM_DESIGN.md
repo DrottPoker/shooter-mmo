@@ -177,7 +177,8 @@ Every actor definition contains at least:
   `mob.feral_alpha` has 500 and every other shipped Mob 100. Actor Studio sets
   100 for a new Mob. The value of a level is in
   [Progression Rules](../content/README.md#progression-rules). NPCs and
-  resource nodes leave it at 0. Nothing grants experience yet.
+  resource nodes leave it at 0. The worker sends both values with the kill
+  credit of every credited player, and GameService grants the experience.
 - For a Mob: its kill credit, as
   [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides: `tag`, by
   which the first player who damages it gets the credit and the loot, or
@@ -658,6 +659,12 @@ but never an interaction. The combat system produces its death, as
   describes. The owner of each corpse also rolls the Mob's
   [quest drops](QUEST_SYSTEM_DESIGN.md#quest-drops), which add personal
   entries after the Mob's own loot. An empty roll leaves no corpse.
+- Every player that the death credits gets a Mob kill credit when the Mob's
+  `experiencePercent` is above 0 or a quest of the catalog asks for kills of
+  it. The credit names the Mob's level and experience percent and commits in
+  the player's lane in kill order: GameService grants the experience of the
+  kill and counts it for the player's quests in one transaction, as
+  [Quests](SERVICE_FEATURES.md#quests) describes.
 - The actor despawns once its corpse exists or its death has reached the
   viewers. Its respawn profile recreates the same compiled spawn instance with
   a fresh runtime id and network entity id through the central timer queue, and

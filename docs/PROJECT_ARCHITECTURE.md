@@ -397,7 +397,7 @@ contract:
 - Shutdown stops the transport, waits for in-flight operations, and then runs
   the registered shutdown steps in the order that
   `Realtime/RealtimeShutdownOrder.cs` declares: the combat authority
-  commits the arrow shots it can still name exactly and the quest credits that
+  commits the arrow shots it can still name exactly and the Mob kill credits that
   wait, the place and vitals of every remaining player go into one last
   checkpoint and stay for the session releases, and then combat state, peers,
   interest, bindings, entities, lingering bodies, item and carry state, corpse
@@ -648,7 +648,7 @@ order:
    second at most, while LiteNetLib sends the disconnect again every 300 ms.
    Then the transport stops, the
    work that waits for GameService gives up, in-flight operations finish, the
-   combat flush commits arrow shots and quest credits with the session
+   combat flush commits arrow shots and Mob kill credits with the session
    credentials and gives a death that has not committed one more attempt, with
    the operation id that every retry uses, and the character state flush saves
    the place and vitals of every remaining player, a lingering body like a
@@ -666,7 +666,7 @@ order:
 The steps that call GameService each may spend a call timeout, so the host's
 shutdown timeout is a setting of the worker, `SimulationWorker:ShutdownTimeoutSeconds`,
 40 seconds by default and validated to be at least 6 call timeouts plus 3 seconds:
-the in-flight operations, the arrow batch and the quest credits of the combat
+the in-flight operations, the arrow batch and the Mob kill credits of the combat
 flush, the last checkpoint, going offline, and the session releases. The host's
 own default of 30 seconds would not cover them, and a container's stop grace
 period must stay longer than the setting, as [Deployment](DEPLOYMENT.md#settings-that-must-be-set)
@@ -1376,7 +1376,7 @@ them, so the character's body stays in the world its full time. Logout and
 manual revocation perform the same dependent cleanup with distinct reason
 codes, and the session heartbeat marks a session whose account session ended
 without such a transaction. A marked session runs only the body's own work: its death, its spent
-arrows, its quest kill credits, the reads they need, checkpoints, and the
+arrows, its Mob kill credits, the reads they need, checkpoints, and the
 release. GameService refuses everything a client asks for on it with `401` and
 `account_session_replaced` or `account_session_ended`, and its heartbeat names
 the same code. The worker then ends the connection that still plays the
@@ -1624,8 +1624,9 @@ comes back to it:
    handshake timeout.
 6. A connection that ends never cancels durable combat work, and neither does
    a body that goes. The body commits its spent arrows at once, its death first
-   when it died, and the quest credits of its kills, also those it gathers
-   while it stands, one operation per tick without a peer. When the body goes
+   when it died, and the Mob kill credits of its kills, for experience and
+   quests, also those it gathers while it stands, one operation per tick
+   without a peer. When the body goes
    while work is left, the session is released only after the work committed.
    A reconnect moves the work that holds or waits in the old peer's lane to the
    new peer's lane, so the new client's operations still wait for it.

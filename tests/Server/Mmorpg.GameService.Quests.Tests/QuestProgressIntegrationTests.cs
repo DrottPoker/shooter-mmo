@@ -78,11 +78,11 @@ public sealed class QuestProgressIntegrationTests
         ItemScenarioWorld.AssertCommitted(await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira));
         var tags = Enumerable.Range(0, WorldActorCompiler.MaximumTagsPerActor).Select(index => $"tag{index}").ToArray();
 
-        var fullyTagged = await ExecuteAsync(context, session, new CreditQuestKillCommand(characterId, "mob.feral_wolf", tags), null);
+        var fullyTagged = await ExecuteAsync(context, session, new CreditMobKillCommand(characterId, "mob.feral_wolf", tags, 1, 100), null);
         var overTagged = await ExecuteAsync(
             context,
             session,
-            new CreditQuestKillCommand(characterId, "mob.feral_wolf", [.. tags, "one_more"]),
+            new CreditMobKillCommand(characterId, "mob.feral_wolf", [.. tags, "one_more"], 1, 100),
             null);
 
         Assert.Equal(1, Progress(fullyTagged, Wolves, "wolves"));
@@ -238,10 +238,10 @@ public sealed class QuestProgressIntegrationTests
         var characterId = player.Character.Id;
         ItemScenarioWorld.AssertCommitted(await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira));
 
-        var kill = await RouteAsync(context, session, "credit_quest_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: []);
-        var untagged = await RouteAsync(context, session, "credit_quest_kill", null, null, mobActorId: "mob.feral_wolf");
+        var kill = await RouteAsync(context, session, "credit_mob_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: [], mobLevel: 1, mobExperiencePercent: 100);
+        var untagged = await RouteAsync(context, session, "credit_mob_kill", null, null, mobActorId: "mob.feral_wolf", mobLevel: 1, mobExperiencePercent: 100);
         var noObjective = await RouteAsync(context, session, "talk_to_quest_npc", Wolves, Mira);
-        await RouteAsync(context, session, "credit_quest_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: ["wolf"]);
+        await RouteAsync(context, session, "credit_mob_kill", null, null, mobActorId: "mob.feral_wolf", mobTags: ["wolf"], mobLevel: 1, mobExperiencePercent: 100);
         var turnedIn = await RouteAsync(context, session, "turn_in_quest", Wolves, Mira, rewardChoiceDefinitionId: "fixture.bow");
 
         Assert.True(kill.Succeeded, kill.Error?.Message);
@@ -287,7 +287,7 @@ public sealed class QuestProgressIntegrationTests
         Guid characterId,
         string mobActorId)
     {
-        return ExecuteAsync(context, session, new CreditQuestKillCommand(characterId, mobActorId, ["wolf"]), null);
+        return ExecuteAsync(context, session, new CreditMobKillCommand(characterId, mobActorId, ["wolf"], 1, 100), null);
     }
 
     private static int Progress(ItemTransactionResult result, string questId, string objectiveId)

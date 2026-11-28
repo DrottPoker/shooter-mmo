@@ -16,7 +16,7 @@ public static class QuestOperationKinds
     public const string TalkTo = "talk_to_quest_npc";
     public const string Deliver = "deliver_quest_items";
     public const string TurnIn = "turn_in_quest";
-    public const string CreditKill = "credit_quest_kill";
+    public const string CreditMobKill = "credit_mob_kill";
 
     // The development quest tools of the Admin menu, which only a Development GameService runs.
     public const string AdminAccept = "admin_accept_quest";
@@ -29,9 +29,9 @@ public static class QuestOperationKinds
 }
 
 // One quest action of a live character. QuestNpcActorId is the actor definition of the NPC whose
-// quests capability the open interaction validated, or null outside an interaction. A kill credit
-// names the credited Mob's actor definition and tags instead of a quest, and since no client
-// intent caused it, its quest log change names no operation.
+// quests capability the open interaction validated, or null outside an interaction. A Mob kill
+// credit names the credited Mob's actor definition, tags, level, and experience percent instead of
+// a quest, and since no client intent caused it, its quest log change names no operation.
 public sealed record QuestOperation(
     Guid OperationId,
     string OperationKind,
@@ -41,7 +41,9 @@ public sealed record QuestOperation(
     string? RewardChoiceDefinitionId = null,
     string? MobActorId = null,
     IReadOnlyList<string>? MobTags = null,
-    bool ClientIntent = true)
+    bool ClientIntent = true,
+    int? MobLevel = null,
+    int? MobExperiencePercent = null)
 {
     public Guid ReportedOperationId => ClientIntent ? OperationId : Guid.Empty;
 }
@@ -146,7 +148,9 @@ public sealed class QuestOperationExecutor(
             operation.ObjectiveId,
             operation.RewardChoiceDefinitionId,
             operation.MobActorId,
-            operation.MobTags);
+            operation.MobTags,
+            operation.MobLevel,
+            operation.MobExperiencePercent);
         var result = await gameServiceClient.MutateSimulationQuestsAsync(
             session.SimulationSessionId,
             request,
@@ -180,7 +184,9 @@ public sealed class QuestOperationExecutor(
         }
 
         // An action that moved no item, such as a talk or a kill credit, leaves the item state as
-        // the worker holds it, also for a session whose player already left.
+        // the worker holds it, also for a session whose player already left. A kill credit that
+        // changed no quest leaves the quest log at its revision, so it sends the client nothing.
+        // The progression that a grant reports stays on the response until a part reads it.
         var transaction = result.Value!;
         var itemStateRevision = transaction.CharacterState!.ItemStateRevision;
         RealtimeOwnerItemStateChanged? itemChange = null;
@@ -399,7 +405,7 @@ public sealed class QuestOperationExecutor(
             QuestOperationKinds.TalkTo => WorldInteractionNoticeCodes.QuestObjectiveCompleted,
             QuestOperationKinds.Deliver => WorldInteractionNoticeCodes.QuestItemsDelivered,
             QuestOperationKinds.TurnIn => WorldInteractionNoticeCodes.QuestCompleted,
-            QuestOperationKinds.CreditKill => WorldInteractionNoticeCodes.QuestKillCounted,
+            QuestOperationKinds.CreditMobKill => WorldInteractionNoticeCodes.QuestKillCounted,
             _ => string.Empty
         };
     }

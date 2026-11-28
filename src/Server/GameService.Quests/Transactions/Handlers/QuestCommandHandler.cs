@@ -4,32 +4,37 @@ using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Quests.Transactions.Domain;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Progression;
 using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Quests.Transactions.Handlers;
 
 // The quest commands: accepting and abandoning quests, granting start items again, talking,
-// delivering, counting kills, and the turn-in. Availability and progress follow the shared
-// quest rules, the quest log is the Quests module's, and start items and quest drops are
-// protected quest items with the quest's lineage, which ending the quest removes. Quest
-// actions only fill free slots or take the items an objective counts, so they lock the
-// character without an expected revision and never fail because the player moved an item.
+// delivering, crediting Mob kills, and the turn-in. Availability and progress follow the shared
+// quest rules, the quest log is the Quests module's, experience is Characters', and start items
+// and quest drops are protected quest items with the quest's lineage, which ending the quest
+// removes. Quest actions only fill free slots or take the items an objective counts, so they
+// lock the character without an expected revision and never fail because the player moved an
+// item.
 internal sealed partial class QuestCommandHandler(
     IQuestDefinitions questDefinitions,
     ICharacterQuestLog questLog,
-    ICharacterWallet characterWallet)
+    ICharacterWallet characterWallet,
+    ICharacterProgression characterProgression)
     : IItemCommandHandler<AcceptQuestCommand>,
     IItemCommandHandler<AbandonQuestCommand>,
     IItemCommandHandler<RegrantQuestItemsCommand>,
     IItemCommandHandler<TalkToQuestNpcCommand>,
     IItemCommandHandler<DeliverQuestItemsCommand>,
-    IItemCommandHandler<CreditQuestKillCommand>,
+    IItemCommandHandler<CreditMobKillCommand>,
     IItemCommandHandler<TurnInQuestCommand>
 {
     private readonly IQuestDefinitions questDefinitions = questDefinitions;
     private readonly ICharacterQuestLog questLog = questLog;
     private readonly ICharacterWallet characterWallet = characterWallet;
+    private readonly ICharacterProgression characterProgression = characterProgression;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -174,27 +179,41 @@ internal sealed partial class QuestCommandHandler(
         await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, [quest.Id], cancellationToken);
     }
 
-    // The worker credits a Mob's kill to every character that its kill credit names; a kill
-    // that no current step asks for changes nothing.
+    // The worker credits a Mob's kill to every character that its kill credit names: the
+    // experience that the rules give for it, and one count for every kill objective of a current
+    // step that asks for the Mob. A kill that gives no experience and that no step asks for
+    // changes nothing.
     public async Task ExecuteAsync(
         ItemTransactionContext context,
-        CreditQuestKillCommand command,
+        CreditMobKillCommand command,
         CancellationToken cancellationToken)
     {
         context.Authority.EnsureSimulationWorkerAuthority();
         if (!Identifiers.IsContentIdentifier(command.MobActorId)
             || command.MobTags is null
             || command.MobTags.Count > WorldActorCompiler.MaximumTagsPerActor
-            || command.MobTags.Any(tag => !Identifiers.IsContentIdentifier(tag)))
+            || command.MobTags.Any(tag => !Identifiers.IsContentIdentifier(tag))
+            || command.MobLevel is < 1 or > CombatContentRules.MaximumCharacterLevel
+            || command.MobExperiencePercent is < 0 or > ProgressionRulesFormat.MaximumMobExperiencePercent)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.SimulationOperationInvalid,
-                "A kill credit names the Mob's actor definition and at most "
+                "A kill credit names the Mob's actor definition, at most "
                     + WorldActorCompiler.MaximumTagsPerActor
-                    + " of its tags.");
+                    + " of its tags, its level from 1 to "
+                    + CombatContentRules.MaximumCharacterLevel
+                    + ", and its experience percent from 0 to "
+                    + ProgressionRulesFormat.MaximumMobExperiencePercent
+                    + ".");
         }
 
         await context.Locks.LockCharacterStateForIdempotentEventAsync(command.CharacterId, cancellationToken);
+        var experience = RequireCharacter(await characterProgression.GrantKillExperienceAsync(
+            context.Scope,
+            command.CharacterId,
+            command.MobLevel,
+            command.MobExperiencePercent,
+            cancellationToken));
         var changed = await QuestProgression.CreditAsync(
             context,
             questDefinitions,
@@ -203,10 +222,19 @@ internal sealed partial class QuestCommandHandler(
             objective => QuestRules.CountsKill(objective, command.MobActorId, command.MobTags) ? 1 : 0,
             cancellationToken);
         context.Journal.AddMetadataAudit(
-            changed.Count == 0 ? "quest_kill_not_counted" : "quest_kill_counted",
+            "mob_kill_credited",
             null,
-            new { command.CharacterId, command.MobActorId, Quests = changed });
+            new
+            {
+                command.CharacterId,
+                command.MobActorId,
+                command.MobLevel,
+                ExperienceGained = experience.Gained,
+                LevelAfter = experience.After.Level,
+                Quests = changed
+            });
         await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, changed, cancellationToken);
+        ProgressionSection.Set(context.Journal, command.CharacterId, experience);
     }
 
     // Takes what the collect objectives count, removes what is left with the quest's lineage,
@@ -297,6 +325,17 @@ internal sealed partial class QuestCommandHandler(
             context.Journal.TouchCharacter(command.CharacterId);
         }
 
+        CharacterExperienceChange? experience = null;
+        if (quest.RewardExperience > 0)
+        {
+            experience = RequireCharacter(await characterProgression.GrantExperienceAsync(
+                context.Scope,
+                command.CharacterId,
+                quest.RewardExperience,
+                CharacterExperienceSources.Quest,
+                cancellationToken));
+        }
+
         await questLog.CompleteAsync(context.Scope, command.CharacterId, quest.Id, cancellationToken);
         context.Journal.AddMetadataAudit(
             "quest_turned_in",
@@ -306,9 +345,30 @@ internal sealed partial class QuestCommandHandler(
                 command.CharacterId,
                 QuestId = quest.Id,
                 quest.RewardGold,
+                quest.RewardExperience,
+                ExperienceGained = experience?.Gained ?? 0,
                 RewardItems = rewards.Select(reward => new { reward.DefinitionId, reward.Quantity }).ToArray()
             });
         await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, [quest.Id], cancellationToken);
+        if (experience is not null)
+        {
+            ProgressionSection.Set(context.Journal, command.CharacterId, experience);
+        }
+    }
+
+    // The character is locked as active before any grant, so a missing one never gets here; the
+    // answer stays that of the lock.
+    private static T RequireCharacter<T>(T? value)
+        where T : class
+    {
+        if (value is null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemNotFound,
+                "The character item state was not found.");
+        }
+
+        return value;
     }
 
     private QuestDefinition FindQuest(string questId)

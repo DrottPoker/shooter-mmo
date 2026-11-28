@@ -247,11 +247,13 @@ public sealed class QuestCommandIntegrationTests
         var overTagged = await RouteAsync(
             context,
             session,
-            "credit_quest_kill",
+            "credit_mob_kill",
             null,
             null,
             mobActorId: "mob.feral_wolf",
-            mobTags: tags);
+            mobTags: tags,
+            mobLevel: 1,
+            mobExperiencePercent: 100);
 
         Assert.Equal((409, QuestCatalogFence.MismatchCode), (otherCatalog.StatusCode, otherCatalog.Error!.Code));
         Assert.Empty((await ReadQuestLogAsync(context, player.Character.Id)).ActiveQuests);
