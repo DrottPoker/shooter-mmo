@@ -57,14 +57,17 @@ internal static class RealtimeServerComposition
         // The features, each after the features it takes.
         var appearance = new AppearanceFeature(core, dependencies.Appearance);
         var quests = new QuestProgressFeature(dependencies.Quests);
-        var playerCombat = new PlayerCombatFeature(core, dependencies.Combat, quests);
+        var progression = new ProgressionFeature(core);
+        var playerCombat = new PlayerCombatFeature(core, dependencies.Combat, quests, progression);
         ItemFeature.Add(core, dependencies.Items, playerCombat);
         var corpses = new CorpseFeature(core, dependencies.Corpses, appearance, playerCombat);
-        var worldActors = new WorldActorFeature(core, dependencies.WorldActors, quests, playerCombat);
+        var worldActors = new WorldActorFeature(core, dependencies.WorldActors, quests, playerCombat, progression);
         SessionFeature.Add(core, playerCombat);
         var combat = new CombatFeature(core, dependencies.Combat, playerCombat, quests, corpses, worldActors);
-        QuestFeature.Add(core, quests, playerCombat);
-        AdminFeature.Add(core, combat);
+        QuestFeature.Add(core, quests, playerCombat, progression);
+        AdminFeature.Add(core, combat, quests, playerCombat, progression);
+        // The progression's hooks come after the admin feature's, which a join reaches first.
+        progression.AddHooks(core.Registries);
         PersistenceFeature.Add(core, dependencies.Persistence, host.ReleaseService.FinalStates, combat);
         MovementFeature.Add(core, combat);
         SnapshotFeature.Add(core, combat);

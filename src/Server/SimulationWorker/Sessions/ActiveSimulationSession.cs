@@ -34,7 +34,7 @@ public sealed record ActiveSimulationSession(
     public SimulationSavedCharacterState? SavedState { get; init; }
 
     // The character's level and experience when this session started, or null when GameService
-    // gave none, as for a development bot. Nothing reads it yet.
+    // gave none, as for a development bot. The join sends it to the player.
     public SimulationProgression? Progression { get; init; }
 
     // The order in which GameService issued the session's tokens, which grows with every rotation:

@@ -30,8 +30,10 @@ internal sealed class WorldActorFeature
         RealtimeCoreServices core,
         WorldActorDependencies dependencies,
         QuestProgressFeature quests,
-        PlayerCombatFeature playerCombat)
+        PlayerCombatFeature playerCombat,
+        ProgressionFeature progression)
     {
+        ArgumentNullException.ThrowIfNull(progression);
         Timers = new WorldActorTimerQueue();
         var gathering = new GatheringHandler(
             core.Config,
@@ -70,7 +72,8 @@ internal sealed class WorldActorFeature
                 core.Logger),
             gathering,
             core.WorldInteractionLeases,
-            playerCombat.Authority);
+            playerCombat.Authority,
+            progression.Replicator);
         Driver = new WorldActorRuntimeDriver(
             core.Config,
             core.WorldActorStore,

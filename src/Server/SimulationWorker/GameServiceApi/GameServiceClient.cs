@@ -738,7 +738,30 @@ public sealed class GameServiceClient(
             // A person's character always has a look; a development bot is dressed by the worker.
             && (response.IsSyntheticBot ? response.Appearance is null : IsValidAppearance(response.Appearance))
             // A development bot has no stored place or vitals.
-            && (response.SavedState is null || (!response.IsSyntheticBot && IsValidSavedState(response.SavedState)));
+            && (response.SavedState is null || (!response.IsSyntheticBot && IsValidSavedState(response.SavedState)))
+            // Nor a level.
+            && (response.Progression is null
+                || (!response.IsSyntheticBot
+                    && IsValidProgression(
+                        response.Progression.Level,
+                        response.Progression.Experience,
+                        response.Progression.ExperienceToNextLevel)));
+    }
+
+    // A level and experience that the realtime protocol carries to the owner.
+    private static bool IsValidProgression(int level, long experience, long experienceToNextLevel)
+    {
+        return level is >= 1 and <= ushort.MaxValue
+            && experience >= 0
+            && experienceToNextLevel >= 0;
+    }
+
+    private static bool IsValidProgressionChange(SimulationProgressionChange? change, Guid characterId)
+    {
+        return change is null
+            || (change.CharacterId == characterId
+                && IsValidProgression(change.Level, change.Experience, change.ExperienceToNextLevel)
+                && change.ExperienceGained >= 0);
     }
 
     // Within the combat content bounds, which GameService stores it within; a living character
@@ -907,7 +930,8 @@ public sealed class GameServiceClient(
                         response.CharacterRevisions[0].CarryCapacity)))
             && HasValidRevisions(response)
             && IsValidCharacterState(response.CharacterState, request.CharacterId, committedRevision)
-            && IsValidQuestLogChange(response.QuestLog, request.CharacterId);
+            && IsValidQuestLogChange(response.QuestLog, request.CharacterId)
+            && IsValidProgressionChange(response.Progression, request.CharacterId);
     }
 
     private static bool HasValidRevisions(SimulationItemTransactionResponse response)

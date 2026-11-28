@@ -295,6 +295,20 @@ namespace Mmorpg.Client.Tests.EditMode
                         "quest_drop",
                         "QuestDropInCorpse")
                     .WhileLeaving(Reaction.Ignored);
+                yield return Feature(
+                        RealtimeMessageType.OwnerProgressionChanged,
+                        () => Progression(),
+                        RealtimeProtocol.EncodeOwnerProgressionChanged,
+                        "owner_progression",
+                        "ProgressionChanged 12")
+                    .WhileLeaving(Reaction.Ignored);
+                yield return Feature(
+                        RealtimeMessageType.EntityLeveledUp,
+                        () => LevelUp(PlayerEntityId),
+                        RealtimeProtocol.EncodeEntityLeveledUp,
+                        "entity_leveled_up",
+                        "EntityLeveledUp 11 13")
+                    .WhileLeaving(Reaction.Ignored);
                 // Snapshots outside the Joined state are dropped, not failures.
                 yield return new ServerMessageCase(
                         RealtimeMessageType.SimulationSnapshot,

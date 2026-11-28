@@ -14,11 +14,13 @@ namespace Mmorpg.GameProtocol
         SetMovementSpeed = 1,
         Teleport = 2,
         RestoreHealth = 3,
-        SetInvulnerable = 4
+        SetInvulnerable = 4,
+        SetLevel = 5,
+        GrantExperience = 6
     }
 
     /// <summary>
-    /// A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.
+    /// A development admin tool for the character: its walk speed, a teleport, full health, invulnerability, its level, or experience. Only a worker that allows the admin tools accepts it; the level and the experience go through GameService, which carries them out only in Development.
     /// </summary>
     public sealed partial class RealtimeAdminIntent
     {
@@ -29,7 +31,9 @@ namespace Mmorpg.GameProtocol
             float destinationX,
             float destinationY,
             float destinationZ,
-            bool enabled)
+            bool enabled,
+            ushort level,
+            long experience)
         {
             OperationId = operationId;
             Kind = kind;
@@ -38,6 +42,8 @@ namespace Mmorpg.GameProtocol
             DestinationY = destinationY;
             DestinationZ = destinationZ;
             Enabled = enabled;
+            Level = level;
+            Experience = experience;
         }
 
         /// <summary>
@@ -75,6 +81,16 @@ namespace Mmorpg.GameProtocol
         /// </summary>
         public bool Enabled { get; }
 
+        /// <summary>
+        /// The level to set, which starts with no experience inside it.
+        /// </summary>
+        public ushort Level { get; }
+
+        /// <summary>
+        /// The experience to grant, which levels up as far as it reaches.
+        /// </summary>
+        public long Experience { get; }
+
         public static RealtimeAdminIntent CreateSetMovementSpeed(
             Guid operationId,
             ushort speedPercent)
@@ -86,7 +102,9 @@ namespace Mmorpg.GameProtocol
                 0,
                 0,
                 0,
-                false);
+                false,
+                0,
+                0);
         }
 
         public static RealtimeAdminIntent CreateTeleport(
@@ -102,7 +120,9 @@ namespace Mmorpg.GameProtocol
                 destinationX,
                 destinationY,
                 destinationZ,
-                false);
+                false,
+                0,
+                0);
         }
 
         public static RealtimeAdminIntent CreateRestoreHealth(
@@ -115,7 +135,9 @@ namespace Mmorpg.GameProtocol
                 0,
                 0,
                 0,
-                false);
+                false,
+                0,
+                0);
         }
 
         public static RealtimeAdminIntent CreateSetInvulnerable(
@@ -129,12 +151,46 @@ namespace Mmorpg.GameProtocol
                 0,
                 0,
                 0,
-                enabled);
+                enabled,
+                0,
+                0);
+        }
+
+        public static RealtimeAdminIntent CreateSetLevel(
+            Guid operationId,
+            ushort level)
+        {
+            return new RealtimeAdminIntent(
+                operationId,
+                RealtimeAdminIntentKind.SetLevel,
+                0,
+                0,
+                0,
+                0,
+                false,
+                level,
+                0);
+        }
+
+        public static RealtimeAdminIntent CreateGrantExperience(
+            Guid operationId,
+            long experience)
+        {
+            return new RealtimeAdminIntent(
+                operationId,
+                RealtimeAdminIntentKind.GrantExperience,
+                0,
+                0,
+                0,
+                0,
+                false,
+                0,
+                experience);
         }
     }
 
     /// <summary>
-    /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.
+    /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged, and a changed level or experience comes before it as an OwnerProgressionChanged.
     /// </summary>
     public sealed partial class RealtimeAdminIntentResult
     {
@@ -199,7 +255,7 @@ namespace Mmorpg.GameProtocol
     public static partial class RealtimeProtocol
     {
         /// <summary>
-        /// A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.
+        /// A development admin tool for the character: its walk speed, a teleport, full health, invulnerability, its level, or experience. Only a worker that allows the admin tools accepts it; the level and the experience go through GameService, which carries them out only in Development.
         /// </summary>
         public static byte[] EncodeAdminIntent(RealtimeAdminIntent intent)
         {
@@ -261,6 +317,16 @@ namespace Mmorpg.GameProtocol
                     writer.WriteBoolean(value.Enabled);
                     break;
                 }
+                case RealtimeAdminIntentKind.SetLevel:
+                {
+                    writer.WriteUInt16(value.Level);
+                    break;
+                }
+                case RealtimeAdminIntentKind.GrantExperience:
+                {
+                    writer.WriteInt64(value.Experience);
+                    break;
+                }
                 default:
                 {
                     throw new ArgumentException("Admin intent is invalid.", nameof(value));
@@ -292,6 +358,16 @@ namespace Mmorpg.GameProtocol
                     size += 1;
                     break;
                 }
+                case RealtimeAdminIntentKind.SetLevel:
+                {
+                    size += 2;
+                    break;
+                }
+                case RealtimeAdminIntentKind.GrantExperience:
+                {
+                    size += 8;
+                    break;
+                }
                 default:
                 {
                     throw new ArgumentException("Admin intent is invalid.", nameof(value));
@@ -321,6 +397,8 @@ namespace Mmorpg.GameProtocol
             float destinationY = 0;
             float destinationZ = 0;
             bool enabled = false;
+            ushort level = 0;
+            long experience = 0;
 
             switch (kind)
             {
@@ -365,6 +443,24 @@ namespace Mmorpg.GameProtocol
 
                     break;
                 }
+                case RealtimeAdminIntentKind.SetLevel:
+                {
+                    if (!reader.TryReadUInt16(out level, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeAdminIntentKind.GrantExperience:
+                {
+                    if (!reader.TryReadInt64(out experience, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
                 default:
                 {
                     error = "Admin intent kind is invalid.";
@@ -372,7 +468,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeAdminIntent(operationId, kind, speedPercent, destinationX, destinationY, destinationZ, enabled);
+            value = new RealtimeAdminIntent(operationId, kind, speedPercent, destinationX, destinationY, destinationZ, enabled, level, experience);
             return true;
         }
 
@@ -416,6 +512,26 @@ namespace Mmorpg.GameProtocol
                 {
                     break;
                 }
+                case RealtimeAdminIntentKind.SetLevel:
+                {
+                    if (value.Level < 1
+                        || value.Level > MaximumAdminCharacterLevel)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeAdminIntentKind.GrantExperience:
+                {
+                    if (value.Experience < 1
+                        || value.Experience > 1000000000)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
                 default:
                 {
                     return false;
@@ -426,7 +542,7 @@ namespace Mmorpg.GameProtocol
         }
 
         /// <summary>
-        /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.
+        /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged, and a changed level or experience comes before it as an OwnerProgressionChanged.
         /// </summary>
         public static byte[] EncodeAdminIntentResult(RealtimeAdminIntentResult result)
         {
@@ -601,7 +717,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeAdminIntentKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 4;
+            return (byte)value >= 1 && (byte)value <= 6;
         }
     }
 }

@@ -265,7 +265,7 @@ The instruments of `Mmorpg.SimulationWorker.GameService`, which
 | `simulation_worker.game_service.available` | gauge | 1 while GameService answers the registry heartbeat, 0 while the worker counts it as unavailable. |
 | `simulation_worker.game_service.availability_changes` | counter | Changes of that state, labeled `state`: `unavailable` when an outage began, `available` when it ended. |
 | `simulation_worker.game_service.heartbeat_age` | gauge, s | Seconds since the last successful registry heartbeat; nothing before the first one. The worker stops in order once it passes `GameServiceOutageToleranceSeconds`, 120 by default. |
-| `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
+| `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, `appearance`, or `admin_intent`. |
 | `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `mob_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
 The instruments of `Mmorpg.SimulationWorker.Presence`, which

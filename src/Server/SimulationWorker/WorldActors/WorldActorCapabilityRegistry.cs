@@ -1,4 +1,5 @@
 using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.WorldData.Actors;
 
@@ -47,6 +48,8 @@ public sealed record WorldActorCapabilityOperationContext(
 // interaction result is final. ItemStateChange is the committed item change the client patches
 // its inventory with, when the transaction describes all of it, and QuestLogChange the committed
 // quest log change, or after a failed quest action the notice to read the quest log again.
+// Progression is the character's progression after a quest action that granted experience, with
+// why it changed.
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
@@ -56,7 +59,9 @@ public sealed record WorldActorCapabilityDispatchResult(
     WorldActorRuntimeState? GatheringNode = null,
     RealtimeOwnerItemStateChanged? ItemStateChange = null,
     RealtimeQuestLogChanged? QuestLogChange = null,
-    IReadOnlyList<RealtimeMessageArgument>? Arguments = null);
+    IReadOnlyList<RealtimeMessageArgument>? Arguments = null,
+    SimulationProgressionChange? Progression = null,
+    RealtimeProgressionChangeReason ProgressionReason = RealtimeProgressionChangeReason.QuestReward);
 
 public interface IWorldActorCapabilityHandler
 {

@@ -201,12 +201,12 @@ namespace Mmorpg.GameProtocol
         AppearanceIntentResult = 38,
 
         /// <summary>
-        /// A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.
+        /// A development admin tool for the character: its walk speed, a teleport, full health, invulnerability, its level, or experience. Only a worker that allows the admin tools accepts it; the level and the experience go through GameService, which carries them out only in Development.
         /// </summary>
         AdminIntent = 39,
 
         /// <summary>
-        /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.
+        /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged, and a changed level or experience comes before it as an OwnerProgressionChanged.
         /// </summary>
         AdminIntentResult = 40,
 
@@ -238,7 +238,17 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// Whether GameService answers the worker, so the client shows while saving is paused. The worker sends it to every joined peer on every change, and after JoinAccepted while GameService does not answer; its absence means GameService answers.
         /// </summary>
-        GameServiceAvailabilityChanged = 46
+        GameServiceAvailabilityChanged = 46,
+
+        /// <summary>
+        /// The level and experience of the recipient's character, as GameService computed them. The worker sends it after every JoinAccepted and after every change that GameService reports, before the quest log change and the result of the operation that caused it, so the client never computes a level or an experience value itself.
+        /// </summary>
+        OwnerProgressionChanged = 47,
+
+        /// <summary>
+        /// A player character that the recipient sees in detail reached a higher level. The worker sends it to the character's viewers and not to its owner, who gets an OwnerProgressionChanged.
+        /// </summary>
+        EntityLeveledUp = 48
     }
 
     /// <summary>
@@ -391,6 +401,11 @@ namespace Mmorpg.GameProtocol
         public const int MaximumAdminSpeedPercent = 1000;
 
         /// <summary>
+        /// The highest level a development admin may ask for; GameService refuses one above the highest level of its progression rules.
+        /// </summary>
+        public const int MaximumAdminCharacterLevel = 10000;
+
+        /// <summary>
         /// Quests that one quest log change lists; a change of more quests asks the client to reload its quest log.
         /// </summary>
         public const int MaximumQuestLogChanges = 8;
@@ -412,7 +427,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 46;
+        public const ushort Version = 47;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -500,6 +515,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumCombatEventsPerBatch = RealtimeProtocolLimits.MaximumCombatEventsPerBatch;
         private const int MinimumAdminSpeedPercent = RealtimeProtocolLimits.MinimumAdminSpeedPercent;
         private const int MaximumAdminSpeedPercent = RealtimeProtocolLimits.MaximumAdminSpeedPercent;
+        private const int MaximumAdminCharacterLevel = RealtimeProtocolLimits.MaximumAdminCharacterLevel;
         private const int MaximumQuestLogChanges = RealtimeProtocolLimits.MaximumQuestLogChanges;
         private const int MaximumQuestObjectives = RealtimeProtocolLimits.MaximumQuestObjectives;
         private const int MaximumQuestObjectiveProgress = RealtimeProtocolLimits.MaximumQuestObjectiveProgress;
@@ -572,7 +588,9 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.GameServiceAvailabilityChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.GameServiceAvailabilityChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerProgressionChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.EntityLeveledUp, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

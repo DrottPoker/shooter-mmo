@@ -418,9 +418,9 @@ public sealed record SimulationQuestObjectiveProgress(string ObjectiveId, int Pr
 // A quest action of a live character on GameService's quest route, which answers like the
 // item route. QuestNpcActorId is the actor definition of the NPC whose quests capability the
 // worker validated; abandoning needs none, and a Mob kill credit names the Mob with its level and
-// experience percent instead. Every quest
-// request names the revision of the quest catalog the worker runs, which GameService refuses
-// with simulation_worker_quest_catalog_mismatch when it runs another.
+// experience percent instead. The Admin menu's progression tools name a Level or an Experience.
+// Every quest request names the revision of the quest catalog the worker runs, which GameService
+// refuses with simulation_worker_quest_catalog_mismatch when it runs another.
 public sealed record SimulationQuestOperationRequest(
     Guid OperationId,
     Guid AccountId,
@@ -438,7 +438,9 @@ public sealed record SimulationQuestOperationRequest(
     string? MobActorId = null,
     IReadOnlyList<string>? MobTags = null,
     int? MobLevel = null,
-    int? MobExperiencePercent = null);
+    int? MobExperiencePercent = null,
+    int? Level = null,
+    long? Experience = null);
 
 public sealed record SimulationQuestLogRequest(
     Guid AccountId,

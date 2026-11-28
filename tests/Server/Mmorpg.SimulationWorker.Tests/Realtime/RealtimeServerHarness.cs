@@ -133,6 +133,9 @@ internal sealed record RealtimeTestCharacter(string Ticket, string Name)
 
     // The place and vitals that GameService saved for the character, or none.
     public SimulationSavedCharacterState? SavedState { get; init; }
+
+    // The level and experience that the join ticket reads, or none, so a join sends no progression.
+    public SimulationProgression? Progression { get; init; }
 }
 
 // Owns one realtime service with every collaborator exposed, a scripted GameService and
@@ -864,6 +867,29 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             new SimulationQuestLogChange(request.CharacterId, questLogRevision, quests)));
     }
 
+    // A quest action that moved no item, changed the given quests, and left the character's
+    // progression as given; its character id is the request's.
+    public static HttpResponseMessage CommittedProgression(
+        SimulationQuestOperationRequest request,
+        long questLogRevision,
+        SimulationProgressionChange progression,
+        params SimulationQuestChange[] quests)
+    {
+        return Json(new SimulationItemTransactionResponse(
+            request.OperationId,
+            request.OperationKind,
+            true,
+            null,
+            [],
+            [],
+            [],
+            [],
+            CharacterStateTestData.Create(request.CharacterId, 0),
+            null,
+            new SimulationQuestLogChange(request.CharacterId, questLogRevision, quests),
+            progression with { CharacterId = request.CharacterId }));
+    }
+
     public Func<Guid, SimulationAppearanceChangeRequest, CancellationToken, Task<HttpResponseMessage>>
         OnAppearanceChange
     { get; set; }
@@ -1087,6 +1113,7 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             Equipment = character.Equipment,
             Appearance = character.IsSyntheticBot ? null : character.Appearance,
             SavedState = character.SavedState,
+            Progression = character.Progression,
             TransportKey = RealtimeTestTickets.TransportKeyOf(character.Ticket)
         });
     }

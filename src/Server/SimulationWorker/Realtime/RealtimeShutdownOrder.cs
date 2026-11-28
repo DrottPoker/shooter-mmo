@@ -17,6 +17,10 @@ internal static class RealtimeShutdownOrder
     // Clears combat state once its flush has read it.
     public const int Combat = 200;
 
+    // Clears the kept progression of the characters, which the combat flush reads to skip the
+    // kill credits that cannot give experience.
+    public const int Progression = 250;
+
     // Clears the peer table, then the interest state, the bindings, and the entities that the
     // peers and combat referred to.
     public const int Peers = 300;

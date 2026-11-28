@@ -398,6 +398,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Hub.Quests.QuestLogChanged += change => Record("QuestLogChanged", "QuestLogChanged", change);
             Hub.Quests.QuestIntentCompleted += result => Record("QuestIntentCompleted", "QuestIntentCompleted", result);
             Hub.Quests.QuestDropInCorpse += drop => Record("QuestDropInCorpse", "QuestDropInCorpse", drop);
+            Hub.Progression.ProgressionChanged += change => Record(
+                "ProgressionChanged " + change.Level,
+                "ProgressionChanged",
+                change);
+            Hub.Progression.EntityLeveledUp += levelUp => Record(
+                "EntityLeveledUp " + levelUp.EntityId + " " + levelUp.Level,
+                "EntityLeveledUp",
+                levelUp);
         }
     }
 }

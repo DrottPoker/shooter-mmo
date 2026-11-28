@@ -21,7 +21,8 @@ internal sealed class WorldInteractionHandler(
     WorldInteractionAuthorityOperations authority,
     GatheringHandler gathering,
     WorldInteractionLeaseRegistry? leases = null,
-    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
+    ICombatOperationGate? combatGate = null,
+    ProgressionReplicator? progression = null) : IRealtimeCompletionHandler
 {
     private static readonly RealtimeRejection DeliveryRejection = new(
         "invalid_world_interaction_delivery",
@@ -226,15 +227,22 @@ internal sealed class WorldInteractionHandler(
 
     // The capability committed at GameService and applied the character's item state and quest log
     // before this, whether or not the peer that sent the action is still there. Here the carry
-    // state reaches the character and the item and quest log changes the peer that plays it now,
-    // while the result, and the gathering that a StartGathering action begins, need the peer that
+    // state and the progression reach the character and the item, progression, and quest log
+    // changes the peer that plays it now, while the result, and the gathering that a
+    // StartGathering action begins, need the peer that
     // sent the action. A session that cannot go on ends, a lingering body's too.
     private void FinalizeOperation(
         WorldInteractionOperationCompleted completed)
     {
+        // The progression is kept before the lane opens, so the operation that the release starts,
+        // such as a kill credit that a reconnect moved, sees it.
+        var kept = completed.Result.Progression is { } change
+            ? progression?.Keep(completed.Session, change, completed.Result.ProgressionReason)
+            : null;
         authorityScheduler.Release(completed.Context);
         if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
+            progression?.Announce(kept, null);
             return;
         }
 
@@ -252,22 +260,21 @@ internal sealed class WorldInteractionHandler(
         }
 
         // The item change goes before the carry state, so the client patches its inventory
-        // when it sees the new revision. The quest log change follows it, before the result.
-        if (target.Owner is { } owner)
+        // when it sees the new revision. The progression a quest reward granted and the quest log
+        // change follow it, before the result.
+        if (target.Owner is { } owner && completed.Result.ItemStateChange is not null)
         {
-            if (completed.Result.ItemStateChange is not null)
-            {
-                sender.SendControl(
-                    owner,
-                    RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
-            }
+            sender.SendControl(
+                owner,
+                RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
+        }
 
-            if (completed.Result.QuestLogChange is not null)
-            {
-                sender.SendControl(
-                    owner,
-                    RealtimeProtocol.EncodeQuestLogChanged(completed.Result.QuestLogChange));
-            }
+        progression?.Announce(kept, target.Owner);
+        if (target.Owner is { } questLogOwner && completed.Result.QuestLogChange is not null)
+        {
+            sender.SendControl(
+                questLogOwner,
+                RealtimeProtocol.EncodeQuestLogChanged(completed.Result.QuestLogChange));
         }
 
         carrySync.ApplyLatest(target.Entity);

@@ -9,12 +9,18 @@ namespace Mmorpg.SharedTests
         // Payload bytes after the seven-byte header, pinned from protocol version 19.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["Admin/AdminIntent/grant experience"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "06 dc 05 00 00 00 00 00 00",
             ["Admin/AdminIntent/restore health"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "03",
             ["Admin/AdminIntent/set invulnerable"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "04 01",
+            ["Admin/AdminIntent/set level"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "05 3c 00",
             ["Admin/AdminIntent/set movement speed"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "01 2c 01",
@@ -437,6 +443,24 @@ namespace Mmorpg.SharedTests
                 "44 33 22 11 88 77 66 55 cc bb aa 99 00 00 48 41 " +
                 "00 00 50 c0 00 18 80 44 00 00 00 3f 00 00 1c c1 " +
                 "00 00 08 40 00 40 87 43 01 0d 0c 0b 0a 03 02",
+            ["Progression/EntityLeveledUp/typical"] =
+                "48 47 46 45 44 43 42 41 0d 00",
+            ["Progression/OwnerProgressionChanged/admin lowered the level"] =
+                "02 00 00 00 00 00 00 00 00 00 90 01 00 00 00 00 " +
+                "00 00 f6 ff ff ff 00 00 00 00 00 00 00 00 da ff " +
+                "ff ff 04",
+            ["Progression/OwnerProgressionChanged/mob kill level up"] =
+                "03 00 14 00 00 00 00 00 00 00 dc 05 00 00 00 00 " +
+                "00 00 fc ff ff ff c2 01 00 00 00 00 00 00 01 00 " +
+                "00 00 02",
+            ["Progression/OwnerProgressionChanged/quest reward to the highest level"] =
+                "c8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 ff ff ff 7f b0 04 00 00 00 00 00 00 01 00 " +
+                "00 00 03",
+            ["Progression/OwnerProgressionChanged/snapshot"] =
+                "0c 00 48 0d 00 00 00 00 00 00 48 26 00 00 00 00 " +
+                "00 00 05 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 01",
             ["Quests/QuestDropInCorpse/two wolf fangs"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "0e 00 6d 6f 62 2e 66 65 72 61 6c 5f 77 6f 6c 66 " +

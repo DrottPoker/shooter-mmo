@@ -1092,7 +1092,8 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 | `IRealtimeWorldInteractionChannel` | `WorldInteractionOpened`, `WorldInteractionResult`, `WorldInteractionClosed`, `GatheringState` | `WorldInteractionOpened`, `WorldInteractionCompleted`, `WorldInteractionClosed`, `GatheringStateReceived` | `TrySendWorldInteraction` |
 | `IRealtimeCombatChannel` | `CombatIntentResult`, `CombatantState`, `CombatEventBatch`, `OwnerCombatState` | `CombatIntentCompleted`, `CombatantStateReceived`, `CombatEventBatchReceived`, `OwnerCombatStateReceived` | `TrySendCombatIntent` |
 | `IRealtimeQuestChannel` | `QuestIntentResult`, `QuestLogChanged`, `QuestDropInCorpse` | `QuestIntentCompleted`, `QuestLogChanged`, `QuestDropInCorpse` | `TrySendQuestIntent` |
-| `IRealtimeAdminChannel` | `AdminIntentResult`, `AdminStateChanged` | `AdminIntentCompleted`, `AdminStateChanged`, `AdminState` | `TrySendAdminIntent` |
+| `IRealtimeAdminChannel` | `AdminIntentResult`, `AdminStateChanged` | `AdminIntentCompleted`, `AdminStateChanged`, `AdminState` | `TrySendAdminIntent`, also for the `SetLevel` and `GrantExperience` kinds |
+| `IRealtimeProgressionChannel` | `OwnerProgressionChanged`, `EntityLeveledUp` | `ProgressionChanged`, `EntityLeveledUp`, `Progression`: the controlled character's latest progression as the worker sent it, null until the first one of a joined session and cleared with the session. No feature reads it yet | none |
 
 The session owns an explicit connection state:
 

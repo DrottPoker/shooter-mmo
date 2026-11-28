@@ -570,7 +570,9 @@ update them to make a failing refactor pass.
 transport, run by `Mmorpg.Shared.Tests`, the EditMode tests, and the `Player`
 category: the RFC 8439 vectors of ChaCha20-Poly1305, the RFC 5869 vectors of
 HKDF, the pinned key schedule, join proof, and sealed datagram of fixed inputs,
-the join proof against every other input, the replay window, and the client and
+among them protocol version 46 for the pinned proof, so a version bump keeps it,
+the join proof of the current version against every other input, the replay
+window, and the client and
 worker layer cores with clear, sealed, replayed, altered, and foreign
 datagrams. Only .NET has the platform implementation, so `Mmorpg.Shared.Tests`
 also checks it against the vectors and against the managed one with random

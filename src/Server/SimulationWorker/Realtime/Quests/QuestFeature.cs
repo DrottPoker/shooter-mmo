@@ -57,8 +57,10 @@ internal static class QuestFeature
     public static void Add(
         RealtimeCoreServices core,
         QuestProgressFeature quests,
-        PlayerCombatFeature playerCombat)
+        PlayerCombatFeature playerCombat,
+        ProgressionFeature progression)
     {
+        ArgumentNullException.ThrowIfNull(progression);
         var intents = new QuestIntentHandler(
             core.Peers,
             core.Sender,
@@ -71,7 +73,8 @@ internal static class QuestFeature
             quests.Executor,
             core.DevelopmentAdmin,
             core.Logger,
-            playerCombat.Authority);
+            playerCombat.Authority,
+            progression.Replicator);
         QuestIntentHandler.AddRoute(core.Registries.Routes, intents.HandleIntent);
     }
 }

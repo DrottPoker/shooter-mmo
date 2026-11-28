@@ -56,6 +56,15 @@ namespace Mmorpg.Client.Tests.EditMode
                     "TrySendAdminIntent",
                     hub => hub.Admin.TrySendAdminIntent(AdminIntent()),
                     () => RealtimeProtocol.EncodeAdminIntent(AdminIntent()));
+                // The level and experience tools travel as admin intents too.
+                yield return Control(
+                    "TrySendAdminIntent(SetLevel)",
+                    hub => hub.Admin.TrySendAdminIntent(SetLevelIntent()),
+                    () => RealtimeProtocol.EncodeAdminIntent(SetLevelIntent()));
+                yield return Control(
+                    "TrySendAdminIntent(GrantExperience)",
+                    hub => hub.Admin.TrySendAdminIntent(GrantExperienceIntent()),
+                    () => RealtimeProtocol.EncodeAdminIntent(GrantExperienceIntent()));
                 yield return Control(
                     "TrySendAppearanceIntent",
                     hub => hub.Looks.TrySendAppearanceIntent(AppearanceIntent()),

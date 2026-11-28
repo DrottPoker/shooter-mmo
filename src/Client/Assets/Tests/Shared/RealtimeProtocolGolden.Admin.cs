@@ -38,6 +38,14 @@ namespace Mmorpg.SharedTests
                 intent,
                 () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateSetInvulnerable(G(1), true)));
             r.Vector(
+                "Admin/AdminIntent/set level",
+                intent,
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateSetLevel(G(1), 60)));
+            r.Vector(
+                "Admin/AdminIntent/grant experience",
+                intent,
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateGrantExperience(G(1), 1500)));
+            r.Vector(
                 "Admin/AdminIntentResult/accepted",
                 result,
                 () => RealtimeProtocol.EncodeAdminIntentResult(new RealtimeAdminIntentResult(
@@ -87,9 +95,20 @@ namespace Mmorpg.SharedTests
                 "Admin/AdminIntent/invulnerable byte 2 reads as true",
                 AdminIntentWire(4, Wire.Fragment().U8(2)),
                 AdminIntentWire(4, Wire.Fragment().Bool(true)));
+            r.Accepts("Admin/AdminIntent/lowest level", AdminIntentWire(5, Wire.Fragment().U16(1)));
+            r.Accepts("Admin/AdminIntent/highest level", AdminIntentWire(5, Wire.Fragment().U16(10000)));
+            r.Rejects("Admin/AdminIntent/level 0", AdminIntentWire(5, Wire.Fragment().U16(0)));
+            r.Rejects("Admin/AdminIntent/level above the highest", AdminIntentWire(5, Wire.Fragment().U16(10001)));
+            r.Rejects("Admin/AdminIntent/level without a value", AdminIntentWire(5, Wire.Fragment().U8(1)));
+            r.Accepts("Admin/AdminIntent/least experience", AdminIntentWire(6, Wire.Fragment().I64(1)));
+            r.Accepts("Admin/AdminIntent/most experience", AdminIntentWire(6, Wire.Fragment().I64(1000000000)));
+            r.Rejects("Admin/AdminIntent/experience 0", AdminIntentWire(6, Wire.Fragment().I64(0)));
+            r.Rejects("Admin/AdminIntent/negative experience", AdminIntentWire(6, Wire.Fragment().I64(-1)));
+            r.Rejects("Admin/AdminIntent/experience above the most", AdminIntentWire(6, Wire.Fragment().I64(1000000001)));
+            r.Rejects("Admin/AdminIntent/experience without a value", AdminIntentWire(6, Wire.Fragment().I32(1)));
             r.Rejects("Admin/AdminIntent/empty operation id", AdminIntentWire(3, Wire.Fragment(), operationId: Guid.Empty));
             r.Rejects("Admin/AdminIntent/kind 0", AdminIntentWire(0, Wire.Fragment()));
-            r.Rejects("Admin/AdminIntent/kind 5", AdminIntentWire(5, Wire.Fragment()));
+            r.Rejects("Admin/AdminIntent/kind 7", AdminIntentWire(7, Wire.Fragment()));
             r.RejectsEncode(
                 "Admin/AdminIntent/empty operation id",
                 () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateRestoreHealth(Guid.Empty)));
@@ -99,6 +118,18 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "Admin/AdminIntent/NaN teleport destination",
                 () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateTeleport(G(1), float.NaN, 0f, 0f)));
+            r.RejectsEncode(
+                "Admin/AdminIntent/level 0",
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateSetLevel(G(1), 0)));
+            r.RejectsEncode(
+                "Admin/AdminIntent/level above the highest",
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateSetLevel(G(1), 10001)));
+            r.RejectsEncode(
+                "Admin/AdminIntent/experience 0",
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateGrantExperience(G(1), 0)));
+            r.RejectsEncode(
+                "Admin/AdminIntent/experience above the most",
+                () => RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateGrantExperience(G(1), 1000000001)));
         }
 
         private static void RegisterAdminResultCases(Registry r)

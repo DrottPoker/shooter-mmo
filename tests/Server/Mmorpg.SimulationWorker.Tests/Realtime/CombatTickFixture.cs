@@ -8,6 +8,7 @@ using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
@@ -26,7 +27,8 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // world actors, their runtime is activated and the Mobs think and walk in the ticks. With
 // sessions, the join handler, the lingering bodies, the item operations, and the persistence of
 // place and vitals take part too: a peer joins through the join handshake against the scripted
-// GameService, and the test decides when the loop processes the completed operations.
+// GameService, and the test decides when the loop processes the completed operations. With
+// quests, the combat authority credits kills through the quest executor of the fixture catalog.
 internal sealed class CombatTickFixture : IDisposable
 {
     private readonly HttpClient httpClient;
@@ -48,7 +50,8 @@ internal sealed class CombatTickFixture : IDisposable
         bool checkpoints = false,
         TimeSpan? checkpointInterval = null,
         bool snapshots = false,
-        SimulationInterestManager? interestManager = null)
+        SimulationInterestManager? interestManager = null,
+        bool quests = false)
     {
         SessionStore = new ActiveSimulationSessionStore(metrics: Presence);
         Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions
@@ -127,8 +130,20 @@ internal sealed class CombatTickFixture : IDisposable
             null,
             new RealtimeCombatTests.LowestRoll());
         var appearance = new AppearanceFeature(Core, AppearanceDependencies.CreateDefault());
-        var quests = new QuestProgressFeature(QuestDependencies.CreateDefault());
-        var playerCombat = new PlayerCombatFeature(Core, dependencies, quests);
+        var questDependencies = QuestDependencies.CreateDefault();
+        if (quests)
+        {
+            var catalog = RealtimeServerHarness.QuestCatalog;
+            questDependencies = new QuestDependencies(
+                QuestLogs,
+                new QuestOperationExecutor(client, ItemStates, SessionStore, QuestLogs, catalog),
+                catalog);
+        }
+
+        var questProgress = new QuestProgressFeature(questDependencies);
+        var progression = new ProgressionFeature(Core);
+        Progression = progression.Replicator;
+        var playerCombat = new PlayerCombatFeature(Core, dependencies, questProgress, progression);
         PlayerCombat = playerCombat.Authority;
         if (sessions)
         {
@@ -143,14 +158,16 @@ internal sealed class CombatTickFixture : IDisposable
         var worldActorFeature = new WorldActorFeature(
             Core,
             new WorldActorDependencies(WorldActors is null ? null : new WorldActorActivityScheduler(WorldActors)),
-            quests,
-            playerCombat);
+            questProgress,
+            playerCombat,
+            progression);
         if (sessions)
         {
             SessionFeature.Add(Core, playerCombat);
         }
 
-        var combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActorFeature);
+        var combat = new CombatFeature(Core, dependencies, playerCombat, questProgress, corpses, worldActorFeature);
+        progression.AddHooks(Core.Registries);
         if (sessions)
         {
             PersistenceFeature.Add(
@@ -212,6 +229,12 @@ internal sealed class CombatTickFixture : IDisposable
     public GameServiceAvailability Availability { get; }
 
     public PlayerCombatAuthority PlayerCombat { get; }
+
+    // The kept progression of the characters, as the features apply it.
+    public ProgressionReplicator Progression { get; }
+
+    // The quest logs that the quest executor keeps, with quests.
+    public CharacterQuestLogStore QuestLogs { get; } = new();
 
     public ICollisionWorld CollisionWorld { get; }
 
