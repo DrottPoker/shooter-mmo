@@ -10,4 +10,5 @@ internal static class DurableIntentKinds
     public const string QuestIntent = "quest_intent";
     public const string Gathering = "gathering";
     public const string Appearance = "appearance";
+    public const string AdminIntent = "admin_intent";
 }

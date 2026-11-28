@@ -29,7 +29,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "0123456789abcdef0123456789abcdef01234567",
                         true,
                         "2026-11-14T09:30:00Z",
-                        46,
+                        47,
                         "movement-simulation-v7"));
 
                 Assert.That(ClientBuildInfo.TryParse(written.ToJson(), out var read, out var error), Is.True, error);
@@ -39,7 +39,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(read.Stamp.Commit, Is.EqualTo("0123456789abcdef0123456789abcdef01234567"));
                 Assert.That(read.Stamp.Dirty, Is.True);
                 Assert.That(read.Stamp.BuiltAtUtc, Is.EqualTo("2026-11-14T09:30:00Z"));
-                Assert.That(read.Stamp.ProtocolVersion, Is.EqualTo(46));
+                Assert.That(read.Stamp.ProtocolVersion, Is.EqualTo(47));
                 Assert.That(read.Stamp.SimulationRevision, Is.EqualTo("movement-simulation-v7"));
             }
         }
@@ -55,7 +55,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var valid = new ClientBuildInfo(
                 Staging,
-                new ClientBuildStamp(ClientBuildKind.Release, "abc", false, "2026-11-14T09:30:00Z", 46, "movement-simulation-v7")).ToJson();
+                new ClientBuildStamp(ClientBuildKind.Release, "abc", false, "2026-11-14T09:30:00Z", 47, "movement-simulation-v7")).ToJson();
             Assert.That(ClientBuildInfo.TryParse(valid, out _, out _), Is.True);
 
             foreach (var (from, to) in new[]
@@ -63,8 +63,8 @@ namespace Mmorpg.Client.Tests.EditMode
                          ("\"formatVersion\": 2", "\"formatVersion\": 3"),
                          ("\"kind\": \"release\"", "\"kind\": \"editor\""),
                          ("\"builtAtUtc\": \"2026-11-14T09:30:00Z\"", "\"builtAtUtc\": \"yesterday\""),
-                         ("\"protocolVersion\": 46", "\"protocolVersion\": 0"),
-                         ("\"protocolVersion\": 46", "\"protocolVersion\": 65536"),
+                         ("\"protocolVersion\": 47", "\"protocolVersion\": 0"),
+                         ("\"protocolVersion\": 47", "\"protocolVersion\": 65536"),
                          ("\"simulationRevision\": \"movement-simulation-v7\"", "\"simulationRevision\": \"\""),
                          ("https://staging.example.org", "staging.example.org"),
                          ("\"name\": \"staging\"", "\"name\": \"\"")
@@ -98,17 +98,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 "0123456789abcdef",
                 true,
                 "2026-11-14T09:30:00Z",
-                46,
+                47,
                 "movement-simulation-v7");
             Assert.That(stamp.ShortCommit, Is.EqualTo("0123456789"));
             Assert.That(stamp.BuiltAtDisplay, Is.EqualTo("2026-11-14 09:30"));
             Assert.That(
                 stamp.Describe(),
                 Is.EqualTo(
-                    "development build 0123456789 (uncommitted changes), built 2026-11-14 09:30 UTC, protocol 46, simulation movement-simulation-v7"));
+                    "development build 0123456789 (uncommitted changes), built 2026-11-14 09:30 UTC, protocol 47, simulation movement-simulation-v7"));
             Assert.That(
-                new ClientBuildStamp(ClientBuildKind.Release, string.Empty, false, "2026-11-14T09:30:00Z", 46, "movement-simulation-v7").Describe(),
-                Is.EqualTo("release build unknown, built 2026-11-14 09:30 UTC, protocol 46, simulation movement-simulation-v7"));
+                new ClientBuildStamp(ClientBuildKind.Release, string.Empty, false, "2026-11-14T09:30:00Z", 47, "movement-simulation-v7").Describe(),
+                Is.EqualTo("release build unknown, built 2026-11-14 09:30 UTC, protocol 47, simulation movement-simulation-v7"));
             Assert.That(ClientBuildStamp.Editor.Describe(), Is.EqualTo("Unity Editor"));
         }
 
@@ -163,7 +163,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static ClientBuildStamp Stamp(ClientBuildKind kind)
         {
-            return new ClientBuildStamp(kind, "abc", false, "2026-11-14T09:30:00Z", 46, "movement-simulation-v7");
+            return new ClientBuildStamp(kind, "abc", false, "2026-11-14T09:30:00Z", 47, "movement-simulation-v7");
         }
     }
 }

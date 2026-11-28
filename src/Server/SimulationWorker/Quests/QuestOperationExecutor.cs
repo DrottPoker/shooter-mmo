@@ -26,12 +26,17 @@ public static class QuestOperationKinds
     public const string AdminReset = "admin_reset_quest";
     public const string AdminResetChain = "admin_reset_quest_chain";
     public const string AdminResetAll = "admin_reset_quests";
+
+    // The development progression tools of the Admin menu, which run on the quest route too.
+    public const string AdminSetLevel = "admin_set_character_level";
+    public const string AdminGrantExperience = "admin_grant_experience";
 }
 
 // One quest action of a live character. QuestNpcActorId is the actor definition of the NPC whose
 // quests capability the open interaction validated, or null outside an interaction. A Mob kill
 // credit names the credited Mob's actor definition, tags, level, and experience percent instead of
-// a quest, and since no client intent caused it, its quest log change names no operation.
+// a quest, and since no client intent caused it, its quest log change names no operation. The
+// Admin menu's progression tools name a Level or an Experience instead of a quest.
 public sealed record QuestOperation(
     Guid OperationId,
     string OperationKind,
@@ -43,15 +48,18 @@ public sealed record QuestOperation(
     IReadOnlyList<string>? MobTags = null,
     bool ClientIntent = true,
     int? MobLevel = null,
-    int? MobExperiencePercent = null)
+    int? MobExperiencePercent = null,
+    int? Level = null,
+    long? Experience = null)
 {
     public Guid ReportedOperationId => ClientIntent ? OperationId : Guid.Empty;
 }
 
 // What a quest action committed for the client: the item-state revision after it, the item and
-// quest log changes to patch with, or why it failed and whether the session ends. An uncertain
-// failure may have committed or never reached GameService, so a system operation such as a kill
-// credit asks again later with the same operation id.
+// quest log changes to patch with, the character's progression after a committed grant with why it
+// changed, or why it failed and whether the session ends. An uncertain failure may have committed
+// or never reached GameService, so a system operation such as a kill credit asks again later with
+// the same operation id.
 public sealed record QuestOperationOutcome(
     bool Succeeded,
     string Code,
@@ -60,7 +68,9 @@ public sealed record QuestOperationOutcome(
     bool ShouldDisconnect = false,
     RealtimeOwnerItemStateChanged? ItemStateChange = null,
     RealtimeQuestLogChanged? QuestLogChange = null,
-    bool Uncertain = false)
+    bool Uncertain = false,
+    SimulationProgressionChange? Progression = null,
+    RealtimeProgressionChangeReason ProgressionReason = RealtimeProgressionChangeReason.QuestReward)
 {
     public static QuestOperationOutcome Rejected(string code, string message, bool shouldDisconnect = false)
     {
@@ -150,7 +160,9 @@ public sealed class QuestOperationExecutor(
             operation.MobActorId,
             operation.MobTags,
             operation.MobLevel,
-            operation.MobExperiencePercent);
+            operation.MobExperiencePercent,
+            operation.Level,
+            operation.Experience);
         var result = await gameServiceClient.MutateSimulationQuestsAsync(
             session.SimulationSessionId,
             request,
@@ -186,7 +198,7 @@ public sealed class QuestOperationExecutor(
         // An action that moved no item, such as a talk or a kill credit, leaves the item state as
         // the worker holds it, also for a session whose player already left. A kill credit that
         // changed no quest leaves the quest log at its revision, so it sends the client nothing.
-        // The progression that a grant reports stays on the response until a part reads it.
+        // The progression that a grant reports goes to the realtime loop with the outcome.
         var transaction = result.Value!;
         var itemStateRevision = transaction.CharacterState!.ItemStateRevision;
         RealtimeOwnerItemStateChanged? itemChange = null;
@@ -220,7 +232,21 @@ public sealed class QuestOperationExecutor(
             string.Empty,
             itemStateRevision,
             ItemStateChange: itemChange,
-            QuestLogChange: questChange);
+            QuestLogChange: questChange,
+            Progression: transaction.Progression,
+            ProgressionReason: ProgressionReasonOf(operation.OperationKind));
+    }
+
+    // Why the owner's progression changed: a kill credit's experience, an admin tool, or a quest's
+    // reward.
+    internal static RealtimeProgressionChangeReason ProgressionReasonOf(string operationKind)
+    {
+        return operationKind switch
+        {
+            QuestOperationKinds.CreditMobKill => RealtimeProgressionChangeReason.MobKill,
+            QuestOperationKinds.AdminSetLevel or QuestOperationKinds.AdminGrantExperience => RealtimeProgressionChangeReason.Admin,
+            _ => RealtimeProgressionChangeReason.QuestReward
+        };
     }
 
     // A committed gathering yield, with the quest log change it made when it counted for a quest.
@@ -329,10 +355,13 @@ public sealed class QuestOperationExecutor(
 
     // The refusals GameService would answer for an id the quest catalog does not hold, an action on
     // a quest the read log does not have active, an objective of another quest or kind, and a
-    // reward the quest does not offer, with GameService's codes.
+    // reward the quest does not offer, with GameService's codes. The actions that name no quest,
+    // resetting every quest and the progression tools, leave the refusals to GameService.
     private QuestOperationOutcome? Refuse(ActiveSimulationSession session, QuestOperation operation)
     {
-        if (operation.OperationKind == QuestOperationKinds.AdminResetAll)
+        if (operation.OperationKind is QuestOperationKinds.AdminResetAll
+            or QuestOperationKinds.AdminSetLevel
+            or QuestOperationKinds.AdminGrantExperience)
         {
             return null;
         }

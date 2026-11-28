@@ -20,8 +20,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // and its quests, through the character's authority lane, so they never race its item, corpse,
 // and quest operations. A batch starts 5 s after the first uncommitted shot, before any other
 // client operation, and before the session ends; a death carries the shots that are still
-// uncommitted. A credited kill of a Mob that gives experience, or that the character's quest log
-// asks for, commits in kill order. All of them retry with backoff
+// uncommitted. A credited kill of a Mob that gives the character experience by its progression, or
+// that the character's quest log asks for, commits in kill order, and the experience it granted
+// reaches the character's progression. All of them retry with backoff
 // after an uncertain answer and outlive the connection: the character's lingering body commits
 // them, and what it gathers until it goes, one operation per tick without a peer, and a session
 // whose entity went is released only after they committed. A body's committed death ends the
@@ -52,7 +53,8 @@ internal sealed class PlayerCombatAuthority(
     ILogger logger,
     GameServiceAvailability availability,
     QuestOperationExecutor? questOperations = null,
-    QuestProgressFilter? questProgress = null) : IRealtimeCompletionHandler, ICombatOperationGate
+    QuestProgressFilter? questProgress = null,
+    ProgressionReplicator? progression = null) : IRealtimeCompletionHandler, ICombatOperationGate
 {
     public const string PlayerCorpsePresentationKey = "corpse.remains";
 
@@ -674,11 +676,13 @@ internal sealed class PlayerCombatAuthority(
         SendKillCredit(combatSession, credit);
     }
 
-    // A kill of a Mob that gives experience always goes. A session whose entity went left its quest
-    // log with it, so GameService decides its credits.
+    // A kill of a Mob that gives experience goes unless the character's progression says that the
+    // Mob gives it none: at the highest level, or for a Mob too low for it. A session whose entity
+    // went left its quest log and its progression with it, so GameService decides its credits.
     private bool ShouldSend(PlayerCombatSession combatSession, PendingMobKillCredit credit)
     {
-        return credit.MobExperiencePercent > 0
+        return (credit.MobExperiencePercent > 0
+                && (progression?.GivesExperience(combatSession.Session.CharacterId, credit.MobLevel) ?? true))
             || combatSession.AwaitingRelease
             || questProgress!.CountsKill(combatSession.Session, credit.MobActorId, credit.MobTags);
     }
@@ -716,6 +720,7 @@ internal sealed class PlayerCombatAuthority(
         }
 
         var outcome = completed.Outcome;
+        ApplyProgression(combatSession, outcome);
         SendQuestLogChange(combatSession, outcome.QuestLogChange);
         var waitsForReconnect = !outcome.Succeeded
             && outcome.ShouldDisconnect
@@ -752,6 +757,24 @@ internal sealed class PlayerCombatAuthority(
 
         combatSession.InFlightKillCredit = null;
         ReleaseLane(combatSession);
+    }
+
+    // The experience a committed credit granted reaches the character while its entity is in the
+    // world, and its owner while a peer plays it.
+    private void ApplyProgression(PlayerCombatSession combatSession, QuestOperationOutcome outcome)
+    {
+        if (progression is null || outcome.Progression is not { } change)
+        {
+            return;
+        }
+
+        IRealtimePeerConnection? owner = null;
+        if (!combatSession.Detached && peers.TryGetCurrentPeer(combatSession.Context, out var peer))
+        {
+            owner = peer;
+        }
+
+        progression.Apply(combatSession.Session, owner, change, outcome.ProgressionReason);
     }
 
     private void SendQuestLogChange(PlayerCombatSession combatSession, RealtimeQuestLogChanged? change)

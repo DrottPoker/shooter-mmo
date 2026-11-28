@@ -27,6 +27,7 @@ namespace Mmorpg.Client.Networking
         private RealtimeCombatChannel combat;
         private RealtimeQuestChannel quests;
         private RealtimeAdminChannel admin;
+        private RealtimeProgressionChannel progression;
 
         public RealtimeSession Session
         {
@@ -86,6 +87,11 @@ namespace Mmorpg.Client.Networking
         public IRealtimeAdminChannel Admin
         {
             get { return Composed().admin; }
+        }
+
+        public IRealtimeProgressionChannel Progression
+        {
+            get { return Composed().progression; }
         }
 
         // The message table, for tests that read what it drops.
@@ -183,6 +189,7 @@ namespace Mmorpg.Client.Networking
             combat = new RealtimeCombatChannel(session, presence, sender, messages);
             quests = new RealtimeQuestChannel(session, sender, messages);
             admin = new RealtimeAdminChannel(session, sender, messages);
+            progression = new RealtimeProgressionChannel(session, messages);
             messages.Seal();
 
             transport.Connected += session.OnTransportConnected;

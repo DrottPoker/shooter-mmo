@@ -245,6 +245,8 @@ schema cannot say:
 | `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
 | `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules, the combat intent error codes, and `RealtimeCombatHealth`, the health rule of a combatant state |
 | `Admin` | None |
+| `Quests` | `Quests/RealtimeProtocol.Quests.cs`: cross-field rules |
+| `Progression` | None |
 
 `RealtimeError` is the generated `Error` struct of the `Session` family.
 
@@ -477,6 +479,8 @@ of every message type, generated from the schema:
 | 44 | `QuestLogChanged` | Quests | Server to client | Owner | Reliable ordered |
 | 45 | `QuestDropInCorpse` | Quests | Server to client | Owner | Reliable ordered |
 | 46 | `GameServiceAvailabilityChanged` | Session | Server to client | Owner | Reliable ordered |
+| 47 | `OwnerProgressionChanged` | Progression | Server to client | Owner | Reliable ordered |
+| 48 | `EntityLeveledUp` | Progression | Server to client | World | Reliable ordered |
 
 The session channel is 0, the movement input channel 1, the world channel 2,
 and the owner channel 3, as [Channels](#channels) describes, and the client
@@ -499,8 +503,8 @@ a lost packet of one stream never holds back the others:
 | Channel | Id | Carries |
 | --- | ---: | --- |
 | Session | 0 | `JoinRequest`, `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect`: the join, the answers to a leave, and the message that says why a connection ends, which [The Reason In The Disconnect](#the-reason-in-the-disconnect) also puts into the disconnect |
-| World | 2 | `EntitySpawn`, `EntityDespawn`, `EntityAppearanceChanged`, `WorldActorSpawn`, `WorldActorState`, `WorldActorDespawn`, `CorpsePresenceSnapshotChunk`, `CombatantState`, `CombatEventBatch`, and `OwnerCombatState`: what the client builds its picture of the World from, in order |
-| Owner | 3 | Every intent and its answer, of items, corpses, world interaction, combat, looks, admin tools, and quests; the owner's state that they and the World change: `CarryStateChanged`, `OwnerItemStateChanged`, `OwnerItemQuantityChanged`, `CorpseViewStateChunk`, `CorpseViewClosed`, `WorldInteractionOpened`, `WorldInteractionClosed`, `GatheringState`, `QuestLogChanged`, `QuestDropInCorpse`, and `AdminStateChanged`; `GameServiceAvailabilityChanged`; and from the client `LeaveRequest` |
+| World | 2 | `EntitySpawn`, `EntityDespawn`, `EntityAppearanceChanged`, `WorldActorSpawn`, `WorldActorState`, `WorldActorDespawn`, `CorpsePresenceSnapshotChunk`, `CombatantState`, `CombatEventBatch`, `OwnerCombatState`, and `EntityLeveledUp`: what the client builds its picture of the World from, in order |
+| Owner | 3 | Every intent and its answer, of items, corpses, world interaction, combat, looks, admin tools, and quests; the owner's state that they and the World change: `CarryStateChanged`, `OwnerItemStateChanged`, `OwnerItemQuantityChanged`, `CorpseViewStateChunk`, `CorpseViewClosed`, `WorldInteractionOpened`, `WorldInteractionClosed`, `GatheringState`, `OwnerProgressionChanged`, `QuestLogChanged`, `QuestDropInCorpse`, and `AdminStateChanged`; `GameServiceAvailabilityChanged`; and from the client `LeaveRequest` |
 
 The rule for choosing a channel: a message goes on the channel of every
 message that its receiver needs to have handled before it, so that a lost
@@ -517,7 +521,9 @@ between them go on different channels. The dependencies are:
 | `ItemOperationResult`, `CorpseInteractionResult`, `OwnerItemStateChanged`, `OwnerItemQuantityChanged`, `CarryStateChanged` | Each other: they carry the carry state, whose revision the client takes only ascending and fails when it goes back, and a result whose committed change has not arrived makes the client read its inventory again over HTTP |
 | `WorldInteractionResult`, `GatheringState` | The `OwnerItemStateChanged` of the item-state revision they name, for the same reason, and the `WorldInteractionOpened` of their interaction |
 | `WorldInteractionClosed` | The `WorldInteractionOpened` of its interaction, or the client would keep an interaction open that the worker closed |
-| `QuestLogChanged`, `QuestIntentResult` | The `OwnerItemStateChanged` of the same operation, and the earlier quest log changes by revision |
+| `OwnerProgressionChanged` | The `OwnerItemStateChanged` of the same operation; the `QuestLogChanged` and the result of that operation need it in turn, so the client knows the level and experience a reward or a kill brought when it shows them |
+| `QuestLogChanged`, `QuestIntentResult` | The `OwnerItemStateChanged` and the `OwnerProgressionChanged` of the same operation, and the earlier quest log changes by revision |
+| `EntityLeveledUp` | The `EntitySpawn` of the player it names, so the client knows whom it shows the level-up on |
 | `CorpseViewStateChunk`, `CorpseViewClosed` | The `CorpseInteractionResult` that opened or changed the view, and the earlier chunks of the view |
 | Every intent result | Its intent, and the answers to the intents sent before it |
 | `GameServiceAvailabilityChanged` | The refusals with `game_service_unavailable` sent before it, which the client forgets when GameService answers again |
@@ -1150,15 +1156,46 @@ describes.
   client then reads its quest log again; a quest without a step has no progress.
   The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
   `RealtimeProtocol.CanEncodeQuestLogChanged` lets the worker check a change.
-  It goes out after the operation's `OwnerItemStateChanged` and before its
-  result. A client whose quest log revision differs from the previous revision
-  reads its quest log again instead of patching it.
+  It goes out after the operation's `OwnerItemStateChanged` and
+  `OwnerProgressionChanged` and before its result. A client whose quest log
+  revision differs from the previous revision reads its quest log again instead
+  of patching it.
 - `QuestDropInCorpse` (45) tells the owner of a new Mob corpse about one quest
   item that the corpse holds for them: the corpse, the Mob's name of up to
   `MaximumCorpseSourceNameLength` (128) characters, the quest, the item
   definition, and a quantity of at least 1. The worker sends one for every
   quest drop once the corpse exists, live or durable, and none to an owner who
   is not connected; the corpse view shows the items as usual.
+
+## Progression Messages
+
+The Progression family carries the character's level and experience, which
+GameService alone computes, as
+[Character Progression](GAME_SERVICE_MODULES.md#character-progression)
+describes; [Quests](SERVICE_FEATURES.md#quests) describes when the worker gets
+them. The client never computes a level or an experience value itself.
+
+- `OwnerProgressionChanged` (47) sends the owner its `Level`, a u16 of at least
+  1; its `Experience` inside the level and the `ExperienceToNextLevel` that the
+  level needs, both i64 of at least 0, where 0 needed means the highest level,
+  at which experience stops; `HighestMobLevelWithoutExperience`, an i32 at or
+  below which a Mob gives the character no experience, below 1 when every Mob
+  gives some and the highest i32 at the highest level; the `ExperienceGained`
+  of this change, at least 0; the `LevelsGained`, an i32 that an admin tool
+  that lowered the level makes negative; and a `ProgressionChangeReason`:
+  `Snapshot` (1), `MobKill` (2), `QuestReward` (3), or `Admin` (4). The worker
+  sends a `Snapshot` with nothing gained after every `JoinAccepted`, also of a
+  reconnect, with what the join ticket read from GameService, and none to a
+  development bot. After an operation that GameService reports a progression
+  for, it sends one when the change gained experience, changed the level, or
+  differs from what it last sent, after the operation's `OwnerItemStateChanged`
+  and before its `QuestLogChanged` and its result. A player without a peer, such
+  as a lingering body, gets none; its next join sends the snapshot.
+- `EntityLeveledUp` (48) tells a player that sees another player character in
+  detail that it reached a higher level: the network entity and the level it
+  reached, both at least 1. It goes to the character's viewers and never to its
+  owner, which gets an `OwnerProgressionChanged`, and a viewer that sees the
+  character out of detail gets none, now or later.
 
 ## Development Admin Tools
 
@@ -1171,11 +1208,17 @@ describes.
   fields of its case: `SetMovementSpeed` (1) with `SpeedPercent`, a u16 from
   `MinimumAdminSpeedPercent` (100) to `MaximumAdminSpeedPercent` (1000) of the
   World's walk speed; `Teleport` (2) with a finite `DestinationX`, `DestinationY`,
-  and `DestinationZ`; `RestoreHealth` (3) with none; and `SetInvulnerable` (4)
-  with `Enabled`.
+  and `DestinationZ`; `RestoreHealth` (3) with none; `SetInvulnerable` (4)
+  with `Enabled`; `SetLevel` (5) with `Level`, a u16 from 1 to
+  `MaximumAdminCharacterLevel` (10,000), above the highest level of the
+  progression rules GameService refuses it; and `GrantExperience` (6) with
+  `Experience`, an i64 from 1 to 1,000,000,000. The worker carries out the
+  first four itself and sends the level and the experience to GameService.
 - `AdminIntentResult` (40) echoes the operation id and kind, and carries an
   `Error` when it failed, such as `admin_tools_disabled` from a worker without
-  the tools.
+  the tools or GameService's refusal of a level or experience tool. A changed
+  level or experience reaches the owner before it as an
+  `OwnerProgressionChanged`.
 - `AdminStateChanged` (41) sends the owner its `SpeedPercent`, in the same
   range, and `Invulnerable`. A worker with the tools sends it after every
   `JoinAccepted` and after every change of either, so a client that never

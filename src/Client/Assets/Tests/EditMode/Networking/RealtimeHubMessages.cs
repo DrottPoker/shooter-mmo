@@ -467,6 +467,23 @@ namespace Mmorpg.Client.Tests.EditMode
                 2);
         }
 
+        public static RealtimeOwnerProgressionChanged Progression(ushort level = 12, long experienceGained = 45)
+        {
+            return new RealtimeOwnerProgressionChanged(
+                level,
+                3400,
+                9800,
+                5,
+                experienceGained,
+                0,
+                RealtimeProgressionChangeReason.MobKill);
+        }
+
+        public static RealtimeEntityLeveledUp LevelUp(ulong entityId, ushort level = 13)
+        {
+            return new RealtimeEntityLeveledUp(entityId, level);
+        }
+
         public static RealtimeOwnerSimulationSnapshot OwnerSnapshot(uint snapshotSequence, uint serverTick)
         {
             return new RealtimeOwnerSimulationSnapshot(
@@ -518,6 +535,16 @@ namespace Mmorpg.Client.Tests.EditMode
         public static RealtimeAdminIntent AdminIntent()
         {
             return RealtimeAdminIntent.CreateRestoreHealth(G(1));
+        }
+
+        public static RealtimeAdminIntent SetLevelIntent()
+        {
+            return RealtimeAdminIntent.CreateSetLevel(G(2), 60);
+        }
+
+        public static RealtimeAdminIntent GrantExperienceIntent()
+        {
+            return RealtimeAdminIntent.CreateGrantExperience(G(3), 1500);
         }
 
         public static RealtimeAppearanceIntent AppearanceIntent()

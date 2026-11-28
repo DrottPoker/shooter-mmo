@@ -151,7 +151,13 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeQuestDropInCorpse),
                 [RealtimeMessageType.GameServiceAvailabilityChanged] = Typed<bool>(
                     RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged,
-                    RealtimeProtocol.EncodeGameServiceAvailabilityChanged)
+                    RealtimeProtocol.EncodeGameServiceAvailabilityChanged),
+                [RealtimeMessageType.OwnerProgressionChanged] = Typed<RealtimeOwnerProgressionChanged>(
+                    RealtimeProtocol.TryDecodeOwnerProgressionChanged,
+                    RealtimeProtocol.EncodeOwnerProgressionChanged),
+                [RealtimeMessageType.EntityLeveledUp] = Typed<RealtimeEntityLeveledUp>(
+                    RealtimeProtocol.TryDecodeEntityLeveledUp,
+                    RealtimeProtocol.EncodeEntityLeveledUp)
             };
         }
 

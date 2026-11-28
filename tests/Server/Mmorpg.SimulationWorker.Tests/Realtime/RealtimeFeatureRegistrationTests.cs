@@ -169,6 +169,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 typeof(GameServiceAvailabilityNotice),
                 typeof(CombatSystem),
                 typeof(AdminIntentHandler),
+                typeof(ProgressionReplicator),
                 typeof(CharacterStatePersistence)
             ],
             hooks.PlayerJoined.Select(hook => hook.Method.DeclaringType));
@@ -179,7 +180,12 @@ public sealed class RealtimeFeatureRegistrationTests
             [typeof(CombatSystem)],
             hooks.ConnectionEnded.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
-            [typeof(RealtimeFailureIsolation), typeof(CombatSystem), typeof(CharacterStatePersistence)],
+            [
+                typeof(RealtimeFailureIsolation),
+                typeof(CombatSystem),
+                typeof(ProgressionReplicator),
+                typeof(CharacterStatePersistence)
+            ],
             hooks.PlayerRemoved.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
             [typeof(CombatReplicator)],
@@ -240,6 +246,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "combat flush",
                 "character state flush",
                 "combat",
+                "progression",
                 "peers",
                 "presence",
                 "connection bindings",

@@ -397,7 +397,7 @@ public sealed class GameServiceClientTests
     }
 
     // A Mob kill credit names the Mob's level and experience percent, and its answer keeps the
-    // progression section that GameService passes through, which nothing in the worker reads yet.
+    // progression section, which the realtime loop sends to the owner.
     [Fact]
     public async Task AMobKillCreditSendsTheMobsLevelAndPercentAndKeepsTheProgression()
     {
@@ -449,6 +449,144 @@ public sealed class GameServiceClientTests
         Assert.Equal("credit_mob_kill", body.RootElement.GetProperty("operationKind").GetString());
         Assert.Equal(3, body.RootElement.GetProperty("mobLevel").GetInt32());
         Assert.Equal(150, body.RootElement.GetProperty("mobExperiencePercent").GetInt32());
+    }
+
+    // The Admin menu's progression tools name their level or experience and no quest.
+    [Fact]
+    public async Task AdminProgressionToolsSendTheirLevelOrExperience()
+    {
+        var characterId = Guid.NewGuid();
+        var setLevel = QuestOperation(characterId) with
+        {
+            OperationKind = "admin_set_character_level",
+            QuestId = null,
+            QuestNpcActorId = null,
+            ObjectiveId = null,
+            Level = 7
+        };
+        var grant = setLevel with { OperationId = Guid.NewGuid(), OperationKind = "admin_grant_experience", Level = null, Experience = 1500 };
+        var current = setLevel;
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(ProgressionTransaction(current, characterId, level: 7)));
+        var client = CreateClient(handler);
+
+        var levelResult = await client.MutateSimulationQuestsAsync(Guid.NewGuid(), setLevel, CancellationToken.None);
+        current = grant;
+        var grantResult = await client.MutateSimulationQuestsAsync(Guid.NewGuid(), grant, CancellationToken.None);
+
+        Assert.True(levelResult.Succeeded, levelResult.Error?.Message);
+        Assert.True(grantResult.Succeeded, grantResult.Error?.Message);
+        Assert.Equal(new SimulationProgressionChange(characterId, 7, 5, 900, 2, 10, 0), levelResult.Value!.Progression);
+
+        using var levelBody = JsonDocument.Parse(handler.Requests[0].Body);
+        Assert.Equal(7, levelBody.RootElement.GetProperty("level").GetInt32());
+        Assert.Equal(JsonValueKind.Null, levelBody.RootElement.GetProperty("experience").ValueKind);
+        Assert.Equal(JsonValueKind.Null, levelBody.RootElement.GetProperty("questId").ValueKind);
+        using var grantBody = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.Equal(1500, grantBody.RootElement.GetProperty("experience").GetInt64());
+        Assert.Equal(JsonValueKind.Null, grantBody.RootElement.GetProperty("level").ValueKind);
+    }
+
+    // The worker sends the progression to the owner as the realtime protocol carries it, so one of
+    // another character or outside its bounds is refused like any malformed answer.
+    [Theory]
+    [InlineData("another character")]
+    [InlineData("level 0")]
+    [InlineData("level above u16")]
+    [InlineData("negative experience")]
+    [InlineData("negative experience gained")]
+    public async Task AQuestAnswerWithAnInvalidProgressionIsRefused(string variant)
+    {
+        var characterId = Guid.NewGuid();
+        var requestBody = QuestOperation(characterId) with { OperationKind = "admin_grant_experience", QuestId = null, Experience = 10 };
+        var client = CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(ProgressionTransaction(
+            requestBody,
+            variant == "another character" ? Guid.NewGuid() : characterId,
+            level: variant switch
+            {
+                "level 0" => 0,
+                "level above u16" => ushort.MaxValue + 1,
+                _ => 2
+            },
+            experience: variant == "negative experience" ? -1 : 5,
+            experienceGained: variant == "negative experience gained" ? -1 : 10))));
+
+        var result = await client.MutateSimulationQuestsAsync(Guid.NewGuid(), requestBody, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
+    }
+
+    // A join ticket's progression must fit the realtime protocol too.
+    [Fact]
+    public async Task AJoinTicketWithAnInvalidProgressionIsRefused()
+    {
+        var valid = await ConsumeAsync(CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(
+            ConsumedTicket(new { level = 4, experience = 30, experienceToNextLevel = 900, highestMobLevelWithoutExperience = -1 })))));
+        var invalid = await ConsumeAsync(CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(
+            ConsumedTicket(new { level = 0, experience = 0, experienceToNextLevel = 100, highestMobLevelWithoutExperience = 0 })))));
+
+        Assert.True(valid.Succeeded, valid.Error?.Message);
+        Assert.Equal(new SimulationProgression(4, 30, 900, -1), valid.Value!.Progression);
+        Assert.False(invalid.Succeeded);
+        Assert.Equal("invalid_auth_response", invalid.Error!.Code);
+    }
+
+    private static object ConsumedTicket(object progression)
+    {
+        return new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "development-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
+            itemStateRevision = 12,
+            carriedWeight = 210,
+            carryCapacity = 200,
+            isReconnect = false,
+            appearance = Look(),
+            progression,
+            transportKey = TransportKey
+        };
+    }
+
+    // A committed quest operation that moved no item and left the character's progression as
+    // given, under the progression's character id.
+    private static object ProgressionTransaction(
+        SimulationQuestOperationRequest request,
+        Guid progressionCharacterId,
+        int level = 2,
+        long experience = 5,
+        long experienceGained = 10)
+    {
+        return new
+        {
+            operationId = request.OperationId,
+            operationKind = request.OperationKind,
+            succeeded = true,
+            error = (object?)null,
+            characterRevisions = Array.Empty<object>(),
+            containerRevisions = Array.Empty<object>(),
+            itemRevisions = Array.Empty<object>(),
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            characterState = CharacterStateTestData.Create(request.CharacterId, 7),
+            progression = new
+            {
+                characterId = progressionCharacterId,
+                level,
+                experience,
+                experienceToNextLevel = 900,
+                highestMobLevelWithoutExperience = 2,
+                experienceGained,
+                levelsGained = 0
+            }
+        };
     }
 
     [Fact]

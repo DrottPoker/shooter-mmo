@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.WorldData.Actors;
 
@@ -14,7 +15,9 @@ public sealed record WorldInteractionAuthorityResult(
     bool ShouldDisconnect = false,
     GatheringStart? GatheringStart = null,
     RealtimeOwnerItemStateChanged? ItemStateChange = null,
-    RealtimeQuestLogChanged? QuestLogChange = null)
+    RealtimeQuestLogChanged? QuestLogChange = null,
+    SimulationProgressionChange? Progression = null,
+    RealtimeProgressionChangeReason ProgressionReason = RealtimeProgressionChangeReason.QuestReward)
 {
     public bool Succeeded => Opened is not null || Result?.Succeeded == true;
 }
@@ -299,7 +302,9 @@ public sealed class WorldInteractionAuthorityService(
                 ? new GatheringStart(intent.InteractionSessionId, intent.CapabilityId, dispatch.GatheringNode)
                 : null,
             dispatch.Succeeded ? dispatch.ItemStateChange : null,
-            dispatch.QuestLogChange);
+            dispatch.QuestLogChange,
+            dispatch.Progression,
+            dispatch.ProgressionReason);
     }
 
     private WorldInteractionAuthorityResult Open(

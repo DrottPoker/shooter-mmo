@@ -574,6 +574,12 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.QuestDropInCorpse:
                 Decode<RealtimeQuestDropInCorpse>(packet, "invalid_quest_drop", RealtimeProtocol.TryDecodeQuestDropInCorpse, out _);
                 break;
+            case RealtimeMessageType.OwnerProgressionChanged:
+                Decode<RealtimeOwnerProgressionChanged>(packet, "invalid_owner_progression", RealtimeProtocol.TryDecodeOwnerProgressionChanged, out _);
+                break;
+            case RealtimeMessageType.EntityLeveledUp:
+                Decode<RealtimeEntityLeveledUp>(packet, "invalid_entity_leveled_up", RealtimeProtocol.TryDecodeEntityLeveledUp, out _);
+                break;
             case RealtimeMessageType.GameServiceAvailabilityChanged:
                 if (Decode<bool>(packet, "invalid_game_service_availability", RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged, out var available))
                 {

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 46,
+    "version": 47,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v9",
     "maximumPacketSize": 1200,
@@ -288,6 +288,12 @@
       "description": "The fastest walk speed a development admin chooses, in percent of the World's walk speed."
     },
     {
+      "name": "MaximumAdminCharacterLevel",
+      "value": 10000,
+      "visibility": "public",
+      "description": "The highest level a development admin may ask for; GameService refuses one above the highest level of its progression rules."
+    },
+    {
       "name": "MaximumQuestLogChanges",
       "value": 8,
       "visibility": "public",
@@ -523,7 +529,20 @@
         { "name": "SetMovementSpeed", "value": 1 },
         { "name": "Teleport", "value": 2 },
         { "name": "RestoreHealth", "value": 3 },
-        { "name": "SetInvulnerable", "value": 4 }
+        { "name": "SetInvulnerable", "value": 4 },
+        { "name": "SetLevel", "value": 5 },
+        { "name": "GrantExperience", "value": 6 }
+      ]
+    },
+    {
+      "name": "ProgressionChangeReason",
+      "family": "Progression",
+      "description": "Why the owner's progression is sent.",
+      "values": [
+        { "name": "Snapshot", "value": 1 },
+        { "name": "MobKill", "value": 2 },
+        { "name": "QuestReward", "value": 3 },
+        { "name": "Admin", "value": 4 }
       ]
     },
     {
@@ -3130,7 +3149,7 @@
       "direction": "clientToServer",
       "channel": "OwnerChannel",
       "delivery": "reliableOrdered",
-      "description": "A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.",
+      "description": "A development admin tool for the character: its walk speed, a teleport, full health, invulnerability, its level, or experience. Only a worker that allows the admin tools accepts it; the level and the experience go through GameService, which carries them out only in Development.",
       "parameter": "intent",
       "fields": [
         { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
@@ -3148,7 +3167,19 @@
           { "name": "DestinationX", "type": "f32", "description": "Where to teleport on the x axis." },
           { "name": "DestinationY", "type": "f32", "description": "Where to teleport on the y axis, such as the ground under the pointer." },
           { "name": "DestinationZ", "type": "f32", "description": "Where to teleport on the z axis." },
-          { "name": "Enabled", "type": "bool", "description": "Whether the character becomes invulnerable." }
+          { "name": "Enabled", "type": "bool", "description": "Whether the character becomes invulnerable." },
+          {
+            "name": "Level",
+            "type": "u16",
+            "absent": 0,
+            "description": "The level to set, which starts with no experience inside it."
+          },
+          {
+            "name": "Experience",
+            "type": "i64",
+            "absent": 0,
+            "description": "The experience to grant, which levels up as far as it reaches."
+          }
         ],
         "cases": [
           {
@@ -3165,6 +3196,14 @@
           {
             "kinds": [ { "kind": "SetInvulnerable", "factory": "CreateSetInvulnerable" } ],
             "fields": [ { "field": "Enabled" } ]
+          },
+          {
+            "kinds": [ { "kind": "SetLevel", "factory": "CreateSetLevel" } ],
+            "fields": [ { "field": "Level", "minimum": 1, "maximum": "MaximumAdminCharacterLevel" } ]
+          },
+          {
+            "kinds": [ { "kind": "GrantExperience", "factory": "CreateGrantExperience" } ],
+            "fields": [ { "field": "Experience", "minimum": 1, "maximum": 1000000000 } ]
           }
         ]
       }
@@ -3176,7 +3215,7 @@
       "direction": "serverToClient",
       "channel": "OwnerChannel",
       "delivery": "reliableOrdered",
-      "description": "The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.",
+      "description": "The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged, and a changed level or experience comes before it as an OwnerProgressionChanged.",
       "parameter": "result",
       "runtimeSizeCheck": true,
       "fields": [
@@ -3379,6 +3418,57 @@
           "type": "bool",
           "description": "Whether GameService answers; while it does not, the worker refuses items, trade, and quests."
         }
+      ]
+    },
+    {
+      "name": "OwnerProgressionChanged",
+      "id": 47,
+      "family": "Progression",
+      "direction": "serverToClient",
+      "channel": "OwnerChannel",
+      "delivery": "reliableOrdered",
+      "description": "The level and experience of the recipient's character, as GameService computed them. The worker sends it after every JoinAccepted and after every change that GameService reports, before the quest log change and the result of the operation that caused it, so the client never computes a level or an experience value itself.",
+      "parameter": "change",
+      "fields": [
+        { "name": "Level", "type": "u16", "minimum": 1, "description": "The character's level." },
+        { "name": "Experience", "type": "i64", "minimum": 0, "description": "The experience gathered inside the level." },
+        {
+          "name": "ExperienceToNextLevel",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The experience the level needs; 0 at the highest level, where experience stops."
+        },
+        {
+          "name": "HighestMobLevelWithoutExperience",
+          "type": "i32",
+          "description": "A Mob at or below this level gives the character no experience: below 1 when every Mob gives some, and the highest i32 at the highest level, where none does."
+        },
+        {
+          "name": "ExperienceGained",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The experience this change added; 0 for a snapshot and for a set level."
+        },
+        {
+          "name": "LevelsGained",
+          "type": "i32",
+          "description": "The levels this change added; negative when an admin tool lowered the level."
+        },
+        { "name": "Reason", "type": "ProgressionChangeReason", "description": "Why it is sent." }
+      ]
+    },
+    {
+      "name": "EntityLeveledUp",
+      "id": 48,
+      "family": "Progression",
+      "direction": "serverToClient",
+      "channel": "WorldChannel",
+      "delivery": "reliableOrdered",
+      "description": "A player character that the recipient sees in detail reached a higher level. The worker sends it to the character's viewers and not to its owner, who gets an OwnerProgressionChanged.",
+      "parameter": "levelUp",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the character." },
+        { "name": "Level", "type": "u16", "minimum": 1, "description": "The level it reached." }
       ]
     }
   ]

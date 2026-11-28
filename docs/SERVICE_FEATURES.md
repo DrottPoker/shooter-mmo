@@ -755,8 +755,11 @@ describes, and its `progression`: `level`, `experience` inside the level,
 `experienceToNextLevel`, and `highestMobLevelWithoutExperience`, which is
 2,147,483,647 at the highest level, where no Mob gives experience, as
 [Character Progression](GAME_SERVICE_MODULES.md#character-progression) reads
-them. A development bot's consume names no progression. The worker keeps it
-with the session and uses nothing of it yet. The session heartbeat updates the
+them. A development bot's consume names no progression. The worker refuses a
+ticket whose progression the realtime protocol cannot carry, a level outside 1
+to 65,535 or a negative experience, with `invalid_auth_response`, and sends the
+player its progression after the join, as [Quests](#quests) describes. The
+session heartbeat updates the
 leases and then reads the current
 committed carry tuple and equipment, so a worker can advance active movement and
 combat state monotonically. Reconnect reads the tuple again under the admission
@@ -2128,9 +2131,18 @@ startup outside the Development environment, is on in the worker's
   route like abandoning, as [Quests](#quests) describes; a worker without the
   option answers them with `admin_tools_disabled`. GameService runs them only
   in the Development environment and answers every other environment with
-  `403` and `development_tools_disabled`. The quest route also runs the
-  progression tools `admin_set_character_level` and `admin_grant_experience`
-  under the same rule, which no menu sends yet.
+  `403` and `development_tools_disabled`.
+- `SetLevel` and `GrantExperience` set the character's level or grant it
+  experience through GameService, as the quest route's
+  `admin_set_character_level` and `admin_grant_experience`, under the same
+  rule; no menu sends them yet. Unlike the other kinds they queue on the
+  character's authority lane like the quest tools, after the spent arrows, and
+  work on a dead character too. A worker without the quest executor answers
+  `admin_progression_unavailable`, one whose GameService does not answer
+  `game_service_unavailable`, and a full lane `admin_intent_queue_full`; a
+  refusal of GameService answers with its code. The changed level or
+  experience reaches the owner as an `OwnerProgressionChanged` with the reason
+  `Admin` before the `AdminIntentResult`, as [Quests](#quests) describes.
 
 ## Content Files
 
@@ -2694,8 +2706,9 @@ the quest actions of the realtime protocol through these routes:
   after a `QuestLogChanged` with `ReloadRequired`, because the client may show
   a change that committed behind lost answers, such as an abandon.
 - After every committed action the worker applies the carry state and the
-  quest log change, sends the item change and then a `QuestLogChanged` from
-  the revision it held, and then the result. A rejection keeps the session
+  quest log change, sends the item change, then the `OwnerProgressionChanged`
+  of an answer with a `progression`, then a `QuestLogChanged` from the revision
+  it held, and then the result. A rejection keeps the session
   unless its code ends it, as `simulation_session_invalid` and
   `simulation_worker_quest_catalog_mismatch` do, also when a read of a stale
   quest log answers with one.
@@ -2716,14 +2729,19 @@ the quest actions of the realtime protocol through these routes:
   which takes its place in the player's lane at the kill, so an operation that
   the player sends after the kill, such as abandoning and accepting the quest
   again, never overtakes it. When its turn comes, the worker sends it as a
-  `credit_mob_kill` if the Mob gives experience, or if a current step holds an
-  unfinished kill objective for the Mob by the quest log that every operation
-  before it left, or if that log is stale, so a kill during an accept counts for
-  the accepted quest; a kill of a Mob that gives no experience and that no
-  quest asks for costs no GameService call. The changed quests reach the player
-  as a `QuestLogChanged` without an operation id; a credit that changed no
-  quest sends none. The worker keeps the answer's `progression` and sends the
-  player nothing of it yet. An uncertain answer, or a transaction that
+  `credit_mob_kill` if the Mob gives the character experience, or if a current
+  step holds an unfinished kill objective for the Mob by the quest log that
+  every operation before it left, or if that log is stale, so a kill during an
+  accept counts for the accepted quest. A Mob gives the character experience
+  when its `experiencePercent` is above 0 and the progression the worker keeps
+  for the character, below, neither is at the highest level nor names the Mob's
+  level at or below `highestMobLevelWithoutExperience`; a character without a
+  kept progression, and a session whose entity went, are asked about. So a kill
+  that cannot give the character experience and that no quest asks for costs no
+  GameService call. The answer's `progression` reaches the player as an
+  `OwnerProgressionChanged` with the reason `MobKill`, and then the changed
+  quests as a `QuestLogChanged` without an operation id; a credit that changed
+  no quest sends none. An uncertain answer, or a transaction that
   concurrent database
   work rolled back, keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
@@ -2760,6 +2778,24 @@ the quest actions of the realtime protocol through these routes:
   committed makes the log stale, and the worker reads it again; every committed
   yield also reads a stale log again, so a player who only gathers still learns
   the progress the lost answer held.
+- The worker keeps the level and experience of every character in the world on
+  its loop, as GameService last reported them, and never computes one itself.
+  The join ticket's `progression` sets it at every join, also of a reconnect,
+  and the worker sends it to the player as an `OwnerProgressionChanged` with the
+  reason `Snapshot` right after `JoinAccepted`; a development bot has none and
+  gets none. Every committed answer with a `progression`, of a kill credit, a
+  quest action such as a turn-in, or an Admin tool, replaces it while the
+  character's entity is in the world, also as a lingering body, and reaches the
+  player that plays the character now when it gained experience, changed the
+  level, or differs from what the worker kept, with the reason `MobKill`,
+  `QuestReward`, or `Admin`; a body without a peer gets nothing and learns it
+  at its next join. A higher level also reaches every player that sees the
+  character in detail as an `EntityLeveledUp`, never the owner, with no
+  catch-up for the others. The kept progression goes with the character's
+  entity, as [Realtime Protocol](REALTIME_PROTOCOL.md#progression-messages)
+  describes for the messages. An answer whose `progression` names another
+  character, or one that the realtime protocol cannot carry, is refused as
+  `invalid_auth_response`.
 
 ## Error Codes
 
@@ -2857,7 +2893,7 @@ variable, and codes composed at run time are not seen by it.
 | World interaction notices | For a committed operation, in `WorldInteractionResult.NoticeCode`: `interaction_opened` with the capability's name as the argument `capability`, `gathering_started` with the same argument, `insurance_applied`, `insurance_removed`, `vendor_purchased`, `vendor_sold`, `quest_accepted`, `quest_abandoned`, `quest_items_regranted`, `quest_objective_completed`, `quest_items_delivered`, `quest_completed`, `quest_kill_counted` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required`, which carries the node's tool kind as the argument `toolKind` both when the worker refuses the start and when GameService refuses a yield |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
-| Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_teleport_superseded`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
+| Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_teleport_superseded`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent`, `admin_progression_unavailable`, `admin_intent_queue_full`, `admin_intent_failed`, and the GameService rejection of a level or experience tool |
 | Looks | `appearance_unavailable`, `appearance_change_in_flight`, `appearance_change_failed`, `invalid_appearance_intent` |
 | Unity client | `item_catalog_update_required` |
 

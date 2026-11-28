@@ -128,7 +128,8 @@ internal sealed class CombatTickFixture : IDisposable
             new RealtimeCombatTests.LowestRoll());
         var appearance = new AppearanceFeature(Core, AppearanceDependencies.CreateDefault());
         var quests = new QuestProgressFeature(QuestDependencies.CreateDefault());
-        var playerCombat = new PlayerCombatFeature(Core, dependencies, quests);
+        var progression = new ProgressionFeature(Core);
+        var playerCombat = new PlayerCombatFeature(Core, dependencies, quests, progression);
         PlayerCombat = playerCombat.Authority;
         if (sessions)
         {
@@ -144,13 +145,15 @@ internal sealed class CombatTickFixture : IDisposable
             Core,
             new WorldActorDependencies(WorldActors is null ? null : new WorldActorActivityScheduler(WorldActors)),
             quests,
-            playerCombat);
+            playerCombat,
+            progression);
         if (sessions)
         {
             SessionFeature.Add(Core, playerCombat);
         }
 
         var combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActorFeature);
+        progression.AddHooks(Core.Registries);
         if (sessions)
         {
             PersistenceFeature.Add(

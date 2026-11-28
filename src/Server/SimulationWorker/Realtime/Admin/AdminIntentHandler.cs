@@ -1,18 +1,31 @@
+using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Quests;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
+internal sealed record AdminProgressionCompleted(
+    RealtimePeerContext PeerContext,
+    ActiveSimulationSession Session,
+    RealtimeAdminIntent Intent,
+    QuestOperationOutcome Outcome)
+    : RealtimeOperationResult(PeerContext);
+
 // The development admin tools of the Admin menu: a player's walk speed, a teleport, full
-// health, and invulnerability. Only a worker whose options allow them carries them out, and
-// never for a synthetic bot. The walk speed and invulnerability last as long as the
-// character's entity, and the owner receives them after every join and every change. A teleport
-// to a place whose collision chunks still load waits for them and completes on a later tick. A
-// newer teleport of the same character replaces a waiting one, which is answered as superseded,
-// so the character ends where the player asked last.
-// Loop-confined.
+// health, invulnerability, its level, and experience. Only a worker whose options allow them
+// carries them out, and never for a synthetic bot. The walk speed and invulnerability last as
+// long as the character's entity, and the owner receives them after every join and every change.
+// A teleport to a place whose collision chunks still load waits for them and completes on a later
+// tick. A newer teleport of the same character replaces a waiting one, which is answered as
+// superseded, so the character ends where the player asked last. The level and the experience go
+// through GameService on the character's authority lane, as the admin quest tools do, also for a
+// dead character; the changed progression reaches the client before the result.
+// Loop-confined; the GameService call runs off the loop.
 internal sealed class AdminIntentHandler(
     SimulationWorkerConfig config,
     DevelopmentAdminOptions options,
@@ -21,7 +34,17 @@ internal sealed class AdminIntentHandler(
     EntityPresenceReplicator presence,
     CombatSystem combat,
     ICollisionWorld collisionWorld,
-    CollisionChunkGate collisionChunks) : IRealtimeCompletionHandler
+    CollisionChunkGate collisionChunks,
+    CarryStateSynchronizer carrySync,
+    RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
+    AuthorityOperationScheduler authorityScheduler,
+    RealtimeOperationTracker operationTracker,
+    RealtimeCompletionQueue completions,
+    QuestOperationExecutor? executor,
+    ProgressionReplicator progression,
+    ILogger logger,
+    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
     public const string TeleportedReason = "teleported";
 
@@ -48,6 +71,18 @@ internal sealed class AdminIntentHandler(
     private static readonly RealtimeError TeleportSuperseded = new(
         "admin_teleport_superseded",
         "A newer teleport replaced this one.");
+
+    private static readonly RealtimeError ProgressionUnavailable = new(
+        "admin_progression_unavailable",
+        "This worker runs no progression for the character.");
+
+    private static readonly RealtimeError GameServiceUnavailable = new(
+        GameServiceAvailability.UnavailableCode,
+        GameServiceAvailability.UnavailableMessage);
+
+    private static readonly RealtimeError QueueFull = new(
+        "admin_intent_queue_full",
+        "Too many authority operations are waiting for this peer.");
 
     private static readonly RealtimeRejection DeliveryRejection = new(
         "invalid_admin_delivery",
@@ -88,25 +123,185 @@ internal sealed class AdminIntentHandler(
             return;
         }
 
-        var waiting = false;
-        var failure = !options.Enabled || entity.Session.IsSyntheticBot
-            ? ToolsDisabled
-            : Apply(context, entity, intent, out waiting);
+        if (!options.Enabled || entity.Session.IsSyntheticBot)
+        {
+            SendResult(peer, entity, intent, ToolsDisabled);
+            return;
+        }
+
+        if (IsProgressionKind(intent.Kind))
+        {
+            if (RefuseProgression(context) is { } refusal)
+            {
+                SendResult(peer, entity, intent, refusal);
+                return;
+            }
+
+            // Spent arrows commit first, so the admin tool sees the item state GameService has.
+            combatGate?.BeforeClientOperation(context);
+            authorityScheduler.Enqueue(context, new QueuedAdminProgression(this, intent));
+            return;
+        }
+
+        var failure = Apply(context, entity, intent, out var waiting);
         if (!waiting)
         {
             SendResult(peer, entity, intent, failure);
         }
     }
 
-    // A teleport whose destination loaded runs again as it would have at once, and its result
-    // goes to the player that asked when it still plays the same entity.
     public void Complete(RealtimeOperationResult completion)
     {
-        if (completion is not AdminTeleportReady ready)
+        switch (completion)
+        {
+            case AdminTeleportReady ready:
+                CompleteTeleport(ready);
+                break;
+            case AdminProgressionCompleted progressed:
+                FinalizeProgression(progressed);
+                break;
+        }
+    }
+
+    private static bool IsProgressionKind(RealtimeAdminIntentKind kind)
+    {
+        return kind is RealtimeAdminIntentKind.SetLevel or RealtimeAdminIntentKind.GrantExperience;
+    }
+
+    // Why a level or experience tool cannot queue: no executor, GameService does not answer, or
+    // the peer's lane is full.
+    private RealtimeError? RefuseProgression(RealtimePeerContext context)
+    {
+        if (executor is null)
+        {
+            return ProgressionUnavailable;
+        }
+
+        if (authorityScheduler.RefusesDurableIntent(DurableIntentKinds.AdminIntent))
+        {
+            return GameServiceUnavailable;
+        }
+
+        return context.AuthorityOperationQueue.Count >= RealtimePeerContext.MaximumQueuedAuthorityOperations
+            ? QueueFull
+            : null;
+    }
+
+    private void StartProgression(RealtimePeerContext context, ActiveSimulationSession session, RealtimeAdminIntent intent)
+    {
+        combatGate?.ClientOperationStarting(context, false);
+        operationTracker.Track(RunProgressionAsync(context, session, intent));
+    }
+
+    private async Task RunProgressionAsync(RealtimePeerContext context, ActiveSimulationSession session, RealtimeAdminIntent intent)
+    {
+        QuestOperationOutcome outcome;
+        try
+        {
+            outcome = await executor!.ExecuteAsync(session, ProgressionOperationOf(intent), CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while running an admin intent for simulation session {SimulationSessionId}.",
+                session.SimulationSessionId);
+            outcome = QuestOperationOutcome.Rejected(
+                "admin_intent_failed",
+                "SimulationWorker could not complete the admin tool.");
+        }
+
+        completions.Post(this, new AdminProgressionCompleted(context, session, intent, outcome));
+    }
+
+    private static QuestOperation ProgressionOperationOf(RealtimeAdminIntent intent)
+    {
+        return intent.Kind switch
+        {
+            RealtimeAdminIntentKind.SetLevel => new QuestOperation(
+                intent.OperationId,
+                QuestOperationKinds.AdminSetLevel,
+                null,
+                Level: intent.Level),
+            RealtimeAdminIntentKind.GrantExperience => new QuestOperation(
+                intent.OperationId,
+                QuestOperationKinds.AdminGrantExperience,
+                null,
+                Experience: intent.Experience),
+            _ => throw new InvalidOperationException($"Admin intent kind {intent.Kind} has no progression operation.")
+        };
+    }
+
+    // The executor ran the tool off the loop, whether or not the peer that sent it is still there.
+    // Here the progression reaches the character and the peer that plays it now, before the result
+    // that goes to the peer that sent the tool. A session that cannot go on ends.
+    private void FinalizeProgression(AdminProgressionCompleted completed)
+    {
+        combatGate?.ClientOperationFinished(completed.Session);
+        authorityScheduler.Release(completed.Context);
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
 
+        var requester = target.Requester;
+        var outcome = completed.Outcome;
+        if (outcome.ShouldDisconnect)
+        {
+            if (requester is not null)
+            {
+                SendProgressionResult(requester, completed.Intent, outcome);
+            }
+
+            teardown.EndForAuthorityFailure(target, outcome.Code, outcome.Message);
+            return;
+        }
+
+        if (target.Owner is { } owner && outcome.ItemStateChange is not null)
+        {
+            sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
+        }
+
+        if (outcome.Progression is { } change)
+        {
+            progression.Apply(target.Session, target.Owner, change, outcome.ProgressionReason);
+        }
+
+        if (target.Owner is { } questLogOwner && outcome.QuestLogChange is not null)
+        {
+            sender.SendControl(questLogOwner, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));
+        }
+
+        carrySync.ApplyLatest(target.Entity);
+        if (requester is not null)
+        {
+            SendProgressionResult(requester, completed.Intent, outcome);
+        }
+
+        authorityScheduler.StartNext(completed.Context);
+    }
+
+    private void CancelProgression(RealtimePeerContext context, RealtimeAdminIntent intent, string code, string message)
+    {
+        if (peers.TryGetCurrentPeer(context, out var peer))
+        {
+            SendProgressionResult(peer, intent, QuestOperationOutcome.Rejected(code, message));
+        }
+    }
+
+    private void SendProgressionResult(IRealtimePeerConnection peer, RealtimeAdminIntent intent, QuestOperationOutcome outcome)
+    {
+        sender.SendControl(peer, RealtimeProtocol.EncodeAdminIntentResult(new RealtimeAdminIntentResult(
+            intent.OperationId,
+            intent.Kind,
+            outcome.Succeeded,
+            outcome.Succeeded ? null : new RealtimeError(outcome.Code, outcome.Message))));
+    }
+
+    // A teleport whose destination loaded runs again as it would have at once, and its result
+    // goes to the player that asked when it still plays the same entity.
+    private void CompleteTeleport(AdminTeleportReady ready)
+    {
         var newest = StopWaiting(ready.EntityId, ready.Intent.OperationId);
         if (!peers.TryGetCurrentPeer(ready.Context, out var peer)
             || !peers.TryGetBoundPlayer(ready.Context, out var entity)
@@ -181,6 +376,9 @@ internal sealed class AdminIntentHandler(
                 return combat.TryRestoreHealthAndMana(entity) ? null : CharacterDead;
             case RealtimeAdminIntentKind.SetInvulnerable:
                 return combat.TrySetInvulnerable(entity, intent.Enabled) ? null : CombatUnavailable;
+            case RealtimeAdminIntentKind.SetLevel:
+            case RealtimeAdminIntentKind.GrantExperience:
+                throw new InvalidOperationException($"Admin intent kind {intent.Kind} runs through GameService.");
             default:
                 throw new InvalidOperationException($"Admin intent kind {intent.Kind} has no handler.");
         }
@@ -252,4 +450,20 @@ internal sealed class AdminIntentHandler(
     }
 
     private readonly record struct WaitingTeleports(Guid NewestOperationId, int Count);
+
+    private sealed record QueuedAdminProgression(AdminIntentHandler Owner, RealtimeAdminIntent Intent)
+        : IRealtimeAuthorityOperation
+    {
+        public string? DurableIntentKind => DurableIntentKinds.AdminIntent;
+
+        public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
+        {
+            Owner.StartProgression(context, context.Session!, Intent);
+        }
+
+        public void Cancel(RealtimePeerContext context, string code, string message)
+        {
+            Owner.CancelProgression(context, Intent, code, message);
+        }
+    }
 }

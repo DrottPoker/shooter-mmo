@@ -524,8 +524,9 @@ GameService would refuse too.
 
 - It keeps the active quests of every character in its sessions, loaded when the
   character joins and updated from committed results.
-- It commits every credited kill of a Mob that gives experience, and every
-  credited kill that a current step asks for, to GameService as a Mob kill
+- It commits every credited kill of a Mob that gives the character experience,
+  so not for a character at the highest level or one for whom the Mob is too low,
+  and every credited kill that a current step asks for, to GameService as a Mob kill
   credit with the Mob's level and experience percent, which grants the kill's
   experience and counts for the kill objectives of current steps in one
   transaction, with one operation id per credited character that it keeps for

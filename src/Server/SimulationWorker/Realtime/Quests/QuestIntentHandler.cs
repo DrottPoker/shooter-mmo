@@ -34,7 +34,8 @@ internal sealed class QuestIntentHandler(
     QuestOperationExecutor? executor,
     DevelopmentAdminOptions adminOptions,
     ILogger logger,
-    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
+    ICombatOperationGate? combatGate = null,
+    ProgressionReplicator? progression = null) : IRealtimeCompletionHandler
 {
     private static readonly RealtimeRejection DeliveryRejection = new(
         "invalid_quest_delivery",
@@ -164,10 +165,10 @@ internal sealed class QuestIntentHandler(
     }
 
     // The executor applied what the action committed to the character's item state and quest log
-    // off the loop, whether or not the peer that sent it is still there. Here the carry state
-    // reaches the character, the item and quest log changes the peer that plays it now, and the
-    // result the peer that sent the action. A session that cannot go on ends, a lingering body's
-    // too.
+    // off the loop, whether or not the peer that sent it is still there. Here the carry state and
+    // the progression reach the character, the item, progression, and quest log changes the peer
+    // that plays it now, and the result the peer that sent the action. A session that cannot go
+    // on ends, a lingering body's too.
     private void FinalizeIntent(QuestIntentCompleted completed)
     {
         combatGate?.ClientOperationFinished(completed.Session);
@@ -190,17 +191,19 @@ internal sealed class QuestIntentHandler(
             return;
         }
 
-        if (target.Owner is { } owner)
+        if (target.Owner is { } owner && outcome.ItemStateChange is not null)
         {
-            if (outcome.ItemStateChange is not null)
-            {
-                sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
-            }
+            sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
+        }
 
-            if (outcome.QuestLogChange is not null)
-            {
-                sender.SendControl(owner, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));
-            }
+        if (outcome.Progression is { } change)
+        {
+            progression?.Apply(target.Session, target.Owner, change, outcome.ProgressionReason);
+        }
+
+        if (target.Owner is { } questLogOwner && outcome.QuestLogChange is not null)
+        {
+            sender.SendControl(questLogOwner, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));
         }
 
         carrySync.ApplyLatest(target.Entity);

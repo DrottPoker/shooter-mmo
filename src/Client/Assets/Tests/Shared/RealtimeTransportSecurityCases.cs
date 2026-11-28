@@ -203,7 +203,7 @@ namespace Mmorpg.SharedTests
             {
                 var ticketId = TicketId();
                 var nonce = Nonce();
-                var proof = PinnedProofFor(keys.ProofKey);
+                var proof = RealtimeJoinProof.Compute(keys.ProofKey, RealtimeProtocol.Version, ticketId, "local-shard-1", nonce);
                 ExpectProof(failures, "the right proof", true, keys.ProofKey, RealtimeProtocol.Version, ticketId, "local-shard-1", nonce, proof);
                 ExpectProof(failures, "another key", false, otherKeys.ProofKey, RealtimeProtocol.Version, ticketId, "local-shard-1", nonce, proof);
                 ExpectProof(failures, "another version", false, keys.ProofKey, (ushort)(RealtimeProtocol.Version + 1), ticketId, "local-shard-1", nonce, proof);
@@ -445,6 +445,7 @@ namespace Mmorpg.SharedTests
         }
 
         // Pinned at protocol version 46, so a version bump changes no pinned bytes.
+        // The pinned proof names protocol version 46 as a fixed input, so a version bump keeps it.
         private static byte[] PinnedProofFor(byte[] proofKey)
         {
             return RealtimeJoinProof.Compute(proofKey, 46, TicketId(), "local-shard-1", Nonce());

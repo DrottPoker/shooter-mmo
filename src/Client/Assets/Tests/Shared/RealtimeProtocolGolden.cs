@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 46;
+        public const ushort PinnedVersion = 47;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -297,6 +297,7 @@ namespace Mmorpg.SharedTests
             Expect(failures, "Limits.MaximumVisibleEquipment", RealtimeProtocolLimits.MaximumVisibleEquipment, 8);
             Expect(failures, "Limits.MinimumAdminSpeedPercent", RealtimeProtocolLimits.MinimumAdminSpeedPercent, 100);
             Expect(failures, "Limits.MaximumAdminSpeedPercent", RealtimeProtocolLimits.MaximumAdminSpeedPercent, 1000);
+            Expect(failures, "Limits.MaximumAdminCharacterLevel", RealtimeProtocolLimits.MaximumAdminCharacterLevel, 10000);
             Expect(failures, "Limits.MaximumQuestLogChanges", RealtimeProtocolLimits.MaximumQuestLogChanges, 8);
             Expect(failures, "Limits.MaximumQuestObjectives", RealtimeProtocolLimits.MaximumQuestObjectives, 8);
             Expect(failures, "Limits.MaximumQuestObjectiveProgress", RealtimeProtocolLimits.MaximumQuestObjectiveProgress, 1000);
@@ -313,7 +314,7 @@ namespace Mmorpg.SharedTests
                 + "OwnerCombatState=33 OwnerItemQuantityChanged=34 OwnerItemStateChanged=35 EntityAppearanceChanged=36 "
                 + "AppearanceIntent=37 AppearanceIntentResult=38 AdminIntent=39 AdminIntentResult=40 AdminStateChanged=41 "
                 + "QuestIntent=42 QuestIntentResult=43 QuestLogChanged=44 QuestDropInCorpse=45 "
-                + "GameServiceAvailabilityChanged=46");
+                + "GameServiceAvailabilityChanged=46 OwnerProgressionChanged=47 EntityLeveledUp=48");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -339,7 +340,10 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeGatheringStateKind>(failures, "Started=1 Yielded=2 Stopped=3");
             ExpectEnum<RealtimeCombatIntentKind>(failures, "AttackTarget=1 ClearTarget=2");
             ExpectEnum<RealtimeAppearanceIntentKind>(failures, "LowerHeadwear=1 RaiseHeadwear=2 SetDevelopmentLook=3");
-            ExpectEnum<RealtimeAdminIntentKind>(failures, "SetMovementSpeed=1 Teleport=2 RestoreHealth=3 SetInvulnerable=4");
+            ExpectEnum<RealtimeAdminIntentKind>(
+                failures,
+                "SetMovementSpeed=1 Teleport=2 RestoreHealth=3 SetInvulnerable=4 SetLevel=5 GrantExperience=6");
+            ExpectEnum<RealtimeProgressionChangeReason>(failures, "Snapshot=1 MobKill=2 QuestReward=3 Admin=4");
             ExpectEnum<RealtimeQuestIntentKind>(
                 failures,
                 "Abandon=1 AdminAccept=2 AdminCompleteObjective=3 AdminCompleteStep=4 AdminMakeReady=5 AdminReset=6 "
@@ -355,12 +359,14 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2e 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2f 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
             ExpectTypeReader(failures, "type 0", Wire.Header(0).ToArray(), false, default);
-            ExpectTypeReader(failures, "type 47", Wire.Header(47).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 49", Wire.Header(49).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 48", Wire.Header(48).ToArray(), true, RealtimeMessageType.EntityLeveledUp);
+            ExpectTypeReader(failures, "type 47", Wire.Header(47).ToArray(), true, RealtimeMessageType.OwnerProgressionChanged);
             ExpectTypeReader(failures, "type 46", Wire.Header(46).ToArray(), true, RealtimeMessageType.GameServiceAvailabilityChanged);
             ExpectTypeReader(failures, "type 45", Wire.Header(45).ToArray(), true, RealtimeMessageType.QuestDropInCorpse);
             ExpectTypeReader(failures, "type 44", Wire.Header(44).ToArray(), true, RealtimeMessageType.QuestLogChanged);
@@ -437,6 +443,7 @@ namespace Mmorpg.SharedTests
             RegisterCombat(registry);
             RegisterAdmin(registry);
             RegisterQuests(registry);
+            RegisterProgression(registry);
             return registry;
         }
 

@@ -55,7 +55,9 @@ public sealed class QuestsWorldActorCapabilityHandler(QuestOperationExecutor exe
             outcome.ItemStateRevision,
             outcome.ShouldDisconnect,
             ItemStateChange: outcome.ItemStateChange,
-            QuestLogChange: outcome.QuestLogChange);
+            QuestLogChange: outcome.QuestLogChange,
+            Progression: outcome.Progression,
+            ProgressionReason: outcome.ProgressionReason);
     }
 
     private static string? Optional(string value)

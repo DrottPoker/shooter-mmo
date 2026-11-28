@@ -39,16 +39,19 @@ internal sealed record CombatDependencies(
     }
 }
 
-// The player combat authority: commits arrow batches, deaths, and kill credits, and gates the
-// client operations of every other feature. Its own unit because those features need the gate
-// before the combat simulation, which needs their corpse views and world actor timers, exists.
+// The player combat authority: commits arrow batches, deaths, and kill credits, whose experience it
+// applies to the progression, and gates the client operations of every other feature. Its own unit
+// because those features need the gate before the combat simulation, which needs their corpse
+// views and world actor timers, exists.
 internal sealed class PlayerCombatFeature
 {
     public PlayerCombatFeature(
         RealtimeCoreServices core,
         CombatDependencies dependencies,
-        QuestProgressFeature quests)
+        QuestProgressFeature quests,
+        ProgressionFeature progression)
     {
+        ArgumentNullException.ThrowIfNull(progression);
         var authority = new PlayerCombatAuthority(
             core.Config,
             dependencies.Rules,
@@ -73,7 +76,8 @@ internal sealed class PlayerCombatFeature
             core.Logger,
             core.GameServiceAvailability,
             quests.Executor,
-            quests.Progress);
+            quests.Progress,
+            progression.Replicator);
         Authority = authority;
         var completions = core.Completions;
         core.Registries.ShutdownSteps.AddAsync(
