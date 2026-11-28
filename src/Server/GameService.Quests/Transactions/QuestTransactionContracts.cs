@@ -171,6 +171,7 @@ internal static class QuestLogSection
 
 // The character's progression after a transaction that granted experience or set its level, with
 // the experience that counted and the levels it gained, which a set level may make negative.
+// HighestMobLevelWithoutExperience is int.MaxValue at the highest level, where no Mob gives any.
 internal sealed record ItemTransactionProgressionChange(
     Guid CharacterId,
     int Level,

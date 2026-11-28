@@ -363,7 +363,8 @@ the shared `ProgressionRules`:
   `CharacterProgressionSnapshot`: the level, the experience, what the level
   needs (`ExperienceToNextLevel`), and the highest Mob level that gives the
   character no experience. At the highest level the experience and what the
-  level needs are 0. A lowered curve can leave more stored than the level
+  level needs are 0, and that Mob level is `int.MaxValue`, because no Mob gives
+  any experience there. A lowered curve can leave more stored than the level
   needs; the snapshot then shows one less than the level needs, and the next
   grant levels up through the rules, which keep the surplus.
 - `GrantExperienceAsync` takes an amount of 0 or more and a source, `quest` or

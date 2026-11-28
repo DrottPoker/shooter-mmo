@@ -72,7 +72,8 @@ public sealed record SimulationSavedCharacterState(
     int Mana);
 
 // A character's level, the experience it gathered inside that level, what the level needs, and the
-// highest Mob level that gives it no experience, as GameService computed them.
+// highest Mob level that gives it no experience, as GameService computed them. That level is
+// int.MaxValue at the highest level, where no Mob gives any.
 public sealed record SimulationProgression(
     int Level,
     long Experience,
@@ -388,7 +389,8 @@ public sealed record SimulationItemTransactionResponse(
 
 // The character's progression after a committed transaction that granted experience or set its
 // level, with the experience that counted and the levels it gained, which a set level may make
-// negative. A transaction without one has no progression key.
+// negative. HighestMobLevelWithoutExperience is int.MaxValue at the highest level, where no Mob
+// gives any. A transaction without one has no progression key.
 public sealed record SimulationProgressionChange(
     Guid CharacterId,
     int Level,

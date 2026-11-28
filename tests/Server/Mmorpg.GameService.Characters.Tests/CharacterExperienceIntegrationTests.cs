@@ -1,8 +1,10 @@
+using System.Text.Json.Nodes;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Testing;
+using Mmorpg.Server.Common.Progression;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Progression;
 
@@ -56,7 +58,9 @@ public sealed class CharacterExperienceIntegrationTests
         var reached = await GrantAsync(context, characterId, 1_000_000_000_000L);
         var stays = await GrantAsync(context, characterId, 500);
 
-        Assert.Equal((highest, 0L, 0L), (reached.After.Level, reached.After.Experience, reached.After.ExperienceToNextLevel));
+        Assert.Equal(
+            new CharacterProgressionSnapshot(highest, 0, 0, int.MaxValue),
+            reached.After);
         Assert.Equal(rules.ExperienceToNextLevel(highest - 1), reached.Gained);
         Assert.Equal((reached.After, reached.After, 0L), (stays.Before, stays.After, stays.Gained));
         Assert.Equal((highest, 0L), await StoredAsync(context, characterId));
@@ -155,6 +159,72 @@ public sealed class CharacterExperienceIntegrationTests
         Assert.Equal((5, 261L), await StoredAsync(context, characterId));
     }
 
+    // A highest level lowered below a stored level leaves the character as stored: it gains
+    // nothing and reads as a character at the highest level.
+    [PostgresIntegrationFact]
+    public async Task ACharacterAboveALoweredHighestLevelStaysAsStored()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        var characterId = player.Character.Id;
+        await StoreAsync(context, characterId, 50, 30);
+        var lowered = ProgressionWithHighestLevel(20);
+
+        var change = await InTransactionAsync(context, lowered, (progression, scope) =>
+            progression.GrantExperienceAsync(scope, characterId, 100, CharacterExperienceSources.Quest, None));
+        var read = await InTransactionAsync(context, lowered, (progression, scope) =>
+            progression.ReadAsync(scope, characterId, None));
+
+        var expected = new CharacterProgressionSnapshot(50, 0, 0, int.MaxValue);
+        Assert.NotNull(change);
+        Assert.Equal((expected, expected, 0L), (change.Before, change.After, change.Gained));
+        Assert.Equal(expected, read);
+        Assert.Equal((50, 30L), await StoredAsync(context, characterId));
+    }
+
+    // With the highest level at 3, level 1 needs 100 and level 2 150, so 300 stored at level 1
+    // already reaches it: a grant of 1 levels up to it with the surplus, and counts nothing.
+    [PostgresIntegrationFact]
+    public async Task AStoredSurplusThatReachesTheHighestLevelLevelsUpToItWithAnyGrant()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        var characterId = player.Character.Id;
+        await StoreAsync(context, characterId, 1, 300);
+        var lowered = ProgressionWithHighestLevel(3);
+
+        var change = await InTransactionAsync(context, lowered, (progression, scope) =>
+            progression.GrantExperienceAsync(scope, characterId, 1, CharacterExperienceSources.Quest, None));
+
+        Assert.NotNull(change);
+        Assert.Equal((1, 99L, 100L), (change.Before.Level, change.Before.Experience, change.Before.ExperienceToNextLevel));
+        Assert.Equal(new CharacterProgressionSnapshot(3, 0, 0, int.MaxValue), change.After);
+        Assert.Equal(0L, change.Gained);
+        Assert.Equal((3, 0L), await StoredAsync(context, characterId));
+    }
+
+    // The content's rules with another highest level, for a progression outside the service.
+    private static CharacterProgression ProgressionWithHighestLevel(int highestLevel)
+    {
+        var document = JsonNode.Parse(File.ReadAllText(RepositoryPaths.ProgressionRulesPath))!;
+        document["maximumCharacterLevel"] = highestLevel;
+        return new CharacterProgression(
+            ProgressionRulesFileLoader.Parse(document.ToJsonString()),
+            new CharacterProgressionMetrics());
+    }
+
+    private static async Task StoreAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        int level,
+        long experience)
+    {
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        await connection.ExecuteAsync(
+            "update characters set level = @Level, experience = @Experience where id = @Id;",
+            new { Id = characterId, Level = level, Experience = experience });
+    }
+
     private static ProgressionRules Rules(PostgresIntegrationTestContext context)
     {
         return context.Services.GetRequiredService<ProgressionRules>();
@@ -194,15 +264,21 @@ public sealed class CharacterExperienceIntegrationTests
         return InTransactionAsync(context, (progression, scope) => progression.ReadAsync(scope, characterId, None));
     }
 
+    private static Task<T> InTransactionAsync<T>(
+        PostgresIntegrationTestContext context,
+        Func<ICharacterProgression, PostgresTransactionScope, Task<T>> action)
+    {
+        return InTransactionAsync(context, context.Services.GetRequiredService<ICharacterProgression>(), action);
+    }
+
     private static async Task<T> InTransactionAsync<T>(
         PostgresIntegrationTestContext context,
+        ICharacterProgression progression,
         Func<ICharacterProgression, PostgresTransactionScope, Task<T>> action)
     {
         await using var connection = await context.DataSource.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
-        var result = await action(
-            context.Services.GetRequiredService<ICharacterProgression>(),
-            new PostgresTransactionScope(connection, transaction));
+        var result = await action(progression, new PostgresTransactionScope(connection, transaction));
         await transaction.CommitAsync();
         return result;
     }

@@ -177,7 +177,8 @@ internal sealed record SimulationSavedCharacterState(
 }
 
 // A character's level, the experience it gathered inside that level, what the level needs, and
-// the highest Mob level that gives it no experience.
+// the highest Mob level that gives it no experience: int.MaxValue at the highest level, where no
+// Mob gives any.
 internal sealed record SimulationProgression(
     int Level,
     long Experience,

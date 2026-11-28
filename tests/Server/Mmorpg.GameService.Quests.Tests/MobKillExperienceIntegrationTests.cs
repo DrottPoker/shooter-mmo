@@ -84,6 +84,45 @@ public sealed class MobKillExperienceIntegrationTests
         await EconomyAudit.AssertCleanAsync(context);
     }
 
+    // A replayed turn-in returns the stored result, so its experience reward counts once.
+    [PostgresIntegrationFact]
+    public async Task AReplayedTurnInGrantsItsExperienceOnce()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var (_, player, session) = await JoinAsync(context, "xp_turn_in_twice");
+        var characterId = player.Character.Id;
+        ItemScenarioWorld.AssertCommitted(await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira));
+        await KillAsync(context, session, 1, 0);
+        await KillAsync(context, session, 1, 0);
+        var operationId = Guid.NewGuid();
+
+        var first = await RouteAsync(context, session, "turn_in_quest", Wolves, Mira, rewardChoiceDefinitionId: "fixture.bow", operationId: operationId);
+        var replayed = await RouteAsync(context, session, "turn_in_quest", Wolves, Mira, rewardChoiceDefinitionId: "fixture.bow", operationId: operationId);
+
+        Assert.Equal(ProgressionOf(first), ProgressionOf(replayed));
+        Assert.Equal((2, 0L, 100L, 1), Summary(ProgressionOf(replayed)));
+        Assert.Equal((2, 0L), await StoredAsync(context, characterId));
+
+        await EconomyAudit.AssertCleanAsync(context);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task AReplayedAdminGrantGrantsOnce()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var (_, player, session) = await JoinAsync(context, "xp_grant_twice");
+        var operationId = Guid.NewGuid();
+
+        var first = await RouteAsync(context, session, "admin_grant_experience", null, null, experience: 30, operationId: operationId);
+        var replayed = await RouteAsync(context, session, "admin_grant_experience", null, null, experience: 30, operationId: operationId);
+
+        Assert.Equal(ProgressionOf(first), ProgressionOf(replayed));
+        Assert.Equal((1, 30L, 30L, 0), Summary(ProgressionOf(replayed)));
+        Assert.Equal((1, 30L), await StoredAsync(context, player.Character.Id));
+
+        await EconomyAudit.AssertCleanAsync(context);
+    }
+
     [PostgresIntegrationFact]
     public async Task AMobWithoutExperienceStillCountsForTheQuest()
     {
@@ -162,6 +201,8 @@ public sealed class MobKillExperienceIntegrationTests
         Assert.True(set.Succeeded, set.Error?.Message);
         Assert.Equal((highest, 0L, 0L, 0), Summary(ProgressionOf(kill)));
         Assert.Equal(0, ProgressionOf(kill).ExperienceToNextLevel);
+        Assert.Equal(int.MaxValue, ProgressionOf(kill).HighestMobLevelWithoutExperience);
+        Assert.Equal(int.MaxValue, ProgressionOf(set).HighestMobLevelWithoutExperience);
         Assert.Equal((highest, 0L), await StoredAsync(context, player.Character.Id));
 
         await EconomyAudit.AssertCleanAsync(context);

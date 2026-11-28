@@ -5,6 +5,7 @@ namespace Mmorpg.GameService.Characters.Contracts;
 // A character's progression as clients show it: its level, the experience it gathered inside
 // that level, what the level needs, and the highest Mob level that gives it no experience.
 // Experience is 0 at the highest level, and ExperienceToNextLevel is 0 there too.
+// HighestMobLevelWithoutExperience is int.MaxValue at the highest level, where no Mob gives any.
 public sealed record CharacterProgressionSnapshot(
     int Level,
     long Experience,

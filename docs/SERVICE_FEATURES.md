@@ -752,7 +752,8 @@ occupied equipment slot with its item id, definition id, quantity, and item
 revision at that item-state revision. It also carries the character's look,
 its saved place and vitals, as [Character Place And Vitals](#character-place-and-vitals)
 describes, and its `progression`: `level`, `experience` inside the level,
-`experienceToNextLevel`, and `highestMobLevelWithoutExperience`, as
+`experienceToNextLevel`, and `highestMobLevelWithoutExperience`, which is
+2,147,483,647 at the highest level, where no Mob gives experience, as
 [Character Progression](GAME_SERVICE_MODULES.md#character-progression) reads
 them. A development bot's consume names no progression. The worker keeps it
 with the session and uses nothing of it yet. The session heartbeat updates the
@@ -2527,7 +2528,7 @@ how to run them.
 | `--dev-items-grant <characterId> <definitionId> <quantity> <permanent\|bank>` | Grant one stack into the permanent inventory or the bank |
 | `--dev-items-package <characterId> <packageId>` | Apply one package from `content/development/item-packages.json` to a new empty character. It refuses a replay once an item or Recovery delivery exists, and rejects a package that misses its exact expected load |
 | `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` | Apply the corpse seed package to an empty source when necessary, then run the normal durable death transaction at that Shard position. The corpse keeps its database deadline across a worker restart |
-| `--dev-items-level <characterId> <level>` | Set the character's level, from 1 to the highest level of the [progression rules](../content/README.md#progression-rules), because no experience exists yet |
+| `--dev-items-level <characterId> <level>` | Set the character's level, from 1 to the highest level of the [progression rules](../content/README.md#progression-rules), without playing for it, with the experience inside the level reset to 0 |
 | `--dev-items-currency <characterId> <amount>` | Credit a positive whole amount through the wallet with a `development` ledger row |
 
 ## Quests

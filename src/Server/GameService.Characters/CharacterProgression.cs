@@ -170,14 +170,17 @@ internal sealed class CharacterProgression(ProgressionRules rules, CharacterProg
 
     // A lowered curve can leave more stored than the level needs: the snapshot shows the level
     // one short of full, and the next grant levels up through the rules, which keep the surplus.
+    // At or above the highest level no Mob gives any experience, so every Mob level is without.
     private CharacterProgressionSnapshot Snapshot(int level, long stored)
     {
         var toNextLevel = rules.ExperienceToNextLevel(level);
-        return new CharacterProgressionSnapshot(
-            level,
-            toNextLevel == 0 ? 0 : Math.Clamp(stored, 0, toNextLevel - 1),
-            toNextLevel,
-            rules.HighestMobLevelWithoutExperience(level));
+        return toNextLevel == 0
+            ? new CharacterProgressionSnapshot(level, 0, 0, int.MaxValue)
+            : new CharacterProgressionSnapshot(
+                level,
+                Math.Clamp(stored, 0, toNextLevel - 1),
+                toNextLevel,
+                rules.HighestMobLevelWithoutExperience(level));
     }
 
     private sealed record ProgressionRow(int Level, long Experience);
